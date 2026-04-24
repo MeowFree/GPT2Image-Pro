@@ -10,32 +10,32 @@ export interface BlogPost {
 
 export const mockPosts: BlogPost[] = [
   {
-    slug: "nextdevtpl-blog-system",
-    title: "NEXTDEVTPL Blog System",
+    slug: "gpt2image-blog-system",
+    title: "GPT2IMAGE Blog System",
     excerpt:
-      "Learn how to create and manage blog content with Fumadocs MDX in NEXTDEVTPL. A comprehensive guide to setting up your blog, writing posts, and customizing the appearance of your content.",
-    tags: ["NEXTDEVTPL", "BLOG", "FUMADOCS", "MDX", "CONTENT-MANAGEMENT"],
-    author: "NEXTDEVTPL Team",
+      "Learn how to create and manage blog content with Fumadocs MDX in GPT2IMAGE. A comprehensive guide to setting up your blog, writing posts, and customizing the appearance of your content.",
+    tags: ["GPT2IMAGE", "BLOG", "FUMADOCS", "MDX", "CONTENT-MANAGEMENT"],
+    author: "GPT2IMAGE Team",
     date: "7/11/2025",
     image: "/images/blog/blog-system.png",
   },
   {
-    slug: "nextdevtpl-tech-stack",
-    title: "NEXTDEVTPL Tech Stack",
+    slug: "gpt2image-tech-stack",
+    title: "GPT2IMAGE Tech Stack",
     excerpt:
-      "Learn about the powerful technologies and tools that make NEXTDEVTPL a cutting-edge SaaS starter kit. From Next.js 15 to Drizzle ORM, discover how each piece fits together.",
-    tags: ["NEXTDEVTPL", "TECH-STACK", "SAAS", "NEXTJS"],
-    author: "NEXTDEVTPL Team",
+      "Learn about the powerful technologies and tools that make GPT2IMAGE a cutting-edge SaaS starter kit. From Next.js 15 to Drizzle ORM, discover how each piece fits together.",
+    tags: ["GPT2IMAGE", "TECH-STACK", "SAAS", "NEXTJS"],
+    author: "GPT2IMAGE Team",
     date: "7/10/2025",
     image: "/images/blog/tech-stack.png",
   },
   {
-    slug: "update-nextdevtpl-codebase",
-    title: "Update the NEXTDEVTPL Codebase",
+    slug: "update-gpt2image-codebase",
+    title: "Update the GPT2IMAGE Codebase",
     excerpt:
-      "Keep your NEXTDEVTPL project up-to-date with the latest features and security patches. This guide walks you through the process of syncing with upstream changes.",
-    tags: ["NEXTDEVTPL", "UPDATE", "GIT", "MAINTENANCE"],
-    author: "NEXTDEVTPL Team",
+      "Keep your GPT2IMAGE project up-to-date with the latest features and security patches. This guide walks you through the process of syncing with upstream changes.",
+    tags: ["GPT2IMAGE", "UPDATE", "GIT", "MAINTENANCE"],
+    author: "GPT2IMAGE Team",
     date: "7/9/2025",
     image: "/images/blog/update-codebase.png",
   },
@@ -43,9 +43,9 @@ export const mockPosts: BlogPost[] = [
     slug: "authentication-with-better-auth",
     title: "Authentication with Better Auth",
     excerpt:
-      "Implement secure authentication in your NEXTDEVTPL application using Better Auth. Learn about OAuth providers, magic links, and session management.",
+      "Implement secure authentication in your GPT2IMAGE application using Better Auth. Learn about OAuth providers, magic links, and session management.",
     tags: ["AUTH", "SECURITY", "BETTER-AUTH", "OAUTH"],
-    author: "NEXTDEVTPL Team",
+    author: "GPT2IMAGE Team",
     date: "7/8/2025",
     image: "/images/blog/auth.png",
   },
@@ -55,7 +55,7 @@ export const mockPosts: BlogPost[] = [
     excerpt:
       "Set up your database with Drizzle ORM for type-safe queries and easy migrations. This guide covers PostgreSQL setup, schema design, and best practices.",
     tags: ["DATABASE", "DRIZZLE", "POSTGRESQL", "ORM"],
-    author: "NEXTDEVTPL Team",
+    author: "GPT2IMAGE Team",
     date: "7/7/2025",
     image: "/images/blog/database.png",
   },

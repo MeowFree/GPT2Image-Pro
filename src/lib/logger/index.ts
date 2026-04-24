@@ -7,7 +7,7 @@
  *
  * 环境变量:
  * - AXIOM_TOKEN: Axiom API Token（可选）
- * - AXIOM_DATASET: Axiom 数据集名称（可选，默认 "nextdevtpl"）
+ * - AXIOM_DATASET: Axiom 数据集名称（可选，默认 "gpt2image"）
  */
 
 import pino from "pino";
@@ -46,7 +46,7 @@ function createLogger(): pino.Logger {
 		level,
 		base: {
 			env: process.env.NODE_ENV,
-			service: "nextdevtpl",
+			service: "gpt2image",
 		},
 		timestamp: pino.stdTimeFunctions.isoTime,
 	};

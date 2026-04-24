@@ -79,7 +79,7 @@ export const auth = betterAuth({
     sendResetPassword: async ({ user, url }) => {
       await sendEmail({
         to: user.email,
-        subject: "Reset your password - NextDevTpl",
+        subject: "Reset your password - GPT2IMAGE",
         react: ResetPasswordEmail({
           resetUrl: url,
           name: user.name || "there",
@@ -98,7 +98,7 @@ export const auth = betterAuth({
           sendVerificationEmail: async ({ user, url }) => {
             await sendEmail({
               to: user.email,
-              subject: "Verify your email - NextDevTpl",
+              subject: "Verify your email - GPT2IMAGE",
               react: VerifyEmailEmail({
                 verifyUrl: url,
                 name: user.name || "there",

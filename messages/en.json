@@ -263,8 +263,8 @@
       }
     }
   },
-  "Flashcards": {},
-  "Decks": {},
+  "ImageGeneration": {},
+  "Gallery": {},
   "AnonymousGenerate": {},
   "Solutions": {},
   "CreditTransactions": {
@@ -461,6 +461,39 @@
       }
     }
   },
+  "Toggle": {
+    "theme": "Toggle Theme",
+    "language": "Toggle Language",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "Support": {
+    "title": "Support Center",
+    "subtitle": "View and manage your support tickets",
+    "newTicket": "New Ticket",
+    "noTickets": "No Tickets",
+    "noTicketsDescription": "You haven't submitted any support tickets yet",
+    "createFirst": "Create Your First Ticket",
+    "categories": {
+      "billing": "Billing",
+      "technical": "Technical Support",
+      "bug": "Bug Report",
+      "feature": "Feature Request",
+      "other": "Other"
+    },
+    "priorities": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "statuses": {
+      "open": "Open",
+      "in_progress": "In Progress",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    }
+  },
   "Subscription": {
     "plans": {
       "free": "Free",
@@ -477,6 +510,10 @@
     },
     "pages": {
       "dashboard": "Dashboard",
+      "generate": "Generate",
+      "tasks": "Tasks",
+      "myDecks": "My Decks",
+      "deckDetails": "Deck Details",
       "support": "Support",
       "newTicket": "New Ticket",
       "settings": "Settings",
@@ -484,7 +521,8 @@
       "security": "Security",
       "billing": "Billing",
       "notifications": "Notifications",
-      "ticketDetails": "Ticket Details"
+      "ticketDetails": "Ticket Details",
+      "advanced": "Advanced"
     },
     "sidebar": {
       "settings": "Settings",
@@ -496,7 +534,29 @@
       "account": "Account",
       "security": "Security",
       "billing": "Billing",
-      "usage": "Usage"
+      "usage": "Usage",
+      "profile": "Profile",
+      "advanced": "Advanced"
+    },
+    "advanced": {
+      "title": "Advanced Settings",
+      "description": "Configuration options for power users."
+    },
+    "apiConfig": {
+      "warning": {
+        "title": "Advanced Configuration",
+        "description": "Configure your own OpenAI-compatible API endpoint. When active, image generation will use your API key instead of platform credits."
+      },
+      "customEndpoint": "Custom API Endpoint",
+      "enabled": "Use Custom API",
+      "enabledDescription": "When enabled, bypasses platform credits",
+      "baseUrl": "API Base URL",
+      "apiKey": "API Key",
+      "model": "Model (optional)",
+      "modelHint": "Leave blank to use the default model",
+      "save": "Save Configuration",
+      "remove": "Remove",
+      "docsLink": "API Documentation"
     },
     "general": {
       "title": "General",

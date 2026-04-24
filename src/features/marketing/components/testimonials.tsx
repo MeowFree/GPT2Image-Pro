@@ -1,16 +1,16 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 
-const avatarPaths = [
-  "/avatars/01.png",
-  "/avatars/02.png",
-  "/avatars/03.png",
-  "/avatars/04.png",
-  "/avatars/05.png",
-  "/avatars/01.png",
+const avatarInitialColors = [
+  "bg-violet-100 text-violet-700",
+  "bg-blue-100 text-blue-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-amber-100 text-amber-700",
+  "bg-rose-100 text-rose-700",
+  "bg-indigo-100 text-indigo-700",
 ];
 
 export function Testimonials() {
@@ -48,8 +48,7 @@ export function Testimonials() {
                 </p>
                 <div className="flex items-center gap-3">
                   <Avatar className="h-10 w-10">
-                    <AvatarImage src={avatarPaths[index]} />
-                    <AvatarFallback className="bg-foreground/10 text-foreground">
+                    <AvatarFallback className={avatarInitialColors[index % avatarInitialColors.length]}>
                       {testimonial.author.charAt(0)}
                     </AvatarFallback>
                   </Avatar>

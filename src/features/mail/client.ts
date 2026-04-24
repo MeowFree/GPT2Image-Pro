@@ -46,4 +46,4 @@ export function getResendClient(): Resend {
  * 格式: "Name <email@domain.com>"
  */
 export const DEFAULT_FROM_EMAIL =
-  process.env.EMAIL_FROM ?? "NextDevTpl <noreply@example.com>";
+  process.env.EMAIL_FROM ?? "GPT2IMAGE <noreply@gpt2image.com>";

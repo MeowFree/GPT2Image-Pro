@@ -25,25 +25,26 @@ export async function generateMetadata({
   const isZh = locale === "zh";
 
   const title = isZh
-    ? "NextDevTpl - 生产就绪的 Next.js SaaS 模板"
-    : "NextDevTpl - Production-ready Next.js SaaS Template";
+    ? "GPT2IMAGE - AI 对话生图平台"
+    : "GPT2IMAGE - AI Chat-to-Image Generation Platform";
 
   const description = isZh
-    ? "使用AI技术将文本、PDF、网页、视频等内容自动转换为Anki兼容的闪卡。支持多种输入格式，一键导出.apkg文件，让学习更高效。"
-    : "AI-powered flashcard generator that converts text, PDFs, URLs, and videos into Anki-compatible study cards. Multiple input formats supported with one-click .apkg export.";
+    ? "通过自然对话将你的想法转化为精美视觉图片。由最先进的 AI 模型驱动，支持批量生成、画廊管理与灵活积分系统。"
+    : "Transform your ideas into stunning visuals through natural conversation. Powered by state-of-the-art AI models with batch generation, gallery management, and flexible credits.";
 
   return {
     title,
     description,
     keywords: [
-      "AI flashcard generator",
-      "Anki cards",
-      "study cards",
-      "spaced repetition",
-      "PDF to flashcards",
-      "text to Anki",
+      "AI image generation",
+      "chat to image",
+      "text to image",
+      "AI art",
+      "GPT2IMAGE",
+      "image generation API",
+      "creative AI",
       ...(isZh
-        ? ["AI闪卡生成器", "Anki卡片", "间隔重复", "PDF转闪卡"]
+        ? ["AI图像生成", "对话生图", "文字转图片", "AI艺术"]
         : []),
     ],
     openGraph: {

@@ -103,7 +103,7 @@ function logEmailPreview(params: SendEmailParams): void {
  * // 发送欢迎邮件
  * await sendEmail({
  *   to: "user@example.com",
- *   subject: "Welcome to NextDevTpl!",
+ *   subject: "Welcome to GPT2IMAGE!",
  *   react: <WelcomeEmail name="John" dashboardUrl="..." />,
  * });
  *

@@ -56,7 +56,7 @@ export function PrimaryActionEmail({
             {/* Logo / 品牌区域 */}
             <Section className="mb-8 text-center">
               <Heading className="m-0 text-2xl font-bold text-gray-900">
-                NextDevTpl
+                GPT2IMAGE
               </Heading>
             </Section>
 
@@ -100,7 +100,7 @@ export function PrimaryActionEmail({
 
             {/* 页脚 */}
             <Text className="m-0 mt-4 text-center text-xs text-gray-400">
-              © {new Date().getFullYear()} NextDevTpl. All rights reserved.
+              © {new Date().getFullYear()} GPT2IMAGE. All rights reserved.
             </Text>
           </Container>
         </Body>
@@ -130,13 +130,13 @@ export function MagicLinkEmail({
 }) {
   return (
     <PrimaryActionEmail
-      preview="Sign in to NextDevTpl with this magic link"
+      preview="Sign in to GPT2IMAGE with this magic link"
       actionLabel="Sign In"
       actionUrl={magicLinkUrl}
       expiresIn="15 minutes"
     >
       <Heading className="mb-4 text-xl font-semibold text-gray-900">
-        Sign in to NextDevTpl
+        Sign in to GPT2IMAGE
       </Heading>
       <Text className="mb-4 text-base leading-relaxed text-gray-600">
         Click the button below to sign in to your account ({email}). No password
@@ -158,7 +158,7 @@ export function ResetPasswordEmail({
 }) {
   return (
     <PrimaryActionEmail
-      preview="Reset your NextDevTpl password"
+      preview="Reset your GPT2IMAGE password"
       actionLabel="Reset Password"
       actionUrl={resetUrl}
       expiresIn="1 hour"

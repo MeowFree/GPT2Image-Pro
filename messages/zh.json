@@ -263,8 +263,8 @@
       }
     }
   },
-  "Flashcards": {},
-  "Decks": {},
+  "ImageGeneration": {},
+  "Gallery": {},
   "AnonymousGenerate": {},
   "Solutions": {},
   "CreditTransactions": {
@@ -461,6 +461,39 @@
       }
     }
   },
+  "Toggle": {
+    "theme": "切换主题",
+    "language": "切换语言",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统"
+  },
+  "Support": {
+    "title": "支持中心",
+    "subtitle": "查看和管理您的支持工单",
+    "newTicket": "新建工单",
+    "noTickets": "暂无工单",
+    "noTicketsDescription": "您还没有提交过任何支持工单",
+    "createFirst": "创建第一个工单",
+    "categories": {
+      "billing": "账单问题",
+      "technical": "技术支持",
+      "bug": "Bug 报告",
+      "feature": "功能建议",
+      "other": "其他"
+    },
+    "priorities": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
+    "statuses": {
+      "open": "待处理",
+      "in_progress": "处理中",
+      "resolved": "已解决",
+      "closed": "已关闭"
+    }
+  },
   "Subscription": {
     "plans": {
       "free": "免费版",
@@ -477,6 +510,10 @@
     },
     "pages": {
       "dashboard": "控制台",
+      "generate": "生成",
+      "tasks": "任务",
+      "myDecks": "我的合集",
+      "deckDetails": "合集详情",
       "support": "支持",
       "newTicket": "新建工单",
       "settings": "设置",
@@ -484,7 +521,8 @@
       "security": "安全",
       "billing": "账单",
       "notifications": "通知",
-      "ticketDetails": "工单详情"
+      "ticketDetails": "工单详情",
+      "advanced": "高级"
     },
     "sidebar": {
       "settings": "设置",
@@ -496,7 +534,29 @@
       "account": "账户",
       "security": "安全",
       "billing": "账单",
-      "usage": "用量"
+      "usage": "用量",
+      "profile": "个人资料",
+      "advanced": "高级"
+    },
+    "advanced": {
+      "title": "高级设置",
+      "description": "面向高级用户的配置选项。"
+    },
+    "apiConfig": {
+      "warning": {
+        "title": "高级配置",
+        "description": "配置你自己的 OpenAI 兼容 API 端点。启用后，图片生成将使用你的 API 密钥，不消耗平台积分。"
+      },
+      "customEndpoint": "自定义 API 端点",
+      "enabled": "使用自定义 API",
+      "enabledDescription": "启用后将绕过平台积分计费",
+      "baseUrl": "API 地址",
+      "apiKey": "API 密钥",
+      "model": "模型（可选）",
+      "modelHint": "留空则使用默认模型",
+      "save": "保存配置",
+      "remove": "删除",
+      "docsLink": "API 文档"
     },
     "general": {
       "title": "基本信息",

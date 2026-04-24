@@ -18,7 +18,7 @@ const s3Client = new S3Client({
   },
 });
 
-const BUCKET_NAME = process.env.STORAGE_BUCKET_NAME || "nextdevtpl-uploads";
+const BUCKET_NAME = process.env.STORAGE_BUCKET_NAME || "gpt2image-uploads";
 
 /**
  * 允许的文件类型和大小限制

@@ -17,19 +17,19 @@ const users = [
   {
     name: "Olivia Martin",
     email: "m@example.com",
-    avatar: "/avatars/01.png",
+    avatar: "",
     permission: "edit",
   },
   {
     name: "Isabella Nguyen",
     email: "b@example.com",
-    avatar: "/avatars/02.png",
+    avatar: "",
     permission: "view",
   },
   {
     name: "Sofia Davis",
     email: "p@example.com",
-    avatar: "/avatars/03.png",
+    avatar: "",
     permission: "view",
   },
 ];

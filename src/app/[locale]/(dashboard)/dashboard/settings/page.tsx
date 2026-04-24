@@ -7,8 +7,8 @@ import { SettingsProfileView } from "@/features/settings/components";
  * 设置页面元数据
  */
 export const metadata = {
-  title: "Settings | NextDevTpl",
-  description: "管理您的账户设置和偏好",
+  title: "Settings | GPT2IMAGE",
+  description: "Manage your account settings and preferences",
 };
 
 /**

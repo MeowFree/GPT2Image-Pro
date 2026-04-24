@@ -112,7 +112,6 @@ export const productsNav: ProductNavGroup[] = [
  * 主导航链接 (Header)
  */
 export const mainNav: NavItem[] = [
-  { title: "Features", href: "/#features" },
   { title: "Pricing", href: "/#pricing" },
   { title: "Docs", href: "/docs" },
   { title: "Blog", href: "/blog" },
@@ -126,7 +125,7 @@ export const footerNav = {
   product: [
     { title: "Pricing", href: "/#pricing" },
     { title: "Docs", href: "/docs" },
-    { title: "Contact Us", href: "mailto:hello@example.com" },
+    { title: "Contact Us", href: "mailto:hello@gpt2image.com" },
   ] as NavItem[],
 
   /** 法律 (Legal) */

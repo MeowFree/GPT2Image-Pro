@@ -5,7 +5,7 @@
     "locales": {
       "en": {
         "seo": {
-          "title": "AI Meeting Notes for Product Teams | NextDevTpl",
+          "title": "AI Meeting Notes for Product Teams | GPT2IMAGE",
           "description": "Turn messy transcripts into clear decisions, action items, and follow-ups with automated meeting notes."
         },
         "hero": {
@@ -135,7 +135,7 @@
       },
       "zh": {
         "seo": {
-          "title": "产品团队的 AI 会议纪要 | NextDevTpl",
+          "title": "产品团队的 AI 会议纪要 | GPT2IMAGE",
           "description": "把杂乱会议记录自动整理为决策、行动项和跟进计划。"
         },
         "hero": {
@@ -271,7 +271,7 @@
     "locales": {
       "en": {
         "seo": {
-          "title": "Sales Playbook Generator for Growth Teams | NextDevTpl",
+          "title": "Sales Playbook Generator for Growth Teams | GPT2IMAGE",
           "description": "Generate tailored sales playbooks for every segment using structured JSON data."
         },
         "hero": {
@@ -401,7 +401,7 @@
       },
       "zh": {
         "seo": {
-          "title": "增长团队的销售作战手册 | NextDevTpl",
+          "title": "增长团队的销售作战手册 | GPT2IMAGE",
           "description": "用结构化 JSON 数据为每个细分市场生成专属销售手册。"
         },
         "hero": {

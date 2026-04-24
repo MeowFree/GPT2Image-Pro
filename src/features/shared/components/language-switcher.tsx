@@ -1,7 +1,7 @@
 "use client";
 
 import { Globe } from "lucide-react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
 import { useTransition } from "react";
 
@@ -36,6 +36,7 @@ export function LanguageSwitcher() {
   const pathname = usePathname();
   const params = useParams();
   const [isPending, startTransition] = useTransition();
+  const t = useTranslations("Toggle");
 
   /**
    * 切换语言
@@ -62,7 +63,7 @@ export function LanguageSwitcher() {
           className="relative"
         >
           <Globe className="h-5 w-5" />
-          <span className="sr-only">切换语言</span>
+          <span className="sr-only">{t("language")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
