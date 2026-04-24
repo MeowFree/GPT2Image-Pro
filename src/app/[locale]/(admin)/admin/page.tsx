@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/db";
 import {
   creditsBalance,
+  generation,
   subscription,
   ticket,
   user,
@@ -10,6 +11,7 @@ import { count, eq, sum, gte } from "drizzle-orm";
 import {
   Coins,
   CreditCard,
+  Image as ImageIcon,
   MessageSquare,
   Ticket,
   TrendingUp,
@@ -58,6 +60,11 @@ export default async function AdminDashboardPage() {
     // 订阅统计
     activeSubscriptionsResult,
     totalSubscriptionsResult,
+    // 生成统计
+    totalGenerationsResult,
+    todayGenerationsResult,
+    completedGenerationsResult,
+    totalGenerationCreditsResult,
   ] = await Promise.all([
     // 用户统计
     db.select({ count: count() }).from(user),
@@ -91,6 +98,18 @@ export default async function AdminDashboardPage() {
       .from(subscription)
       .where(eq(subscription.status, "active")),
     db.select({ count: count() }).from(subscription),
+
+    // 生成统计
+    db.select({ count: count() }).from(generation),
+    db
+      .select({ count: count() })
+      .from(generation)
+      .where(gte(generation.createdAt, todayStart)),
+    db
+      .select({ count: count() })
+      .from(generation)
+      .where(eq(generation.status, "completed")),
+    db.select({ total: sum(generation.creditsConsumed) }).from(generation),
   ]);
 
   // 解析统计结果
@@ -118,6 +137,13 @@ export default async function AdminDashboardPage() {
     },
   };
 
+  const generationStats = {
+    total: totalGenerationsResult[0]?.count ?? 0,
+    today: todayGenerationsResult[0]?.count ?? 0,
+    completed: completedGenerationsResult[0]?.count ?? 0,
+    creditsConsumed: Number(totalGenerationCreditsResult[0]?.total ?? 0),
+  };
+
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
@@ -129,7 +155,7 @@ export default async function AdminDashboardPage() {
       </div>
 
       {/* 主要统计卡片 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {/* 总用户数 */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -191,10 +217,24 @@ export default async function AdminDashboardPage() {
             </p>
           </CardContent>
         </Card>
+
+        {/* 图片生成 */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">图片生成</CardTitle>
+            <ImageIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{generationStats.total}</div>
+            <p className="text-xs text-muted-foreground">
+              今日 {generationStats.today} 张 · 成功 {generationStats.completed} 张
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* 详细统计 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* 用户详情 */}
         <Card>
           <CardHeader>
@@ -301,6 +341,30 @@ export default async function AdminDashboardPage() {
               <span className="font-medium">
                 {stats.subscriptions.active} 活跃
               </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 生成统计 */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5" />
+              生成统计
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">总生成数</span>
+              <span className="font-medium">{generationStats.total}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">成功率</span>
+              <span className="font-medium">{generationStats.total > 0 ? Math.round(generationStats.completed / generationStats.total * 100) : 0}%</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">积分消耗</span>
+              <span className="font-medium">{generationStats.creditsConsumed}</span>
             </div>
           </CardContent>
         </Card>
