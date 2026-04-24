@@ -1,173 +1,173 @@
 {
   "HomePage": {
-    "title": "NextDevTpl",
-    "subtitle": "生产就绪的 Next.js SaaS 模板",
-    "description": "开箱即用的全栈 SaaS 模板，快速启动你的下一个项目。"
+    "title": "GPT2IMAGE",
+    "subtitle": "AI 对话生图平台",
+    "description": "通过自然对话将你的想法转化为精美视觉，由最先进的 AI 模型驱动。"
   },
   "Hero": {
-    "badge": "全新：支持 AI 模型集成",
-    "title1": "终极 Next.js 启动模板",
-    "titleHighlight": "助力您的下一个项目",
-    "subtitle": "使用生产就绪的基础设施更快地构建和发布。开箱即用的认证、支付和精美 UI 组件。",
-    "getStarted": "开始使用",
-    "seeDemo": "查看演示",
-    "trustLine": "深受全球开发者喜爱",
+    "badge": "AI 图像生成",
+    "title1": "将文字",
+    "titleHighlight": "变为艺术",
+    "subtitle": "通过自然对话生成精美图片。由最先进的 AI 模型驱动。",
+    "getStarted": "开始创作",
+    "seeDemo": "查看示例",
+    "trustLine": "深受全球创作者喜爱",
     "stats": {
-      "cards": "已创建项目",
-      "users": "开发者",
+      "cards": "已生成图片",
+      "users": "活跃用户",
       "rating": "满意度"
     }
   },
   "Features": {
     "label": "核心功能",
-    "title": "开箱即用的完整功能",
-    "subtitle": "从认证到支付，从国际化到管理后台，每个模块都经过精心打磨，让你专注于业务本身。",
+    "title": "创作所需，一应俱全",
+    "subtitle": "从对话生图到批量生成、API 接入，完整工具链助你把想象变为现实。",
     "items": {
       "ai": {
-        "title": "认证与安全",
-        "description": "集成 Better Auth，支持邮箱密码、Google、GitHub OAuth 登录，开箱即用的会话管理与权限控制。"
+        "title": "对话生图",
+        "description": "用自然语言描述你的想法，AI 即刻呈现。无需复杂的提示词工程，对话即可创作。"
       },
       "multiSource": {
-        "title": "支付与订阅",
-        "description": "集成 Creem 支付，支持订阅和一次性购买，内置 Webhook 处理和订阅生命周期管理。"
+        "title": "视觉画廊",
+        "description": "整理、浏览并回顾你创作的每一张图片。强大的筛选、标签与合集，让所有作品尽在指尖。"
       },
       "outline": {
-        "title": "积分系统",
-        "description": "基于双重记账法的积分系统，支持 FIFO 批次过期、积分发放、消耗追踪和余额管理。"
+        "title": "批量生成",
+        "description": "一次请求生成多个变体，适合探索概念、迭代设计或规模化生产内容。"
       },
       "export": {
-        "title": "异步处理",
-        "description": "集成 Inngest 后台任务引擎，支持异步处理、任务队列和状态轮询，突破请求超时限制。"
+        "title": "API 接入",
+        "description": "通过简洁且文档完善的 REST API，将图像生成能力直接集成到你的产品与工作流中。"
       },
       "batch": {
-        "title": "国际化",
-        "description": "集成 next-intl 多语言支持，内置中英双语翻译，轻松扩展更多语言。"
+        "title": "积分管理",
+        "description": "灵活的按量计费积分，永不过期。跟踪使用情况、监控消耗，随需充值。"
       },
       "multilingual": {
-        "title": "管理后台",
-        "description": "完整的管理后台，支持用户管理、工单系统、数据统计，一键掌控全局。"
+        "title": "深色模式",
+        "description": "为长时间创作精心打造的深色主题。在浅色与深色之间轻松切换，匹配你的心境。"
       }
     }
   },
   "HowItWorks": {
     "label": "使用流程",
-    "title": "三步启动你的 SaaS",
-    "subtitle": "从模板到上线，只需要几步简单操作。",
+    "title": "从想法到图片，四步搞定",
+    "subtitle": "无需设计经验，也无需提示词技巧，几分钟即可开始创作。",
     "steps": {
       "upload": {
-        "title": "克隆 & 配置",
-        "description": "克隆模板仓库，配置环境变量（数据库、认证密钥等），运行 pnpm install 安装依赖。"
+        "title": "配置 API",
+        "description": "添加你的 API 密钥，连接你偏好的 AI 图像模型。我们原生支持主流提供商。"
       },
       "generate": {
-        "title": "定制 & 开发",
-        "description": "根据你的业务需求定制功能模块，修改品牌信息、配色、定价方案，添加自定义业务逻辑。"
+        "title": "描述你的构想",
+        "description": "开启对话，描述你想要的画面——一个场景、一位角色、一种氛围。持续迭代，直到它触动你的灵感。"
       },
       "export": {
-        "title": "部署 & 上线",
-        "description": "一键部署到 Vercel 或自有服务器，连接 Neon PostgreSQL 数据库，配置域名即可上线。"
+        "title": "AI 生成作品",
+        "description": "AI 解读你的提示词，数秒内产出高质量图像。生成多个变体，探索每一种创作方向。"
       }
     },
     "completion": {
-      "title": "就是这么简单",
-      "description": "你的 SaaS 产品已准备就绪，随时可以上线运营。"
+      "title": "下载并分享",
+      "description": "将作品高清下载或直接分享。所有图片都保留在画廊中，随时可回看。"
     }
   },
   "UseCases": {
     "label": "适用场景",
-    "title": "适合各种 SaaS 产品",
-    "subtitle": "NextDevTpl 模板适用于多种类型的 SaaS 产品和业务场景。",
+    "title": "为每一位创作者而生",
+    "subtitle": "GPT2IMAGE 契合设计师、营销人员、开发者与内容创作者的日常工作流。",
     "items": {
       "students": {
-        "title": "AI 产品",
-        "subtitle": "快速构建 AI 应用",
-        "description": "利用内置的异步任务处理和积分系统，快速构建 AI 驱动的 SaaS 产品，支持长时间运行的 AI 任务。",
-        "examples": ["AI 内容生成", "AI 数据分析", "AI 辅助工具"]
+        "title": "设计师与艺术家",
+        "subtitle": "视觉创意",
+        "description": "勾勒概念、探索风格、生成参考图，加速你的创作流程。",
+        "examples": ["情绪板", "概念设计", "风格探索"]
       },
       "professionals": {
-        "title": "效率工具",
-        "subtitle": "打造专业工具",
-        "description": "完善的认证、订阅和积分系统，让你专注于核心工具逻辑的开发，快速推出你的效率工具产品。",
-        "examples": ["项目管理工具", "文档协作平台", "自动化工作流"]
+        "title": "营销人员",
+        "subtitle": "规模化内容",
+        "description": "为营销活动、社交媒体与博客头图生产符合品牌调性的视觉素材，无需等待素材库或设计排期。",
+        "examples": ["社交图像", "广告创意", "博客配图"]
       },
       "language": {
-        "title": "创作者平台",
-        "subtitle": "支持内容创作",
-        "description": "内置文件上传、存储管理和用户系统，适合构建创作者经济平台，支持内容发布和变现。",
-        "examples": ["在线课程平台", "知识付费社区", "数字内容市场"]
+        "title": "创作者与讲故事的人",
+        "subtitle": "视觉叙事",
+        "description": "为故事绘制插图、构建世界观、呈现角色形象。把想法变成能吸引读者的画面。",
+        "examples": ["故事插画", "角色设定", "世界构建"]
       },
       "knowledge": {
-        "title": "内部工具",
-        "subtitle": "企业内部系统",
-        "description": "完整的管理后台、权限控制和工单系统，适合快速搭建企业内部管理工具和运营平台。",
-        "examples": ["CRM 客户管理", "运营数据看板", "内部审批系统"]
+        "title": "开发者",
+        "subtitle": "API 驱动工作流",
+        "description": "通过简洁的 API 将图像生成能力嵌入你的应用。打造原生集成 AI 视觉的产品功能。",
+        "examples": ["应用集成", "自动化流程", "自定义工具"]
       }
     }
   },
   "Testimonials": {
     "label": "用户评价",
-    "title": "听听开发者们怎么说",
-    "subtitle": "来自不同领域的开发者正在使用 NextDevTpl 模板快速构建产品。",
+    "title": "听听创作者们怎么说",
+    "subtitle": "全球的设计师、营销人员与开发者每天都在使用 GPT2IMAGE。",
     "items": [
       {
-        "content": "用这个模板两周就上线了一个 AI 写作工具，认证、支付、积分系统全都不用自己写，节省了至少一个月的开发时间。",
+        "content": "对话式界面让图像生成变得毫不费力。我可以用日常语言描述脑海中的画面，反复迭代到满意为止。",
         "author": "林小雨",
-        "role": "独立开发者"
+        "role": "产品设计师"
       },
       {
-        "content": "之前自己搭 SaaS 框架花了三个月，用了这个模板后发现认证、订阅、积分这些通用模块的完成度远超预期，代码质量也很高。",
+        "content": "批量生成每周为我节省了大量时间。我可以轻松产出十几张主视觉变体用于 A/B 测试。",
         "author": "张明远",
+        "role": "营销负责人"
+      },
+      {
+        "content": "我一个下午就接入了 API，现在我的产品能自动为用户内容生成配图。文档清晰，接口稳定好用。",
+        "author": "陈思琪",
         "role": "全栈工程师"
       },
       {
-        "content": "国际化方案开箱即用，中英双语直接可用，扩展其他语言也很方便。对需要做多语言市场的 SaaS 产品来说非常省心。",
-        "author": "陈思琪",
-        "role": "产品经理"
-      },
-      {
-        "content": "Inngest 异步任务的集成方案非常优雅，完美解决了 Vercel 60 秒超时的问题。我的 AI 产品不再需要担心长任务处理了。",
+        "content": "画廊是我保持高效的关键。我生成过的每一张图都可搜索、可打标签，一键即可复用。",
         "author": "王浩然",
-        "role": "技术负责人"
+        "role": "内容创作者"
       },
       {
-        "content": "积分系统的双重记账法实现得很专业，FIFO 批次过期逻辑也考虑到了。直接拿来用，不需要自己设计积分消费方案。",
+        "content": "积分永不过期是最大的亮点。我可以在灵感来袭时随时生成，不用担心每月的额度倒计时。",
         "author": "李雨桐",
-        "role": "后端开发者"
+        "role": "插画师"
       },
       {
-        "content": "管理后台已经有了用户管理和工单系统，对小团队来说已经足够用了。部署到自有服务器也很简单，文档写得很清楚。",
+        "content": "GPT2IMAGE 替代了我工作流中的三款工具。对话生图、批量生成与 API 接入，都集中在一个平台。",
         "author": "赵一鸣",
-        "role": "创业者"
+        "role": "创意总监"
       }
     ]
   },
   "FAQ": {
     "label": "常见问题",
     "title": "你可能想了解的",
-    "subtitle": "关于 NextDevTpl 模板的常见问题与解答。",
+    "subtitle": "关于 GPT2IMAGE 的常见问题与解答。",
     "items": [
       {
-        "question": "NextDevTpl 是什么？",
-        "answer": "NextDevTpl 是一个基于 Next.js 15、React 19、TypeScript 的生产就绪 SaaS 模板。内置认证（Better Auth）、支付（Creem）、积分系统、异步任务处理（Inngest）、国际化、管理后台等完整功能，帮助开发者快速启动 SaaS 项目。"
+        "question": "GPT2IMAGE 是什么？",
+        "answer": "GPT2IMAGE 是一个由 AI 驱动的图像生成平台，通过自然对话即可产出高质量图片。你只需描述想要的画面，AI 便会生成——无需提示词工程。平台内置对话生图、视觉画廊、批量生成、API 接入与灵活的积分系统等功能。"
       },
       {
-        "question": "需要哪些技术基础？",
-        "answer": "你需要熟悉 React、TypeScript 和 Next.js 的基础知识。模板使用 Tailwind CSS 做样式，Drizzle ORM 做数据库操作，了解这些技术栈会帮助你更快上手。"
+        "question": "支持哪些 AI 图像模型？",
+        "answer": "GPT2IMAGE 支持市面上主流的图像生成模型。你只需配置一次 API 凭据，平台会自动将请求路由到你选择的模型，并在统一界面中呈现结果。"
       },
       {
-        "question": "可以部署到哪些平台？",
-        "answer": "模板可以部署到 Vercel（推荐）、自有服务器或任何支持 Node.js 的平台。数据库推荐使用 Neon PostgreSQL（Serverless），文件存储使用 Cloudflare R2。"
+        "question": "积分系统如何工作？",
+        "answer": "每次图像生成会根据模型与参数消耗少量积分。积分永不过期，未用完也不会浪费。你可以订阅月度套餐获取周期性积分，也可以随时充值。"
       },
       {
-        "question": "积分系统是怎样的？",
-        "answer": "模板内置基于双重记账法的积分系统，支持积分发放、消耗、FIFO 批次过期、余额查询等完整功能。注册用户会获得免费积分，你可以根据业务需求自定义积分规则和定价方案。"
+        "question": "可以在自己的产品中使用 API 吗？",
+        "answer": "可以。GPT2IMAGE 提供简洁的 REST API，可将图像生成能力集成到你的应用、工作流或自动化流程中。API 接入在专业版与旗舰版中提供，配备充足的调用额度与完整文档。"
       },
       {
-        "question": "如何定制支付方案？",
-        "answer": "模板集成 Creem 支付，支持订阅和一次性购买。你可以在配置文件中自定义套餐名称、价格、积分额度和功能权限。Webhook 处理和订阅生命周期管理已经内置。"
+        "question": "批量生成会额外收费吗？",
+        "answer": "批量生成按每张图片消耗积分，与单张生成的计费方式一致。它是一个便捷功能，让你在一次请求中产出多个变体，非常适合概念探索或设计迭代。"
       },
       {
-        "question": "支持哪些认证方式？",
-        "answer": "模板集成 Better Auth，支持邮箱密码注册登录、Google OAuth 和 GitHub OAuth。你可以轻松扩展其他 OAuth 提供商。会话管理、密码重置、邮箱验证等功能开箱即用。"
+        "question": "生成的图片可以下载并用于商业用途吗？",
+        "answer": "可以。你在 GPT2IMAGE 上生成的图片归你所有，可用于个人、编辑或商业项目。支持高分辨率下载，所有历史生成记录都保存在画廊中。"
       }
     ]
   },
@@ -201,7 +201,7 @@
     },
     "signUp": {
       "title": "创建账号",
-      "subtitle": "填写信息即可开始使用。",
+      "subtitle": "填写信息即可开始创作。",
       "nameLabel": "姓名",
       "namePlaceholder": "张三",
       "emailLabel": "邮箱",
@@ -241,10 +241,10 @@
   },
   "CTA": {
     "badge": "免费开始，无需信用卡",
-    "title": "准备好启动你的 SaaS 了吗？",
-    "subtitle": "注册即可获得免费积分，立即体验完整功能。用生产就绪的模板快速构建你的下一个产品。",
+    "title": "今天就开始创作精美图片",
+    "subtitle": "几秒钟即可注册，并获得免费积分体验 GPT2IMAGE。用 AI 图像生成把你的想法变为现实。",
     "getStarted": "免费注册",
-    "seeDemo": "查看演示"
+    "seeDemo": "查看示例"
   },
   "DashboardPages": {
     "dashboard": {
@@ -268,14 +268,14 @@
   "AnonymousGenerate": {},
   "Solutions": {},
   "CreditTransactions": {
-    "anonymous_migration": "迁移 {cardCount} 条匿名生成的数据",
-    "anonymous_migration_bonus": "新用户福利：免费保存 {cardCount} 条数据"
+    "anonymous_migration": "迁移 {cardCount} 张匿名生成的图片",
+    "anonymous_migration_bonus": "新用户福利：免费保存 {cardCount} 张图片"
   },
   "Common": {
     "getStarted": "开始使用",
     "login": "登录",
     "dashboard": "控制台",
-    "products": "产品",
+    "products": "功能",
     "pricing": "定价",
     "blog": "博客",
     "docs": "文档",
@@ -335,7 +335,7 @@
   },
   "Pricing": {
     "title": "简单透明的定价",
-    "subtitle": "按积分付费，<strong>永久有效</strong>，没用完也不浪费。年付立省 40%。",
+    "subtitle": "按积分付费，<strong>永久有效</strong>，没用完也不浪费。灵感来袭随时生成。年付立省 40%。",
     "creditsUpfront": "一次性到账",
     "creditsPerYear": "积分 / 年",
     "monthly": "月付",
@@ -345,12 +345,12 @@
     "currentPlan": "当前套餐",
     "alreadySubscribed": "已订阅",
     "manageSubscription": "管理订阅",
-    "booksNote": "≈ {count} 万次 API 调用",
-    "cardsNote": "≈ {count} 积分",
+    "booksNote": "≈ 可生成 {count} 张图片",
+    "cardsNote": "≈ {count} 次 API 调用",
     "plans": {
       "free": {
         "name": "免费版",
-        "description": "无负担体验基础功能",
+        "description": "无负担体验 GPT2IMAGE",
         "cta": "免费开始",
         "creditsAmount": "200",
         "creditsLabel": "积分",
@@ -358,16 +358,16 @@
         "features": {
           "creditsNeverExpire": "积分永久有效，不清零",
           "credits": "200 积分（一次性）",
-          "input": "基础功能访问",
-          "characters": "标准处理额度",
-          "fileSize": "最大 5MB 文件",
-          "export": "数据导出",
-          "history": "历史数据永久保存"
+          "input": "对话生图功能",
+          "characters": "标准图像分辨率",
+          "fileSize": "每批最多 5 张图",
+          "export": "下载与分享",
+          "history": "画廊历史永久保存"
         }
       },
       "starter": {
         "name": "入门版",
-        "description": "适合个人开发者和小项目",
+        "description": "适合轻度创作者",
         "cta": "订阅",
         "creditsAmount": "3,000",
         "creditsLabel": "积分 / 月",
@@ -375,17 +375,17 @@
         "features": {
           "creditsNeverExpire": "积分永久有效，不清零",
           "credits": "每月 3,000 积分",
-          "input": "全部基础功能",
-          "characters": "标准处理额度",
-          "fileSize": "最大 20MB 文件",
-          "export": "数据导出",
-          "history": "历史数据永久保存",
+          "input": "对话生图功能",
+          "characters": "标准图像分辨率",
+          "fileSize": "每批最多 10 张图",
+          "export": "下载与分享",
+          "history": "画廊历史永久保存",
           "support": "邮件支持"
         }
       },
       "pro": {
         "name": "专业版",
-        "description": "性价比最高，适合成长中的产品",
+        "description": "性价比最高，适合活跃创作者",
         "cta": "订阅",
         "creditsAmount": "8,000",
         "creditsLabel": "积分 / 月",
@@ -393,19 +393,19 @@
         "features": {
           "creditsNeverExpire": "积分永久有效，不清零",
           "credits": "每月 8,000 积分",
-          "input": "全部高级功能",
-          "characters": "更大处理额度",
-          "fileSize": "最大 50MB 文件",
-          "queue": "优先处理队列",
-          "export": "数据导出",
-          "history": "历史数据永久保存",
-          "customCards": "自定义功能扩展",
+          "input": "全部生成功能",
+          "characters": "高分辨率输出",
+          "fileSize": "每批最多 25 张图",
+          "queue": "优先生成队列",
+          "export": "下载与分享",
+          "history": "画廊历史永久保存",
+          "customCards": "包含 API 接入",
           "support": "优先支持"
         }
       },
       "ultra": {
         "name": "旗舰版",
-        "description": "适合高频使用和企业团队",
+        "description": "适合高频使用和团队",
         "cta": "订阅",
         "creditsAmount": "16,000",
         "creditsLabel": "积分 / 月",
@@ -413,14 +413,14 @@
         "features": {
           "creditsNeverExpire": "积分永久有效，不清零",
           "credits": "每月 16,000 积分",
-          "input": "全部高级功能",
-          "characters": "最大处理额度",
-          "fileSize": "最大 100MB 文件",
+          "input": "全部生成功能",
+          "characters": "最高分辨率输出",
+          "fileSize": "每批最多 50 张图",
           "queue": "最高优先队列",
-          "export": "数据导出",
-          "history": "历史数据永久保存",
-          "customCards": "自定义功能扩展",
-          "aiAssist": "高级 AI 功能",
+          "export": "下载与分享",
+          "history": "画廊历史永久保存",
+          "customCards": "高级 API 接入",
+          "aiAssist": "更高 API 调用额度",
           "support": "专属支持"
         }
       }
@@ -433,7 +433,7 @@
     "docs": "文档"
   },
   "Navigation": {
-    "products": "产品",
+    "products": "功能",
     "docs": "文档",
     "pseo": "PSEO",
     "pricing": "定价",
@@ -441,31 +441,31 @@
     "about": "关于",
     "productsMenu": {
       "core": {
-        "title": "核心功能",
-        "auth": "认证系统",
-        "authDesc": "多方式登录与会话管理",
-        "payments": "支付集成",
-        "paymentsDesc": "订阅和一次性支付",
-        "credits": "积分系统",
-        "creditsDesc": "双重记账法与 FIFO 批次过期"
+        "title": "生成能力",
+        "auth": "对话生图",
+        "authDesc": "通过自然对话生成图片",
+        "payments": "批量生成",
+        "paymentsDesc": "一次请求产出多个变体",
+        "credits": "视觉画廊",
+        "creditsDesc": "浏览、整理并回看所有作品"
       },
       "dx": {
-        "title": "开发体验",
-        "jobs": "异步处理",
-        "jobsDesc": "Inngest 后台任务引擎",
+        "title": "开发者",
+        "jobs": "API 接入",
+        "jobsDesc": "将图像生成集成到你的应用",
         "i18n": "国际化",
-        "i18nDesc": "next-intl 多语言支持",
-        "ai": "AI 集成",
-        "aiDesc": "多模型 LLM 抽象层"
+        "i18nDesc": "多语言提示词与界面支持",
+        "ai": "模型支持",
+        "aiDesc": "主流图像生成模型一站集成"
       },
       "infra": {
-        "title": "基础设施",
-        "admin": "管理后台",
-        "adminDesc": "用户与工单管理",
-        "storage": "文件存储",
-        "storageDesc": "S3/R2 云存储",
-        "monitoring": "监控日志",
-        "monitoringDesc": "日志与错误追踪"
+        "title": "平台",
+        "admin": "积分管理",
+        "adminDesc": "灵活的积分体系，永不过期",
+        "storage": "图片存储",
+        "storageDesc": "为每次生成提供安全云存储",
+        "monitoring": "深色模式",
+        "monitoringDesc": "为长时间创作打造的深色主题"
       }
     }
   },
@@ -618,7 +618,7 @@
     },
     "usage": {
       "title": "积分使用情况",
-      "description": "用于各项服务的积分消耗概览。",
+      "description": "用于图像生成与 API 调用的积分消耗概览。",
       "availableCredits": "可用积分",
       "creditsAvailable": "积分可用",
       "getMoreCredits": {
@@ -656,7 +656,7 @@
           "registration_bonus": "新用户注册奖励",
           "monthly_grant": "{plan} 月度订阅积分",
           "yearly_grant": "{plan} 年度订阅积分 ({monthly} x 12)",
-          "consumption": "服务消耗",
+          "consumption": "图像生成",
           "expiration": "积分已过期",
           "admin_grant": "管理员发放积分",
           "refund": "积分退款"
