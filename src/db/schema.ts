@@ -495,6 +495,26 @@ export const ticketMessage = pgTable("ticket_message", {
 });
 
 // ============================================
+// User API Configuration
+// ============================================
+export const userApiConfig = pgTable("user_api_config", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+  baseUrl: text("base_url").notNull(),
+  apiKey: text("api_key").notNull(),
+  model: text("model"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type UserApiConfig = typeof userApiConfig.$inferSelect;
+export type NewUserApiConfig = typeof userApiConfig.$inferInsert;
+
+// ============================================
 // 工单系统类型导出
 // ============================================
 

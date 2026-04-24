@@ -511,6 +511,18 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
         <TabsContent value="usage" className="mt-8 pl-4">
           <CreditUsageSection />
         </TabsContent>
+
+        <TabsContent value="advanced" className="mt-8 space-y-6 pl-4">
+          <div>
+            <h3 className="font-serif text-lg font-medium">
+              {t("advanced.title") || "Advanced Settings"}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {t("advanced.description") || "Configuration options for power users."}
+            </p>
+          </div>
+          <ApiConfigForm />
+        </TabsContent>
       </Tabs>
     </div>
   );
