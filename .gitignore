@@ -51,5 +51,8 @@ next-env.d.ts
 # Windows
 nul
 
+# local storage (dev-mode image files)
+storage/
+
 # deploy artifacts
 deploy.tgz
