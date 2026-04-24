@@ -4,10 +4,6 @@ import { siteConfig } from "@/config";
 
 import "./globals.css";
 
-/**
- * 全局元数据配置
- * 使用 siteConfig 集中管理
- */
 export const metadata: Metadata = {
   title: {
     default: siteConfig.name,
@@ -39,17 +35,11 @@ export const metadata: Metadata = {
     title: siteConfig.name,
     description: siteConfig.description,
     images: [siteConfig.ogImage],
-    creator: "@nextdevtpl",
+    creator: "@gpt2image",
   },
   manifest: "/site.webmanifest",
 };
 
-/**
- * 根布局
- *
- * 提供基础 HTML 结构和字体配置
- * 实际内容由 [locale]/layout.tsx 处理
- */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -57,6 +47,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Noto+Serif+SC:wght@400;500;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="font-sans antialiased">{children}</body>
     </html>
   );

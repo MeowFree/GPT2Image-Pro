@@ -1,49 +1,34 @@
-/**
- * 站点配置
- *
- * 集中管理站点的基本信息，用于 SEO、元数据、页脚等
- */
 export const siteConfig = {
-  /** 站点名称 */
-  name: "NextDevTpl",
+  name: "GPT2IMAGE",
 
-  /** 站点描述 */
   description:
-    "Production-ready Next.js SaaS template with auth, payments, credits, i18n, and more.",
+    "AI-powered chat-to-image generation platform. Transform your words into stunning visuals through natural conversation.",
 
-  /** 站点 URL (生产环境) */
-  url: process.env.NEXT_PUBLIC_APP_URL || "https://example.com",
+  url: process.env.NEXT_PUBLIC_APP_URL || "https://gpt2image.com",
 
-  /** OG 图片 URL */
   ogImage: "/og-image.png",
 
-  /** 作者信息 */
   author: {
-    name: "NextDevTpl Team",
-    url: "https://example.com",
-    email: "hello@example.com",
+    name: "GPT2IMAGE Team",
+    url: "https://gpt2image.com",
+    email: "hello@gpt2image.com",
   },
 
-  /** 社交链接 */
   links: {
-    twitter: "https://twitter.com/example",
-    github: "https://github.com/example/nextdevtpl",
-    discord: "https://discord.gg/example",
+    twitter: "https://twitter.com/gpt2image",
+    github: "https://github.com/MoYeRanqianzhi/GPT2Image",
+    discord: "",
   },
 
-  /** 关键词 (SEO) */
   keywords: [
-    "SaaS",
-    "Next.js",
-    "Template",
-    "Boilerplate",
-    "Starter Kit",
-    "Auth",
-    "Payments",
+    "AI Image Generation",
+    "Chat to Image",
+    "Text to Image",
+    "AI Art",
+    "GPT2IMAGE",
+    "Image Generation API",
+    "Creative AI",
   ],
 } as const;
 
-/**
- * 站点配置类型
- */
 export type SiteConfig = typeof siteConfig;
