@@ -93,7 +93,7 @@ export const generateImageAction = protectedAction
       const imageBuffer = Buffer.from(result.imageBase64!, "base64");
       storageKey = `${ctx.userId}/${generationId}.png`;
       fileSize = imageBuffer.length;
-      const storage = getStorageProvider();
+      const storage = await getStorageProvider();
       await storage.putObject(storageKey, bucket, imageBuffer, "image/png");
     } catch (storageError: unknown) {
       const message = storageError instanceof Error ? storageError.message : "Unknown storage error";
@@ -155,7 +155,7 @@ export const deleteGenerationAction = protectedAction
 
     if (gen[0].storageKey && gen[0].storageBucket) {
       try {
-        const storage = getStorageProvider();
+        const storage = await getStorageProvider();
         await storage.deleteObject(gen[0].storageKey, gen[0].storageBucket);
       } catch {
         /* best effort */

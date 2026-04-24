@@ -2,16 +2,14 @@ import type { StorageProvider } from "../types";
 
 let cachedProvider: StorageProvider | null = null;
 
-export function getStorageProvider(): StorageProvider {
+export async function getStorageProvider(): Promise<StorageProvider> {
   if (cachedProvider) return cachedProvider;
 
   if (process.env.STORAGE_ENDPOINT) {
-    const { s3Provider } = require("./s3") as { s3Provider: StorageProvider };
+    const { s3Provider } = await import("./s3");
     cachedProvider = s3Provider;
   } else {
-    const { localProvider } = require("./local") as {
-      localProvider: StorageProvider;
-    };
+    const { localProvider } = await import("./local");
     cachedProvider = localProvider;
   }
 

@@ -87,7 +87,7 @@ export const getSignedUploadUrlAction = withStorageAction("getSignedUploadUrl")
     }
 
     // 获取签名上传 URL
-    const provider = getStorageProvider();
+    const provider = await getStorageProvider();
     const uploadUrl = await provider.getSignedUploadUrl(
       key,
       bucket,
@@ -135,7 +135,7 @@ export const deleteFileAction = withStorageAction("deleteFile")
     }
 
     // 删除文件
-    const provider = getStorageProvider();
+    const provider = await getStorageProvider();
     await provider.deleteObject(key, bucket);
 
     return {

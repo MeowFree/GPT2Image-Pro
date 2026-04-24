@@ -91,7 +91,7 @@ export async function GET(
     }
 
     // 生成签名 URL
-    const provider = getStorageProvider();
+    const provider = await getStorageProvider();
     const signedUrl = await provider.getSignedUrl(
       key,
       bucket,

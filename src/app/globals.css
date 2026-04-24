@@ -39,24 +39,29 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  --radius-3xl: 36px;
+  --radius-4xl: 40px;
 }
 
 :root {
-  --font-geist-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-geist-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-geist-mono: "SFMono-Regular", "Cascadia Code", Consolas,
     "Liberation Mono", Menlo, monospace;
-  --font-serif: "Libre Baskerville", "Noto Serif SC", Georgia, "Times New Roman",
-    serif;
+  --font-serif: "Libre Baskerville", "Noto Serif SC", "Source Han Serif SC",
+    Georgia, serif;
 
-  --radius: 0.5rem;
+  --radius: 12px;
+
+  /* Transitions — GPT2IMAGE design tokens */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 400ms ease;
 
   /* Light Mode — GPT2IMAGE Monochrome */
   --background: #ffffff;
@@ -70,14 +75,14 @@
   --primary: #1a1a1a;
   --primary-foreground: #ffffff;
 
-  --secondary: #f5f5f5;
+  --secondary: #f7f7f8;
   --secondary-foreground: #1a1a1a;
 
   /* Muted — Warm light gray */
   --muted: #f7f7f8;
-  --muted-foreground: #6b6b6b;
+  --muted-foreground: #555568;
 
-  --accent: #f0f0f0;
+  --accent: #ececf1;
   --accent-foreground: #1a1a1a;
 
   /* Semantic */
@@ -85,9 +90,16 @@
   --success: #16a34a;
   --warning: #d97706;
 
-  /* Borders — Subtle warm */
-  --border: #e5e5e5;
-  --input: #e5e5e5;
+  /* Text hierarchy — GPT2IMAGE tokens */
+  --text-primary: #1a1a1a;
+  --text-secondary: #555568;
+  --text-tertiary: #8e8ea0;
+  --text-muted: #b4b4c4;
+
+  /* Borders — GPT2IMAGE tokens */
+  --border: #d9d9e3;
+  --border-subtle: #e8e8ed;
+  --input: #d9d9e3;
   --ring: #1a1a1a;
 
   /* Charts — Monochrome scale */
@@ -98,65 +110,72 @@
   --chart-5: #cccccc;
 
   /* Sidebar */
-  --sidebar: #fafafa;
+  --sidebar: #f7f7f8;
   --sidebar-foreground: #1a1a1a;
   --sidebar-primary: #1a1a1a;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f0f0f0;
+  --sidebar-accent: #ececf1;
   --sidebar-accent-foreground: #1a1a1a;
-  --sidebar-border: #e5e5e5;
+  --sidebar-border: #d9d9e3;
   --sidebar-ring: #1a1a1a;
 }
 
 .dark {
-  /* Dark Mode — Warm dark, not pure black */
+  /* Dark Mode — Warm dark tones (GPT2IMAGE) */
   --background: #1a1a1a;
-  --foreground: #e5e5e5;
-  --card: #222222;
-  --card-foreground: #e5e5e5;
-  --popover: #222222;
-  --popover-foreground: #e5e5e5;
+  --foreground: #e0e0e0;
+  --card: #2a2a2e;
+  --card-foreground: #e0e0e0;
+  --popover: #2a2a2e;
+  --popover-foreground: #e0e0e0;
 
   /* Primary — Inverted monochrome */
-  --primary: #e5e5e5;
+  --primary: #e0e0e0;
   --primary-foreground: #1a1a1a;
 
-  --secondary: #2a2a2a;
-  --secondary-foreground: #e5e5e5;
+  --secondary: #2a2a2e;
+  --secondary-foreground: #e0e0e0;
 
   /* Muted */
-  --muted: #2a2a2a;
-  --muted-foreground: #999999;
+  --muted: #2a2a2e;
+  --muted-foreground: #8e8ea0;
 
-  --accent: #333333;
-  --accent-foreground: #e5e5e5;
+  --accent: #3a3a3e;
+  --accent-foreground: #e0e0e0;
 
   /* Semantic */
   --destructive: #ef4444;
   --success: #22c55e;
   --warning: #f59e0b;
 
+  /* Text hierarchy */
+  --text-primary: #e0e0e0;
+  --text-secondary: #8e8ea0;
+  --text-tertiary: #6b6b7b;
+  --text-muted: #4a4a5a;
+
   /* Borders */
-  --border: #333333;
-  --input: #333333;
-  --ring: #e5e5e5;
+  --border: #3a3a3e;
+  --border-subtle: #2e2e32;
+  --input: #3a3a3e;
+  --ring: #e0e0e0;
 
   /* Charts */
-  --chart-1: #e5e5e5;
+  --chart-1: #e0e0e0;
   --chart-2: #cccccc;
   --chart-3: #999999;
   --chart-4: #666666;
   --chart-5: #404040;
 
   /* Sidebar */
-  --sidebar: #161616;
-  --sidebar-foreground: #e5e5e5;
-  --sidebar-primary: #e5e5e5;
+  --sidebar: #161618;
+  --sidebar-foreground: #e0e0e0;
+  --sidebar-primary: #e0e0e0;
   --sidebar-primary-foreground: #1a1a1a;
-  --sidebar-accent: #2a2a2a;
-  --sidebar-accent-foreground: #e5e5e5;
-  --sidebar-border: #333333;
-  --sidebar-ring: #e5e5e5;
+  --sidebar-accent: #2a2a2e;
+  --sidebar-accent-foreground: #e0e0e0;
+  --sidebar-border: #3a3a3e;
+  --sidebar-ring: #e0e0e0;
 }
 
 @layer base {
