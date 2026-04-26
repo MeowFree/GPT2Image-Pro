@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Search, Coins, Ban, UserCheck, Loader2 } from "lucide-react";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Ban, Coins, Loader2, Search, UserCheck } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -16,15 +16,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  getAllUsersAction,
-  banUserAction,
   adminGrantCreditsAction,
+  banUserAction,
+  getAllUsersAction,
 } from "@/features/support/actions";
 import { UserRoleSelect } from "@/features/support/components";
-import { toast } from "sonner";
 
 /**
  * 用户类型定义
@@ -64,6 +64,7 @@ interface UserWithDetails {
  * - 手动充值积分
  */
 export default function AdminUsersPage() {
+  const t = useTranslations("Admin");
   const [users, setUsers] = useState<UserWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,7 +72,9 @@ export default function AdminUsersPage() {
 
   // 封禁对话框状态
   const [banDialogOpen, setBanDialogOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<UserWithDetails | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserWithDetails | null>(
+    null
+  );
   const [banReason, setBanReason] = useState("");
   const [isBanning, setIsBanning] = useState(false);
 
@@ -92,7 +95,7 @@ export default function AdminUsersPage() {
         setUsers(result.data.users as UserWithDetails[]);
       }
     } catch (error) {
-      toast.error("加载用户列表失败");
+      toast.error(t("users.errors.loadFailed"));
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -144,7 +147,7 @@ export default function AdminUsersPage() {
         toast.error(result.serverError);
       }
     } catch (error) {
-      toast.error("操作失败");
+      toast.error(t("users.errors.operationFailed"));
       console.error(error);
     } finally {
       setIsBanning(false);
@@ -169,12 +172,12 @@ export default function AdminUsersPage() {
 
     const amount = parseInt(grantAmount, 10);
     if (isNaN(amount) || amount <= 0) {
-      toast.error("请输入有效的积分数量");
+      toast.error(t("users.errors.invalidAmount"));
       return;
     }
 
     if (!grantReason.trim()) {
-      toast.error("请填写充值原因");
+      toast.error(t("users.errors.reasonRequired"));
       return;
     }
 
@@ -194,7 +197,7 @@ export default function AdminUsersPage() {
         toast.error(result.serverError);
       }
     } catch (error) {
-      toast.error("充值失败");
+      toast.error(t("users.errors.grantFailed"));
       console.error(error);
     } finally {
       setIsGranting(false);
@@ -220,24 +223,39 @@ export default function AdminUsersPage() {
     if (!sub) {
       return (
         <Badge variant="secondary" className="bg-muted text-muted-foreground">
-          无订阅
+          {t("users.subscriptionLabels.none")}
         </Badge>
       );
     }
 
-    const statusMap: Record<string, { label: string; color: string }> = {
-      active: { label: "订阅中", color: "bg-foreground text-background" },
-      canceled: { label: "已取消", color: "bg-foreground/10 text-foreground" },
-      past_due: { label: "逾期", color: "bg-foreground/10 text-foreground" },
-      incomplete: { label: "未完成", color: "bg-muted text-muted-foreground" },
+    const statusMap: Record<string, { labelKey: string; color: string }> = {
+      active: {
+        labelKey: "users.subscriptionLabels.active",
+        color: "bg-foreground text-background",
+      },
+      canceled: {
+        labelKey: "users.subscriptionLabels.canceled",
+        color: "bg-foreground/10 text-foreground",
+      },
+      past_due: {
+        labelKey: "users.subscriptionLabels.pastDue",
+        color: "bg-foreground/10 text-foreground",
+      },
+      incomplete: {
+        labelKey: "users.subscriptionLabels.incomplete",
+        color: "bg-muted text-muted-foreground",
+      },
     };
 
     // 获取配置，使用默认值避免 undefined
-    const defaultConfig = { label: "未完成", color: "bg-muted text-muted-foreground" };
+    const defaultConfig = {
+      labelKey: "users.subscriptionLabels.incomplete",
+      color: "bg-muted text-muted-foreground",
+    };
     const config = statusMap[sub.status] ?? defaultConfig;
     return (
       <Badge variant="secondary" className={config.color}>
-        {config.label}
+        {t(config.labelKey)}
       </Badge>
     );
   };
@@ -254,17 +272,19 @@ export default function AdminUsersPage() {
     <div className="space-y-6">
       {/* 页面标题 */}
       <div>
-        <h2 className="text-2xl font-bold font-serif tracking-tight">用户管理</h2>
-        <p className="text-muted-foreground">
-          查看和管理系统中的所有用户
-        </p>
+        <h2 className="text-2xl font-bold font-serif tracking-tight">
+          {t("users.title")}
+        </h2>
+        <p className="text-muted-foreground">{t("users.subtitle")}</p>
       </div>
 
       {/* 统计信息 */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">总用户数</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("users.stats.totalUsers")}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalUsers}</div>
@@ -272,7 +292,9 @@ export default function AdminUsersPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">管理员</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("users.stats.admins")}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{adminCount}</div>
@@ -280,17 +302,19 @@ export default function AdminUsersPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">订阅用户</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("users.stats.subscribers")}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {activeSubscriptions}
-            </div>
+            <div className="text-2xl font-bold">{activeSubscriptions}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">已封禁</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("users.stats.banned")}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{bannedCount}</div>
@@ -305,15 +329,19 @@ export default function AdminUsersPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="搜索邮箱或用户名..."
+                placeholder={t("users.search.placeholder")}
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-10"
               />
             </div>
-            <Button type="submit" disabled={isLoading} className="bg-foreground text-background hover:bg-foreground/90">
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="bg-foreground text-background hover:bg-foreground/90"
+            >
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              搜索
+              {t("users.search.button")}
             </Button>
             {searchQuery && (
               <Button
@@ -325,7 +353,7 @@ export default function AdminUsersPage() {
                   loadUsers();
                 }}
               >
-                清除
+                {t("users.search.clear")}
               </Button>
             )}
           </form>
@@ -336,10 +364,10 @@ export default function AdminUsersPage() {
       <Card>
         <CardHeader>
           <CardTitle>
-            用户列表
+            {t("users.table.title")}
             {searchQuery && (
               <span className="ml-2 text-sm font-normal text-muted-foreground">
-                搜索: "{searchQuery}"
+                {t("users.search.searchLabel", { query: searchQuery })}
               </span>
             )}
           </CardTitle>
@@ -351,19 +379,23 @@ export default function AdminUsersPage() {
             </div>
           ) : users.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {searchQuery ? "没有找到匹配的用户" : "暂无用户"}
+              {searchQuery
+                ? t("users.table.noResults")
+                : t("users.table.noUsers")}
             </div>
           ) : (
             <div className="relative overflow-x-auto">
               <table className="w-full text-sm text-left">
                 <thead className="text-xs uppercase bg-muted/50">
                   <tr>
-                    <th className="px-4 py-3">用户</th>
-                    <th className="px-4 py-3">状态</th>
-                    <th className="px-4 py-3">积分</th>
-                    <th className="px-4 py-3">订阅</th>
-                    <th className="px-4 py-3">角色</th>
-                    <th className="px-4 py-3">操作</th>
+                    <th className="px-4 py-3">{t("users.table.user")}</th>
+                    <th className="px-4 py-3">{t("users.table.status")}</th>
+                    <th className="px-4 py-3">{t("users.table.credits")}</th>
+                    <th className="px-4 py-3">
+                      {t("users.table.subscription")}
+                    </th>
+                    <th className="px-4 py-3">{t("users.table.role")}</th>
+                    <th className="px-4 py-3">{t("users.table.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -391,20 +423,25 @@ export default function AdminUsersPage() {
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
                           {u.banned ? (
-                            <Badge variant="secondary" className="bg-destructive/10 text-destructive">已封禁</Badge>
+                            <Badge
+                              variant="secondary"
+                              className="bg-destructive/10 text-destructive"
+                            >
+                              {t("users.statusLabels.banned")}
+                            </Badge>
                           ) : u.emailVerified ? (
                             <Badge
                               variant="secondary"
                               className="bg-foreground/10 text-foreground"
                             >
-                              已验证
+                              {t("users.statusLabels.verified")}
                             </Badge>
                           ) : (
                             <Badge
                               variant="secondary"
                               className="bg-muted text-muted-foreground"
                             >
-                              未验证
+                              {t("users.statusLabels.unverified")}
                             </Badge>
                           )}
                         </div>
@@ -429,7 +466,7 @@ export default function AdminUsersPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => openGrantDialog(u)}
-                            title="充值积分"
+                            title={t("users.tooltips.grantCredits")}
                           >
                             <Coins className="h-4 w-4" />
                           </Button>
@@ -437,7 +474,11 @@ export default function AdminUsersPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => openBanDialog(u)}
-                            title={u.banned ? "解封" : "封禁"}
+                            title={
+                              u.banned
+                                ? t("users.tooltips.unban")
+                                : t("users.tooltips.ban")
+                            }
                           >
                             {u.banned ? (
                               <UserCheck className="h-4 w-4" />
@@ -461,20 +502,26 @@ export default function AdminUsersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {selectedUser?.banned ? "解除封禁" : "封禁用户"}
+              {selectedUser?.banned
+                ? t("users.ban.unbanTitle")
+                : t("users.ban.banTitle")}
             </DialogTitle>
             <DialogDescription>
               {selectedUser?.banned
-                ? `确定要解除用户 ${selectedUser?.name} 的封禁吗？`
-                : `确定要封禁用户 ${selectedUser?.name} 吗？封禁后该用户将无法登录。`}
+                ? t("users.ban.unbanDescription", {
+                    name: selectedUser?.name ?? "",
+                  })
+                : t("users.ban.banDescription", {
+                    name: selectedUser?.name ?? "",
+                  })}
             </DialogDescription>
           </DialogHeader>
           {!selectedUser?.banned && (
             <div className="space-y-2">
-              <Label htmlFor="banReason">封禁原因 (可选)</Label>
+              <Label htmlFor="banReason">{t("users.ban.reasonLabel")}</Label>
               <Textarea
                 id="banReason"
-                placeholder="请输入封禁原因..."
+                placeholder={t("users.ban.reasonPlaceholder")}
                 value={banReason}
                 onChange={(e) => setBanReason(e.target.value)}
               />
@@ -486,16 +533,22 @@ export default function AdminUsersPage() {
               onClick={() => setBanDialogOpen(false)}
               disabled={isBanning}
             >
-              取消
+              {t("users.ban.cancel")}
             </Button>
             <Button
-              className={selectedUser?.banned ? "bg-foreground text-background hover:bg-foreground/90" : ""}
+              className={
+                selectedUser?.banned
+                  ? "bg-foreground text-background hover:bg-foreground/90"
+                  : ""
+              }
               variant={selectedUser?.banned ? "default" : "outline"}
               onClick={handleBan}
               disabled={isBanning}
             >
               {isBanning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {selectedUser?.banned ? "解除封禁" : "确认封禁"}
+              {selectedUser?.banned
+                ? t("users.ban.confirmUnban")
+                : t("users.ban.confirmBan")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -505,18 +558,20 @@ export default function AdminUsersPage() {
       <Dialog open={grantDialogOpen} onOpenChange={setGrantDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>手动充值积分</DialogTitle>
+            <DialogTitle>{t("users.grant.title")}</DialogTitle>
             <DialogDescription>
-              为用户 {selectedUser?.name} 充值积分
+              {t("users.grant.description", { name: selectedUser?.name ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="grantAmount">积分数量 *</Label>
+              <Label htmlFor="grantAmount">
+                {t("users.grant.amountLabel")}
+              </Label>
               <Input
                 id="grantAmount"
                 type="number"
-                placeholder="请输入积分数量"
+                placeholder={t("users.grant.amountPlaceholder")}
                 value={grantAmount}
                 onChange={(e) => setGrantAmount(e.target.value)}
                 min={1}
@@ -524,10 +579,12 @@ export default function AdminUsersPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="grantReason">充值原因 *</Label>
+              <Label htmlFor="grantReason">
+                {t("users.grant.reasonLabel")}
+              </Label>
               <Textarea
                 id="grantReason"
-                placeholder="请输入充值原因 (如：客服补偿、活动奖励等)"
+                placeholder={t("users.grant.reasonPlaceholder")}
                 value={grantReason}
                 onChange={(e) => setGrantReason(e.target.value)}
                 maxLength={200}
@@ -540,11 +597,15 @@ export default function AdminUsersPage() {
               onClick={() => setGrantDialogOpen(false)}
               disabled={isGranting}
             >
-              取消
+              {t("users.grant.cancel")}
             </Button>
-            <Button onClick={handleGrant} disabled={isGranting} className="bg-foreground text-background hover:bg-foreground/90">
+            <Button
+              onClick={handleGrant}
+              disabled={isGranting}
+              className="bg-foreground text-background hover:bg-foreground/90"
+            >
               {isGranting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              确认充值
+              {t("users.grant.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

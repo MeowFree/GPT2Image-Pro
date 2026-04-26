@@ -715,5 +715,153 @@
         }
       }
     }
+  },
+  "Admin": {
+    "dashboard": {
+      "title": "Control Panel",
+      "subtitle": "Welcome to the admin panel. Here is the system overview.",
+      "stats": {
+        "totalUsers": "Total Users",
+        "newUsersThisWeek": "{count} new this week",
+        "pendingTickets": "Pending Tickets",
+        "newTicketsToday": "{count} new today",
+        "activeSubscriptions": "Active Subscriptions",
+        "totalSubscriptions": "{count} total",
+        "creditsCirculation": "Credits in Circulation",
+        "currentUserCredits": "Total credits held by users",
+        "imageGeneration": "Image Generation",
+        "generationToday": "{today} today · {completed} succeeded"
+      },
+      "details": {
+        "userStats": "User Statistics",
+        "totalUsersLabel": "Total Users",
+        "admins": "Admins",
+        "regularUsers": "Regular Users",
+        "banned": "Banned",
+        "newThisWeek": "New This Week",
+        "ticketStats": "Ticket Statistics",
+        "pending": "Pending",
+        "inProgress": "In Progress",
+        "totalTickets": "Total Tickets",
+        "newToday": "New Today",
+        "creditsFlow": "Credits Flow",
+        "currentBalance": "Current Balance",
+        "totalGranted": "Total Granted",
+        "totalSpent": "Total Spent",
+        "subscriberCount": "Subscribers",
+        "activeLabel": "{count} active",
+        "generationStats": "Generation Statistics",
+        "totalGenerations": "Total Generations",
+        "successRate": "Success Rate",
+        "creditsConsumed": "Credits Consumed"
+      },
+      "quickActions": {
+        "title": "Quick Actions",
+        "manageUsers": "Manage Users",
+        "usersCount": "{count} users",
+        "handleTickets": "Handle Tickets",
+        "pendingCount": "{count} pending"
+      },
+      "systemInfo": {
+        "title": "System Info",
+        "version": "Version",
+        "environment": "Environment",
+        "database": "Database"
+      }
+    },
+    "users": {
+      "title": "User Management",
+      "subtitle": "View and manage all users in the system",
+      "stats": {
+        "totalUsers": "Total Users",
+        "admins": "Admins",
+        "subscribers": "Subscribers",
+        "banned": "Banned"
+      },
+      "search": {
+        "placeholder": "Search by email or username...",
+        "button": "Search",
+        "clear": "Clear",
+        "searchLabel": "Search: \"{query}\""
+      },
+      "table": {
+        "title": "User List",
+        "user": "User",
+        "status": "Status",
+        "credits": "Credits",
+        "subscription": "Subscription",
+        "role": "Role",
+        "actions": "Actions",
+        "noResults": "No matching users found",
+        "noUsers": "No users yet"
+      },
+      "statusLabels": {
+        "banned": "Banned",
+        "verified": "Verified",
+        "unverified": "Unverified"
+      },
+      "subscriptionLabels": {
+        "none": "No Subscription",
+        "active": "Subscribed",
+        "canceled": "Canceled",
+        "pastDue": "Past Due",
+        "incomplete": "Incomplete"
+      },
+      "ban": {
+        "banTitle": "Ban User",
+        "unbanTitle": "Unban User",
+        "banDescription": "Are you sure you want to ban {name}? The user will be unable to log in.",
+        "unbanDescription": "Are you sure you want to unban {name}?",
+        "reasonLabel": "Reason (optional)",
+        "reasonPlaceholder": "Enter ban reason...",
+        "cancel": "Cancel",
+        "confirmBan": "Confirm Ban",
+        "confirmUnban": "Unban"
+      },
+      "grant": {
+        "title": "Grant Credits",
+        "description": "Grant credits to user {name}",
+        "amountLabel": "Credit Amount *",
+        "amountPlaceholder": "Enter credit amount",
+        "reasonLabel": "Reason *",
+        "reasonPlaceholder": "Enter reason (e.g., support compensation, event reward)",
+        "cancel": "Cancel",
+        "confirm": "Confirm Grant"
+      },
+      "tooltips": {
+        "grantCredits": "Grant Credits",
+        "ban": "Ban",
+        "unban": "Unban"
+      },
+      "errors": {
+        "loadFailed": "Failed to load user list",
+        "operationFailed": "Operation failed",
+        "invalidAmount": "Please enter a valid credit amount",
+        "reasonRequired": "Please enter a grant reason",
+        "grantFailed": "Grant failed"
+      }
+    },
+    "tickets": {
+      "title": "Ticket Management",
+      "subtitle": "View and handle support tickets from users",
+      "stats": {
+        "pending": "Pending",
+        "inProgress": "In Progress",
+        "resolved": "Resolved",
+        "total": "Total Tickets"
+      },
+      "table": {
+        "title": "Ticket List",
+        "subject": "Subject",
+        "user": "User",
+        "category": "Category",
+        "priority": "Priority",
+        "status": "Status",
+        "createdAt": "Created At",
+        "noTickets": "No tickets yet",
+        "unknownUser": "Unknown User",
+        "userFallback": "User"
+      }
+    }
   }
 }
