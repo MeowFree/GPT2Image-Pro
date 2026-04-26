@@ -20,6 +20,7 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/ .
 COPY --from=pruner /app/out/full/ .
+COPY .env.local ./apps/web/.env.local
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm turbo build --filter=@repo/web

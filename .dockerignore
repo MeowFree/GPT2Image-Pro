@@ -19,6 +19,7 @@ docker-compose.yml
 .env
 .env.*
 !.env.example
+!.env.local
 
 # Storage (mounted at runtime)
 storage/
@@ -53,6 +54,9 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Legacy single-app source (not part of monorepo)
+src/
 
 # Misc
 .turbo
