@@ -2,13 +2,26 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: gpt2image-pro
+      dockerfile: Dockerfile.web
+    container_name: gpt2image-web
     restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
       - ./storage:/app/storage
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+    container_name: gpt2image-admin
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
     env_file:
       - .env.local
     environment:
