@@ -3,10 +3,11 @@
 /**
  * 购买积分套餐视图组件
  *
- * 显示积分套餐列表，允许用户选择并购买
+ * 展示积分套餐列表，允许用户选择并购买
+ * 设计风格：GPT2IMAGE 黑白简约
  */
 
-import { Check, Coins, Loader2, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
 import { useEffect } from "react";
@@ -14,7 +15,12 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { createCreditsPurchaseCheckout } from "@/features/credits/actions";
 import { CREDIT_PACKAGES } from "@/features/credits/config";
@@ -36,15 +42,14 @@ export function BuyCreditPackagesView() {
       }
     },
     onError: ({ error }) => {
-      toast.error(error.serverError ?? "创建支付会话失败");
+      toast.error(error.serverError ?? "Failed to create checkout session");
     },
   });
 
   // 显示取消提示
   useEffect(() => {
     if (canceled) {
-      toast.info("支付已取消");
-      // 清除 URL 参数
+      toast.info("Payment canceled");
       router.replace("/dashboard/credits/buy");
     }
   }, [canceled, router]);
@@ -57,82 +62,98 @@ export function BuyCreditPackagesView() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="mx-auto max-w-3xl space-y-10 px-4 py-8">
       {/* 页面标题 */}
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold">Purchase Credits</h1>
+      <div className="space-y-2">
+        <h1 className="font-serif text-3xl font-medium tracking-tight">
+          Buy Credits
+        </h1>
         <p className="text-muted-foreground">
-          Choose a credit package to unlock AI features and capabilities
+          One-time credit packages. No subscription required — credits never
+          expire.
         </p>
       </div>
 
+      <Separator />
+
       {/* 套餐列表 */}
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 sm:grid-cols-3">
         {CREDIT_PACKAGES.map((pkg) => {
           const isPopular = "popular" in pkg && pkg.popular;
+          const perCredit = (pkg.price / pkg.credits).toFixed(2);
 
           return (
             <Card
               key={pkg.id}
               className={cn(
-                "relative flex flex-col",
-                isPopular && "border-primary shadow-lg"
+                "relative flex flex-col rounded-xl border transition-shadow",
+                isPopular
+                  ? "border-foreground shadow-md"
+                  : "border-border hover:shadow-sm"
               )}
             >
               {/* 热门标签 */}
               {isPopular && (
-                <Badge
-                  className="absolute -top-3 left-1/2 -translate-x-1/2 gap-1"
-                >
-                  <Sparkles className="h-3 w-3" />
-                  Most Popular
+                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-foreground text-background text-xs">
+                  Best Value
                 </Badge>
               )}
 
-              <CardHeader className="text-center pb-4">
-                <CardTitle className="text-xl">{pkg.name}</CardTitle>
-                <CardDescription>{pkg.description}</CardDescription>
+              <CardHeader className="pb-3 pt-6 text-center">
+                <p className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
+                  {pkg.name}
+                </p>
               </CardHeader>
 
-              <CardContent className="flex-1 space-y-4">
+              <CardContent className="flex flex-1 flex-col items-center space-y-4 px-6">
                 {/* 积分数量 */}
-                <div className="flex items-center justify-center gap-2">
-                  <Coins className="h-6 w-6 text-amber-500" />
-                  <span className="text-4xl font-bold">{pkg.credits}</span>
-                  <span className="text-muted-foreground">credits</span>
+                <div className="text-center">
+                  <span className="font-serif text-5xl font-bold tracking-tight">
+                    {pkg.credits.toLocaleString()}
+                  </span>
+                  <p className="mt-1 text-sm text-muted-foreground">credits</p>
                 </div>
 
                 <Separator />
 
                 {/* 价格 */}
                 <div className="text-center">
-                  <span className="text-3xl font-bold">${pkg.price}</span>
-                  <span className="text-muted-foreground"> USD</span>
+                  <span className="text-3xl font-semibold">${pkg.price}</span>
+                  <span className="ml-1 text-sm text-muted-foreground">
+                    USD
+                  </span>
                 </div>
 
+                {/* 描述 + 每积分价格 */}
+                <p className="text-center text-xs text-muted-foreground">
+                  {pkg.description}
+                </p>
+
                 {/* 特性列表 */}
-                <ul className="space-y-2 text-sm">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Instant delivery</span>
+                <ul className="w-full space-y-2 text-sm">
+                  <li className="flex items-center gap-2 text-muted-foreground">
+                    <Check className="h-3.5 w-3.5 shrink-0 text-foreground" />
+                    Instant delivery
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Valid for 90 days</span>
+                  <li className="flex items-center gap-2 text-muted-foreground">
+                    <Check className="h-3.5 w-3.5 shrink-0 text-foreground" />
+                    Credits never expire
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Use for all AI features</span>
+                  <li className="flex items-center gap-2 text-muted-foreground">
+                    <Check className="h-3.5 w-3.5 shrink-0 text-foreground" />$
+                    {perCredit} per credit
                   </li>
                 </ul>
               </CardContent>
 
-              <CardFooter>
+              <CardFooter className="px-6 pb-6 pt-2">
                 <Button
                   className="w-full"
                   variant={isPopular ? "default" : "outline"}
                   disabled={isPending}
-                  onClick={() => handlePurchase(pkg.id as "lite" | "standard" | "pro")}
+                  onClick={() =>
+                    handlePurchase(pkg.id as "lite" | "standard" | "pro")
+                  }
                 >
                   {isPending ? (
                     <>
@@ -140,7 +161,7 @@ export function BuyCreditPackagesView() {
                       Processing...
                     </>
                   ) : (
-                    `Buy ${pkg.name}`
+                    `Buy ${pkg.credits.toLocaleString()} Credits`
                   )}
                 </Button>
               </CardFooter>
@@ -150,9 +171,15 @@ export function BuyCreditPackagesView() {
       </div>
 
       {/* 返回链接 */}
-      <div className="text-center">
-        <Button variant="ghost" onClick={() => router.push("/dashboard/settings?tab=usage")}>
-          ← Back to Usage
+      <div className="flex justify-center">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-2 text-muted-foreground"
+          onClick={() => router.push("/dashboard/settings?tab=usage")}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Usage
         </Button>
       </div>
     </div>

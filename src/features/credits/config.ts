@@ -31,31 +31,30 @@ export const CREDITS_EXPIRY_DAYS = null;
  * 积分包配置（一次性购买）
  *
  * 定价策略：比订阅略贵，鼓励订阅
- * - Starter 订阅 $2.99 = 4000 积分 (1338 积分/$)
- * - 积分包约 1000 积分/$（比订阅贵 25%）
+ * 积分包适合偶尔使用或不想订阅的用户
  */
 export const CREDIT_PACKAGES = [
   {
     id: "lite",
     name: "Lite",
-    credits: 3000,
-    price: 3,
-    description: "For a quick study session",
+    credits: 100,
+    price: 5,
+    description: "Quick top-up for a few images",
   },
   {
     id: "standard",
     name: "Standard",
-    credits: 8000,
-    price: 8,
+    credits: 500,
+    price: 20,
     popular: true,
-    description: "Most popular top-up",
+    description: "Best value for regular use",
   },
   {
     id: "pro",
     name: "Pro",
-    credits: 20000,
-    price: 18,
-    description: "Best value credit pack",
+    credits: 1000,
+    price: 35,
+    description: "Maximum credits, maximum savings",
   },
 ] as const;
 

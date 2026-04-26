@@ -1,20 +1,22 @@
 "use client";
 
-import { BookOpen, Check, Coins, Layers, Loader2 } from "lucide-react";
+import { Check, Coins, ImageIcon, Layers, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/routing";
 import { useEffect, useState, useTransition } from "react";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { paymentConfig, getPlanPrice } from "@/config/payment";
+import { getPlanPrice, paymentConfig } from "@/config/payment";
+import {
+  createCheckoutSession,
+  getUserSubscription,
+} from "@/features/payment/actions";
+import { PlanInterval } from "@/features/payment/types";
+import { useRouter } from "@/i18n/routing";
 import { useSession } from "@/lib/auth/client";
 import { cn } from "@/lib/utils";
-import { createCheckoutSession, getUserSubscription } from "@/features/payment/actions";
-import { PlanInterval } from "@/features/payment/types";
 
 import { AnimatedPrice } from "./animated-price";
 
@@ -27,10 +29,46 @@ const PLAN_IDS = ["free", "starter", "pro", "ultra"] as const;
  * 计划功能 keys（按顺序显示，credits 单独突出显示）
  */
 const PLAN_FEATURE_KEYS: Record<string, string[]> = {
-  free: ["creditsNeverExpire", "input", "characters", "fileSize", "export", "history"],
-  starter: ["creditsNeverExpire", "input", "characters", "fileSize", "export", "history", "support"],
-  pro: ["creditsNeverExpire", "input", "characters", "fileSize", "queue", "export", "history", "customCards", "support"],
-  ultra: ["creditsNeverExpire", "input", "characters", "fileSize", "queue", "export", "history", "customCards", "aiAssist", "support"],
+  free: [
+    "creditsNeverExpire",
+    "input",
+    "characters",
+    "fileSize",
+    "export",
+    "history",
+  ],
+  starter: [
+    "creditsNeverExpire",
+    "input",
+    "characters",
+    "fileSize",
+    "export",
+    "history",
+    "support",
+  ],
+  pro: [
+    "creditsNeverExpire",
+    "input",
+    "characters",
+    "fileSize",
+    "queue",
+    "export",
+    "history",
+    "customCards",
+    "support",
+  ],
+  ultra: [
+    "creditsNeverExpire",
+    "input",
+    "characters",
+    "fileSize",
+    "queue",
+    "export",
+    "history",
+    "customCards",
+    "aiAssist",
+    "support",
+  ],
 };
 
 /**
@@ -53,12 +91,17 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
   const { data: session } = useSession();
 
   // 获取用户当前订阅状态
-  const [activePriceId, setActivePriceId] = useState<string | null>(currentPriceId ?? null);
+  const [activePriceId, setActivePriceId] = useState<string | null>(
+    currentPriceId ?? null
+  );
 
   useEffect(() => {
     if (!session?.user || currentPriceId) return;
     getUserSubscription().then((result) => {
-      if (result?.data?.subscription?.isActive && result.data.subscription.priceId) {
+      if (
+        result?.data?.subscription?.isActive &&
+        result.data.subscription.priceId
+      ) {
         setActivePriceId(result.data.subscription.priceId);
       }
     });
@@ -80,7 +123,10 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
     const config = getPlanConfig(planId);
     if (!config || !("prices" in config) || !config.prices) return null;
     const interval = isYearly ? PlanInterval.YEAR : PlanInterval.MONTH;
-    return getPlanPrice({ ...config, name: "", description: "", features: [], cta: "" }, interval);
+    return getPlanPrice(
+      { ...config, name: "", description: "", features: [], cta: "" },
+      interval
+    );
   };
 
   /**
@@ -177,7 +223,9 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
           <p className="mx-auto max-w-2xl text-muted-foreground">
             {t.rich("subtitle", {
               strong: (chunks) => (
-                <strong className="font-semibold text-foreground">{chunks}</strong>
+                <strong className="font-semibold text-foreground">
+                  {chunks}
+                </strong>
               ),
             })}
           </p>
@@ -271,10 +319,18 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
                         ) : (
                           <AnimatedPrice
                             value={
-                              parseInt(t(`plans.${planId}.creditsAmount`).replace(/,/g, ""), 10) *
-                              (isYearly ? 12 : 1)
+                              parseInt(
+                                t(`plans.${planId}.creditsAmount`).replace(
+                                  /,/g,
+                                  ""
+                                ),
+                                10
+                              ) * (isYearly ? 12 : 1)
                             }
-                            formatOptions={{ useGrouping: true, maximumFractionDigits: 0 }}
+                            formatOptions={{
+                              useGrouping: true,
+                              maximumFractionDigits: 0,
+                            }}
                           />
                         )}
                       </span>
@@ -286,19 +342,22 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
                             : t(`plans.${planId}.creditsLabel`)}
                       </span>
                       {planId !== "free" && isYearly && (
-                        <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0">
+                        <Badge
+                          variant="secondary"
+                          className="ml-1 text-[10px] px-1.5 py-0"
+                        >
                           {t("creditsUpfront")}
                         </Badge>
                       )}
                     </div>
                     {t.has(`plans.${planId}.booksCount`) && (
                       <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                        <BookOpen className="size-3" />
+                        <ImageIcon className="size-3" />
                         <span>
                           {t("booksNote", {
                             count: String(
                               parseInt(t(`plans.${planId}.booksCount`), 10) *
-                              (isYearly ? 12 : 1)
+                                (isYearly ? 12 : 1)
                             ),
                           })}
                         </span>
@@ -349,11 +408,7 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
                       {t("manageSubscription")}
                     </Button>
                   ) : hasSubscription && planId !== "free" ? (
-                    <Button
-                      className="w-full"
-                      variant="outline"
-                      disabled
-                    >
+                    <Button className="w-full" variant="outline" disabled>
                       {t("alreadySubscribed")}
                     </Button>
                   ) : (

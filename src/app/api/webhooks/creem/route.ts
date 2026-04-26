@@ -1,24 +1,25 @@
 import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-
-import { CREDITS_EXPIRY_DAYS } from "@/features/credits/config";
-import { grantCredits } from "@/features/credits/core";
+import { SUBSCRIPTION_MONTHLY_CREDITS } from "@/config/payment";
+import { getPlanFromPriceId } from "@/config/subscription-plan";
 import { db } from "@/db";
 import { creditsBatch, subscription, user } from "@/db/schema";
+import { CREDITS_EXPIRY_DAYS } from "@/features/credits/config";
+import { grantCredits } from "@/features/credits/core";
 import {
-  constructCreemEvent,
   type CreemCheckoutCompletedData,
   type CreemSubscription,
+  constructCreemEvent,
 } from "@/features/payment/creem";
-import { getPlanFromPriceId } from "@/config/subscription-plan";
-import { SUBSCRIPTION_MONTHLY_CREDITS } from "@/config/payment";
-import { logError, logEvent } from "@/lib/logger";
 import { withApiLogging } from "@/lib/api-logger";
+import { logError, logEvent } from "@/lib/logger";
 
 /** 从 CreemSubscription 中安全提取产品 ID */
 function getProductId(sub: CreemSubscription): string {
-  return typeof sub.product === "string" ? sub.product : sub.product?.id ?? "";
+  return typeof sub.product === "string"
+    ? sub.product
+    : (sub.product?.id ?? "");
 }
 
 /**
@@ -60,7 +61,9 @@ export const POST = withApiLogging(async (req: Request) => {
       // Checkout 完成事件
       // ============================================
       case "checkout.completed": {
-        await handleCheckoutCompleted(event.object as CreemCheckoutCompletedData);
+        await handleCheckoutCompleted(
+          event.object as CreemCheckoutCompletedData
+        );
         break;
       }
 
@@ -114,12 +117,15 @@ export const POST = withApiLogging(async (req: Request) => {
 /**
  * 处理 Checkout 完成事件
  *
- * 当用户完成支付后，创建或更新订阅记录
+ * 当用户完成支付后：
+ * - 如果是订阅支付：创建或更新订阅记录
+ * - 如果是积分购买：直接发放积分
  */
 async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
   const userId = data.metadata?.userId;
   const customerId = data.customer.id;
   const productId = data.product?.id || data.order?.product;
+  const checkoutType = data.metadata?.type ?? "subscription";
 
   if (!userId) {
     console.error("Missing userId in checkout metadata");
@@ -127,13 +133,14 @@ async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
   }
 
   // 更新用户的 customerId
-  await db
-    .update(user)
-    .set({ customerId })
-    .where(eq(user.id, userId));
+  await db.update(user).set({ customerId }).where(eq(user.id, userId));
 
-  // 如果有订阅信息，创建订阅记录
-  if (data.subscription) {
+  // 根据 checkout 类型分别处理
+  if (checkoutType === "credit_purchase") {
+    // 积分包一次性购买
+    await handleCreditPurchase(userId, data);
+  } else if (data.subscription) {
+    // 订阅支付
     await createOrUpdateSubscription(userId, data.subscription);
   }
 
@@ -143,8 +150,83 @@ async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
     productId,
     subscriptionId: data.subscription?.id,
     billingType: data.product?.billing_type,
-    checkoutType: data.metadata?.type ?? "subscription",
+    checkoutType,
   });
+}
+
+/**
+ * 处理积分包购买
+ *
+ * 在一次性支付完成后，根据 metadata 中的积分数量发放积分
+ */
+async function handleCreditPurchase(
+  userId: string,
+  data: CreemCheckoutCompletedData
+) {
+  const creditsStr = data.metadata?.credits;
+  const packageId = data.metadata?.packageId;
+  const orderId = data.order?.id ?? data.id;
+
+  if (!creditsStr) {
+    console.error("Missing credits in credit_purchase metadata");
+    return;
+  }
+
+  const creditsAmount = parseInt(creditsStr, 10);
+  if (Number.isNaN(creditsAmount) || creditsAmount <= 0) {
+    console.error(`Invalid credits amount: ${creditsStr}`);
+    return;
+  }
+
+  // 幂等性检查：同一订单只发放一次积分
+  const sourceRef = `credit_purchase:${orderId}`;
+  const [existingBatch] = await db
+    .select({ id: creditsBatch.id })
+    .from(creditsBatch)
+    .where(
+      and(
+        eq(creditsBatch.sourceRef, sourceRef),
+        eq(creditsBatch.sourceType, "purchase")
+      )
+    )
+    .limit(1);
+
+  if (existingBatch) {
+    console.log(`Credits already granted for purchase: ${sourceRef}, skipping`);
+    return;
+  }
+
+  // 积分包购买的积分不过期（与系统配置一致）
+  const expiresAt = CREDITS_EXPIRY_DAYS
+    ? new Date(Date.now() + CREDITS_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+    : null;
+
+  try {
+    const result = await grantCredits({
+      userId,
+      amount: creditsAmount,
+      sourceType: "purchase",
+      debitAccount: `PAYMENT:${orderId}`,
+      transactionType: "purchase",
+      expiresAt,
+      sourceRef,
+      description: `Credit pack purchase: ${creditsAmount} credits (${packageId ?? "unknown"})`,
+      metadata: {
+        orderId,
+        packageId: packageId ?? "unknown",
+        checkoutId: data.id,
+        paymentType: "one-time",
+      },
+    });
+
+    console.log(
+      `Credits granted for user ${userId}: ${creditsAmount} credits (package: ${packageId}), batch ${result.batchId}`
+    );
+  } catch (error) {
+    console.error("Failed to grant credit purchase:", error);
+    // 不抛出错误，让 webhook 返回成功
+    // 积分发放失败可通过日志追踪，手动补发
+  }
 }
 
 // ============================================
@@ -173,7 +255,11 @@ async function handleSubscriptionActive(sub: CreemSubscription) {
     }
 
     await updateSubscriptionStatus(sub);
-    await grantSubscriptionCredits(existingSub.userId, sub, "subscription_create");
+    await grantSubscriptionCredits(
+      existingSub.userId,
+      sub,
+      "subscription_create"
+    );
     logEvent("payment.subscription.created", {
       userId: existingSub.userId,
       subscriptionId: sub.id,
@@ -299,7 +385,10 @@ async function handleSubscriptionPaused(sub: CreemSubscription) {
 /**
  * 创建或更新订阅记录
  */
-async function createOrUpdateSubscription(userId: string, sub: CreemSubscription) {
+async function createOrUpdateSubscription(
+  userId: string,
+  sub: CreemSubscription
+) {
   const [existingSub] = await db
     .select()
     .from(subscription)
@@ -376,18 +465,23 @@ async function grantSubscriptionCredits(
     .where(
       and(
         eq(creditsBatch.sourceRef, periodKey),
-        eq(creditsBatch.sourceType, "subscription"),
+        eq(creditsBatch.sourceType, "subscription")
       )
     )
     .limit(1);
 
   if (existingBatch) {
-    console.log(`Credits already granted for subscription period: ${periodKey}, skipping`);
+    console.log(
+      `Credits already granted for subscription period: ${periodKey}, skipping`
+    );
     return;
   }
 
   // 获取该计划的月度积分配额
-  const monthlyCredits = SUBSCRIPTION_MONTHLY_CREDITS[planType as keyof typeof SUBSCRIPTION_MONTHLY_CREDITS];
+  const monthlyCredits =
+    SUBSCRIPTION_MONTHLY_CREDITS[
+      planType as keyof typeof SUBSCRIPTION_MONTHLY_CREDITS
+    ];
   if (!monthlyCredits) {
     console.error(`No monthly credits configured for plan: ${planType}`);
     return;
@@ -396,7 +490,9 @@ async function grantSubscriptionCredits(
   // 判断是否为年付（通过周期长度判断）
   const periodStart = new Date(sub.current_period_start_date);
   const periodEnd = new Date(sub.current_period_end_date);
-  const periodDays = Math.round((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24));
+  const periodDays = Math.round(
+    (periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)
+  );
   const isYearly = periodDays > 60; // 超过60天认为是年付
 
   // 计算应发放积分：月付发月度积分，年付发12个月积分
