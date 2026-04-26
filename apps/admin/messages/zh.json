@@ -1,0 +1,150 @@
+{
+  "Admin": {
+    "dashboard": {
+      "title": "控制面板",
+      "subtitle": "欢迎来到管理后台，这里是系统概览。",
+      "stats": {
+        "totalUsers": "总用户数",
+        "newUsersThisWeek": "本周新增 {count} 位",
+        "pendingTickets": "待处理工单",
+        "newTicketsToday": "今日新增 {count} 个",
+        "activeSubscriptions": "活跃订阅",
+        "totalSubscriptions": "总订阅 {count} 个",
+        "creditsCirculation": "积分流通",
+        "currentUserCredits": "当前用户持有总积分",
+        "imageGeneration": "图片生成",
+        "generationToday": "今日 {today} 张 · 成功 {completed} 张"
+      },
+      "details": {
+        "userStats": "用户统计",
+        "totalUsersLabel": "总用户",
+        "admins": "管理员",
+        "regularUsers": "普通用户",
+        "banned": "已封禁",
+        "newThisWeek": "本周新增",
+        "ticketStats": "工单统计",
+        "pending": "待处理",
+        "inProgress": "处理中",
+        "totalTickets": "总工单",
+        "newToday": "今日新增",
+        "creditsFlow": "积分流水",
+        "currentBalance": "当前持有",
+        "totalGranted": "累计发放",
+        "totalSpent": "累计消费",
+        "subscriberCount": "订阅用户",
+        "activeLabel": "{count} 活跃",
+        "generationStats": "生成统计",
+        "totalGenerations": "总生成数",
+        "successRate": "成功率",
+        "creditsConsumed": "积分消耗"
+      },
+      "quickActions": {
+        "title": "快速操作",
+        "manageUsers": "管理用户",
+        "usersCount": "{count} 位",
+        "handleTickets": "处理工单",
+        "pendingCount": "{count} 待处理"
+      },
+      "systemInfo": {
+        "title": "系统信息",
+        "version": "版本",
+        "environment": "环境",
+        "database": "数据库"
+      }
+    },
+    "users": {
+      "title": "用户管理",
+      "subtitle": "查看和管理系统中的所有用户",
+      "stats": {
+        "totalUsers": "总用户数",
+        "admins": "管理员",
+        "subscribers": "订阅用户",
+        "banned": "已封禁"
+      },
+      "search": {
+        "placeholder": "搜索邮箱或用户名...",
+        "button": "搜索",
+        "clear": "清除",
+        "searchLabel": "搜索: \"{query}\""
+      },
+      "table": {
+        "title": "用户列表",
+        "user": "用户",
+        "status": "状态",
+        "credits": "积分",
+        "subscription": "订阅",
+        "role": "角色",
+        "actions": "操作",
+        "noResults": "没有找到匹配的用户",
+        "noUsers": "暂无用户"
+      },
+      "statusLabels": {
+        "banned": "已封禁",
+        "verified": "已验证",
+        "unverified": "未验证"
+      },
+      "subscriptionLabels": {
+        "none": "无订阅",
+        "active": "订阅中",
+        "canceled": "已取消",
+        "pastDue": "逾期",
+        "incomplete": "未完成"
+      },
+      "ban": {
+        "banTitle": "封禁用户",
+        "unbanTitle": "解除封禁",
+        "banDescription": "确定要封禁用户 {name} 吗？封禁后该用户将无法登录。",
+        "unbanDescription": "确定要解除用户 {name} 的封禁吗？",
+        "reasonLabel": "封禁原因 (可选)",
+        "reasonPlaceholder": "请输入封禁原因...",
+        "cancel": "取消",
+        "confirmBan": "确认封禁",
+        "confirmUnban": "解除封禁"
+      },
+      "grant": {
+        "title": "手动充值积分",
+        "description": "为用户 {name} 充值积分",
+        "amountLabel": "积分数量 *",
+        "amountPlaceholder": "请输入积分数量",
+        "reasonLabel": "充值原因 *",
+        "reasonPlaceholder": "请输入充值原因 (如：客服补偿、活动奖励等)",
+        "cancel": "取消",
+        "confirm": "确认充值"
+      },
+      "tooltips": {
+        "grantCredits": "充值积分",
+        "ban": "封禁",
+        "unban": "解封"
+      },
+      "errors": {
+        "loadFailed": "加载用户列表失败",
+        "operationFailed": "操作失败",
+        "invalidAmount": "请输入有效的积分数量",
+        "reasonRequired": "请填写充值原因",
+        "grantFailed": "充值失败"
+      }
+    },
+    "tickets": {
+      "title": "工单管理",
+      "subtitle": "查看和处理用户提交的支持工单",
+      "stats": {
+        "pending": "待处理",
+        "inProgress": "处理中",
+        "resolved": "已解决",
+        "total": "总工单"
+      },
+      "table": {
+        "title": "工单列表",
+        "subject": "工单主题",
+        "user": "用户",
+        "category": "类别",
+        "priority": "优先级",
+        "status": "状态",
+        "createdAt": "创建时间",
+        "noTickets": "暂无工单",
+        "unknownUser": "未知用户",
+        "userFallback": "用户"
+      }
+    }
+  }
+}

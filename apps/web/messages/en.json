@@ -1,0 +1,867 @@
+{
+  "HomePage": {
+    "title": "GPT2IMAGE",
+    "subtitle": "AI-Powered Chat-to-Image Generation Platform",
+    "description": "Transform your ideas into stunning visuals through natural conversation, powered by state-of-the-art AI models."
+  },
+  "Hero": {
+    "badge": "AI Image Generation",
+    "title1": "Transform Words",
+    "titleHighlight": "into Stunning Art",
+    "subtitle": "Generate beautiful images through natural conversation. Powered by state-of-the-art AI models.",
+    "getStarted": "Start Creating",
+    "seeDemo": "See Examples",
+    "trustLine": "Trusted by creators worldwide",
+    "stats": {
+      "cards": "Images Generated",
+      "users": "Active Users",
+      "rating": "Satisfaction Rate"
+    }
+  },
+  "Features": {
+    "label": "Core Features",
+    "title": "Everything You Need to Create",
+    "subtitle": "A complete toolkit for turning imagination into reality — from conversational prompts to batch generation, powered by cutting-edge AI.",
+    "items": {
+      "ai": {
+        "title": "Chat-to-Image",
+        "description": "Describe your vision in natural language and watch AI bring it to life. No complex prompt engineering required — just conversation."
+      },
+      "multiSource": {
+        "title": "Visual Gallery",
+        "description": "Organize, browse, and revisit every image you've created. Powerful filters, tags, and collections keep your work at your fingertips."
+      },
+      "outline": {
+        "title": "Batch Generation",
+        "description": "Generate multiple variations in a single request. Perfect for exploring concepts, iterating on designs, or producing content at scale."
+      },
+      "export": {
+        "title": "Cutting-Edge Models",
+        "description": "Powered by the latest AI models including GPT Image 2. Get stunning photorealistic images, artistic renders, and creative compositions with state-of-the-art quality."
+      },
+      "batch": {
+        "title": "Credits System",
+        "description": "Flexible pay-as-you-go credits that never expire. Track usage, monitor consumption, and top up whenever you need."
+      },
+      "multilingual": {
+        "title": "Dark Mode",
+        "description": "A polished dark theme designed for long creative sessions. Switch effortlessly between light and dark to match your mood."
+      }
+    }
+  },
+  "HowItWorks": {
+    "label": "How It Works",
+    "title": "From Idea to Image in Four Steps",
+    "subtitle": "Start generating in minutes — no design skills, no prompt expertise required.",
+    "steps": {
+      "upload": {
+        "title": "Sign Up",
+        "description": "Create your free account in seconds. No credit card required — just sign up and you're ready to start generating."
+      },
+      "generate": {
+        "title": "Describe Your Vision",
+        "description": "Start a conversation and describe the image you want — a scene, a character, a mood. Refine iteratively until it feels right."
+      },
+      "export": {
+        "title": "AI Generates",
+        "description": "Our AI interprets your prompt and produces high-quality images in seconds. Generate variations to explore every creative direction."
+      }
+    },
+    "completion": {
+      "title": "Download & Share",
+      "description": "Save your favorites in high resolution or share them directly. Every image stays in your gallery for future reference."
+    }
+  },
+  "UseCases": {
+    "label": "Use Cases",
+    "title": "Made for Every Creator",
+    "subtitle": "GPT2IMAGE fits the workflows of designers, marketers, developers, and storytellers alike.",
+    "items": {
+      "designers": {
+        "title": "Designers & Artists",
+        "subtitle": "Visual Ideation",
+        "description": "Sketch concepts, explore styles, and generate reference images to accelerate your creative process.",
+        "examples": ["Mood boards", "Concept art", "Style exploration"]
+      },
+      "marketers": {
+        "title": "Marketers",
+        "subtitle": "Content at Scale",
+        "description": "Produce on-brand visuals for campaigns, social posts, and blog headers without waiting on stock photos or design queues.",
+        "examples": ["Social graphics", "Ad creative", "Blog images"]
+      },
+      "creators": {
+        "title": "Creators & Storytellers",
+        "subtitle": "Visual Narratives",
+        "description": "Illustrate stories, build worlds, and visualize characters. Turn ideas into imagery that draws your audience in.",
+        "examples": ["Story illustrations", "Character art", "World-building"]
+      },
+      "developers": {
+        "title": "Developers",
+        "subtitle": "Automated Workflows",
+        "description": "Integrate image generation into your applications and workflows. Build product features that leverage AI visuals natively.",
+        "examples": ["App integrations", "Automated pipelines", "Custom tools"]
+      }
+    }
+  },
+  "Testimonials": {
+    "label": "Testimonials",
+    "title": "What Creators Say",
+    "subtitle": "Designers, marketers, and developers around the world are using GPT2IMAGE every day.",
+    "items": [
+      {
+        "content": "The chat interface makes image generation feel effortless. I can describe what I'm imagining in plain language and iterate until it's perfect.",
+        "author": "Sarah Lin",
+        "role": "Product Designer"
+      },
+      {
+        "content": "Batch generation saves me hours every week. I can produce a dozen hero image variations for A/B testing without breaking a sweat.",
+        "author": "Michael Zhang",
+        "role": "Marketing Lead"
+      },
+      {
+        "content": "I signed up and had my first batch of images within minutes. The interface is incredibly intuitive — just describe what you want and the AI nails it.",
+        "author": "Emily Chen",
+        "role": "Full-Stack Developer"
+      },
+      {
+        "content": "The gallery is how I stay organized. Every image I've ever generated is searchable, taggable, and a click away from being reused.",
+        "author": "David Wang",
+        "role": "Content Creator"
+      },
+      {
+        "content": "Credits that never expire is a huge win. I can generate when inspiration strikes without worrying about a monthly clock running out.",
+        "author": "Lisa Li",
+        "role": "Illustrator"
+      },
+      {
+        "content": "GPT2IMAGE replaced three other tools in my workflow. Chat-based prompting, batch runs, and a stunning gallery — it's everything in one place.",
+        "author": "Kevin Zhao",
+        "role": "Creative Director"
+      }
+    ]
+  },
+  "FAQ": {
+    "label": "FAQ",
+    "title": "Questions You Might Have",
+    "subtitle": "Common questions about GPT2IMAGE and how it works.",
+    "items": [
+      {
+        "question": "What is GPT2IMAGE?",
+        "answer": "GPT2IMAGE is an AI-powered platform that turns natural-language conversations into high-quality images. Describe what you want, and our AI generates it — no prompt engineering required. Features include chat-to-image generation, a visual gallery, batch generation, and a flexible credits system."
+      },
+      {
+        "question": "Which AI image models are supported?",
+        "answer": "GPT2IMAGE supports the leading image generation models on the market, including GPT Image 2. Just sign up, choose a plan, and start generating — the platform handles model routing and delivers results in a unified interface."
+      },
+      {
+        "question": "How does the credits system work?",
+        "answer": "Every image generation consumes a small number of credits based on the model and parameters you choose. Credits never expire, so unused credits are never wasted. You can subscribe to a monthly plan for recurring credits or top up whenever you need more."
+      },
+      {
+        "question": "How do I get started?",
+        "answer": "Just sign up for a free account — no credit card required. You'll receive starter credits to try out image generation immediately. When you're ready for more, choose a subscription plan that fits your needs."
+      },
+      {
+        "question": "Does batch generation cost more?",
+        "answer": "Batch generation consumes credits per image generated, the same as single generation. It's a convenience feature that lets you produce multiple variations in one request — perfect for exploring concepts or iterating on designs quickly."
+      },
+      {
+        "question": "Can I download and use the images commercially?",
+        "answer": "Yes. Images you generate on GPT2IMAGE are yours to use — for personal, editorial, or commercial projects. Downloads are available in high resolution, and your full generation history stays in your gallery."
+      }
+    ]
+  },
+  "Auth": {
+    "common": {
+      "or": "or",
+      "google": "Google",
+      "github": "GitHub"
+    },
+    "signIn": {
+      "title": "Welcome back",
+      "subtitle": "Please enter your credentials to sign in.",
+      "emailLabel": "Email address",
+      "emailPlaceholder": "jane@example.com",
+      "passwordLabel": "Password",
+      "forgotPassword": "Forgot my password",
+      "loading": "Signing in...",
+      "submit": "Continue",
+      "success": "Signed in successfully!",
+      "resendVerification": "Resend verification email",
+      "resendCooldown": "Resend in {seconds}s",
+      "noAccount": "Don't have an account?",
+      "signUpLink": "Sign up",
+      "errors": {
+        "google": "Google sign-in failed. Please try again.",
+        "github": "GitHub sign-in failed. Please try again.",
+        "missingFields": "Please enter email and password.",
+        "invalidCredentials": "Invalid email or password.",
+        "emailNotVerified": "Please verify your email before signing in. Check your inbox for the verification link."
+      }
+    },
+    "signUp": {
+      "title": "Create an account",
+      "subtitle": "Enter your details to start generating images.",
+      "nameLabel": "Full name",
+      "namePlaceholder": "Jane Doe",
+      "emailLabel": "Email address",
+      "emailPlaceholder": "jane@example.com",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "At least 8 characters",
+      "confirmPasswordLabel": "Confirm password",
+      "confirmPasswordPlaceholder": "Re-enter your password",
+      "loading": "Creating account...",
+      "submit": "Create account",
+      "success": "Account created successfully!",
+      "haveAccount": "Already have an account?",
+      "signInLink": "Sign in",
+      "errors": {
+        "google": "Google sign-up failed. Please try again.",
+        "github": "GitHub sign-up failed. Please try again.",
+        "missingFields": "Please fill in all fields.",
+        "passwordTooShort": "Password must be at least 8 characters.",
+        "passwordMismatch": "Passwords do not match.",
+        "emailInUse": "Sign-up failed. This email may already be in use."
+      },
+      "verifyEmail": {
+        "title": "Check your email",
+        "description": "We've sent a verification link to {email}. Please click the link to verify your account.",
+        "hint": "Didn't receive the email? Check your spam folder.",
+        "resend": "Resend verification email",
+        "resendCooldown": "Resend in {seconds}s",
+        "backToSignIn": "Back to sign in"
+      }
+    },
+    "footer": {
+      "copyright": "© {year} {name}. All rights reserved.",
+      "privacy": "Privacy Policy",
+      "terms": "Terms of Service",
+      "cookies": "Cookie Settings"
+    }
+  },
+  "CTA": {
+    "badge": "Start free, no credit card required",
+    "title": "Start generating stunning images today",
+    "subtitle": "Sign up in seconds and get free credits to try GPT2IMAGE. Bring your ideas to life with AI-powered image generation.",
+    "getStarted": "Get Started Free",
+    "seeDemo": "See Examples"
+  },
+  "DashboardPages": {
+    "dashboard": {
+      "title": "Dashboard",
+      "subtitle": "Welcome back! Here's an overview of your account.",
+      "stats": {
+        "credits": {
+          "title": "Credits",
+          "description": "Available balance"
+        }
+      },
+      "actions": {
+        "credits": "View Credits",
+        "settings": "Account Settings",
+        "support": "Get Support"
+      }
+    }
+  },
+  "ImageGeneration": {},
+  "Gallery": {},
+  "AnonymousGenerate": {},
+  "Solutions": {},
+  "CreditTransactions": {
+    "anonymous_migration": "Migrated {cardCount} images from anonymous session",
+    "anonymous_migration_bonus": "New user bonus: Saved {cardCount} images for free"
+  },
+  "Header": {
+    "dashboard": "Dashboard",
+    "login": "Login",
+    "getStarted": "Get Started",
+    "docs": "Docs"
+  },
+  "Navigation": {
+    "products": "Features",
+    "features": "Features",
+    "docs": "Docs",
+    "pseo": "PSEO",
+    "pricing": "Pricing",
+    "blog": "Blog",
+    "about": "About",
+    "productsMenu": {
+      "core": {
+        "title": "Generation",
+        "chatToImage": "Chat-to-Image",
+        "chatToImageDesc": "Generate images through natural conversation",
+        "gallery": "Visual Gallery",
+        "galleryDesc": "Browse, organize, and revisit your creations",
+        "batch": "Batch Generation",
+        "batchDesc": "Produce multiple variations in one request"
+      },
+      "platform": {
+        "title": "Platform",
+        "api": "GPT Image 2",
+        "apiDesc": "Next-generation image model with stunning quality",
+        "multiModel": "Multi-model Support",
+        "multiModelDesc": "Leading image generation models in one place",
+        "credits": "Credits System",
+        "creditsDesc": "Flexible credits that never expire"
+      }
+    }
+  },
+  "Common": {
+    "getStarted": "Get Started",
+    "login": "Log in",
+    "dashboard": "Dashboard",
+    "products": "Features",
+    "pricing": "Pricing",
+    "blog": "Blog",
+    "docs": "Documentation",
+    "features": "Features",
+    "changelog": "Changelog",
+    "relativeTime": {
+      "justNow": "Just now",
+      "minutesAgo": "{count, plural, one {# minute ago} other {# minutes ago}}",
+      "hoursAgo": "{count, plural, one {# hour ago} other {# hours ago}}",
+      "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
+      "monthsAgo": "{count, plural, one {# month ago} other {# months ago}}",
+      "yearsAgo": "{count, plural, one {# year ago} other {# years ago}}"
+    }
+  },
+  "Cookie": {
+    "title": "Cookie Settings",
+    "description": "We use cookies to ensure you get the best experience on our website. By continuing to use this site, you agree to our",
+    "privacyPolicy": "Privacy Policy",
+    "acceptAll": "Accept all",
+    "rejectAll": "Essential only",
+    "managePreferences": "Manage preferences",
+    "back": "Back",
+    "preferencesTitle": "Cookie Preferences",
+    "dialog": {
+      "title": "Manage cookie preferences",
+      "heading": "Your Privacy Choices",
+      "description": "In this panel you can review and change your cookie preferences at any time. Turn optional categories off if you do not want us to use them, or choose essential only to keep strictly necessary cookies enabled.",
+      "acceptCurrentSelection": "Accept current selection"
+    },
+    "card": {
+      "title": "Cookie Settings",
+      "description": "Manage your cookie settings here.",
+      "savePreferences": "Save preferences"
+    },
+    "essential": {
+      "title": "Essential Cookies",
+      "description": "These cookies are necessary for the website to function and cannot be disabled."
+    },
+    "functional": {
+      "title": "Functional Cookies",
+      "description": "These cookies enable personalized features and functionality."
+    },
+    "analytics": {
+      "title": "Analytics Cookies",
+      "description": "Help us understand how visitors interact with our website to improve user experience."
+    },
+    "performance": {
+      "title": "Performance Cookies",
+      "description": "These cookies help us understand how visitors interact with the website."
+    },
+    "marketing": {
+      "title": "Marketing Cookies",
+      "description": "Used to show you relevant ads and marketing content."
+    },
+    "alwaysEnabled": "Always enabled",
+    "saveSettings": "Save settings"
+  },
+  "Pricing": {
+    "title": "Simple, transparent pricing",
+    "subtitle": "Pay by credits — <strong>never expire</strong>, so unused credits aren't wasted. Generate images whenever inspiration strikes. Save 40% with yearly billing.",
+    "creditsUpfront": "all at once",
+    "creditsPerYear": "credits / year",
+    "monthly": "Monthly",
+    "yearly": "Yearly",
+    "save": "Save",
+    "mostPopular": "Best Value",
+    "currentPlan": "Current Plan",
+    "alreadySubscribed": "Already Subscribed",
+    "manageSubscription": "Manage Subscription",
+    "booksNote": "≈ {count} images generated",
+    "cardsNote": "≈ {count} image generations",
+    "plans": {
+      "free": {
+        "name": "Free",
+        "description": "Try GPT2IMAGE with no commitment",
+        "cta": "Get Started",
+        "creditsAmount": "200",
+        "creditsLabel": "credits",
+        "creditsNote": "one-time",
+        "features": {
+          "creditsNeverExpire": "Credits never expire",
+          "credits": "200 credits (one-time)",
+          "input": "Chat-to-image generation",
+          "characters": "Standard image resolutions",
+          "fileSize": "Up to 5 images per batch",
+          "export": "Download & share",
+          "history": "Gallery history saved forever"
+        }
+      },
+      "starter": {
+        "name": "Starter",
+        "description": "Perfect for casual creators",
+        "cta": "Subscribe",
+        "creditsAmount": "3,000",
+        "creditsLabel": "credits / month",
+        "booksCount": "8",
+        "features": {
+          "creditsNeverExpire": "Credits never expire",
+          "credits": "3,000 credits / month",
+          "input": "Chat-to-image generation",
+          "characters": "Standard image resolutions",
+          "fileSize": "Up to 10 images per batch",
+          "export": "Download & share",
+          "history": "Gallery history saved forever",
+          "support": "Email support"
+        }
+      },
+      "pro": {
+        "name": "Pro",
+        "description": "Best value for active creators",
+        "cta": "Subscribe",
+        "creditsAmount": "8,000",
+        "creditsLabel": "credits / month",
+        "booksCount": "23",
+        "features": {
+          "creditsNeverExpire": "Credits never expire",
+          "credits": "8,000 credits / month",
+          "input": "All generation features",
+          "characters": "High-resolution outputs",
+          "fileSize": "Up to 25 images per batch",
+          "queue": "Priority generation queue",
+          "export": "Download & share",
+          "history": "Gallery history saved forever",
+          "customCards": "Advanced model access",
+          "support": "Priority support"
+        }
+      },
+      "ultra": {
+        "name": "Ultra",
+        "description": "For power users and teams",
+        "cta": "Subscribe",
+        "creditsAmount": "16,000",
+        "creditsLabel": "credits / month",
+        "booksCount": "46",
+        "features": {
+          "creditsNeverExpire": "Credits never expire",
+          "credits": "16,000 credits / month",
+          "input": "All generation features",
+          "characters": "Maximum-resolution outputs",
+          "fileSize": "Up to 50 images per batch",
+          "queue": "Highest priority queue",
+          "export": "Download & share",
+          "history": "Gallery history saved forever",
+          "customCards": "Premium model access",
+          "aiAssist": "Higher generation limits",
+          "support": "Dedicated support"
+        }
+      }
+    }
+  },
+  "Toggle": {
+    "theme": "Toggle Theme",
+    "language": "Toggle Language",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "Support": {
+    "title": "Support Center",
+    "subtitle": "View and manage your support tickets",
+    "newTicket": "New Ticket",
+    "noTickets": "No Tickets",
+    "noTicketsDescription": "You haven't submitted any support tickets yet",
+    "createFirst": "Create Your First Ticket",
+    "categories": {
+      "billing": "Billing",
+      "technical": "Technical Support",
+      "bug": "Bug Report",
+      "feature": "Feature Request",
+      "other": "Other"
+    },
+    "priorities": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "statuses": {
+      "open": "Open",
+      "in_progress": "In Progress",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    }
+  },
+  "Subscription": {
+    "plans": {
+      "free": "Free",
+      "starter": "Starter",
+      "pro": "Pro",
+      "ultra": "Ultra"
+    }
+  },
+  "Dashboard": {
+    "nav": {
+      "dashboard": "Dashboard",
+      "support": "Support",
+      "newTicket": "New Ticket"
+    },
+    "pages": {
+      "dashboard": "Dashboard",
+      "generate": "Generate",
+      "tasks": "Tasks",
+      "myDecks": "My Decks",
+      "deckDetails": "Deck Details",
+      "support": "Support",
+      "newTicket": "New Ticket",
+      "settings": "Settings",
+      "profile": "Profile",
+      "security": "Security",
+      "billing": "Billing",
+      "notifications": "Notifications",
+      "ticketDetails": "Ticket Details",
+      "advanced": "Advanced"
+    },
+    "sidebar": {
+      "settings": "Settings",
+      "logout": "Logout"
+    }
+  },
+  "Settings": {
+    "tabs": {
+      "account": "Account",
+      "security": "Security",
+      "billing": "Billing",
+      "usage": "Usage",
+      "profile": "Profile",
+      "advanced": "Advanced"
+    },
+    "advanced": {
+      "title": "Advanced Settings",
+      "description": "Configuration options for power users."
+    },
+    "apiConfig": {
+      "warning": {
+        "title": "Advanced Configuration",
+        "description": "Configure your own OpenAI-compatible API endpoint. When active, image generation will use your API key instead of platform credits."
+      },
+      "customEndpoint": "Custom API Endpoint",
+      "enabled": "Use Custom API",
+      "enabledDescription": "When enabled, bypasses platform credits",
+      "baseUrl": "API Base URL",
+      "apiKey": "API Key",
+      "model": "Model (optional)",
+      "modelHint": "Leave blank to use the default model",
+      "save": "Save Configuration",
+      "remove": "Remove",
+      "docsLink": "API Documentation"
+    },
+    "general": {
+      "title": "General",
+      "description": "Update your personal information and account settings.",
+      "save": "Save",
+      "name": "Name",
+      "namePlaceholder": "Enter your name",
+      "nameDescription": "Name is required and must be at least 2 characters.",
+      "email": "Email",
+      "emailDescription": "To change your email, please contact support."
+    },
+    "avatar": {
+      "title": "Avatar",
+      "description": "Upload a profile picture to personalize your account.",
+      "uploading": "Uploading...",
+      "supportedFormats": "Supports JPG, PNG, GIF, WebP, max {size}MB"
+    },
+    "language": {
+      "title": "Language Settings",
+      "description": "Select your preferred language for the interface.",
+      "placeholder": "Select language"
+    },
+    "deleteAccount": {
+      "title": "Delete Account",
+      "description": "Permanently delete your account and all associated data. This action cannot be undone.",
+      "button": "Delete Account",
+      "warning": "This action is irreversible. Please proceed with caution.",
+      "confirmTitle": "Delete this account?",
+      "confirmDescription": "Your account and all associated data will be permanently deleted. This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Yes, delete account",
+      "error": "Failed to delete account. Please try again later."
+    },
+    "security": {
+      "changePassword": {
+        "title": "Change Password",
+        "description": "Update your password to keep your account secure.",
+        "currentPassword": "Current Password",
+        "currentPasswordPlaceholder": "Enter current password",
+        "newPassword": "New Password",
+        "newPasswordPlaceholder": "Enter new password",
+        "confirmPassword": "Confirm New Password",
+        "confirmPasswordPlaceholder": "Confirm new password",
+        "submit": "Update Password",
+        "updating": "Updating..."
+      },
+      "errors": {
+        "missingFields": "Please fill in all password fields.",
+        "passwordTooShort": "New password must be at least 8 characters.",
+        "passwordMismatch": "New passwords do not match.",
+        "samePassword": "New password must be different from current password.",
+        "wrongPassword": "Current password is incorrect."
+      },
+      "success": "Password updated successfully."
+    },
+    "errors": {
+      "unsupportedFileType": "Unsupported file type. Supported: {types}",
+      "fileTooLarge": "File too large. Maximum size: {size}MB",
+      "uploadFailed": "Failed to get upload URL",
+      "fileUploadFailed": "File upload failed",
+      "avatarUploadError": "Avatar upload failed",
+      "validationFailed": "Validation failed"
+    },
+    "success": {
+      "avatarUpdated": "Avatar updated successfully"
+    },
+    "billing": {
+      "currentPlan": {
+        "title": "Current Plan",
+        "description": "Manage your subscription and billing cycle.",
+        "freePlan": "Free Plan",
+        "current": "Current",
+        "basicFeatures": "Basic features with limited credits",
+        "premiumFeatures": "Full access to all premium features",
+        "upgradePlan": "Upgrade Plan",
+        "managePlan": "Manage Plan",
+        "monthlyCredits": "Monthly Credits",
+        "renewalDate": "Renewal Date",
+        "notApplicable": "N/A",
+        "price": "Price",
+        "perMonth": "month",
+        "perYear": "year",
+        "cancelSubscription": "Cancel Subscription",
+        "cancelPending": "Cancels on {date}",
+        "cancelDialog": {
+          "title": "Cancel Subscription?",
+          "description": "Your subscription will remain active until the end of your current billing period ({date}). After that, your plan will revert to Free.",
+          "keepBenefits": "You'll keep all your current plan benefits until {date}",
+          "confirm": "Yes, Cancel Subscription",
+          "cancel": "Keep Subscription"
+        }
+      },
+      "paymentMethods": {
+        "title": "Payment Methods",
+        "description": "Add or manage your payment methods for subscriptions and purchases.",
+        "addMethod": "Add Payment Method",
+        "noMethods": "No payment methods added",
+        "noMethodsHint": "Add a payment method to upgrade your plan or purchase credits"
+      },
+      "history": {
+        "title": "Billing History",
+        "description": "View and download your past invoices.",
+        "date": "Date",
+        "historyDescription": "Description",
+        "amount": "Amount",
+        "status": "Status",
+        "invoice": "Invoice",
+        "noHistory": "No billing history",
+        "noHistoryHint": "Your invoices will appear here after your first purchase"
+      }
+    },
+    "usage": {
+      "title": "Credit Usage",
+      "description": "Credits used for image generation.",
+      "availableCredits": "Available Credits",
+      "creditsAvailable": "credits available",
+      "getMoreCredits": {
+        "title": "Get More Credits",
+        "description": "Subscribe to a plan to get monthly credits and unlock advanced features",
+        "viewPlans": "View Subscription Plans"
+      },
+      "expiringSoon": {
+        "title": "Credits Expiring Soon",
+        "message": "{count} credits will expire on {date}"
+      },
+      "transactions": {
+        "title": "Transaction History",
+        "description": "View all your credit transactions including grants and consumption",
+        "date": "Date",
+        "type": "Type",
+        "transactionDescription": "Description",
+        "transactionAmount": "Amount",
+        "noTransactions": "No transactions yet",
+        "noTransactionsHint": "Your credit transactions will appear here",
+        "loading": "Loading...",
+        "showing": "Showing {from} to {to} of {total} transactions",
+        "rowsPerPage": "Rows per page",
+        "pageOf": "Page {page} of {total}",
+        "types": {
+          "registration_bonus": "Registration Bonus",
+          "admin_grant": "Admin Grant",
+          "monthly_grant": "Monthly Grant",
+          "purchase": "Purchase",
+          "consumption": "Usage",
+          "expiration": "Expired",
+          "refund": "Refund"
+        },
+        "descriptions": {
+          "registration_bonus": "New user registration bonus",
+          "monthly_grant": "{plan} monthly subscription credits",
+          "yearly_grant": "{plan} yearly subscription credits ({monthly} x 12)",
+          "consumption": "Image generation",
+          "expiration": "Credits expired",
+          "admin_grant": "Admin granted credits",
+          "refund": "Credits refund"
+        }
+      }
+    }
+  },
+  "Admin": {
+    "dashboard": {
+      "title": "Control Panel",
+      "subtitle": "Welcome to the admin panel. Here is the system overview.",
+      "stats": {
+        "totalUsers": "Total Users",
+        "newUsersThisWeek": "{count} new this week",
+        "pendingTickets": "Pending Tickets",
+        "newTicketsToday": "{count} new today",
+        "activeSubscriptions": "Active Subscriptions",
+        "totalSubscriptions": "{count} total",
+        "creditsCirculation": "Credits in Circulation",
+        "currentUserCredits": "Total credits held by users",
+        "imageGeneration": "Image Generation",
+        "generationToday": "{today} today · {completed} succeeded"
+      },
+      "details": {
+        "userStats": "User Statistics",
+        "totalUsersLabel": "Total Users",
+        "admins": "Admins",
+        "regularUsers": "Regular Users",
+        "banned": "Banned",
+        "newThisWeek": "New This Week",
+        "ticketStats": "Ticket Statistics",
+        "pending": "Pending",
+        "inProgress": "In Progress",
+        "totalTickets": "Total Tickets",
+        "newToday": "New Today",
+        "creditsFlow": "Credits Flow",
+        "currentBalance": "Current Balance",
+        "totalGranted": "Total Granted",
+        "totalSpent": "Total Spent",
+        "subscriberCount": "Subscribers",
+        "activeLabel": "{count} active",
+        "generationStats": "Generation Statistics",
+        "totalGenerations": "Total Generations",
+        "successRate": "Success Rate",
+        "creditsConsumed": "Credits Consumed"
+      },
+      "quickActions": {
+        "title": "Quick Actions",
+        "manageUsers": "Manage Users",
+        "usersCount": "{count} users",
+        "handleTickets": "Handle Tickets",
+        "pendingCount": "{count} pending"
+      },
+      "systemInfo": {
+        "title": "System Info",
+        "version": "Version",
+        "environment": "Environment",
+        "database": "Database"
+      }
+    },
+    "users": {
+      "title": "User Management",
+      "subtitle": "View and manage all users in the system",
+      "stats": {
+        "totalUsers": "Total Users",
+        "admins": "Admins",
+        "subscribers": "Subscribers",
+        "banned": "Banned"
+      },
+      "search": {
+        "placeholder": "Search by email or username...",
+        "button": "Search",
+        "clear": "Clear",
+        "searchLabel": "Search: \"{query}\""
+      },
+      "table": {
+        "title": "User List",
+        "user": "User",
+        "status": "Status",
+        "credits": "Credits",
+        "subscription": "Subscription",
+        "role": "Role",
+        "actions": "Actions",
+        "noResults": "No matching users found",
+        "noUsers": "No users yet"
+      },
+      "statusLabels": {
+        "banned": "Banned",
+        "verified": "Verified",
+        "unverified": "Unverified"
+      },
+      "subscriptionLabels": {
+        "none": "No Subscription",
+        "active": "Subscribed",
+        "canceled": "Canceled",
+        "pastDue": "Past Due",
+        "incomplete": "Incomplete"
+      },
+      "ban": {
+        "banTitle": "Ban User",
+        "unbanTitle": "Unban User",
+        "banDescription": "Are you sure you want to ban {name}? The user will be unable to log in.",
+        "unbanDescription": "Are you sure you want to unban {name}?",
+        "reasonLabel": "Reason (optional)",
+        "reasonPlaceholder": "Enter ban reason...",
+        "cancel": "Cancel",
+        "confirmBan": "Confirm Ban",
+        "confirmUnban": "Unban"
+      },
+      "grant": {
+        "title": "Grant Credits",
+        "description": "Grant credits to user {name}",
+        "amountLabel": "Credit Amount *",
+        "amountPlaceholder": "Enter credit amount",
+        "reasonLabel": "Reason *",
+        "reasonPlaceholder": "Enter reason (e.g., support compensation, event reward)",
+        "cancel": "Cancel",
+        "confirm": "Confirm Grant"
+      },
+      "tooltips": {
+        "grantCredits": "Grant Credits",
+        "ban": "Ban",
+        "unban": "Unban"
+      },
+      "errors": {
+        "loadFailed": "Failed to load user list",
+        "operationFailed": "Operation failed",
+        "invalidAmount": "Please enter a valid credit amount",
+        "reasonRequired": "Please enter a grant reason",
+        "grantFailed": "Grant failed"
+      }
+    },
+    "tickets": {
+      "title": "Ticket Management",
+      "subtitle": "View and handle support tickets from users",
+      "stats": {
+        "pending": "Pending",
+        "inProgress": "In Progress",
+        "resolved": "Resolved",
+        "total": "Total Tickets"
+      },
+      "table": {
+        "title": "Ticket List",
+        "subject": "Subject",
+        "user": "User",
+        "category": "Category",
+        "priority": "Priority",
+        "status": "Status",
+        "createdAt": "Created At",
+        "noTickets": "No tickets yet",
+        "unknownUser": "Unknown User",
+        "userFallback": "User"
+      }
+    }
+  }
+}
