@@ -14,6 +14,8 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Enable standalone output for Docker deployment
+  output: "standalone",
   // Exclude packages with webpack-specific syntax from server bundling
   serverExternalPackages: ["anki-apkg-export", "sql.js", "pino", "pino-pretty", "@axiomhq/pino"],
 };

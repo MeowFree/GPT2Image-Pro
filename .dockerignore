@@ -1,0 +1,60 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build output
+.next
+out
+
+# Version control
+.git
+.gitignore
+
+# Docker files (avoid recursive context)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Storage (mounted at runtime)
+storage/
+
+# Documentation
+*.md
+docs/
+LICENSE
+
+# IDE & editor
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test & coverage
+coverage/
+.vitest/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+src/test/
+
+# Debug logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.turbo
+.vercel
+.sentry
