@@ -5,6 +5,7 @@ export interface GenerateImageParams {
   height?: number;
   model?: string;
   n?: number;
+  quality?: ImageQuality;
 }
 
 export interface GenerateImageResult {
@@ -12,6 +13,24 @@ export interface GenerateImageResult {
   imageUrl?: string;
   revisedPrompt?: string;
   error?: string;
+}
+
+export type ImageQuality = "auto" | "low" | "medium" | "high";
+
+export interface ImageInputFile {
+  data: Buffer;
+  name: string;
+  type: string;
+}
+
+export interface EditImageParams {
+  prompt: string;
+  images: ImageInputFile[];
+  mask?: ImageInputFile;
+  size?: string;
+  model?: string;
+  quality?: ImageQuality;
+  n?: number;
 }
 
 export interface ApiConfig {
