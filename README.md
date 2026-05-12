@@ -201,6 +201,12 @@ cp .env.example .env.prod
 # 编辑 .env.prod，填入生产环境的真实配置
 ```
 
+当前 superapi 自部署可从脱敏模板开始：
+
+```bash
+cp .env.production.example .env.prod
+```
+
 #### 3. 服务器前置准备
 
 ```bash
