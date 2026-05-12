@@ -21,6 +21,7 @@ export interface ImageInputFile {
   data: Buffer;
   name: string;
   type: string;
+  url?: string;
 }
 
 export interface EditImageParams {

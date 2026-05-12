@@ -1,6 +1,7 @@
 import { db } from "@repo/database";
 import { generation } from "@repo/database/schema";
 import { consumeCredits, grantCredits } from "@repo/shared/credits/core";
+import { moderateContent } from "@repo/shared/moderation";
 import { getStorageProvider } from "@repo/shared/storage/providers";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -23,10 +24,12 @@ type RunImageGenerationInput =
   | ({
       mode: "generate";
       userId: string;
+      generationId?: string;
     } & GenerateImageParams)
   | ({
       mode: "edit";
       userId: string;
+      generationId?: string;
     } & EditImageParams);
 
 export type ImageGenerationOperationResult = {
@@ -68,7 +71,7 @@ async function toImageBuffer(result: {
 export async function runImageGenerationForUser(
   input: RunImageGenerationInput
 ): Promise<ImageGenerationOperationResult> {
-  const generationId = nanoid();
+  const generationId = input.generationId || nanoid();
   const size = input.size || DEFAULT_IMAGE_SIZE;
   const creditsPerImage = getImageCreditCost(size);
   const bucket =
@@ -100,6 +103,29 @@ export async function runImageGenerationForUser(
           }
         : { mode: "generate", quality: input.quality || "auto" },
   });
+
+  const moderation = await moderateContent({
+    prompt: input.prompt,
+    images: input.mode === "edit" ? input.images : undefined,
+    mode: input.mode === "edit" ? "image" : "text",
+    userId: input.userId,
+    generationId,
+  });
+
+  if (moderation.decision === "block" || moderation.decision === "error") {
+    const message =
+      moderation.decision === "block"
+        ? "Content failed moderation"
+        : "Content moderation is temporarily unavailable";
+    await db
+      .update(generation)
+      .set({
+        status: "failed",
+        error: moderation.reason || message,
+      })
+      .where(eq(generation.id, generationId));
+    return { error: message, generationId };
+  }
 
   if (useCredits) {
     try {

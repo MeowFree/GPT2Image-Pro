@@ -28,6 +28,7 @@
     "./subscription/actions/get-user-plan": "./src/subscription/actions/get-user-plan.ts",
     "./subscription/components/plan-badge": "./src/subscription/components/plan-badge.tsx",
     "./mail/*": "./src/mail/*",
+    "./moderation": "./src/moderation/index.ts",
     "./config": "./src/config/index.ts",
     "./config/nav": "./src/config/nav.ts",
     "./config/payment": "./src/config/payment.ts",
@@ -44,6 +45,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@alicloud/green20220302": "^3.2.3",
+    "@alicloud/openapi-client": "^0.4.15",
+    "@alicloud/tea-util": "^1.4.11",
     "@aws-sdk/client-s3": "^3.975.0",
     "@aws-sdk/s3-request-presigner": "^3.975.0",
     "@axiomhq/pino": "^1.4.0",
@@ -76,6 +80,7 @@
     "react-dom": "^19"
   },
   "devDependencies": {
+    "@types/node": "20.19.30",
     "@types/nodemailer": "^8.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
