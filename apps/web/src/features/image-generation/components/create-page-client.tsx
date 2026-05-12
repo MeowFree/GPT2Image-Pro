@@ -9,13 +9,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@repo/ui/components/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui/components/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@repo/ui/components/tabs";
 import { Textarea } from "@repo/ui/components/textarea";
 import {
   Brush,
+  Check,
   Coins,
   Download,
   Eraser,
+  Eye,
   ImagePlus,
   Loader2,
   RefreshCcw,
@@ -25,7 +32,6 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
 import { useAction } from "next-safe-action/hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -40,10 +46,16 @@ import {
   parseImageSize,
   validateImageSize,
 } from "../resolution";
+import { ImageLightbox, type LightboxGeneration } from "./image-lightbox";
 
 type RecentGeneration = {
   id: string;
   prompt: string;
+  revisedPrompt: string | null;
+  model: string;
+  size: string;
+  creditsConsumed: number;
+  status: "pending" | "completed" | "failed";
   imageUrl: string | null;
   createdAt: string;
 };
@@ -60,6 +72,7 @@ type ResultState = {
 type EditImageFile = {
   file: File;
   previewUrl: string;
+  sourceId?: string;
 };
 
 type MaskPoint = {
@@ -112,7 +125,8 @@ function revokePreview(url: string) {
 
 async function urlToEditImageFile(
   imageUrl: string,
-  name: string
+  name: string,
+  sourceId?: string
 ): Promise<EditImageFile> {
   const response = await fetch(imageUrl);
   if (!response.ok) {
@@ -127,6 +141,7 @@ async function urlToEditImageFile(
   return {
     file,
     previewUrl: URL.createObjectURL(file),
+    sourceId,
   };
 }
 
@@ -155,6 +170,7 @@ export function CreatePageClient({
   const [balance, setBalance] = useState(initialBalance);
   const [result, setResult] = useState<ResultState | null>(null);
   const [recent, setRecent] = useState<RecentGeneration[]>(initialRecent);
+  const [selectedRecentId, setSelectedRecentId] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const maskInputRef = useRef<HTMLInputElement | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -248,6 +264,11 @@ export function CreatePageClient({
       {
         id: generationId,
         prompt: resultPrompt,
+        revisedPrompt: data.revisedPrompt || null,
+        model: data.model || DEFAULT_IMAGE_MODEL,
+        size: data.size || size,
+        creditsConsumed: data.creditsConsumed || 0,
+        status: "completed",
         imageUrl,
         createdAt: new Date().toISOString(),
       },
@@ -371,7 +392,9 @@ export function CreatePageClient({
     } catch (error) {
       toast.error("Generation failed", {
         description:
-          error instanceof Error ? error.message : "An unexpected error occurred.",
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred.",
       });
     } finally {
       setIsEditing(false);
@@ -458,7 +481,9 @@ export function CreatePageClient({
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      toast.error("Mask is too large", { description: "Maximum size is 25MB." });
+      toast.error("Mask is too large", {
+        description: "Maximum size is 25MB.",
+      });
       return;
     }
 
@@ -615,7 +640,8 @@ export function CreatePageClient({
     try {
       const item = await urlToEditImageFile(
         result.imageUrl,
-        `gpt2image-${result.generationId}`
+        `gpt2image-${result.generationId}`,
+        result.generationId
       );
       clearEditImages();
       setEditImages([item]);
@@ -629,6 +655,61 @@ export function CreatePageClient({
       });
     }
   };
+
+  const selectRecentAsReference = async (generation: RecentGeneration) => {
+    if (!generation.imageUrl) {
+      toast.error("This image is not available yet");
+      return;
+    }
+
+    const existingIndex = editImages.findIndex(
+      (item) => item.sourceId === generation.id
+    );
+    if (existingIndex >= 0) {
+      removeImage(existingIndex);
+      toast.success("Reference image removed");
+      return;
+    }
+
+    if (editImages.length >= MAX_EDIT_IMAGES) {
+      toast.error(`Upload up to ${MAX_EDIT_IMAGES} source images`);
+      return;
+    }
+
+    try {
+      const item = await urlToEditImageFile(
+        generation.imageUrl,
+        `gpt2image-${generation.id}`,
+        generation.id
+      );
+      setEditImages((prev) => [...prev, item]);
+      toast.success("Reference image selected");
+    } catch (error) {
+      toast.error("Failed to use image as reference", {
+        description:
+          error instanceof Error ? error.message : "Could not load image.",
+      });
+    }
+  };
+
+  const openRecentPreview = (generation: RecentGeneration) => {
+    if (!generation.imageUrl) {
+      toast.error("This image is not available yet");
+      return;
+    }
+    setSelectedRecentId(generation.id);
+  };
+
+  const handleRecentClick = (generation: RecentGeneration) => {
+    if (activeMode === "image") {
+      void selectRecentAsReference(generation);
+      return;
+    }
+    openRecentPreview(generation);
+  };
+
+  const selectedRecent =
+    recent.find((item) => item.id === selectedRecentId) ?? null;
 
   const resolutionControls = (
     <div className="space-y-4 rounded-lg border border-border bg-background p-4">
@@ -706,9 +787,7 @@ export function CreatePageClient({
                 className="w-32"
               />
             </div>
-            <div className="text-xs text-muted-foreground sm:pb-2">
-              {size}
-            </div>
+            <div className="text-xs text-muted-foreground sm:pb-2">{size}</div>
           </div>
         </div>
 
@@ -1119,11 +1198,20 @@ export function CreatePageClient({
 
       {result && !loading && (
         <section className="mb-10 space-y-4">
-          <div
-            className="relative mx-auto max-w-2xl overflow-hidden rounded-lg border bg-muted"
+          <button
+            type="button"
+            onClick={() =>
+              setSelectedRecentId(
+                recent.some((item) => item.id === result.generationId)
+                  ? result.generationId
+                  : null
+              )
+            }
+            className="group relative mx-auto block w-full max-w-2xl overflow-hidden rounded-lg border bg-muted"
             style={{
               aspectRatio: `${parseImageSize(result.size)?.width || width} / ${parseImageSize(result.size)?.height || height}`,
             }}
+            title="Open image preview"
           >
             <Image
               src={result.imageUrl}
@@ -1133,7 +1221,11 @@ export function CreatePageClient({
               className="object-contain"
               unoptimized
             />
-          </div>
+            <span className="absolute right-2 top-2 rounded bg-background/90 px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity hover:opacity-100 focus:opacity-100 group-hover:opacity-100">
+              <Eye className="mr-1 inline h-3.5 w-3.5" />
+              Preview
+            </span>
+          </button>
           <div className="mx-auto max-w-2xl space-y-3">
             <p className="text-sm text-muted-foreground">{result.prompt}</p>
             <p className="text-xs text-muted-foreground">
@@ -1177,32 +1269,93 @@ export function CreatePageClient({
 
       {recent.length > 0 && (
         <section className="space-y-4">
-          <h2 className="font-serif text-xl font-semibold">Recent</h2>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <h2 className="font-serif text-xl font-semibold">Recent</h2>
+            <p className="text-xs text-muted-foreground">
+              {activeMode === "image"
+                ? "Click an image to add or remove it as a reference."
+                : "Click an image to open the full preview."}
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
-            {recent.map((g) => (
-              <Link
-                key={g.id}
-                href={`/dashboard/gallery/${g.id}`}
-                className="group relative aspect-square overflow-hidden rounded-md border bg-muted"
-                title={g.prompt}
-              >
-                {g.imageUrl ? (
-                  <Image
-                    src={g.imageUrl}
-                    alt={g.prompt}
-                    fill
-                    className="object-cover transition-transform group-hover:scale-105"
-                    unoptimized
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                    <ImagePlus className="h-6 w-6" />
-                  </div>
-                )}
-              </Link>
-            ))}
+            {recent.map((g) => {
+              const selectedForEdit = editImages.some(
+                (item) => item.sourceId === g.id
+              );
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  className={`group relative aspect-square overflow-hidden rounded-md border bg-muted text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                    selectedForEdit && activeMode === "image"
+                      ? "border-primary ring-2 ring-primary/50"
+                      : "hover:border-foreground/40"
+                  }`}
+                  title={
+                    activeMode === "image"
+                      ? "Use as reference image"
+                      : "Open image preview"
+                  }
+                  onClick={() => handleRecentClick(g)}
+                  disabled={!g.imageUrl}
+                >
+                  {g.imageUrl ? (
+                    <Image
+                      src={g.imageUrl}
+                      alt={g.prompt}
+                      fill
+                      className="object-cover transition-transform group-hover:scale-105"
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                      <ImagePlus className="h-6 w-6" />
+                    </div>
+                  )}
+                  <span className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                    {activeMode === "image" ? (
+                      selectedForEdit ? (
+                        <>
+                          <Check className="mr-1 h-3 w-3" />
+                          Selected
+                        </>
+                      ) : (
+                        <>
+                          <ImagePlus className="mr-1 h-3 w-3" />
+                          Use as reference
+                        </>
+                      )
+                    ) : (
+                      <>
+                        <Eye className="mr-1 h-3 w-3" />
+                        Preview
+                      </>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </section>
+      )}
+
+      {selectedRecent && (
+        <ImageLightbox
+          generation={selectedRecent as LightboxGeneration}
+          imageUrl={selectedRecent.imageUrl}
+          open={selectedRecentId !== null}
+          onClose={() => setSelectedRecentId(null)}
+          onDelete={(id) => {
+            setRecent((prev) => prev.filter((item) => item.id !== id));
+            setEditImages((prev) => {
+              const next = prev.filter((item) => item.sourceId !== id);
+              for (const item of prev) {
+                if (item.sourceId === id) revokePreview(item.previewUrl);
+              }
+              return next;
+            });
+          }}
+        />
       )}
     </div>
   );

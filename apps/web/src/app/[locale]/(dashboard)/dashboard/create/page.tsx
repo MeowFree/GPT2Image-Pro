@@ -1,9 +1,9 @@
-import { redirect } from "next/navigation";
+import { getCurrentUser } from "@repo/shared/auth/server";
 
 import { getCreditsBalance } from "@repo/shared/credits/core";
+import { redirect } from "next/navigation";
 import { CreatePageClient } from "@/features/image-generation/components/create-page-client";
 import { getUserRecentGenerations } from "@/features/image-generation/queries";
-import { getCurrentUser } from "@repo/shared/auth/server";
 
 export default async function CreatePage() {
   const user = await getCurrentUser();
@@ -20,6 +20,11 @@ export default async function CreatePage() {
   const recents = recentGenerations.map((g) => ({
     id: g.id,
     prompt: g.prompt,
+    revisedPrompt: g.revisedPrompt,
+    model: g.model,
+    size: g.size,
+    creditsConsumed: g.creditsConsumed,
+    status: g.status,
     imageUrl: g.storageKey
       ? process.env.STORAGE_ENDPOINT
         ? `/image-proxy/${g.storageBucket}/${g.storageKey}`
