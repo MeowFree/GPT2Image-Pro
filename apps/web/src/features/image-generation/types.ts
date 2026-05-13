@@ -38,6 +38,7 @@ export interface ApiConfig {
   baseUrl: string;
   apiKey: string;
   model?: string;
+  useStream?: boolean;
 }
 
 export interface GenerationRecord {

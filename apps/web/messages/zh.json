@@ -567,6 +567,8 @@
       "apiKey": "API 密钥",
       "model": "模型（可选）",
       "modelHint": "留空则使用默认模型",
+      "useStream": "流式响应",
+      "useStreamDescription": "发送 stream=true，并兼容 New API 的图像事件流。",
       "save": "保存配置",
       "remove": "删除",
       "docsLink": "API 文档"

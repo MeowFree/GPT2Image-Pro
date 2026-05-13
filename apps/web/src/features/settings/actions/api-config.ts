@@ -94,6 +94,7 @@ const apiConfigSchema = z.object({
     .refine((url) => !isPrivateUrl(url), "Invalid API base URL"),
   apiKey: z.string().min(1),
   model: z.string().optional(),
+  useStream: z.boolean().optional(),
 });
 
 const withApiConfigAction = (name: string) =>
@@ -135,6 +136,7 @@ export const saveApiConfig = withApiConfigAction("save")
           baseUrl: parsedInput.baseUrl,
           apiKey: parsedInput.apiKey,
           model: parsedInput.model || null,
+          useStream: parsedInput.useStream ?? false,
           updatedAt: new Date(),
         })
         .where(eq(userApiConfig.userId, ctx.userId));
@@ -145,6 +147,7 @@ export const saveApiConfig = withApiConfigAction("save")
         baseUrl: parsedInput.baseUrl,
         apiKey: parsedInput.apiKey,
         model: parsedInput.model || null,
+        useStream: parsedInput.useStream ?? false,
       });
     }
 

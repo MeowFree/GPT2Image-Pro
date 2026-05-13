@@ -23,6 +23,22 @@ const VALID_QUALITIES = new Set<ImageQuality>([
   "high",
 ]);
 
+type ImageOutput = {
+  b64_json?: string;
+  url?: string;
+  revised_prompt?: string;
+};
+
+type ImageResponsePayload = {
+  type?: string;
+  data?: ImageOutput[];
+  b64_json?: string;
+  url?: string;
+  revised_prompt?: string;
+  error?: { message?: string } | string;
+  message?: string;
+};
+
 function getModel(config: ApiConfig, model?: string) {
   return (
     normalizeImageModel(model) ||
@@ -98,6 +114,120 @@ function appendImageParams(
   if (quality) {
     formData.append("quality", quality);
   }
+
+  if (config.useStream) {
+    formData.append("stream", "true");
+  }
+}
+
+function toGenerateImageResult(image: ImageOutput): GenerateImageResult {
+  const result: GenerateImageResult = {};
+  if (image.b64_json) result.imageBase64 = image.b64_json;
+  if (image.url) result.imageUrl = image.url;
+  if (image.revised_prompt) result.revisedPrompt = image.revised_prompt;
+  return result;
+}
+
+function getPayloadError(payload: ImageResponsePayload): string | null {
+  if (typeof payload.error === "string") {
+    return payload.error;
+  }
+
+  if (payload.error?.message) {
+    return payload.error.message;
+  }
+
+  if (payload.type === "upstream_error" && payload.message) {
+    return payload.message;
+  }
+
+  return null;
+}
+
+function extractImageFromPayload(
+  payload: ImageResponsePayload
+): GenerateImageResult | null {
+  const image = payload.data?.find((item) => item.b64_json || item.url);
+  if (image) {
+    return toGenerateImageResult(image);
+  }
+
+  if (payload.b64_json || payload.url) {
+    return toGenerateImageResult(payload);
+  }
+
+  return null;
+}
+
+function parseEventStream(text: string): GenerateImageResult {
+  let currentEvent = "";
+  const dataLines: string[] = [];
+  let completedResult: GenerateImageResult | null = null;
+  let fallbackResult: GenerateImageResult | null = null;
+
+  const processEvent = (eventName: string, lines: string[]) => {
+    if (lines.length === 0) return null;
+
+    const data = lines.join("\n").trim();
+    if (!data || data === "[DONE]") return null;
+
+    let payload: ImageResponsePayload;
+    try {
+      payload = JSON.parse(data) as ImageResponsePayload;
+    } catch {
+      return null;
+    }
+
+    if (eventName === "error" || payload.type === "upstream_error") {
+      return getPayloadError(payload) || "Image generation stream failed";
+    }
+
+    const result = extractImageFromPayload(payload);
+    if (!result) return null;
+
+    if (
+      eventName === "image_generation.completed" ||
+      payload.type === "image_generation.completed"
+    ) {
+      completedResult = result;
+    } else if (!fallbackResult) {
+      fallbackResult = result;
+    }
+
+    return null;
+  };
+
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  for (const line of lines) {
+    if (line === "") {
+      const error = processEvent(currentEvent, dataLines);
+      if (error) return { error };
+      currentEvent = "";
+      dataLines.length = 0;
+      continue;
+    }
+
+    if (line.startsWith(":")) continue;
+
+    const separatorIndex = line.indexOf(":");
+    const field = separatorIndex === -1 ? line : line.slice(0, separatorIndex);
+    const rawValue = separatorIndex === -1 ? "" : line.slice(separatorIndex + 1);
+    const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
+
+    if (field === "event") {
+      currentEvent = value;
+    } else if (field === "data") {
+      dataLines.push(value);
+    }
+  }
+
+  const error = processEvent(currentEvent, dataLines);
+  if (error) return { error };
+
+  const result = completedResult || fallbackResult;
+  if (result) return result;
+
+  return { error: "API returned no image data" };
 }
 
 async function parseImageResponse(
@@ -110,19 +240,18 @@ async function parseImageResponse(
     };
   }
 
-  const data = (await response.json()) as {
-    data?: Array<{ b64_json?: string; url?: string; revised_prompt?: string }>;
-  };
-  const image = data.data?.[0];
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("text/event-stream")) {
+    return parseEventStream(await response.text());
+  }
 
-  if (!image?.b64_json && !image?.url) {
+  const data = (await response.json()) as ImageResponsePayload;
+  const result = extractImageFromPayload(data);
+
+  if (!result) {
     return { error: "API returned no image data" };
   }
 
-  const result: GenerateImageResult = {};
-  if (image.b64_json) result.imageBase64 = image.b64_json;
-  if (image.url) result.imageUrl = image.url;
-  if (image.revised_prompt) result.revisedPrompt = image.revised_prompt;
   return result;
 }
 
@@ -163,6 +292,7 @@ export async function getUserApiConfig(
   const result: ApiConfig = { baseUrl: row.baseUrl, apiKey: row.apiKey };
   const normalizedModel = normalizeImageModel(row.model);
   if (normalizedModel) result.model = normalizedModel;
+  if (row.useStream) result.useStream = true;
   return result;
 }
 
@@ -200,6 +330,7 @@ export async function generateImage(
         ...(normalizeQuality(params.quality)
           ? { quality: normalizeQuality(params.quality) }
           : {}),
+        ...(config.useStream ? { stream: true } : {}),
         response_format: "b64_json",
       }),
     });

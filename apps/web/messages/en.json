@@ -567,6 +567,8 @@
       "apiKey": "API Key",
       "model": "Model (optional)",
       "modelHint": "Leave blank to use the default model",
+      "useStream": "Stream responses",
+      "useStreamDescription": "Send stream=true and accept New API image event streams.",
       "save": "Save Configuration",
       "remove": "Remove",
       "docsLink": "API Documentation"

@@ -506,6 +506,7 @@ export const userApiConfig = pgTable("user_api_config", {
   baseUrl: text("base_url").notNull(),
   apiKey: text("api_key").notNull(),
   model: text("model"),
+  useStream: boolean("use_stream").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -569,4 +570,3 @@ export type TicketPriority = (typeof ticketPriorityEnum.enumValues)[number];
 
 /** 工单状态类型 */
 export type TicketStatus = (typeof ticketStatusEnum.enumValues)[number];
-

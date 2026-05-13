@@ -30,6 +30,7 @@ export function ApiConfigForm() {
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
+  const [useStream, setUseStream] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [hasConfig, setHasConfig] = useState(false);
   const [hasPaidPlan, setHasPaidPlan] = useState(false);
@@ -56,6 +57,7 @@ export function ApiConfigForm() {
         setBaseUrl("");
         setApiKey("");
         setModel("");
+        setUseStream(false);
         setHasConfig(false);
       },
     }
@@ -82,6 +84,7 @@ export function ApiConfigForm() {
           setBaseUrl(configResult.data.baseUrl);
           setApiKey(configResult.data.apiKey);
           setModel(configResult.data.model || "");
+          setUseStream(Boolean(configResult.data.useStream));
           setIsActive(configResult.data.isActive);
           setHasConfig(true);
         }
@@ -99,7 +102,12 @@ export function ApiConfigForm() {
       toast.error("Custom API requires a paid subscription");
       return;
     }
-    executeSave({ baseUrl, apiKey, model: model || undefined });
+    executeSave({
+      baseUrl,
+      apiKey,
+      model: model || undefined,
+      useStream,
+    });
   };
 
   if (loading) {
@@ -211,6 +219,25 @@ export function ApiConfigForm() {
               {t("apiConfig.modelHint") ||
                 "Leave blank to use the default model"}
             </p>
+          </div>
+
+          {/* Streaming toggle */}
+          <div className="flex items-center justify-between gap-4 rounded-md border border-border px-3 py-3">
+            <div>
+              <Label htmlFor="api-use-stream" className="text-sm">
+                {t("apiConfig.useStream") || "Stream responses"}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t("apiConfig.useStreamDescription") ||
+                  "Send stream=true and accept New API image event streams."}
+              </p>
+            </div>
+            <Switch
+              id="api-use-stream"
+              checked={useStream}
+              onCheckedChange={setUseStream}
+              disabled={!hasPaidPlan}
+            />
           </div>
 
           {/* Actions */}
