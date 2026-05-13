@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@repo/ui/components/button";
+import { Checkbox } from "@repo/ui/components/checkbox";
 import { Input } from "@repo/ui/components/input";
 import {
   Select,
@@ -188,6 +189,9 @@ export function CreatePageClient({
   const [height, setHeight] = useState(defaultDimensions.height);
   const [quality, setQuality] = useState<ImageQuality>("auto");
   const [editModel, setEditModel] = useState("default");
+  const [useFirstImageSize, setUseFirstImageSize] = useState(true);
+  const [editWidth, setEditWidth] = useState(defaultDimensions.width);
+  const [editHeight, setEditHeight] = useState(defaultDimensions.height);
   const [editImages, setEditImages] = useState<EditImageFile[]>([]);
   const [maskFile, setMaskFile] = useState<EditImageFile | null>(null);
   const [maskEditorOpen, setMaskEditorOpen] = useState(false);
@@ -217,17 +221,35 @@ export function CreatePageClient({
     [width, height]
   );
   const textImageCreditCost = useMemo(() => getImageCreditCost(size), [size]);
-  const editImageCreditCost = firstImageSize
-    ? getImageCreditCost(
-        normalizeImageSize(firstImageSize.width, firstImageSize.height)
-      )
+  const customEditSize = useMemo(
+    () => normalizeImageSize(editWidth, editHeight),
+    [editWidth, editHeight]
+  );
+  const effectiveEditSize = useMemo(() => {
+    if (useFirstImageSize) {
+      return firstImageSize
+        ? normalizeImageSize(firstImageSize.width, firstImageSize.height)
+        : null;
+    }
+    return customEditSize;
+  }, [customEditSize, firstImageSize, useFirstImageSize]);
+  const editImageCreditCost = effectiveEditSize
+    ? getImageCreditCost(effectiveEditSize)
     : getImageCreditCost();
   const sizeCheck = useMemo(() => validateImageSize(size), [size]);
+  const customEditSizeCheck = useMemo(
+    () => validateImageSize(customEditSize),
+    [customEditSize]
+  );
   const busy = isGenerating || isEditing;
   const firstPreviewUrl = editImages[0]?.previewUrl || null;
-  const editDisplaySize = firstImageSize
-    ? normalizeImageSize(firstImageSize.width, firstImageSize.height)
-    : "Reference image";
+  const editDisplaySize = effectiveEditSize || "Reference image";
+  const loadingSize =
+    activeMode === "image" && effectiveEditSize ? effectiveEditSize : size;
+  const loadingDimensions = parseImageSize(loadingSize) || {
+    width,
+    height,
+  };
 
   const clearStreamingPreview = () => {
     setStreamingPreviewUrl(null);
@@ -314,10 +336,11 @@ export function CreatePageClient({
 
     const img = new window.Image();
     img.onload = () => {
-      setFirstImageSize({
+      const nextImageSize = {
         width: img.naturalWidth || img.width,
         height: img.naturalHeight || img.height,
-      });
+      };
+      setFirstImageSize(nextImageSize);
       setMaskPoints([]);
       setMaskFile((prev) => {
         if (prev) revokePreview(prev.previewUrl);
@@ -330,6 +353,12 @@ export function CreatePageClient({
     };
     img.src = firstPreviewUrl;
   }, [firstPreviewUrl]);
+
+  useEffect(() => {
+    if (!useFirstImageSize || !firstImageSize) return;
+    setEditWidth(firstImageSize.width);
+    setEditHeight(firstImageSize.height);
+  }, [firstImageSize, useFirstImageSize]);
 
   useEffect(() => {
     const canvas = maskCanvasRef.current;
@@ -355,7 +384,8 @@ export function CreatePageClient({
       revisedPrompt?: string;
       creditsConsumed?: number;
     },
-    resultPrompt: string
+    resultPrompt: string,
+    fallbackSize = size
   ) => {
     if (!data.imageUrl || !data.generationId) return;
 
@@ -366,7 +396,7 @@ export function CreatePageClient({
       imageUrl,
       prompt: resultPrompt,
       model: data.model || DEFAULT_IMAGE_MODEL,
-      size: data.size || size,
+      size: data.size || fallbackSize,
     };
     if (data.revisedPrompt) nextResult.revisedPrompt = data.revisedPrompt;
 
@@ -378,7 +408,7 @@ export function CreatePageClient({
         prompt: resultPrompt,
         revisedPrompt: data.revisedPrompt || null,
         model: data.model || DEFAULT_IMAGE_MODEL,
-        size: data.size || size,
+        size: data.size || fallbackSize,
         creditsConsumed: data.creditsConsumed || 0,
         status: "completed",
         imageUrl,
@@ -484,6 +514,18 @@ export function CreatePageClient({
       toast.error("Save the mask before editing");
       return;
     }
+    if (!effectiveEditSize) {
+      toast.error("Waiting for source image size", {
+        description: "The first source image is still loading.",
+      });
+      return;
+    }
+    if (!useFirstImageSize && !customEditSizeCheck.valid) {
+      toast.error("Invalid resolution", {
+        description: customEditSizeCheck.message,
+      });
+      return;
+    }
     if (balance < editImageCreditCost) {
       showGenerationError("Insufficient credits");
       return;
@@ -504,11 +546,10 @@ export function CreatePageClient({
     if (editModel !== "default") {
       formData.append("model", editModel);
     }
-    if (firstImageSize) {
-      formData.append(
-        "displaySize",
-        normalizeImageSize(firstImageSize.width, firstImageSize.height)
-      );
+    if (useFirstImageSize) {
+      formData.append("displaySize", effectiveEditSize);
+    } else {
+      formData.append("size", effectiveEditSize);
     }
     editImages.forEach(({ file }) => {
       formData.append(editImages.length === 1 ? "image" : "image[]", file);
@@ -536,7 +577,7 @@ export function CreatePageClient({
         return;
       }
 
-      addSuccessfulResult(data, editPrompt);
+      addSuccessfulResult(data, editPrompt, effectiveEditSize);
       toast.success("Image edited");
     } catch (error) {
       toast.error("Generation failed", {
@@ -560,6 +601,18 @@ export function CreatePageClient({
     if (!dimensions) return;
     setWidth(dimensions.width);
     setHeight(dimensions.height);
+  };
+
+  const applyEditPreset = (presetValue: string) => {
+    const preset = IMAGE_RESOLUTION_PRESETS.find(
+      (item) => item.value === presetValue
+    );
+    if (!preset) return;
+    const dimensions = parseImageSize(preset.value);
+    if (!dimensions) return;
+    setUseFirstImageSize(false);
+    setEditWidth(dimensions.width);
+    setEditHeight(dimensions.height);
   };
 
   const addImages = (files: FileList | File[] | null) => {
@@ -1323,9 +1376,110 @@ export function CreatePageClient({
                   </Select>
                 </div>
 
+                <div className="space-y-3 rounded-md bg-muted/40 p-3">
+                  <label
+                    htmlFor="edit-use-source-size"
+                    className="flex cursor-pointer items-start gap-2 text-sm font-medium text-foreground"
+                  >
+                    <Checkbox
+                      id="edit-use-source-size"
+                      checked={useFirstImageSize}
+                      onCheckedChange={(checked) =>
+                        setUseFirstImageSize(checked === true)
+                      }
+                      disabled={isEditing}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      Use first image resolution
+                      <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                        Default for edits. Turn off for outpainting or canvas
+                        extension.
+                      </span>
+                    </span>
+                  </label>
+
+                  {!useFirstImageSize && (
+                    <div className="space-y-3 border-t border-border pt-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        {IMAGE_RESOLUTION_PRESETS.map((preset) => {
+                          const active = preset.value === customEditSize;
+                          return (
+                            <Button
+                              key={preset.value}
+                              type="button"
+                              variant={active ? "default" : "outline"}
+                              disabled={isEditing}
+                              onClick={() => applyEditPreset(preset.value)}
+                              className="h-auto min-h-12 flex-col items-start justify-center gap-0.5 px-2 py-2 text-left"
+                            >
+                              <span className="text-xs font-medium leading-tight">
+                                {preset.label}
+                              </span>
+                              <span className="text-[10px] leading-tight opacity-80">
+                                {preset.detail}
+                              </span>
+                            </Button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+                        <div className="space-y-1.5">
+                          <label
+                            htmlFor="edit-width"
+                            className="text-xs font-medium text-muted-foreground"
+                          >
+                            Width
+                          </label>
+                          <Input
+                            id="edit-width"
+                            type="number"
+                            min={256}
+                            max={MAX_IMAGE_DIMENSION}
+                            step={IMAGE_DIMENSION_STEP}
+                            value={editWidth}
+                            onChange={(event) =>
+                              setEditWidth(Number(event.target.value) || 0)
+                            }
+                            disabled={isEditing}
+                          />
+                        </div>
+                        <div className="pb-2 text-muted-foreground">x</div>
+                        <div className="space-y-1.5">
+                          <label
+                            htmlFor="edit-height"
+                            className="text-xs font-medium text-muted-foreground"
+                          >
+                            Height
+                          </label>
+                          <Input
+                            id="edit-height"
+                            type="number"
+                            min={256}
+                            max={MAX_IMAGE_DIMENSION}
+                            step={IMAGE_DIMENSION_STEP}
+                            value={editHeight}
+                            onChange={(event) =>
+                              setEditHeight(Number(event.target.value) || 0)
+                            }
+                            disabled={isEditing}
+                          />
+                        </div>
+                      </div>
+
+                      {!customEditSizeCheck.valid && (
+                        <p className="text-xs text-destructive">
+                          {customEditSizeCheck.message}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
                   <p>
-                    Output size follows the first reference image:{" "}
+                    Output size:{" "}
                     <span className="font-medium text-foreground">
                       {editDisplaySize}
                     </span>
@@ -1368,7 +1522,9 @@ export function CreatePageClient({
       {loading && (
         <div
           className="mb-10 flex max-w-2xl items-center justify-center overflow-hidden rounded-lg border border-dashed bg-muted/30"
-          style={{ aspectRatio: `${width} / ${height}` }}
+          style={{
+            aspectRatio: `${loadingDimensions.width} / ${loadingDimensions.height}`,
+          }}
         >
           {streamingPreviewUrl ? (
             <div className="relative h-full w-full">

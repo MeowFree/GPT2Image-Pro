@@ -24,6 +24,31 @@ import {
   toggleApiConfig,
 } from "../actions";
 
+type ActionError = {
+  serverError?: string;
+  validationErrors?: Record<string, unknown>;
+};
+
+function flattenValidationErrors(value: unknown): string[] {
+  if (!value) return [];
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => flattenValidationErrors(item));
+  }
+  if (typeof value === "object") {
+    return Object.values(value).flatMap((item) => flattenValidationErrors(item));
+  }
+  return [];
+}
+
+function getActionErrorMessage(error?: ActionError) {
+  const validationMessages = flattenValidationErrors(error?.validationErrors);
+  if (validationMessages.length > 0) {
+    return validationMessages.join(", ");
+  }
+  return error?.serverError || "Failed to save";
+}
+
 export function ApiConfigForm() {
   const t = useTranslations("Settings");
   const [expanded, setExpanded] = useState(false);
@@ -44,7 +69,7 @@ export function ApiConfigForm() {
         setHasConfig(true);
       },
       onError: (err) => {
-        toast.error(err.error?.serverError || "Failed to save");
+        toast.error(getActionErrorMessage(err.error));
       },
     }
   );

@@ -87,13 +87,21 @@ function isPrivateUrl(urlString: string): boolean {
   }
 }
 
+const optionalTrimmedString = z.preprocess((value) => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}, z.string().optional());
+
 const apiConfigSchema = z.object({
   baseUrl: z
     .string()
-    .url()
-    .refine((url) => !isPrivateUrl(url), "Invalid API base URL"),
-  apiKey: z.string().min(1),
-  model: z.string().optional(),
+    .trim()
+    .url("Use a valid HTTPS API base URL")
+    .refine((url) => !isPrivateUrl(url), "Use a public HTTPS API base URL"),
+  apiKey: z.string().trim().min(1, "API key is required"),
+  model: optionalTrimmedString,
   useStream: z.boolean().optional(),
 });
 
