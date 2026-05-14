@@ -57,6 +57,34 @@ export const user = pgTable("user", {
 });
 
 // ============================================
+// 注册邮箱账本 (Registration Identity)
+// ============================================
+/**
+ * 注册邮箱账本 - 永久记录已经注册过的邮箱
+ *
+ * 即使用户后续删除账号，也保留邮箱占位，防止重复注册领取新用户奖励。
+ *
+ * @field id - 记录唯一标识符
+ * @field email - 规范化邮箱 (小写，唯一)
+ * @field userId - 首次注册关联用户 ID (用户硬删后可为空)
+ * @field firstRegisteredAt - 首次注册时间
+ * @field lastSeenAt - 最近一次确认时间
+ * @field deletedAt - 账号删除时间 (可为空)
+ * @field createdAt - 创建时间
+ * @field updatedAt - 更新时间
+ */
+export const registrationIdentity = pgTable("registration_identity", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+  firstRegisteredAt: timestamp("first_registered_at").notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
 // 会话表 (Session)
 // ============================================
 /**
@@ -188,6 +216,9 @@ export const subscription = pgTable("subscription", {
  */
 export type User = typeof user.$inferSelect;
 export type NewUser = typeof user.$inferInsert;
+
+export type RegistrationIdentity = typeof registrationIdentity.$inferSelect;
+export type NewRegistrationIdentity = typeof registrationIdentity.$inferInsert;
 
 export type Session = typeof session.$inferSelect;
 export type NewSession = typeof session.$inferInsert;

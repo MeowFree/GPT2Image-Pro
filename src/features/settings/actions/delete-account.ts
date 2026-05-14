@@ -1,9 +1,10 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 
 import { db, user } from "@/db";
-import { account, session, subscription } from "@/db/schema";
+import { account, registrationIdentity, session, subscription } from "@/db/schema";
 import { creem } from "@/features/payment/creem";
 import { protectedAction } from "@/lib/safe-action";
 
@@ -30,7 +31,43 @@ export const deleteAccountAction = protectedAction
       await creem.cancelSubscription(activeSubscription.subscriptionId);
     }
 
+    const [existingUser] = await db
+      .select({ email: user.email })
+      .from(user)
+      .where(eq(user.id, ctx.userId))
+      .limit(1);
+
+    if (!existingUser) {
+      throw new Error("删除账户失败，请稍后重试");
+    }
+
+    const normalizedEmail = existingUser.email.trim().toLowerCase();
+
     const [deletedUser] = await db.transaction(async (tx) => {
+      const now = new Date();
+
+      await tx
+        .insert(registrationIdentity)
+        .values({
+          id: randomUUID(),
+          email: normalizedEmail,
+          userId: ctx.userId,
+          firstRegisteredAt: now,
+          lastSeenAt: now,
+          deletedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: registrationIdentity.email,
+          set: {
+            userId: ctx.userId,
+            lastSeenAt: now,
+            deletedAt: now,
+            updatedAt: now,
+          },
+        });
+
       await tx.delete(session).where(eq(session.userId, ctx.userId));
       await tx.delete(account).where(eq(account.userId, ctx.userId));
 
@@ -42,7 +79,7 @@ export const deleteAccountAction = protectedAction
           customerId: null,
           banned: true,
           bannedReason: "account_deleted",
-          updatedAt: new Date(),
+          updatedAt: now,
         })
         .where(eq(user.id, ctx.userId))
         .returning({ id: user.id });

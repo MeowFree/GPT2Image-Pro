@@ -1,12 +1,17 @@
 import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { db, user as userTable } from "@repo/database";
-import { sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   getAllowedRegistrationEmailMessage,
   isAllowedRegistrationEmail,
   normalizeEmail,
 } from "./email-domain";
+import {
+  isRegistrationEmailTaken,
+  markRegistrationIdentityDeleted,
+  recordRegistrationIdentity,
+} from "./registration-identity";
 import { verifyRegistrationCode } from "./registration-verification";
 
 function assertAllowedRegistrationEmail(email: string) {
@@ -20,13 +25,8 @@ function assertAllowedRegistrationEmail(email: string) {
 
 async function assertEmailNotRegistered(email: string) {
   const normalizedEmail = normalizeEmail(email);
-  const [existingUser] = await db
-    .select({ id: userTable.id })
-    .from(userTable)
-    .where(sql`lower(${userTable.email}) = ${normalizedEmail}`)
-    .limit(1);
 
-  if (existingUser) {
+  if (await isRegistrationEmailTaken(normalizedEmail)) {
     throw new APIError("BAD_REQUEST", {
       message: "Email already registered",
       code: "EMAIL_ALREADY_REGISTERED",
@@ -42,7 +42,7 @@ async function assertUserCanAuthenticate(userId: string) {
       bannedReason: userTable.bannedReason,
     })
     .from(userTable)
-    .where(sql`${userTable.id} = ${userId}`)
+    .where(eq(userTable.id, userId))
     .limit(1);
 
   if (existingUser?.banned && existingUser.bannedReason === "account_deleted") {
@@ -124,6 +124,14 @@ export const registrationVerificationPlugin = (): BetterAuthPlugin => ({
                   email: normalizedEmail,
                 },
               };
+            },
+            after: async (user) => {
+              await recordRegistrationIdentity(user.email, user.id);
+            },
+          },
+          delete: {
+            after: async (user) => {
+              await markRegistrationIdentityDeleted(user.email, user.id);
             },
           },
         },

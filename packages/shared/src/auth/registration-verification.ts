@@ -1,11 +1,12 @@
 import { randomInt, randomUUID } from "node:crypto";
-import { db, user, verification } from "@repo/database";
-import { eq, sql } from "drizzle-orm";
+import { db, verification } from "@repo/database";
+import { eq } from "drizzle-orm";
 import {
   getAllowedRegistrationEmailMessage,
   isAllowedRegistrationEmail,
   normalizeEmail,
 } from "./email-domain";
+import { isRegistrationEmailTaken } from "./registration-identity";
 import { RegistrationVerificationCodeEmail } from "../mail/templates/primary-action-email";
 import { sendEmail } from "../mail/utils";
 
@@ -32,13 +33,7 @@ export async function sendRegistrationVerificationCode(email: string) {
     throw new Error(getAllowedRegistrationEmailMessage());
   }
 
-  const [existingUser] = await db
-    .select({ id: user.id })
-    .from(user)
-    .where(sql`lower(${user.email}) = ${normalizedEmail}`)
-    .limit(1);
-
-  if (existingUser) {
+  if (await isRegistrationEmailTaken(normalizedEmail)) {
     throw new Error("Email already registered");
   }
 
