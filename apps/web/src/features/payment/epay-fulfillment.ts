@@ -274,9 +274,12 @@ async function grantSubscriptionCredits(params: {
 
   const monthlyCredits = SUBSCRIPTION_MONTHLY_CREDITS[params.planType];
   const creditsToGrant = params.isYearly ? monthlyCredits * 12 : monthlyCredits;
-  const expiresAt = CREDITS_EXPIRY_DAYS
+  const fallbackExpiresAt = CREDITS_EXPIRY_DAYS
     ? new Date(Date.now() + CREDITS_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
     : null;
+  const expiresAt = Number.isNaN(params.periodEnd.getTime())
+    ? fallbackExpiresAt
+    : params.periodEnd;
 
   await grantCredits({
     userId: params.userId,

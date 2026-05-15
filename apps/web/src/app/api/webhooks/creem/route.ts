@@ -529,10 +529,12 @@ async function grantSubscriptionCredits(
   // 计算应发放积分：月付发月度积分，年付发12个月积分
   const creditsToGrant = isYearly ? monthlyCredits * 12 : monthlyCredits;
 
-  // 计算积分过期时间
-  const expiresAt = CREDITS_EXPIRY_DAYS
+  const fallbackExpiresAt = CREDITS_EXPIRY_DAYS
     ? new Date(Date.now() + CREDITS_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
     : null;
+  const expiresAt = Number.isNaN(periodEnd.getTime())
+    ? fallbackExpiresAt
+    : periodEnd;
 
   // 发放积分
   try {

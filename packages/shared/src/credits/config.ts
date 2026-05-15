@@ -14,8 +14,8 @@
 export const REGISTRATION_BONUS_CREDITS = 100;
 
 /**
- * 积分过期天数（从发放日起）
- * 当前策略：所有新发放积分默认 365 天后过期
+ * 非订阅积分默认过期天数（从发放日起）
+ * 订阅积分应由调用方按套餐周期传入 expiresAt。
  */
 export const CREDITS_EXPIRY_DAYS = 365;
 

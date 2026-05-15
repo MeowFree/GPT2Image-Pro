@@ -41,7 +41,7 @@
       },
       "batch": {
         "title": "积分管理",
-        "description": "灵活的按量计费积分，发放后 365 天内有效。跟踪使用情况、监控消耗，随需充值。"
+        "description": "订阅积分按套餐周期有效，一次性积分包发放后 365 天内有效。跟踪使用情况、监控消耗，随需充值。"
       },
       "multilingual": {
         "title": "深色模式",
@@ -155,7 +155,7 @@
       },
       {
         "question": "积分系统如何工作？",
-        "answer": "每次图像生成会根据模型与参数消耗少量积分。积分自发放日起 365 天内有效，你可以在用量页查看余额与即将到期的批次。你可以订阅月度套餐获取周期性积分，也可以随时充值。"
+        "answer": "每次图像生成会根据模型与参数消耗少量积分。订阅积分按对应套餐周期有效，一次性积分包发放后 365 天内有效；你可以在用量页查看余额与即将到期的批次。你可以订阅套餐获取周期性积分，也可以随时充值。"
       },
       {
         "question": "如何开始使用？",
@@ -349,7 +349,7 @@
   },
   "Pricing": {
     "title": "简单透明的定价",
-    "subtitle": "按积分付费，积分自发放日起 <strong>365 天内有效</strong>。2K 出图 3 点，4K 与自定义尺寸 10 点。",
+    "subtitle": "按积分付费，订阅积分按套餐周期有效，一次性积分包 <strong>发放后 365 天内有效</strong>。2K 出图 3 点，4K 与自定义尺寸 10 点。",
     "creditsUpfront": "一次性到账",
     "creditsPerYear": "积分 / 年",
     "monthly": "月付",
@@ -387,7 +387,7 @@
         "creditsLabel": "积分 / 月",
         "booksCount": "1,666",
         "features": {
-          "creditsValidity": "积分发放后 365 天内有效",
+          "creditsValidity": "订阅积分按套餐周期有效",
           "credits": "每月 5,000 积分",
           "input": "对话生图功能",
           "characters": "标准图像分辨率",
@@ -405,7 +405,7 @@
         "creditsLabel": "积分 / 月",
         "booksCount": "6,666",
         "features": {
-          "creditsValidity": "积分发放后 365 天内有效",
+          "creditsValidity": "订阅积分按套餐周期有效",
           "credits": "每月 20,000 积分",
           "input": "全部生成功能",
           "characters": "高分辨率输出",
@@ -425,7 +425,7 @@
         "creditsLabel": "积分 / 月",
         "booksCount": "26,666",
         "features": {
-          "creditsValidity": "积分发放后 365 天内有效",
+          "creditsValidity": "订阅积分按套餐周期有效",
           "credits": "每月 80,000 积分",
           "input": "全部生成功能",
           "characters": "最高分辨率输出",
@@ -471,7 +471,7 @@
         "multiModel": "多模型支持",
         "multiModelDesc": "主流图像生成模型一站集成",
         "credits": "积分系统",
-        "creditsDesc": "灵活的积分体系，发放后 365 天内有效"
+        "creditsDesc": "订阅按套餐周期有效，积分包 365 天有效"
       }
     }
   },
