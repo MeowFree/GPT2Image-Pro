@@ -11,10 +11,12 @@ import {
 } from "./resolution";
 import type {
   ApiConfig,
+  ChatImageParams,
   EditImageParams,
   GenerateImageParams,
   GenerateImageResult,
   ImageGenerationCallbacks,
+  ImageInputFile,
   ImageModeration,
   ImageQuality,
   PartialImageResult,
@@ -27,6 +29,7 @@ const VALID_QUALITIES = new Set<ImageQuality>([
   "high",
 ]);
 const VALID_MODERATION = new Set<ImageModeration>(["auto", "low"]);
+const DEFAULT_RESPONSES_MODEL = "gpt-5.4";
 
 type ImageOutput = {
   b64_json?: string;
@@ -46,11 +49,57 @@ type ImageResponsePayload = {
   message?: string;
 };
 
+type ResponsesOutputItem = {
+  type?: string;
+  result?: string;
+  revised_prompt?: string;
+  content?: Array<{
+    type?: string;
+    text?: string;
+  }>;
+  summary?: Array<{
+    type?: string;
+    text?: string;
+  }>;
+};
+
+type ResponsesPayload = {
+  output?: ResponsesOutputItem[];
+  error?: { message?: string } | string;
+  message?: string;
+};
+
+type ResponsesRequestContent =
+  | { type: "input_text"; text: string }
+  | { type: "input_image"; image_url: string };
+
+type ResponsesRequestMessage = {
+  role: "user";
+  content: ResponsesRequestContent[];
+};
+
 function getModel(config: ApiConfig, model?: string) {
   return (
     normalizeImageModel(model) ||
     normalizeImageModel(config.model) ||
     DEFAULT_IMAGE_MODEL
+  );
+}
+
+function isImageOnlyModel(model: string) {
+  return model.toLowerCase().startsWith("gpt-image-");
+}
+
+export function getResponsesModel(config: ApiConfig, model?: string) {
+  const requested = (model || config.model || "").trim();
+  if (requested && !isImageOnlyModel(requested)) {
+    return requested;
+  }
+
+  return (
+    process.env.PLATFORM_RESPONSES_MODEL?.trim() ||
+    process.env.PLATFORM_CHAT_MODEL?.trim() ||
+    DEFAULT_RESPONSES_MODEL
   );
 }
 
@@ -86,9 +135,7 @@ function normalizeQuality(quality?: string): ImageQuality | undefined {
     : undefined;
 }
 
-function normalizeModeration(
-  moderation?: string
-): ImageModeration | undefined {
+function normalizeModeration(moderation?: string): ImageModeration | undefined {
   if (!moderation) return undefined;
   return VALID_MODERATION.has(moderation as ImageModeration)
     ? (moderation as ImageModeration)
@@ -107,7 +154,7 @@ function describeEndpoint(baseUrl: string, path: string) {
 function logImageRequestError(
   error: unknown,
   context: {
-    operation: "generate" | "edit";
+    operation: "generate" | "edit" | "chat";
     baseUrl: string;
     path: string;
     model?: string;
@@ -127,6 +174,17 @@ function toBlobPart(buffer: Buffer): BlobPart {
   const arrayBuffer = new ArrayBuffer(buffer.byteLength);
   new Uint8Array(arrayBuffer).set(buffer);
   return arrayBuffer;
+}
+
+function stripTrailingSlash(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function getDataUrl(image: ImageInputFile) {
+  if (image.url?.startsWith("http://") || image.url?.startsWith("https://")) {
+    return image.url;
+  }
+  return `data:${image.type || "image/png"};base64,${image.data.toString("base64")}`;
 }
 
 function appendImageParams(
@@ -227,6 +285,233 @@ function extractPartialImage(
   return result;
 }
 
+function parseResponsesOutput(
+  output: ResponsesOutputItem[] | undefined
+): GenerateImageResult | null {
+  let imageBase64: string | undefined;
+  let revisedPrompt: string | undefined;
+  let responseText: string | undefined;
+
+  for (const item of output || []) {
+    if (item.type === "image_generation_call" && item.result) {
+      imageBase64 = item.result;
+      if (item.revised_prompt) revisedPrompt = item.revised_prompt;
+      continue;
+    }
+
+    if (item.type === "message" && item.content) {
+      const text = item.content
+        .filter((part) => part.type === "output_text" && part.text)
+        .map((part) => part.text)
+        .join("\n")
+        .trim();
+      if (text) responseText = responseText ? `${responseText}\n${text}` : text;
+    }
+  }
+
+  if (!imageBase64) return null;
+
+  return {
+    imageBase64,
+    revisedPrompt,
+    responseText,
+  };
+}
+
+function extractResponseCompletedPayload(
+  payload: ResponsesPayload | { response?: ResponsesPayload }
+) {
+  if ("response" in payload && payload.response) {
+    return payload.response;
+  }
+  return payload as ResponsesPayload;
+}
+
+async function processResponsesEventPayload(
+  eventName: string,
+  dataLines: string[],
+  state: EventStreamParseState,
+  callbacks?: ImageGenerationCallbacks
+) {
+  const data = dataLines.join("\n").trim();
+  if (!data || data === "[DONE]") return null;
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(data) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  if (eventName === "response.failed" || eventName === "error") {
+    const error = payload.error;
+    return getApiError(
+      error && typeof error === "object" ? { error } : payload,
+      "Responses API stream failed"
+    );
+  }
+
+  if (eventName === "response.output_item.done") {
+    const item = payload.item as ResponsesOutputItem | undefined;
+    if (item?.type === "image_generation_call" && item.result) {
+      const partialImage = {
+        imageBase64: item.result,
+      };
+      await callbacks?.onPartialImage?.(partialImage);
+      state.fallbackResult = {
+        imageBase64: item.result,
+        revisedPrompt: item.revised_prompt,
+      };
+    }
+    return null;
+  }
+
+  if (eventName === "response.completed") {
+    const completedPayload = extractResponseCompletedPayload(
+      payload as ResponsesPayload | { response?: ResponsesPayload }
+    );
+    const result = parseResponsesOutput(completedPayload.output);
+    if (result) {
+      state.completedResult = result;
+    }
+  }
+
+  return null;
+}
+
+async function processResponsesEventBlock(
+  block: string,
+  state: EventStreamParseState,
+  callbacks?: ImageGenerationCallbacks
+) {
+  let eventName = "";
+  const dataLines: string[] = [];
+  const lines = block.replace(/\r\n/g, "\n").split("\n");
+
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) continue;
+
+    const separatorIndex = line.indexOf(":");
+    const field = separatorIndex === -1 ? line : line.slice(0, separatorIndex);
+    const rawValue =
+      separatorIndex === -1 ? "" : line.slice(separatorIndex + 1);
+    const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
+
+    if (field === "event") {
+      eventName = value;
+    } else if (field === "data") {
+      dataLines.push(value);
+    }
+  }
+
+  return await processResponsesEventPayload(
+    eventName,
+    dataLines,
+    state,
+    callbacks
+  );
+}
+
+async function parseResponsesEventStreamResponse(
+  response: Response,
+  callbacks?: ImageGenerationCallbacks
+): Promise<GenerateImageResult> {
+  if (!response.body) {
+    const text = await response.text();
+    const state: EventStreamParseState = {
+      completedResult: null,
+      fallbackResult: null,
+    };
+    for (const block of text.replace(/\r\n/g, "\n").split("\n\n")) {
+      if (!block.trim()) continue;
+      const error = await processResponsesEventBlock(block, state, callbacks);
+      if (error) return { error };
+    }
+    return finishEventStream(state);
+  }
+
+  const state: EventStreamParseState = {
+    completedResult: null,
+    fallbackResult: null,
+  };
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = blocks.pop() || "";
+
+    for (const block of blocks) {
+      if (!block.trim()) continue;
+      const error = await processResponsesEventBlock(block, state, callbacks);
+      if (error) {
+        await reader.cancel().catch(() => undefined);
+        return { error };
+      }
+    }
+
+    if (done) break;
+  }
+
+  if (buffer.trim()) {
+    const error = await processResponsesEventBlock(buffer, state, callbacks);
+    if (error) return { error };
+  }
+
+  return finishEventStream(state);
+}
+
+async function parseResponsesResponse(
+  response: Response,
+  callbacks?: ImageGenerationCallbacks
+): Promise<GenerateImageResult> {
+  if (!response.ok) {
+    const rawBody = await response.text().catch(() => "");
+    let errorData: unknown = {};
+    try {
+      errorData = rawBody ? JSON.parse(rawBody) : {};
+    } catch {
+      errorData = rawBody;
+    }
+    return {
+      error: getApiError(
+        errorData,
+        rawBody.trim().startsWith("<")
+          ? "API returned an HTML page instead of a Responses API response. Check that the API base URL points to an OpenAI-compatible /v1 endpoint."
+          : `API error: ${response.status}`
+      ),
+    };
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("text/event-stream")) {
+    return parseResponsesEventStreamResponse(response, callbacks);
+  }
+
+  if (!contentType.includes("application/json")) {
+    const text = await response.text().catch(() => "");
+    return {
+      error: text.trim().startsWith("<")
+        ? "API returned an HTML page instead of a Responses API response. Check that the API base URL points to an OpenAI-compatible /v1 endpoint."
+        : "API returned a non-JSON response.",
+    };
+  }
+
+  const data = (await response.json()) as ResponsesPayload;
+  const result = parseResponsesOutput(data.output);
+
+  if (!result) {
+    return {
+      error: getPayloadError(data) || "API returned no image data",
+    };
+  }
+
+  return result;
+}
+
 type EventStreamParseState = {
   completedResult: GenerateImageResult | null;
   fallbackResult: GenerateImageResult | null;
@@ -294,7 +579,8 @@ async function processEventBlock(
 
     const separatorIndex = line.indexOf(":");
     const field = separatorIndex === -1 ? line : line.slice(0, separatorIndex);
-    const rawValue = separatorIndex === -1 ? "" : line.slice(separatorIndex + 1);
+    const rawValue =
+      separatorIndex === -1 ? "" : line.slice(separatorIndex + 1);
     const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
 
     if (field === "event") {
@@ -479,6 +765,7 @@ export async function generateImage(
 ): Promise<GenerateImageResult> {
   const model = getModel(config, params.model);
   try {
+    const prompt = params.apiPrompt || params.prompt;
     const size = params.size || DEFAULT_IMAGE_SIZE;
     const dimensions = parseImageSize(size);
     const response = await fetch(`${config.baseUrl}/images/generations`, {
@@ -489,7 +776,7 @@ export async function generateImage(
       },
       body: JSON.stringify({
         model,
-        prompt: params.prompt,
+        prompt,
         n: params.n || 1,
         size,
         ...(dimensions
@@ -530,7 +817,7 @@ export async function editImage(
   try {
     const formData = new FormData();
     appendImageParams(formData, config, {
-      prompt: params.prompt,
+      prompt: params.apiPrompt || params.prompt,
       model,
       n: params.n,
       size: params.size,
@@ -568,6 +855,68 @@ export async function editImage(
       operation: "edit",
       baseUrl: config.baseUrl,
       path: "/images/edits",
+      model,
+      useStream: config.useStream,
+    });
+    return {
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+    };
+  }
+}
+
+export async function generateChatImage(
+  config: ApiConfig,
+  params: ChatImageParams,
+  callbacks?: ImageGenerationCallbacks
+): Promise<GenerateImageResult> {
+  const model = getResponsesModel(config, params.model);
+  try {
+    const prompt = params.apiPrompt || params.prompt;
+    const size = params.size || DEFAULT_IMAGE_SIZE;
+    const content: ResponsesRequestContent[] = [
+      { type: "input_text", text: prompt },
+      ...(params.images || []).map((image) => ({
+        type: "input_image" as const,
+        image_url: getDataUrl(image),
+      })),
+    ];
+    const input: ResponsesRequestMessage[] = [{ role: "user", content }];
+    const tool: {
+      type: "image_generation";
+      action: "auto";
+      size?: string;
+    } = {
+      type: "image_generation",
+      action: "auto",
+    };
+
+    if (size && size !== "auto") {
+      tool.size = size;
+    }
+
+    const response = await fetch(
+      `${stripTrailingSlash(config.baseUrl)}/responses`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          input,
+          tools: [tool],
+          ...(config.useStream ? { stream: true } : {}),
+        }),
+      }
+    );
+
+    return await parseResponsesResponse(response, callbacks);
+  } catch (error) {
+    logImageRequestError(error, {
+      operation: "chat",
+      baseUrl: config.baseUrl,
+      path: "/responses",
       model,
       useStream: config.useStream,
     });

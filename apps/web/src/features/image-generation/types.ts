@@ -1,5 +1,6 @@
 export interface GenerateImageParams {
   prompt: string;
+  apiPrompt?: string;
   size?: string;
   width?: number;
   height?: number;
@@ -13,6 +14,7 @@ export interface GenerateImageResult {
   imageBase64?: string;
   imageUrl?: string;
   revisedPrompt?: string;
+  responseText?: string;
   error?: string;
 }
 
@@ -24,9 +26,7 @@ export interface PartialImageResult {
 }
 
 export interface ImageGenerationCallbacks {
-  onPartialImage?: (
-    image: PartialImageResult
-  ) => Promise<void> | void;
+  onPartialImage?: (image: PartialImageResult) => Promise<void> | void;
 }
 
 export type ImageQuality = "auto" | "low" | "medium" | "high";
@@ -41,8 +41,20 @@ export interface ImageInputFile {
 
 export interface EditImageParams {
   prompt: string;
+  apiPrompt?: string;
   images: ImageInputFile[];
   mask?: ImageInputFile;
+  size?: string;
+  model?: string;
+  quality?: ImageQuality;
+  n?: number;
+  moderation?: ImageModeration;
+}
+
+export interface ChatImageParams {
+  prompt: string;
+  apiPrompt?: string;
+  images?: ImageInputFile[];
   size?: string;
   model?: string;
   quality?: ImageQuality;

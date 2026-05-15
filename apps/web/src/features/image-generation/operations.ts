@@ -14,14 +14,18 @@ import {
 } from "./resolution";
 import {
   editImage,
+  generateChatImage,
   generateImage,
   getEffectiveConfig,
+  getResponsesModel,
   getUserApiConfig,
 } from "./service";
 import type {
+  ChatImageParams,
   EditImageParams,
   GenerateImageParams,
   ImageGenerationCallbacks,
+  ImageInputFile,
 } from "./types";
 
 type RunImageGenerationInput =
@@ -34,7 +38,12 @@ type RunImageGenerationInput =
       mode: "edit";
       userId: string;
       generationId?: string;
-    } & EditImageParams);
+    } & EditImageParams)
+  | ({
+      mode: "chat";
+      userId: string;
+      generationId?: string;
+    } & ChatImageParams);
 
 export type ImageGenerationOperationResult = {
   error?: string;
@@ -43,6 +52,7 @@ export type ImageGenerationOperationResult = {
   model?: string;
   size?: string;
   revisedPrompt?: string;
+  responseText?: string;
   creditsConsumed?: number;
 };
 
@@ -72,11 +82,17 @@ async function toImageBuffer(result: {
   return Buffer.from(await response.arrayBuffer());
 }
 
+function getInputImages(input: RunImageGenerationInput): ImageInputFile[] {
+  if (input.mode === "generate") return [];
+  return input.images || [];
+}
+
 export async function runImageGenerationForUser(
   input: RunImageGenerationInput,
   callbacks?: ImageGenerationCallbacks
 ): Promise<ImageGenerationOperationResult> {
   const generationId = input.generationId || nanoid();
+  const apiPrompt = input.apiPrompt || input.prompt;
   const size = input.size || DEFAULT_IMAGE_SIZE;
   const creditsPerImage = getImageCreditCost(size);
   const bucket =
@@ -85,9 +101,11 @@ export async function runImageGenerationForUser(
   const userConfig = await getUserApiConfig(input.userId);
   const { config, useCredits } = getEffectiveConfig(userConfig);
   const model =
-    normalizeImageModel(input.model) ||
-    normalizeImageModel(config.model) ||
-    DEFAULT_IMAGE_MODEL;
+    input.mode === "chat"
+      ? getResponsesModel(config, input.model)
+      : normalizeImageModel(input.model) ||
+        normalizeImageModel(config.model) ||
+        DEFAULT_IMAGE_MODEL;
 
   await db.insert(generation).values({
     id: generationId,
@@ -107,12 +125,21 @@ export async function runImageGenerationForUser(
             quality: input.quality || "auto",
             batchCount: input.n || 1,
           }
-        : {
-            mode: "generate",
-            quality: input.quality || "auto",
-            moderation: input.moderation || "auto",
-            batchCount: input.n || 1,
-          },
+        : input.mode === "chat"
+          ? {
+              mode: "chat",
+              action: "auto",
+              imageCount: input.images?.length || 0,
+              quality: input.quality || "auto",
+              moderation: input.moderation || "auto",
+              batchCount: input.n || 1,
+            }
+          : {
+              mode: "generate",
+              quality: input.quality || "auto",
+              moderation: input.moderation || "auto",
+              batchCount: input.n || 1,
+            },
   });
 
   let chargedCredits = 0;
@@ -138,9 +165,9 @@ export async function runImageGenerationForUser(
   }
 
   const moderation = await moderateContent({
-    prompt: input.prompt,
-    images: input.mode === "edit" ? input.images : undefined,
-    mode: input.mode === "edit" ? "image" : "text",
+    prompt: apiPrompt,
+    images: getInputImages(input),
+    mode: getInputImages(input).length > 0 ? "image" : "text",
     userId: input.userId,
     generationId,
   });
@@ -166,6 +193,7 @@ export async function runImageGenerationForUser(
           config,
           {
             prompt: input.prompt,
+            apiPrompt,
             images: input.images,
             mask: input.mask,
             size: input.size,
@@ -176,18 +204,34 @@ export async function runImageGenerationForUser(
           },
           callbacks
         )
-      : await generateImage(
-          config,
-          {
-            prompt: input.prompt,
-            size,
-            model,
-            n: input.n,
-            quality: input.quality,
-            moderation: input.moderation,
-          },
-          callbacks
-        );
+      : input.mode === "chat"
+        ? await generateChatImage(
+            config,
+            {
+              prompt: input.prompt,
+              apiPrompt,
+              images: input.images,
+              size,
+              model,
+              quality: input.quality,
+              n: input.n,
+              moderation: input.moderation,
+            },
+            callbacks
+          )
+        : await generateImage(
+            config,
+            {
+              prompt: input.prompt,
+              apiPrompt,
+              size,
+              model,
+              n: input.n,
+              quality: input.quality,
+              moderation: input.moderation,
+            },
+            callbacks
+          );
 
   if (result.error) {
     if (useCredits) {
@@ -264,6 +308,7 @@ export async function runImageGenerationForUser(
     model,
     size,
     revisedPrompt: result.revisedPrompt,
+    responseText: result.responseText,
     creditsConsumed: chargedCredits,
   };
 }

@@ -13,6 +13,7 @@ export type ImageStreamEvent =
       model?: string;
       size?: string;
       revisedPrompt?: string;
+      responseText?: string;
       creditsConsumed?: number;
     }
   | {

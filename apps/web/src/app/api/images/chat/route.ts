@@ -4,21 +4,22 @@ import { getStorageProvider } from "@repo/shared/storage/providers";
 import { randomUUID } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getUserApiConfig } from "@/features/image-generation/service";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
-  parseImageSize,
+  DEFAULT_IMAGE_SIZE,
   validateImageSize,
 } from "@/features/image-generation/resolution";
+import { getUserApiConfig } from "@/features/image-generation/service";
 import { createImageStreamResponse } from "@/features/image-generation/streaming";
 import type {
   ImageInputFile,
+  ImageModeration,
   ImageQuality,
 } from "@/features/image-generation/types";
 
-const MAX_EDIT_IMAGES = 16;
+const MAX_CHAT_IMAGES = 16;
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
-const MAX_EDIT_REQUEST_BYTES = 75 * 1024 * 1024;
+const MAX_CHAT_REQUEST_BYTES = 75 * 1024 * 1024;
 const MODERATION_UPLOAD_URL_EXPIRES = 600;
 const VALID_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const VALID_QUALITIES = new Set<ImageQuality>([
@@ -27,6 +28,7 @@ const VALID_QUALITIES = new Set<ImageQuality>([
   "medium",
   "high",
 ]);
+const VALID_MODERATION = new Set<ImageModeration>(["auto", "low"]);
 const MAX_BATCH_COUNT = 10;
 
 function errorResponse(message: string, status = 400) {
@@ -38,15 +40,15 @@ function getText(formData: FormData, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function getCount(formData: FormData, key: string) {
-  const value = getText(formData, key);
+function getCount(formData: FormData) {
+  const value = getText(formData, "count");
   if (!value) return 1;
   if (!/^\d+$/.test(value)) {
-    throw new Error(`${key} must be an integer.`);
+    throw new Error("count must be an integer.");
   }
   const count = Number(value);
   if (count < 1 || count > MAX_BATCH_COUNT) {
-    throw new Error(`${key} must be between 1 and ${MAX_BATCH_COUNT}.`);
+    throw new Error(`count must be between 1 and ${MAX_BATCH_COUNT}.`);
   }
   return count;
 }
@@ -71,7 +73,7 @@ function getImageFiles(formData: FormData) {
   return images;
 }
 
-function validateImageFile(file: File, options?: { mask?: boolean }) {
+function validateImageFile(file: File) {
   if (file.size <= 0) {
     throw new Error(`${file.name || "Image"} is empty.`);
   }
@@ -82,22 +84,9 @@ function validateImageFile(file: File, options?: { mask?: boolean }) {
     );
   }
 
-  if (options?.mask) {
-    if (file.type !== "image/png") {
-      throw new Error("Mask must be a PNG file.");
-    }
-    return;
-  }
-
   if (!VALID_IMAGE_TYPES.has(file.type)) {
-    throw new Error("Source images must be PNG, JPEG, or WebP files.");
+    throw new Error("Reference images must be PNG, JPEG, or WebP files.");
   }
-}
-
-function getTotalUploadSize(files: File[], maskFile?: File) {
-  return (
-    files.reduce((total, file) => total + file.size, 0) + (maskFile?.size || 0)
-  );
 }
 
 async function toImageInput(
@@ -117,6 +106,8 @@ async function uploadModerationImages(
   generationId: string,
   files: File[]
 ) {
+  if (files.length === 0) return undefined;
+
   const publicBaseUrl =
     process.env.ALIYUN_MODERATION_PUBLIC_BASE_URL ||
     process.env.CONTENT_MODERATION_PUBLIC_BASE_URL ||
@@ -164,9 +155,7 @@ async function uploadModerationImages(
 async function deleteModerationImages(
   images: Awaited<ReturnType<typeof uploadModerationImages>> | undefined
 ) {
-  if (!images?.length) {
-    return;
-  }
+  if (!images?.length) return;
 
   const storage = await getStorageProvider();
   await Promise.allSettled(
@@ -188,29 +177,28 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     formData = await request.formData();
   } catch {
     return errorResponse(
-      "Upload is too large or incomplete. Use smaller source images and try again.",
+      "Upload is too large or incomplete. Use smaller reference images and try again.",
       413
     );
   }
+
   const prompt = getText(formData, "prompt");
   if (!prompt) {
     return errorResponse("Prompt is required.");
   }
-
   if (prompt.length > 4000) {
     return errorResponse("Prompt exceeds the 4000 character limit.");
   }
+
   const apiPrompt = getText(formData, "apiPrompt") || undefined;
   if (apiPrompt && apiPrompt.length > 8000) {
     return errorResponse("Context prompt exceeds the 8000 character limit.");
   }
 
-  const size = getText(formData, "size") || undefined;
-  if (size) {
-    const sizeCheck = validateImageSize(size);
-    if (!sizeCheck.valid) {
-      return errorResponse(sizeCheck.message);
-    }
+  const size = getText(formData, "size") || DEFAULT_IMAGE_SIZE;
+  const sizeCheck = validateImageSize(size);
+  if (!sizeCheck.valid) {
+    return errorResponse(sizeCheck.message);
   }
 
   const qualityValue = getText(formData, "quality") || "auto";
@@ -218,9 +206,16 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     return errorResponse("Invalid quality.");
   }
   const quality = qualityValue as ImageQuality;
+
+  const moderationValue = getText(formData, "moderation") || "auto";
+  if (!VALID_MODERATION.has(moderationValue as ImageModeration)) {
+    return errorResponse("Invalid moderation.");
+  }
+  const moderation = moderationValue as ImageModeration;
+
   let count = 1;
   try {
-    count = getCount(formData, "count");
+    count = getCount(formData);
   } catch (error) {
     return errorResponse(
       error instanceof Error ? error.message : "Invalid count."
@@ -228,38 +223,23 @@ export const POST = withApiLogging(async (request: NextRequest) => {
   }
 
   const model = getText(formData, "model") || undefined;
-  const displaySize = getText(formData, "displaySize") || undefined;
-  if (displaySize && !parseImageSize(displaySize)) {
-    return errorResponse("Invalid display size.");
-  }
   const sourceFiles = getImageFiles(formData);
-  if (sourceFiles.length === 0) {
-    return errorResponse("At least one source image is required.");
-  }
-
-  if (sourceFiles.length > MAX_EDIT_IMAGES) {
-    return errorResponse(`No more than ${MAX_EDIT_IMAGES} images are allowed.`);
+  if (sourceFiles.length > MAX_CHAT_IMAGES) {
+    return errorResponse(`No more than ${MAX_CHAT_IMAGES} images are allowed.`);
   }
 
   try {
     for (const file of sourceFiles) {
       validateImageFile(file);
     }
-    const maskFile = formData.get("mask");
-    if (maskFile !== null && !(maskFile instanceof File)) {
-      return errorResponse("Mask must be a PNG file.");
-    }
-    if (maskFile instanceof File) {
-      validateImageFile(maskFile, { mask: true });
-    }
-    if (
-      getTotalUploadSize(
-        sourceFiles,
-        maskFile instanceof File ? maskFile : undefined
-      ) > MAX_EDIT_REQUEST_BYTES
-    ) {
+
+    const totalUploadSize = sourceFiles.reduce(
+      (total, file) => total + file.size,
+      0
+    );
+    if (totalUploadSize > MAX_CHAT_REQUEST_BYTES) {
       return errorResponse(
-        `Total upload size must be no more than ${MAX_EDIT_REQUEST_BYTES / 1024 / 1024}MB.`,
+        `Total upload size must be no more than ${MAX_CHAT_REQUEST_BYTES / 1024 / 1024}MB.`,
         413
       );
     }
@@ -274,28 +254,30 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       wantsStreamResponse(request, formData) &&
       Boolean((await getUserApiConfig(session.user.id))?.useStream);
 
-    const runEdit = async (
+    const buildImages = async () =>
+      await Promise.all(
+        sourceFiles.map((file, index) =>
+          toImageInput(file, { publicUrl: moderationImages?.[index]?.url })
+        )
+      );
+
+    const runChat = async (
       generationId: string,
       onPartialImage?: Parameters<typeof runImageGenerationForUser>[1]
     ) =>
       await runImageGenerationForUser(
         {
-          mode: "edit",
+          mode: "chat",
           userId: session.user.id,
           generationId,
           prompt,
           apiPrompt,
-          size: displaySize || size,
+          images: await buildImages(),
+          size,
           model,
           quality,
           n: 1,
-          images: await Promise.all(
-            sourceFiles.map((file, index) =>
-              toImageInput(file, { publicUrl: moderationImages?.[index]?.url })
-            )
-          ),
-          mask:
-            maskFile instanceof File ? await toImageInput(maskFile) : undefined,
+          moderation,
         },
         onPartialImage
       );
@@ -305,7 +287,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
         return createImageStreamResponse(async (emit) => {
           try {
             for (let index = 0; index < count; index++) {
-              const result = await runEdit(randomUUID(), {
+              const result = await runChat(randomUUID(), {
                 onPartialImage: async (image) => {
                   await emit({
                     type: "partial_image",
@@ -338,13 +320,13 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       }
 
       if (count === 1) {
-        const result = await runEdit(randomUUID());
+        const result = await runChat(randomUUID());
         return NextResponse.json(result);
       }
 
       const results = [];
       for (let index = 0; index < count; index++) {
-        const result = await runEdit(randomUUID());
+        const result = await runChat(randomUUID());
         results.push(result);
         if (result.error) break;
       }
@@ -360,7 +342,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     }
   } catch (error) {
     return errorResponse(
-      error instanceof Error ? error.message : "Failed to edit image."
+      error instanceof Error ? error.message : "Failed to generate image."
     );
   }
 });
