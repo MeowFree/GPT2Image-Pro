@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useLocale } from "next-intl";
 import { useState } from "react";
 import {
   ImageLightbox,
@@ -51,9 +52,15 @@ function statusClasses(status: HistoryGeneration["status"]): string {
   }
 }
 
-function formatDate(iso: string): string {
+const STATUS_LABELS_ZH: Record<string, string> = {
+  completed: "已完成",
+  failed: "失败",
+  pending: "处理中",
+};
+
+function formatDate(iso: string, locale: string): string {
   try {
-    return new Intl.DateTimeFormat("en-US", {
+    return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
       month: "short",
       day: "2-digit",
       year: "numeric",
@@ -73,6 +80,11 @@ export function HistoryClient({
   page,
   pageSize,
 }: HistoryClientProps) {
+  const locale = useLocale();
+  const isZh = locale === "zh";
+  const copy = (en: string, zh: string) => (isZh ? zh : en);
+  const statusLabel = (status: string) =>
+    isZh ? STATUS_LABELS_ZH[status] || status : status;
   const [items, setItems] = useState<HistoryGeneration[]>(initialGenerations);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -91,13 +103,18 @@ export function HistoryClient({
           strokeWidth={1.2}
         />
         <h3 className="mt-4 font-serif text-lg font-medium text-foreground">
-          No history yet
+          {copy("No history yet", "还没有历史记录")}
         </h3>
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          Your generation history will appear here once you create images.
+          {copy(
+            "Your generation history will appear here once you create images.",
+            "创建图片后，生成历史会显示在这里。"
+          )}
         </p>
         <Button asChild variant="outline" className="mt-6">
-          <Link href="/dashboard/create">Create an image</Link>
+          <Link href="/dashboard/create">
+            {copy("Create an image", "创建图片")}
+          </Link>
         </Button>
       </div>
     );
@@ -107,13 +124,13 @@ export function HistoryClient({
     <>
       <div className="overflow-hidden rounded-lg border border-border bg-background">
         <div className="hidden grid-cols-[64px_1fr_120px_100px_80px_100px_150px] items-center gap-4 border-b border-border bg-muted/30 px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground md:grid">
-          <div>Image</div>
-          <div>Prompt</div>
-          <div>Model</div>
-          <div>Size</div>
-          <div>Credits</div>
-          <div>Status</div>
-          <div>Date</div>
+          <div>{copy("Image", "图片")}</div>
+          <div>{copy("Prompt", "提示词")}</div>
+          <div>{copy("Model", "模型")}</div>
+          <div>{copy("Size", "尺寸")}</div>
+          <div>{copy("Credits", "积分")}</div>
+          <div>{copy("Status", "状态")}</div>
+          <div>{copy("Date", "日期")}</div>
         </div>
 
         <ul className="divide-y divide-border">
@@ -154,7 +171,7 @@ export function HistoryClient({
                       variant="outline"
                       className={`rounded-full border-transparent px-2 py-0 font-normal text-[10px] uppercase ${statusClasses(item.status)}`}
                     >
-                      {item.status}
+                      {statusLabel(item.status)}
                     </Badge>
                   </div>
                 </div>
@@ -173,12 +190,12 @@ export function HistoryClient({
                     variant="outline"
                     className={`rounded-full border-transparent font-normal text-[10px] uppercase tracking-wide ${statusClasses(item.status)}`}
                   >
-                    {item.status}
+                    {statusLabel(item.status)}
                   </Badge>
                 </div>
                 <div className="hidden items-center gap-1 text-xs text-muted-foreground md:flex">
                   <Clock className="h-3 w-3" />
-                  {formatDate(item.createdAt)}
+                  {formatDate(item.createdAt, locale)}
                 </div>
               </button>
             </li>
@@ -189,7 +206,10 @@ export function HistoryClient({
       {totalPages > 1 && (
         <div className="flex items-center justify-between pt-4">
           <p className="text-xs text-muted-foreground">
-            Page {page} of {totalPages} · {totalCount} total
+            {copy(
+              `Page ${page} of ${totalPages} · ${totalCount} total`,
+              `第 ${page} / ${totalPages} 页 · 共 ${totalCount} 条`
+            )}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -201,12 +221,12 @@ export function HistoryClient({
               {page > 1 ? (
                 <Link href={`/dashboard/history?page=${page - 1}`}>
                   <ChevronLeft className="mr-1 h-4 w-4" />
-                  Previous
+                  {copy("Previous", "上一页")}
                 </Link>
               ) : (
                 <span>
                   <ChevronLeft className="mr-1 h-4 w-4" />
-                  Previous
+                  {copy("Previous", "上一页")}
                 </span>
               )}
             </Button>
@@ -218,12 +238,12 @@ export function HistoryClient({
             >
               {page < totalPages ? (
                 <Link href={`/dashboard/history?page=${page + 1}`}>
-                  Next
+                  {copy("Next", "下一页")}
                   <ChevronRight className="ml-1 h-4 w-4" />
                 </Link>
               ) : (
                 <span>
-                  Next
+                  {copy("Next", "下一页")}
                   <ChevronRight className="ml-1 h-4 w-4" />
                 </span>
               )}

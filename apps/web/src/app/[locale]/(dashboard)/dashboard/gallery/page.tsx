@@ -1,4 +1,5 @@
 import { and, count, desc, eq } from "drizzle-orm";
+import { getLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { db } from "@repo/database";
 import { generation } from "@repo/database/schema";
@@ -8,6 +9,9 @@ import { getCurrentUser } from "@repo/shared/auth/server";
 export default async function GalleryPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
+  const locale = await getLocale();
+  const isZh = locale === "zh";
+  const copy = (en: string, zh: string) => (isZh ? zh : en);
 
   const PAGE_SIZE = 20;
 
@@ -52,9 +56,11 @@ export default async function GalleryPage() {
     <div className="container mx-auto space-y-8 px-4 py-6 md:px-6">
       <div>
         <h1 className="font-serif text-2xl font-medium tracking-tight">
-          Gallery
+          {copy("Gallery", "图库")}
         </h1>
-        <p className="text-muted-foreground">Your generated images</p>
+        <p className="text-muted-foreground">
+          {copy("Your generated images", "你生成的图片")}
+        </p>
       </div>
       <GalleryClient
         initialGenerations={withUrls}

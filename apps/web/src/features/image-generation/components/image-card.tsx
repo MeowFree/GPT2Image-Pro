@@ -4,6 +4,7 @@ import { Badge } from "@repo/ui/components/badge";
 import { Card } from "@repo/ui/components/card";
 import { Clock, ImageIcon } from "lucide-react";
 import Image from "next/image";
+import { useLocale } from "next-intl";
 
 export interface ImageCardProps {
   id: string;
@@ -17,9 +18,9 @@ export interface ImageCardProps {
   onClick?: () => void;
 }
 
-function formatCreatedDate(iso: string): string {
+function formatCreatedDate(iso: string, locale: string): string {
   try {
-    return new Intl.DateTimeFormat("en-US", {
+    return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
       month: "short",
       day: "2-digit",
       year: "numeric",
@@ -38,6 +39,7 @@ export function ImageCard({
   createdAt,
   onClick,
 }: ImageCardProps) {
+  const locale = useLocale();
   const clickable = Boolean(onClick);
 
   return (
@@ -76,7 +78,7 @@ export function ImageCard({
           </Badge>
           <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
             <Clock className="h-3 w-3" />
-            {formatCreatedDate(createdAt)}
+            {formatCreatedDate(createdAt, locale)}
           </span>
         </div>
       </div>

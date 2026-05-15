@@ -1,4 +1,5 @@
 import { count, desc, eq } from "drizzle-orm";
+import { getLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { db } from "@repo/database";
 import { generation } from "@repo/database/schema";
@@ -12,6 +13,9 @@ interface HistoryPageProps {
 export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
+  const locale = await getLocale();
+  const isZh = locale === "zh";
+  const copy = (en: string, zh: string) => (isZh ? zh : en);
 
   const params = await searchParams;
   const PAGE_SIZE = 20;
@@ -58,10 +62,13 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     <div className="container mx-auto space-y-8 px-4 py-6 md:px-6">
       <div>
         <h1 className="font-serif text-2xl font-medium tracking-tight">
-          History
+          {copy("History", "历史记录")}
         </h1>
         <p className="text-muted-foreground">
-          All generations, including failed and pending
+          {copy(
+            "All generations, including failed and pending",
+            "所有生成记录，包括失败和处理中的任务"
+          )}
         </p>
       </div>
       <HistoryClient

@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogTitle } from "@repo/ui/components/dialog";
 import { Separator } from "@repo/ui/components/separator";
 import { Download, ImageIcon, Loader2, Trash2 } from "lucide-react";
 import Image from "next/image";
+import { useLocale } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -32,9 +33,15 @@ export interface ImageLightboxProps {
   onDelete?: (id: string) => void;
 }
 
-function formatDate(iso: string): string {
+const STATUS_LABELS_ZH: Record<string, string> = {
+  completed: "已完成",
+  failed: "失败",
+  pending: "处理中",
+};
+
+function formatDate(iso: string, locale: string): string {
   try {
-    return new Intl.DateTimeFormat("en-US", {
+    return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
       month: "short",
       day: "2-digit",
       year: "numeric",
@@ -55,13 +62,18 @@ export function ImageLightbox({
   onClose,
   onDelete,
 }: ImageLightboxProps) {
+  const locale = useLocale();
+  const isZh = locale === "zh";
+  const copy = (en: string, zh: string) => (isZh ? zh : en);
+  const statusLabel = (status: string) =>
+    isZh ? STATUS_LABELS_ZH[status] || status : status;
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const { execute: executeDelete, isExecuting: isDeleting } = useAction(
     deleteGenerationAction,
     {
       onSuccess: () => {
-        toast.success("Image deleted");
+        toast.success(copy("Image deleted", "图片已删除"));
         onDelete?.(generation.id);
         setConfirmDelete(false);
         onClose();
@@ -70,9 +82,11 @@ export function ImageLightbox({
         const message =
           error?.serverError ||
           error?.validationErrors?._errors?.[0] ||
-          "Failed to delete image";
+          copy("Failed to delete image", "删除图片失败");
         toast.error(
-          typeof message === "string" ? message : "Failed to delete image"
+          typeof message === "string"
+            ? message
+            : copy("Failed to delete image", "删除图片失败")
         );
       },
     }
@@ -97,7 +111,9 @@ export function ImageLightbox({
       }}
     >
       <DialogContent className="max-w-5xl gap-0 border-border bg-background p-0">
-        <DialogTitle className="sr-only">Image details</DialogTitle>
+        <DialogTitle className="sr-only">
+          {copy("Image details", "图片详情")}
+        </DialogTitle>
         <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr]">
           <div className="relative aspect-square w-full overflow-hidden bg-muted md:aspect-auto md:min-h-[520px]">
             {imageUrl && generation.status === "completed" ? (
@@ -120,7 +136,7 @@ export function ImageLightbox({
             <div className="space-y-4">
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-                  Prompt
+                  {copy("Prompt", "提示词")}
                 </p>
                 <p className="mt-1 whitespace-pre-wrap font-serif text-base leading-relaxed text-foreground">
                   {generation.prompt}
@@ -131,7 +147,7 @@ export function ImageLightbox({
                 generation.revisedPrompt !== generation.prompt && (
                   <div>
                     <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-                      Revised Prompt
+                      {copy("Revised Prompt", "优化提示词")}
                     </p>
                     <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                       {generation.revisedPrompt}
@@ -142,7 +158,7 @@ export function ImageLightbox({
               {generation.status === "failed" && generation.error && (
                 <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
                   <p className="text-[11px] font-medium uppercase tracking-widest text-destructive">
-                    Error
+                    {copy("Error", "错误")}
                   </p>
                   <p className="mt-1 text-sm text-destructive">
                     {generation.error}
@@ -155,7 +171,7 @@ export function ImageLightbox({
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    Model
+                    {copy("Model", "模型")}
                   </dt>
                   <dd className="mt-0.5 font-mono text-xs text-foreground">
                     {generation.model}
@@ -163,7 +179,7 @@ export function ImageLightbox({
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    Size
+                    {copy("Size", "尺寸")}
                   </dt>
                   <dd className="mt-0.5 font-mono text-xs text-foreground">
                     {generation.size}
@@ -171,7 +187,7 @@ export function ImageLightbox({
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    Credits
+                    {copy("Credits", "积分")}
                   </dt>
                   <dd className="mt-0.5 text-xs text-foreground">
                     {formatCredits(generation.creditsConsumed)}
@@ -179,23 +195,23 @@ export function ImageLightbox({
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    Status
+                    {copy("Status", "状态")}
                   </dt>
                   <dd className="mt-0.5">
                     <Badge
                       variant="outline"
                       className="rounded-full border-border font-normal text-[10px] uppercase tracking-wide"
                     >
-                      {generation.status}
+                      {statusLabel(generation.status)}
                     </Badge>
                   </dd>
                 </div>
                 <div className="col-span-2">
                   <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    Created
+                    {copy("Created", "创建时间")}
                   </dt>
                   <dd className="mt-0.5 text-xs text-foreground">
-                    {formatDate(generation.createdAt)}
+                    {formatDate(generation.createdAt, locale)}
                   </dd>
                 </div>
               </dl>
@@ -215,7 +231,7 @@ export function ImageLightbox({
                     rel="noopener noreferrer"
                   >
                     <Download className="mr-2 h-4 w-4" />
-                    Download
+                    {copy("Download", "下载")}
                   </a>
                 </Button>
               )}
@@ -230,7 +246,9 @@ export function ImageLightbox({
                 ) : (
                   <Trash2 className="mr-2 h-4 w-4" />
                 )}
-                {confirmDelete ? "Click again to confirm" : "Delete"}
+                {confirmDelete
+                  ? copy("Click again to confirm", "再次点击确认删除")
+                  : copy("Delete", "删除")}
               </Button>
             </div>
           </div>

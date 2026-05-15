@@ -12,6 +12,7 @@ import {
 import { and, count, desc, eq } from "drizzle-orm";
 import { Coins, Image as ImageIcon, ImagePlus } from "lucide-react";
 import { headers } from "next/headers";
+import { getLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { Link } from "@/i18n/routing";
 
@@ -23,6 +24,9 @@ export default async function DashboardPage() {
 
   const user = session.user;
   const userId = user.id;
+  const locale = await getLocale();
+  const isZh = locale === "zh";
+  const copy = (en: string, zh: string) => (isZh ? zh : en);
 
   const [balanceData, recentGenerations, totalGenerationsResult] =
     await Promise.all([
@@ -60,8 +64,12 @@ export default async function DashboardPage() {
       <div className="space-y-8">
         {/* Page header */}
         <div>
-          <h1 className="font-serif text-2xl font-medium">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back, {user.name}</p>
+          <h1 className="font-serif text-2xl font-medium">
+            {copy("Dashboard", "控制台")}
+          </h1>
+          <p className="text-muted-foreground">
+            {copy(`Welcome back, ${user.name}`, `欢迎回来，${user.name}`)}
+          </p>
         </div>
 
         {/* Stats row */}
@@ -70,14 +78,17 @@ export default async function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
-                Credits Balance
+                {copy("Credits Balance", "积分余额")}
               </CardTitle>
               <Coins className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{balance}</div>
               <p className="text-xs text-muted-foreground">
-                Pixel-based pricing, 4K base 10 credits
+                {copy(
+                  "Pixel-based pricing, 4K base 10 credits",
+                  "按像素计价，4K 基础价 10 积分"
+                )}
               </p>
             </CardContent>
           </Card>
@@ -86,14 +97,14 @@ export default async function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
-                Images Generated
+                {copy("Images Generated", "已生成图片")}
               </CardTitle>
               <ImageIcon className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{totalGenerations}</div>
               <p className="text-xs text-muted-foreground">
-                total images created
+                {copy("total images created", "累计创建图片")}
               </p>
             </CardContent>
           </Card>
@@ -103,7 +114,9 @@ export default async function DashboardPage() {
             <CardContent className="flex h-full flex-col items-center justify-center gap-3 p-6">
               <ImagePlus className="h-8 w-8 text-muted-foreground" />
               <Button asChild>
-                <Link href="/dashboard/create">Start Creating</Link>
+                <Link href="/dashboard/create">
+                  {copy("Start Creating", "开始创作")}
+                </Link>
               </Button>
             </CardContent>
           </Card>
@@ -114,10 +127,12 @@ export default async function DashboardPage() {
           <div>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="font-serif text-lg font-medium">
-                Recent Creations
+                {copy("Recent Creations", "最近创作")}
               </h2>
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/dashboard/gallery">View All</Link>
+                <Link href="/dashboard/gallery">
+                  {copy("View All", "查看全部")}
+                </Link>
               </Button>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

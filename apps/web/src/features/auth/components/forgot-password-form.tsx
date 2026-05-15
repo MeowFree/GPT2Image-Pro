@@ -2,6 +2,7 @@
 
 import { KeyRound, Loader2, Mail } from "lucide-react";
 import Link from "next/link";
+import { useLocale } from "next-intl";
 import { useState } from "react";
 
 import { Button } from "@repo/ui/components/button";
@@ -20,6 +21,9 @@ import { AuthErrorAlert } from "./auth-error-alert";
  * - 显示成功/错误状态
  */
 export function ForgotPasswordForm() {
+  const locale = useLocale();
+  const isZh = locale === "zh";
+  const copy = (en: string, zh: string) => (isZh ? zh : en);
   // 表单状态
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -33,7 +37,7 @@ export function ForgotPasswordForm() {
     e.preventDefault();
 
     if (!email) {
-      setError("Please enter your email address");
+      setError(copy("Please enter your email address", "请输入邮箱地址"));
       return;
     }
 
@@ -45,7 +49,12 @@ export function ForgotPasswordForm() {
 
       setIsSuccess(true);
     } catch {
-      setError("Failed to send reset link. Please try again.");
+      setError(
+        copy(
+          "Failed to send reset link. Please try again.",
+          "重置链接发送失败，请稍后重试。"
+        )
+      );
     } finally {
       setIsLoading(false);
     }
@@ -61,10 +70,10 @@ export function ForgotPasswordForm() {
             <Mail className="h-6 w-6" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Check your email
+            {copy("Check your email", "请查看邮箱")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            We&apos;ve sent a password reset link to{" "}
+            {copy("We've sent a password reset link to", "密码重置链接已发送至")}{" "}
             <span className="font-medium text-foreground">{email}</span>
           </p>
         </div>
@@ -75,7 +84,9 @@ export function ForgotPasswordForm() {
             href="/sign-in"
             className="text-sm text-muted-foreground hover:text-foreground"
           >
-            <span className="underline">Back to Login</span>
+            <span className="underline">
+              {copy("Back to Login", "返回登录")}
+            </span>
           </Link>
         </div>
       </div>
@@ -91,10 +102,13 @@ export function ForgotPasswordForm() {
           <KeyRound className="h-6 w-6" />
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          Forgot your password?
+          {copy("Forgot your password?", "忘记密码？")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Enter your email below and we&apos;ll send you a link to reset it.
+          {copy(
+            "Enter your email below and we'll send you a link to reset it.",
+            "输入邮箱后，我们会向你发送密码重置链接。"
+          )}
         </p>
       </div>
 
@@ -105,7 +119,7 @@ export function ForgotPasswordForm() {
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* 邮箱输入 */}
         <div className="space-y-2">
-          <Label htmlFor="email">Email address</Label>
+          <Label htmlFor="email">{copy("Email address", "邮箱地址")}</Label>
           <Input
             id="email"
             type="email"
@@ -123,22 +137,22 @@ export function ForgotPasswordForm() {
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Sending...
+              {copy("Sending...", "发送中...")}
             </>
           ) : (
-            "Send reset password link"
+            copy("Send reset password link", "发送密码重置链接")
           )}
         </Button>
       </form>
 
       {/* 返回登录链接 */}
       <p className="text-center text-sm text-muted-foreground">
-        Remember your password?{" "}
+        {copy("Remember your password?", "想起密码了？")}{" "}
         <Link
           href="/sign-in"
           className="font-medium text-foreground hover:underline"
         >
-          Back to Login
+          {copy("Back to Login", "返回登录")}
         </Link>
       </p>
     </div>

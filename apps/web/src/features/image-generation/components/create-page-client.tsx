@@ -40,6 +40,7 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
+import { useLocale } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -233,8 +234,24 @@ const CHAT_SUGGESTIONS = [
   "Cyberpunk city street in the rain, neon lights",
   "Watercolor portrait of a cat wearing glasses",
 ] as const;
+const CHAT_SUGGESTIONS_ZH = [
+  "日落时宁静的山间湖泊，油画风格",
+  "科技创业公司的极简标志",
+  "雨夜霓虹灯下的赛博朋克城市街道",
+  "戴眼镜的猫咪水彩肖像",
+] as const;
 const CHAT_STORAGE_KEY = "gpt2image_chat_messages_v1";
 const CHAT_CONTEXT_MESSAGE_LIMIT = 8;
+
+const PRESET_LABELS_ZH: Record<string, string> = {
+  "2K Square": "2K 方形",
+  "2K Wide": "2K 宽屏",
+  "4K Tall": "4K 竖屏",
+  "4K Wide": "4K 宽屏",
+  Landscape: "横向",
+  Portrait: "纵向",
+  Square: "方形",
+};
 
 interface CreatePageClientProps {
   balance: number;
@@ -352,6 +369,64 @@ export function CreatePageClient({
   balance: initialBalance,
   recentGenerations: initialRecent,
 }: CreatePageClientProps) {
+  const locale = useLocale();
+  const isZh = locale === "zh";
+  const copy = (en: string, zh: string) => (isZh ? zh : en);
+  const imageCountLabel = (count: number) =>
+    copy(`${count} image${count > 1 ? "s" : ""}`, `${count} 张图片`);
+  const batchCostSuffix = (count: number) =>
+    count > 1
+      ? copy(` for ${count}`, `，共 ${count} 张`)
+      : copy("/image", "/张");
+  const presetLabel = (label: string) =>
+    isZh ? PRESET_LABELS_ZH[label] || label : label;
+  const editModelLabel = (label: string) =>
+    label === "Default" ? copy("Default", "默认") : label;
+  const qualityLabel = (qualityValue: ImageQuality) =>
+    copy(
+      QUALITY_OPTIONS.find((option) => option.value === qualityValue)?.label ||
+        qualityValue,
+      {
+        auto: "自动",
+        high: "高",
+        low: "低",
+        medium: "中",
+      }[qualityValue]
+    );
+  const moderationLabel = (moderationValue: ImageModeration) =>
+    copy(
+      MODERATION_OPTIONS.find((option) => option.value === moderationValue)
+        ?.label || moderationValue,
+      {
+        auto: "自动",
+        low: "低",
+      }[moderationValue]
+    );
+  const thinkingLabel = (value: ChatThinkingLevel) =>
+    copy(
+      CHAT_THINKING_OPTIONS.find((option) => option.value === value)?.label ||
+        value,
+      {
+        high: "高",
+        low: "低",
+        medium: "中",
+        none: "无",
+        xhigh: "极高",
+      }[value]
+    );
+  const validationMessage = (message?: string) => {
+    if (!message || !isZh) return message;
+    if (message === "Use WIDTHxHEIGHT format.") {
+      return "请使用 宽x高 格式。";
+    }
+    if (message.startsWith("Width and height must be between")) {
+      return `宽和高必须在 256 到 ${MAX_IMAGE_DIMENSION}px 之间，并且能被 ${IMAGE_DIMENSION_STEP} 整除。`;
+    }
+    if (message.startsWith("Total pixels must be no more than")) {
+      return "总像素不能超过 8,294,400。";
+    }
+    return message;
+  };
   const [activeMode, setActiveMode] = useState<ActiveMode>("text");
   const [prompt, setPrompt] = useState("");
   const [editPrompt, setEditPrompt] = useState("");
@@ -490,7 +565,7 @@ export function CreatePageClient({
   const busy = isGenerating || isEditing || isChatGenerating;
   const firstPreviewUrl = editImages[0]?.previewUrl || null;
   const chatFirstPreviewUrl = chatAttachments[0]?.previewUrl || null;
-  const editDisplaySize = effectiveEditSize || "Reference image";
+  const editDisplaySize = effectiveEditSize || copy("Reference image", "参考图片");
   const loadingSize =
     activeMode === "image" && effectiveEditSize
       ? effectiveEditSize
@@ -503,6 +578,7 @@ export function CreatePageClient({
     width,
     height,
   };
+  const chatSuggestions = isZh ? CHAT_SUGGESTIONS_ZH : CHAT_SUGGESTIONS;
 
   const clearStreamingPreview = () => {
     setStreamingPreviewUrl(null);
@@ -1000,10 +1076,13 @@ export function CreatePageClient({
     syncChargedCredits(options?.creditsConsumed);
 
     if (message.toLowerCase().includes("insufficient credits")) {
-      toast.error("Insufficient credits", {
-        description: "You don't have enough credits to generate an image.",
+      toast.error(copy("Insufficient credits", "积分不足"), {
+        description: copy(
+          "You don't have enough credits to generate an image.",
+          "当前积分不足，无法生成图片。"
+        ),
         action: {
-          label: "Top up",
+          label: copy("Top up", "去充值"),
           onClick: () => {
             window.location.href = "/dashboard/credits/buy";
           },
@@ -1012,7 +1091,7 @@ export function CreatePageClient({
       return;
     }
 
-    toast.error("Generation failed", { description: message });
+    toast.error(copy("Generation failed", "生成失败"), { description: message });
   };
 
   const addChatAttachments = async (files: FileList | File[] | null) => {
@@ -1022,22 +1101,33 @@ export function CreatePageClient({
     const accepted: ChatAttachment[] = [];
     for (const file of imageFiles) {
       if (!isImageFile(file)) {
-        toast.error("Unsupported file type", {
-          description: "Use PNG, JPEG, or WebP images.",
+        toast.error(copy("Unsupported file type", "不支持的文件类型"), {
+          description: copy(
+            "Use PNG, JPEG, or WebP images.",
+            "请使用 PNG、JPEG 或 WebP 图片。"
+          ),
         });
         continue;
       }
       if (file.size > MAX_IMAGE_BYTES) {
-        toast.error("File too large", {
-          description: `${file.name} exceeds 25MB.`,
+        toast.error(copy("File too large", "文件过大"), {
+          description: copy(
+            `${file.name} exceeds 25MB.`,
+            `${file.name} 超过 25MB。`
+          ),
         });
         continue;
       }
       try {
         accepted.push({ file, previewUrl: await readFileAsDataUrl(file) });
       } catch {
-        toast.error("Failed to load image", {
-          description: file.name || "Could not read the selected file.",
+        toast.error(copy("Failed to load image", "图片加载失败"), {
+          description:
+            file.name ||
+            copy(
+              "Could not read the selected file.",
+              "无法读取所选文件。"
+            ),
         });
       }
     }
@@ -1050,7 +1140,12 @@ export function CreatePageClient({
         for (const item of accepted) {
           revokePreview(item.previewUrl);
         }
-        toast.error(`Attach up to ${MAX_EDIT_IMAGES} reference images`);
+        toast.error(
+          copy(
+            `Attach up to ${MAX_EDIT_IMAGES} reference images`,
+            `最多可添加 ${MAX_EDIT_IMAGES} 张参考图片`
+          )
+        );
         return prev;
       }
 
@@ -1059,7 +1154,12 @@ export function CreatePageClient({
         revokePreview(item.previewUrl);
       }
       if (accepted.length > slots) {
-        toast.error(`Only ${slots} more reference image(s) can be added`);
+        toast.error(
+          copy(
+            `Only ${slots} more reference image(s) can be added`,
+            `还可以再添加 ${slots} 张参考图片`
+          )
+        );
       }
       return [...prev, ...next];
     });
@@ -1088,11 +1188,16 @@ export function CreatePageClient({
     sourceId?: string
   ) => {
     if (chatAttachments.some((item) => item.sourceId === sourceId)) {
-      toast.success("Reference image is already attached");
+      toast.success(copy("Reference image is already attached", "参考图片已添加"));
       return;
     }
     if (chatAttachments.length >= MAX_EDIT_IMAGES) {
-      toast.error(`Attach up to ${MAX_EDIT_IMAGES} reference images`);
+      toast.error(
+        copy(
+          `Attach up to ${MAX_EDIT_IMAGES} reference images`,
+          `最多可添加 ${MAX_EDIT_IMAGES} 张参考图片`
+        )
+      );
       return;
     }
 
@@ -1100,11 +1205,13 @@ export function CreatePageClient({
       const item = await urlToEditImageFile(imageUrl, name, sourceId);
       setChatAttachments((prev) => [...prev, item]);
       setActiveMode("chat");
-      toast.success("Reference image attached to chat");
+      toast.success(copy("Reference image attached to chat", "参考图片已添加到对话"));
     } catch (error) {
-      toast.error("Failed to attach image", {
+      toast.error(copy("Failed to attach image", "添加图片失败"), {
         description:
-          error instanceof Error ? error.message : "Could not load image.",
+          error instanceof Error
+            ? error.message
+            : copy("Could not load image.", "无法加载图片。"),
       });
     }
   };
@@ -1173,7 +1280,9 @@ export function CreatePageClient({
         streamMessageId: assistantId,
       });
       const variant = addSuccessfulResult(data, userMessage.text, retrySize);
-      if (!variant) throw new Error("API returned no image data");
+      if (!variant) {
+        throw new Error(copy("API returned no image data", "接口未返回图片数据"));
+      }
 
       setChatMessages((prev) =>
         prev.map((message) => {
@@ -1184,16 +1293,20 @@ export function CreatePageClient({
             error: undefined,
             text:
               variant.responseText ||
-              (variant.imageUrl ? "Image generated" : "Response generated"),
+              (variant.imageUrl
+                ? copy("Image generated", "图片已生成")
+                : copy("Response generated", "回复已生成")),
             variants,
             activeVariant: variants.length - 1,
           };
         })
       );
-      toast.success("Variant generated");
+      toast.success(copy("Variant generated", "新版本已生成"));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Retry failed.";
-      toast.error("Retry failed", { description: message });
+      const message = error instanceof Error
+        ? error.message
+        : copy("Retry failed.", "重试失败。");
+      toast.error(copy("Retry failed", "重试失败"), { description: message });
     } finally {
       setRetryingChatMessageId(null);
       setIsChatGenerating(false);
@@ -1228,7 +1341,7 @@ export function CreatePageClient({
         item.id === card.id ? { ...item, saved: true } : item
       )
     );
-    toast.success("Saved to recent");
+    toast.success(copy("Saved to recent", "已保存到最近生成"));
   };
 
   const handleBatchSuggestion = (suggestion: string) => {
@@ -1243,7 +1356,7 @@ export function CreatePageClient({
         open={open}
       >
         <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
-          Thinking
+          {copy("Thinking", "思考过程")}
         </summary>
         <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
           {thinking}
@@ -1266,7 +1379,7 @@ export function CreatePageClient({
           <div className="relative mt-3 max-w-sm overflow-hidden rounded-md border bg-muted">
             <Image
               src={chatStream.imageUrl}
-              alt="Streaming preview"
+              alt={copy("Streaming preview", "流式预览")}
               width={320}
               height={320}
               className="h-auto w-full object-contain"
@@ -1277,7 +1390,7 @@ export function CreatePageClient({
         {!chatStream.text && !chatStream.imageUrl && (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Generating...
+            {copy("Generating...", "生成中...")}
           </div>
         )}
       </div>
@@ -1288,7 +1401,7 @@ export function CreatePageClient({
     const isEditChat = chatAttachments.length > 0;
     const activeChatSize =
       isEditChat && useFirstImageSize
-        ? chatEffectiveEditSize || "Reference image"
+        ? chatEffectiveEditSize || copy("Reference image", "参考图片")
         : isEditChat
           ? customEditSize
           : size;
@@ -1338,11 +1451,11 @@ export function CreatePageClient({
                 className="group relative h-12 w-12 overflow-hidden rounded-md border bg-muted"
                 onClick={() => removeChatAttachment(index)}
                 disabled={isChatGenerating}
-                title="Remove reference image"
+                title={copy("Remove reference image", "移除参考图片")}
               >
                 <Image
                   src={item.previewUrl}
-                  alt={item.file.name || `Reference ${index + 1}`}
+                  alt={item.file.name || copy(`Reference ${index + 1}`, `参考图片 ${index + 1}`)}
                   fill
                   sizes="48px"
                   className="object-cover"
@@ -1370,7 +1483,7 @@ export function CreatePageClient({
             <SelectContent>
               {CHAT_THINKING_OPTIONS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
-                  Thinking {option.label}
+                  {copy("Thinking", "思考")} {thinkingLabel(option.value)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -1386,15 +1499,17 @@ export function CreatePageClient({
             <SelectContent>
               {isEditChat && chatEffectiveEditSize && (
                 <SelectItem value="reference">
-                  Reference · {chatEffectiveEditSize}
+                  {copy("Reference", "参考图")} · {chatEffectiveEditSize}
                 </SelectItem>
               )}
               {IMAGE_RESOLUTION_PRESETS.map((preset) => (
                 <SelectItem key={preset.value} value={preset.value}>
-                  {preset.label} · {preset.detail}
+                  {presetLabel(preset.label)} · {preset.detail}
                 </SelectItem>
               ))}
-              <SelectItem value="custom">Custom · {activeChatSize}</SelectItem>
+              <SelectItem value="custom">
+                {copy("Custom", "自定义")} · {activeChatSize}
+              </SelectItem>
             </SelectContent>
           </Select>
           {isEditChat && (
@@ -1405,11 +1520,11 @@ export function CreatePageClient({
               onClick={() => setUseFirstImageSize((value) => !value)}
               disabled={isChatGenerating || !chatFirstImageSize}
             >
-              Reference size
+              {copy("Reference size", "参考图尺寸")}
             </Button>
           )}
           <span className="ml-auto text-xs text-muted-foreground">
-            Cost{" "}
+            {copy("Cost", "费用")}{" "}
             <span className="font-medium text-foreground">
               {formattedChatSingleCreditCost}
             </span>
@@ -1424,7 +1539,7 @@ export function CreatePageClient({
                   htmlFor="chat-width"
                   className="text-xs font-medium text-muted-foreground"
                 >
-                  Width
+                  {copy("Width", "宽度")}
                 </label>
                 <Input
                   id="chat-width"
@@ -1452,7 +1567,7 @@ export function CreatePageClient({
                   htmlFor="chat-height"
                   className="text-xs font-medium text-muted-foreground"
                 >
-                  Height
+                  {copy("Height", "高度")}
                 </label>
                 <Input
                   id="chat-height"
@@ -1480,7 +1595,7 @@ export function CreatePageClient({
             </div>
             {!chatSizeCheck.valid && (
               <p className="mt-2 text-xs text-destructive">
-                {chatSizeCheck.message}
+                {validationMessage(chatSizeCheck.message)}
               </p>
             )}
           </div>
@@ -1495,14 +1610,14 @@ export function CreatePageClient({
             disabled={
               isChatGenerating || chatAttachments.length >= MAX_EDIT_IMAGES
             }
-            title="Attach reference image"
+            title={copy("Attach reference image", "添加参考图片")}
           >
             <ImagePlus className="h-4 w-4" />
           </Button>
           <Textarea
             value={chatPrompt}
             onChange={(event) => setChatPrompt(event.target.value)}
-            placeholder="Continue creating..."
+            placeholder={copy("Continue creating...", "继续描述你的创作...")}
             rows={1}
             disabled={isChatGenerating}
             className="max-h-40 min-h-9 resize-none border-0 bg-transparent px-0 py-2 text-base shadow-none focus-visible:ring-0"
@@ -1517,7 +1632,7 @@ export function CreatePageClient({
             type="submit"
             size="icon-sm"
             disabled={isChatGenerating || !chatPrompt.trim()}
-            title="Send"
+            title={copy("Send", "发送")}
           >
             {isChatGenerating ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -1559,14 +1674,20 @@ export function CreatePageClient({
       0
     );
     if (totalUploadSize > MAX_EDIT_REQUEST_BYTES) {
-      toast.error("Upload is too large", {
-        description: `Reference images total ${formatMegabytes(totalUploadSize)}. Keep the total under ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)}.`,
+      toast.error(copy("Upload is too large", "上传内容过大"), {
+        description: copy(
+          `Reference images total ${formatMegabytes(totalUploadSize)}. Keep the total under ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)}.`,
+          `参考图片总大小为 ${formatMegabytes(totalUploadSize)}，请控制在 ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)} 以内。`
+        ),
       });
       return false;
     }
     if (!chatEffectiveEditSize) {
-      toast.error("Waiting for reference image size", {
-        description: "The first reference image is still loading.",
+      toast.error(copy("Waiting for reference image size", "正在读取参考图片尺寸"), {
+        description: copy(
+          "The first reference image is still loading.",
+          "第一张参考图片仍在加载。"
+        ),
       });
       return false;
     }
@@ -1579,7 +1700,7 @@ export function CreatePageClient({
 
     const fallbackSize = batchSizeRef.current || getBatchFallbackSize();
     if (!validateImageSize(fallbackSize).valid) {
-      toast.error("Invalid resolution");
+      toast.error(copy("Invalid resolution", "分辨率无效"));
       return;
     }
 
@@ -1673,7 +1794,7 @@ export function CreatePageClient({
                   error:
                     error instanceof Error
                       ? error.message
-                      : "Generation failed",
+                      : copy("Generation failed", "生成失败"),
                 }
               : card
           )
@@ -1697,7 +1818,7 @@ export function CreatePageClient({
     event?.preventDefault();
     const currentPrompt = batchPrompt.trim();
     if (!currentPrompt) {
-      toast.error("Please enter a prompt");
+      toast.error(copy("Please enter a prompt", "请输入提示词"));
       return;
     }
     batchPromptRef.current = currentPrompt;
@@ -1750,7 +1871,7 @@ export function CreatePageClient({
   const handleChatSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!chatPrompt.trim()) {
-      toast.error("Please enter a message");
+      toast.error(copy("Please enter a message", "请输入消息"));
       return;
     }
 
@@ -1768,18 +1889,23 @@ export function CreatePageClient({
       return;
     }
     if (!isEditRequest && !sizeCheck.valid) {
-      toast.error("Invalid resolution", { description: sizeCheck.message });
+      toast.error(copy("Invalid resolution", "分辨率无效"), {
+        description: validationMessage(sizeCheck.message),
+      });
       return;
     }
     if (isEditRequest && !fallbackSize) {
-      toast.error("Waiting for reference image size", {
-        description: "The first reference image is still loading.",
+      toast.error(copy("Waiting for reference image size", "正在读取参考图片尺寸"), {
+        description: copy(
+          "The first reference image is still loading.",
+          "第一张参考图片仍在加载。"
+        ),
       });
       return;
     }
     if (isEditRequest && !useFirstImageSize && !customEditSizeCheck.valid) {
-      toast.error("Invalid resolution", {
-        description: customEditSizeCheck.message,
+      toast.error(copy("Invalid resolution", "分辨率无效"), {
+        description: validationMessage(customEditSizeCheck.message),
       });
       return;
     }
@@ -1789,8 +1915,11 @@ export function CreatePageClient({
         0
       );
       if (totalUploadSize > MAX_EDIT_REQUEST_BYTES) {
-        toast.error("Upload is too large", {
-          description: `Reference images total ${formatMegabytes(totalUploadSize)}. Keep the total under ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)}.`,
+        toast.error(copy("Upload is too large", "上传内容过大"), {
+          description: copy(
+            `Reference images total ${formatMegabytes(totalUploadSize)}. Keep the total under ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)}.`,
+            `参考图片总大小为 ${formatMegabytes(totalUploadSize)}，请控制在 ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)} 以内。`
+          ),
         });
         return;
       }
@@ -1816,7 +1945,9 @@ export function CreatePageClient({
       {
         id: assistantMessageId,
         role: "assistant",
-        text: isEditRequest ? "Editing image..." : "Generating image...",
+        text: isEditRequest
+          ? copy("Editing image...", "正在编辑图片...")
+          : copy("Generating image...", "正在生成图片..."),
         createdAt: new Date().toISOString(),
       },
     ]);
@@ -1840,12 +1971,12 @@ export function CreatePageClient({
         fallbackSize || size
       );
       if (!variant) {
-        const message = "API returned no image data";
+        const message = copy("API returned no image data", "接口未返回图片数据");
         showGenerationError(message);
         setChatMessages((prev) =>
           prev.map((item) =>
             item.id === assistantMessageId
-              ? { ...item, text: "Generation failed", error: message }
+              ? { ...item, text: copy("Generation failed", "生成失败"), error: message }
               : item
           )
         );
@@ -1859,7 +1990,9 @@ export function CreatePageClient({
                 ...message,
                 text:
                   variant.responseText ||
-                  (variant.imageUrl ? "Image generated" : "Response generated"),
+                  (variant.imageUrl
+                    ? copy("Image generated", "图片已生成")
+                    : copy("Response generated", "回复已生成")),
                 variants: [variant],
                 activeVariant: 0,
               }
@@ -1867,17 +2000,21 @@ export function CreatePageClient({
         )
       );
       clearChatAttachments();
-      toast.success(data.imageUrl ? "Image generated" : "Response generated");
+      toast.success(
+        data.imageUrl
+          ? copy("Image generated", "图片已生成")
+          : copy("Response generated", "回复已生成")
+      );
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : "An unexpected error occurred.";
-      toast.error("Generation failed", { description: message });
+          : copy("An unexpected error occurred.", "发生未知错误。");
+      toast.error(copy("Generation failed", "生成失败"), { description: message });
       setChatMessages((prev) =>
         prev.map((item) =>
           item.id === assistantMessageId
-            ? { ...item, text: "Generation failed", error: message }
+            ? { ...item, text: copy("Generation failed", "生成失败"), error: message }
             : item
         )
       );
@@ -1892,7 +2029,7 @@ export function CreatePageClient({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) {
-      toast.error("Please enter a prompt");
+      toast.error(copy("Please enter a prompt", "请输入提示词"));
       return;
     }
     if (balance < textBatchCreditCost) {
@@ -1900,7 +2037,9 @@ export function CreatePageClient({
       return;
     }
     if (!sizeCheck.valid) {
-      toast.error("Invalid resolution", { description: sizeCheck.message });
+      toast.error(copy("Invalid resolution", "分辨率无效"), {
+        description: validationMessage(sizeCheck.message),
+      });
       return;
     }
     const currentPrompt = prompt.trim();
@@ -1934,15 +2073,18 @@ export function CreatePageClient({
       const generatedCount = addSuccessfulResults(data, currentPrompt).length;
       toast.success(
         generatedCount > 1
-          ? `${generatedCount} images generated`
-          : "Image generated"
+          ? copy(
+              `${generatedCount} images generated`,
+              `已生成 ${generatedCount} 张图片`
+            )
+          : copy("Image generated", "图片已生成")
       );
     } catch (error) {
-      toast.error("Generation failed", {
+      toast.error(copy("Generation failed", "生成失败"), {
         description:
           error instanceof Error
             ? error.message
-            : "An unexpected error occurred.",
+            : copy("An unexpected error occurred.", "发生未知错误。"),
       });
     } finally {
       setIsGenerating(false);
@@ -1953,26 +2095,29 @@ export function CreatePageClient({
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editPrompt.trim()) {
-      toast.error("Please enter an edit prompt");
+      toast.error(copy("Please enter an edit prompt", "请输入编辑提示词"));
       return;
     }
     if (editImages.length === 0) {
-      toast.error("Upload at least one source image");
+      toast.error(copy("Upload at least one source image", "请至少上传一张源图片"));
       return;
     }
     if (maskPoints.length > 0 && !maskFile) {
-      toast.error("Save the mask before editing");
+      toast.error(copy("Save the mask before editing", "编辑前请先保存蒙版"));
       return;
     }
     if (!effectiveEditSize) {
-      toast.error("Waiting for source image size", {
-        description: "The first source image is still loading.",
+      toast.error(copy("Waiting for source image size", "正在读取源图片尺寸"), {
+        description: copy(
+          "The first source image is still loading.",
+          "第一张源图片仍在加载。"
+        ),
       });
       return;
     }
     if (!useFirstImageSize && !customEditSizeCheck.valid) {
-      toast.error("Invalid resolution", {
-        description: customEditSizeCheck.message,
+      toast.error(copy("Invalid resolution", "分辨率无效"), {
+        description: validationMessage(customEditSizeCheck.message),
       });
       return;
     }
@@ -1984,8 +2129,11 @@ export function CreatePageClient({
       editImages.reduce((total, item) => total + item.file.size, 0) +
       (maskFile?.file.size || 0);
     if (totalUploadSize > MAX_EDIT_REQUEST_BYTES) {
-      toast.error("Upload is too large", {
-        description: `Source images and mask total ${formatMegabytes(totalUploadSize)}. Keep the total under ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)}.`,
+      toast.error(copy("Upload is too large", "上传内容过大"), {
+        description: copy(
+          `Source images and mask total ${formatMegabytes(totalUploadSize)}. Keep the total under ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)}.`,
+          `源图片和蒙版总大小为 ${formatMegabytes(totalUploadSize)}，请控制在 ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)} 以内。`
+        ),
       });
       return;
     }
@@ -2034,14 +2182,16 @@ export function CreatePageClient({
         effectiveEditSize
       ).length;
       toast.success(
-        generatedCount > 1 ? `${generatedCount} images edited` : "Image edited"
+        generatedCount > 1
+          ? copy(`${generatedCount} images edited`, `已编辑 ${generatedCount} 张图片`)
+          : copy("Image edited", "图片已编辑")
       );
     } catch (error) {
-      toast.error("Generation failed", {
+      toast.error(copy("Generation failed", "生成失败"), {
         description:
           error instanceof Error
             ? error.message
-            : "An unexpected error occurred.",
+            : copy("An unexpected error occurred.", "发生未知错误。"),
       });
     } finally {
       setIsEditing(false);
@@ -2079,14 +2229,20 @@ export function CreatePageClient({
     const accepted: EditImageFile[] = [];
     for (const file of imageFiles) {
       if (!isImageFile(file)) {
-        toast.error("Unsupported file type", {
-          description: "Use PNG, JPEG, or WebP images.",
+        toast.error(copy("Unsupported file type", "不支持的文件类型"), {
+          description: copy(
+            "Use PNG, JPEG, or WebP images.",
+            "请使用 PNG、JPEG 或 WebP 图片。"
+          ),
         });
         continue;
       }
       if (file.size > MAX_IMAGE_BYTES) {
-        toast.error("File too large", {
-          description: `${file.name} exceeds 25MB.`,
+        toast.error(copy("File too large", "文件过大"), {
+          description: copy(
+            `${file.name} exceeds 25MB.`,
+            `${file.name} 超过 25MB。`
+          ),
         });
         continue;
       }
@@ -2100,7 +2256,12 @@ export function CreatePageClient({
         for (const item of accepted) {
           revokePreview(item.previewUrl);
         }
-        toast.error(`Upload up to ${MAX_EDIT_IMAGES} source images`);
+        toast.error(
+          copy(
+            `Upload up to ${MAX_EDIT_IMAGES} source images`,
+            `最多可上传 ${MAX_EDIT_IMAGES} 张源图片`
+          )
+        );
         return prev;
       }
       const next = accepted.slice(0, slots);
@@ -2108,7 +2269,12 @@ export function CreatePageClient({
         revokePreview(item.previewUrl);
       }
       if (accepted.length > slots) {
-        toast.error(`Only ${slots} more source image(s) can be added`);
+        toast.error(
+          copy(
+            `Only ${slots} more source image(s) can be added`,
+            `还可以再添加 ${slots} 张源图片`
+          )
+        );
       }
       return [...prev, ...next];
     });
@@ -2151,12 +2317,12 @@ export function CreatePageClient({
     const file = files?.[0];
     if (!file) return;
     if (file.type !== "image/png") {
-      toast.error("Mask must be a PNG file");
+      toast.error(copy("Mask must be a PNG file", "蒙版必须是 PNG 文件"));
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      toast.error("Mask is too large", {
-        description: "Maximum size is 25MB.",
+      toast.error(copy("Mask is too large", "蒙版文件过大"), {
+        description: copy("Maximum size is 25MB.", "最大支持 25MB。"),
       });
       return;
     }
@@ -2170,9 +2336,18 @@ export function CreatePageClient({
           img.naturalHeight !== firstImageSize.height)
       ) {
         URL.revokeObjectURL(previewUrl);
-        toast.error("Mask dimensions must match the first source image", {
-          description: `Expected ${firstImageSize.width}x${firstImageSize.height}.`,
-        });
+        toast.error(
+          copy(
+            "Mask dimensions must match the first source image",
+            "蒙版尺寸必须与第一张源图片一致"
+          ),
+          {
+            description: copy(
+              `Expected ${firstImageSize.width}x${firstImageSize.height}.`,
+              `应为 ${firstImageSize.width}x${firstImageSize.height}。`
+            ),
+          }
+        );
         return;
       }
 
@@ -2184,7 +2359,7 @@ export function CreatePageClient({
     };
     img.onerror = () => {
       URL.revokeObjectURL(previewUrl);
-      toast.error("Failed to load mask image");
+      toast.error(copy("Failed to load mask image", "蒙版图片加载失败"));
     };
     img.src = previewUrl;
   };
@@ -2272,7 +2447,7 @@ export function CreatePageClient({
 
   const saveDrawnMask = () => {
     if (!firstImageSize || maskPoints.length === 0) {
-      toast.error("Draw a mask area first");
+      toast.error(copy("Draw a mask area first", "请先绘制蒙版区域"));
       return;
     }
 
@@ -2294,7 +2469,7 @@ export function CreatePageClient({
     const previewUrl = canvas.toDataURL("image/png");
     canvas.toBlob((blob) => {
       if (!blob) {
-        toast.error("Failed to save mask");
+        toast.error(copy("Failed to save mask", "保存蒙版失败"));
         return;
       }
       const file = new File([blob], "generated-mask.png", {
@@ -2304,7 +2479,7 @@ export function CreatePageClient({
         if (prev) revokePreview(prev.previewUrl);
         return { file, previewUrl };
       });
-      toast.success("Mask saved");
+      toast.success(copy("Mask saved", "蒙版已保存"));
     }, "image/png");
   };
 
@@ -2321,18 +2496,20 @@ export function CreatePageClient({
       setEditImages([item]);
       setActiveMode("image");
       setEditPrompt("");
-      toast.success("Result added as reference image");
+      toast.success(copy("Result added as reference image", "结果已作为参考图片"));
     } catch (error) {
-      toast.error("Failed to use result as reference", {
+      toast.error(copy("Failed to use result as reference", "设置参考图片失败"), {
         description:
-          error instanceof Error ? error.message : "Could not load image.",
+          error instanceof Error
+            ? error.message
+            : copy("Could not load image.", "无法加载图片。"),
       });
     }
   };
 
   const selectRecentAsReference = async (generation: RecentGeneration) => {
     if (!generation.imageUrl) {
-      toast.error("This image is not available yet");
+      toast.error(copy("This image is not available yet", "这张图片暂不可用"));
       return;
     }
 
@@ -2341,12 +2518,17 @@ export function CreatePageClient({
     );
     if (existingIndex >= 0) {
       removeImage(existingIndex);
-      toast.success("Reference image removed");
+      toast.success(copy("Reference image removed", "参考图片已移除"));
       return;
     }
 
     if (editImages.length >= MAX_EDIT_IMAGES) {
-      toast.error(`Upload up to ${MAX_EDIT_IMAGES} source images`);
+      toast.error(
+        copy(
+          `Upload up to ${MAX_EDIT_IMAGES} source images`,
+          `最多可上传 ${MAX_EDIT_IMAGES} 张源图片`
+        )
+      );
       return;
     }
 
@@ -2357,18 +2539,20 @@ export function CreatePageClient({
         generation.id
       );
       setEditImages((prev) => [...prev, item]);
-      toast.success("Reference image selected");
+      toast.success(copy("Reference image selected", "参考图片已选择"));
     } catch (error) {
-      toast.error("Failed to use image as reference", {
+      toast.error(copy("Failed to use image as reference", "设置参考图片失败"), {
         description:
-          error instanceof Error ? error.message : "Could not load image.",
+          error instanceof Error
+            ? error.message
+            : copy("Could not load image.", "无法加载图片。"),
       });
     }
   };
 
   const openRecentPreview = (generation: RecentGeneration) => {
     if (!generation.imageUrl) {
-      toast.error("This image is not available yet");
+      toast.error(copy("This image is not available yet", "这张图片暂不可用"));
       return;
     }
     setSelectedRecentId(generation.id);
@@ -2377,7 +2561,7 @@ export function CreatePageClient({
   const handleRecentClick = (generation: RecentGeneration) => {
     if (activeMode === "chat") {
       if (!generation.imageUrl) {
-        toast.error("This image is not available yet");
+        toast.error(copy("This image is not available yet", "这张图片暂不可用"));
         return;
       }
       void attachImageUrlToChat(
@@ -2404,10 +2588,13 @@ export function CreatePageClient({
         <div className="space-y-3">
           <div>
             <span className="text-sm font-medium text-foreground">
-              Resolution
+              {copy("Resolution", "分辨率")}
             </span>
             <p className="mt-1 text-xs text-muted-foreground">
-              Width and height must be multiples of 16.
+              {copy(
+                "Width and height must be multiples of 16.",
+                "宽和高必须是 16 的倍数。"
+              )}
             </p>
           </div>
 
@@ -2424,7 +2611,7 @@ export function CreatePageClient({
                   className="h-auto min-h-14 flex-col items-start justify-center gap-0.5 px-3 py-2 text-left"
                 >
                   <span className="text-sm font-medium leading-tight">
-                    {preset.label}
+                    {presetLabel(preset.label)}
                   </span>
                   <span className="text-[11px] leading-tight opacity-80">
                     {preset.detail}
@@ -2440,7 +2627,7 @@ export function CreatePageClient({
                 htmlFor="image-width"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Width
+                {copy("Width", "宽度")}
               </label>
               <Input
                 id="image-width"
@@ -2460,7 +2647,7 @@ export function CreatePageClient({
                 htmlFor="image-height"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Height
+                {copy("Height", "高度")}
               </label>
               <Input
                 id="image-height"
@@ -2483,7 +2670,7 @@ export function CreatePageClient({
                 htmlFor="batch-count"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Batch
+                {copy("Batch", "批量")}
               </label>
               <Select
                 value={String(batchCount)}
@@ -2496,7 +2683,7 @@ export function CreatePageClient({
                 <SelectContent>
                   {BATCH_OPTIONS.map((count) => (
                     <SelectItem key={count} value={String(count)}>
-                      {count} image{count > 1 ? "s" : ""}
+                      {imageCountLabel(count)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -2508,7 +2695,7 @@ export function CreatePageClient({
                 htmlFor="image-moderation"
                 className="text-xs font-medium text-muted-foreground"
               >
-                API moderation
+                {copy("API moderation", "API 审核")}
               </label>
               <Select
                 value={moderation}
@@ -2523,7 +2710,7 @@ export function CreatePageClient({
                 <SelectContent>
                   {MODERATION_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
-                      {option.label}
+                      {moderationLabel(option.value)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -2535,20 +2722,22 @@ export function CreatePageClient({
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground lg:justify-end">
           <Coins className="h-3.5 w-3.5" />
           <span>
-            Balance:{" "}
+            {copy("Balance", "余额")}:{" "}
             <span className="font-medium text-foreground">
               {formattedBalance}
             </span>{" "}
-            · Cost:{" "}
+            · {copy("Cost", "费用")}:{" "}
             <span className="font-medium text-foreground">
               {formattedTextBatchCreditCost}
             </span>
-            {batchCount > 1 ? ` for ${batchCount}` : "/image"}
+            {batchCostSuffix(batchCount)}
           </span>
         </div>
       </div>
       {!sizeCheck.valid && (
-        <p className="text-xs text-destructive">{sizeCheck.message}</p>
+        <p className="text-xs text-destructive">
+          {validationMessage(sizeCheck.message)}
+        </p>
       )}
     </div>
   );
@@ -2559,11 +2748,13 @@ export function CreatePageClient({
     <div className="container mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-12">
       <header className="mb-8 space-y-2">
         <h1 className="font-serif text-3xl font-semibold tracking-tight md:text-4xl">
-          Create
+          {copy("Create", "创作")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Generate a new image from text, or transform uploaded images with a
-          prompt.
+          {copy(
+            "Generate a new image from text, or transform uploaded images with a prompt.",
+            "用文字生成新图片，或通过提示词改造上传的图片。"
+          )}
         </p>
       </header>
 
@@ -2575,15 +2766,15 @@ export function CreatePageClient({
         <TabsList className="mb-4 border border-border bg-muted/40">
           <TabsTrigger value="text">
             <Wand2 className="h-4 w-4" />
-            Text to image
+            {copy("Text to image", "文生图")}
           </TabsTrigger>
           <TabsTrigger value="image">
             <ImagePlus className="h-4 w-4" />
-            Image to image
+            {copy("Image to image", "图生图")}
           </TabsTrigger>
           <TabsTrigger value="chat">
             <MessageSquare className="h-4 w-4" />
-            Chat
+            {copy("Chat", "对话")}
           </TabsTrigger>
         </TabsList>
 
@@ -2592,7 +2783,10 @@ export function CreatePageClient({
             <Textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe the image you want to create..."
+              placeholder={copy(
+                "Describe the image you want to create...",
+                "描述你想创作的图片..."
+              )}
               rows={5}
               disabled={isGenerating}
               className="resize-none border-input bg-background text-base"
@@ -2603,12 +2797,12 @@ export function CreatePageClient({
                 {isGenerating ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating
+                    {copy("Generating", "生成中")}
                   </>
                 ) : (
                   <>
                     <ImagePlus className="mr-2 h-4 w-4" />
-                    Generate
+                    {copy("Generate", "生成")}
                   </>
                 )}
               </Button>
@@ -2625,7 +2819,10 @@ export function CreatePageClient({
             <Textarea
               value={editPrompt}
               onChange={(e) => setEditPrompt(e.target.value)}
-              placeholder="Describe how to transform the uploaded image..."
+              placeholder={copy(
+                "Describe how to transform the uploaded image...",
+                "描述如何改造上传的图片..."
+              )}
               rows={5}
               disabled={isEditing}
               className="resize-none border-input bg-background text-base"
@@ -2635,11 +2832,13 @@ export function CreatePageClient({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <span className="text-sm font-medium text-foreground">
-                    Source images
+                    {copy("Source images", "源图片")}
                   </span>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Upload PNG, JPEG, or WebP. Up to {MAX_EDIT_IMAGES} images,
-                    {` ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)} total.`}
+                    {copy(
+                      `Upload PNG, JPEG, or WebP. Up to ${MAX_EDIT_IMAGES} images, ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)} total.`,
+                      `上传 PNG、JPEG 或 WebP，最多 ${MAX_EDIT_IMAGES} 张，总大小不超过 ${formatMegabytes(MAX_EDIT_REQUEST_BYTES)}。`
+                    )}
                   </p>
                 </div>
                 <Button
@@ -2649,7 +2848,7 @@ export function CreatePageClient({
                   disabled={isEditing || editImages.length >= MAX_EDIT_IMAGES}
                 >
                   <Upload className="mr-2 h-4 w-4" />
-                  Upload images
+                  {copy("Upload images", "上传图片")}
                 </Button>
                 {editImages.length > 0 && (
                   <Button
@@ -2658,7 +2857,7 @@ export function CreatePageClient({
                     onClick={clearEditImages}
                     disabled={isEditing}
                   >
-                    Clear all
+                    {copy("Clear all", "全部清除")}
                   </Button>
                 )}
                 <input
@@ -2686,7 +2885,10 @@ export function CreatePageClient({
                       </span>
                       <Image
                         src={item.previewUrl}
-                        alt={item.file.name || `Source image ${index + 1}`}
+                        alt={
+                          item.file.name ||
+                          copy(`Source image ${index + 1}`, `源图片 ${index + 1}`)
+                        }
                         fill
                         sizes="160px"
                         className="object-cover"
@@ -2711,13 +2913,15 @@ export function CreatePageClient({
               <div className="space-y-4 rounded-lg border border-border bg-background p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <span className="text-sm font-medium text-foreground">
-                      Optional mask
-                    </span>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Draw on the first source image or upload a PNG mask.
-                      Transparent areas are edited.
-                    </p>
+                  <span className="text-sm font-medium text-foreground">
+                      {copy("Optional mask", "可选蒙版")}
+                  </span>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                      {copy(
+                        "Draw on the first source image or upload a PNG mask. Transparent areas are edited.",
+                        "在第一张源图上绘制，或上传 PNG 蒙版。透明区域会被编辑。"
+                      )}
+                  </p>
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -2727,7 +2931,9 @@ export function CreatePageClient({
                       disabled={isEditing || !firstImageSize}
                     >
                       <Brush className="mr-2 h-4 w-4" />
-                      {maskEditorOpen ? "Close editor" : "Draw mask"}
+                      {maskEditorOpen
+                        ? copy("Close editor", "关闭编辑器")
+                        : copy("Draw mask", "绘制蒙版")}
                     </Button>
                     <Button
                       type="button"
@@ -2736,7 +2942,7 @@ export function CreatePageClient({
                       disabled={isEditing || !firstImageSize}
                     >
                       <Upload className="mr-2 h-4 w-4" />
-                      Upload mask
+                      {copy("Upload mask", "上传蒙版")}
                     </Button>
                     {maskFile && (
                       <Button
@@ -2745,7 +2951,7 @@ export function CreatePageClient({
                         onClick={clearMask}
                         disabled={isEditing}
                       >
-                        Clear
+                        {copy("Clear", "清除")}
                       </Button>
                     )}
                   </div>
@@ -2770,7 +2976,10 @@ export function CreatePageClient({
                     >
                       <Image
                         src={firstPreviewUrl}
-                        alt="Source image for mask editing"
+                        alt={copy(
+                          "Source image for mask editing",
+                          "用于蒙版编辑的源图片"
+                        )}
                         fill
                         sizes="(max-width: 1024px) 100vw, 640px"
                         className="object-contain"
@@ -2795,7 +3004,7 @@ export function CreatePageClient({
                         htmlFor="mask-brush-size"
                         className="flex items-center gap-2 text-xs font-medium text-muted-foreground"
                       >
-                        Brush {maskBrushSize}px
+                        {copy("Brush", "画笔")} {maskBrushSize}px
                         <input
                           id="mask-brush-size"
                           type="range"
@@ -2818,7 +3027,7 @@ export function CreatePageClient({
                           disabled={isEditing}
                         >
                           <Eraser className="mr-2 h-4 w-4" />
-                          Clear mask
+                          {copy("Clear mask", "清除蒙版")}
                         </Button>
                         <Button
                           type="button"
@@ -2827,7 +3036,7 @@ export function CreatePageClient({
                           disabled={isEditing || maskPoints.length === 0}
                         >
                           <Save className="mr-2 h-4 w-4" />
-                          Save mask
+                          {copy("Save mask", "保存蒙版")}
                         </Button>
                       </div>
                     </div>
@@ -2836,12 +3045,12 @@ export function CreatePageClient({
                 {maskFile && (
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground">
-                      Saved mask
+                      {copy("Saved mask", "已保存蒙版")}
                     </p>
                     <div className="relative aspect-video w-44 overflow-hidden rounded-md border bg-muted">
                       <Image
                         src={maskFile.previewUrl}
-                        alt="Mask preview"
+                        alt={copy("Mask preview", "蒙版预览")}
                         fill
                         sizes="176px"
                         className="object-contain"
@@ -2858,7 +3067,7 @@ export function CreatePageClient({
                     htmlFor="edit-model"
                     className="text-sm font-medium text-foreground"
                   >
-                    Model
+                    {copy("Model", "模型")}
                   </label>
                   <Select
                     value={editModel}
@@ -2871,7 +3080,7 @@ export function CreatePageClient({
                     <SelectContent>
                       {EDIT_MODEL_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                          {editModelLabel(option.label)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2883,7 +3092,7 @@ export function CreatePageClient({
                     htmlFor="edit-quality"
                     className="text-sm font-medium text-foreground"
                   >
-                    Quality
+                    {copy("Quality", "质量")}
                   </label>
                   <Select
                     value={quality}
@@ -2896,7 +3105,7 @@ export function CreatePageClient({
                     <SelectContent>
                       {QUALITY_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                          {qualityLabel(option.value)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2908,7 +3117,7 @@ export function CreatePageClient({
                     htmlFor="edit-batch-count"
                     className="text-sm font-medium text-foreground"
                   >
-                    Batch
+                    {copy("Batch", "批量")}
                   </label>
                   <Select
                     value={String(editBatchCount)}
@@ -2921,7 +3130,7 @@ export function CreatePageClient({
                     <SelectContent>
                       {BATCH_OPTIONS.map((count) => (
                         <SelectItem key={count} value={String(count)}>
-                          {count} image{count > 1 ? "s" : ""}
+                          {imageCountLabel(count)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2943,10 +3152,12 @@ export function CreatePageClient({
                       className="mt-0.5"
                     />
                     <span>
-                      Use first image resolution
+                      {copy("Use first image resolution", "使用第一张图片分辨率")}
                       <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                        Default for edits. Turn off for outpainting or canvas
-                        extension.
+                        {copy(
+                          "Default for edits. Turn off for outpainting or canvas extension.",
+                          "编辑默认使用该尺寸；扩图或扩展画布时可关闭。"
+                        )}
                       </span>
                     </span>
                   </label>
@@ -2966,7 +3177,7 @@ export function CreatePageClient({
                               className="h-auto min-h-12 flex-col items-start justify-center gap-0.5 px-2 py-2 text-left"
                             >
                               <span className="text-xs font-medium leading-tight">
-                                {preset.label}
+                                {presetLabel(preset.label)}
                               </span>
                               <span className="text-[10px] leading-tight opacity-80">
                                 {preset.detail}
@@ -2982,7 +3193,7 @@ export function CreatePageClient({
                             htmlFor="edit-width"
                             className="text-xs font-medium text-muted-foreground"
                           >
-                            Width
+                            {copy("Width", "宽度")}
                           </label>
                           <Input
                             id="edit-width"
@@ -3003,7 +3214,7 @@ export function CreatePageClient({
                             htmlFor="edit-height"
                             className="text-xs font-medium text-muted-foreground"
                           >
-                            Height
+                            {copy("Height", "高度")}
                           </label>
                           <Input
                             id="edit-height"
@@ -3022,7 +3233,7 @@ export function CreatePageClient({
 
                       {!customEditSizeCheck.valid && (
                         <p className="text-xs text-destructive">
-                          {customEditSizeCheck.message}
+                          {validationMessage(customEditSizeCheck.message)}
                         </p>
                       )}
                     </div>
@@ -3031,17 +3242,17 @@ export function CreatePageClient({
 
                 <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
                   <p>
-                    Output size:{" "}
+                    {copy("Output size", "输出尺寸")}:{" "}
                     <span className="font-medium text-foreground">
                       {editDisplaySize}
                     </span>
                   </p>
                   <p className="mt-1">
-                    Cost:{" "}
+                    {copy("Cost", "费用")}:{" "}
                     <span className="font-medium text-foreground">
                       {formattedEditBatchCreditCost}
                     </span>
-                    {editBatchCount > 1 ? ` for ${editBatchCount}` : "/image"}
+                    {batchCostSuffix(editBatchCount)}
                   </p>
                 </div>
               </div>
@@ -3057,12 +3268,12 @@ export function CreatePageClient({
                 {isEditing ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Editing
+                    {copy("Editing", "编辑中")}
                   </>
                 ) : (
                   <>
                     <ImagePlus className="mr-2 h-4 w-4" />
-                    Edit image
+                    {copy("Edit image", "编辑图片")}
                   </>
                 )}
               </Button>
@@ -3081,7 +3292,7 @@ export function CreatePageClient({
                   onClick={() => setChatViewMode("chat")}
                 >
                   <MessageSquare className="h-4 w-4" />
-                  Chat
+                  {copy("Chat", "对话")}
                 </Button>
                 <Button
                   type="button"
@@ -3090,7 +3301,7 @@ export function CreatePageClient({
                   onClick={() => setChatViewMode("batch")}
                 >
                   <ImagePlus className="h-4 w-4" />
-                  Batch
+                  {copy("Batch", "批量")}
                 </Button>
               </div>
               {chatAttachments.length > 0 && (
@@ -3102,7 +3313,7 @@ export function CreatePageClient({
                   disabled={isChatGenerating}
                 >
                   <X className="h-4 w-4" />
-                  Clear references
+                  {copy("Clear references", "清除参考图")}
                 </Button>
               )}
             </div>
@@ -3117,11 +3328,13 @@ export function CreatePageClient({
                     <div className="flex min-h-[420px] flex-col items-center justify-center text-center text-muted-foreground">
                       <MessageSquare className="mb-3 h-8 w-8" />
                       <p className="text-sm font-medium text-foreground">
-                        Start a visual conversation
+                        {copy("Start a visual conversation", "开始视觉对话")}
                       </p>
                       <p className="mt-1 max-w-md text-xs">
-                        Auto mode generates from text, edits attached images,
-                        and keeps the conversation as context.
+                        {copy(
+                          "Auto mode generates from text, edits attached images, and keeps the conversation as context.",
+                          "Auto 模式会根据文字生成图片、编辑附件图片，并保留对话上下文。"
+                        )}
                       </p>
                     </div>
                   ) : (
@@ -3222,7 +3435,7 @@ export function CreatePageClient({
                                             );
                                           }
                                         }}
-                                        title="Open image preview"
+                                        title={copy("Open image preview", "打开图片预览")}
                                       >
                                         <Image
                                           src={activeVariant.imageUrl}
@@ -3234,7 +3447,7 @@ export function CreatePageClient({
                                         />
                                         <span className="absolute right-2 top-2 rounded bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
                                           <Eye className="mr-1 inline h-3 w-3" />
-                                          Preview
+                                          {copy("Preview", "预览")}
                                         </span>
                                       </button>
                                       <div className="flex flex-wrap gap-2 p-2">
@@ -3250,7 +3463,7 @@ export function CreatePageClient({
                                             rel="noopener noreferrer"
                                           >
                                             <Download className="h-3 w-3" />
-                                            Download
+                                            {copy("Download", "下载")}
                                           </a>
                                         </Button>
                                         <Button
@@ -3262,7 +3475,7 @@ export function CreatePageClient({
                                           }
                                         >
                                           <RefreshCcw className="h-3 w-3" />
-                                          Edit next
+                                          {copy("Edit next", "继续编辑")}
                                         </Button>
                                       </div>
                                     </div>
@@ -3270,14 +3483,14 @@ export function CreatePageClient({
                                   {!activeVariant.responseText &&
                                     !activeVariant.imageUrl && (
                                       <p className="text-muted-foreground">
-                                        Response generated
+                                        {copy("Response generated", "回复已生成")}
                                       </p>
                                     )}
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2 text-muted-foreground">
                                   <Loader2 className="h-4 w-4 animate-spin" />
-                                  Generating...
+                                  {copy("Generating...", "生成中...")}
                                 </div>
                               )}
                             </div>
@@ -3296,7 +3509,7 @@ export function CreatePageClient({
                                       onClick={() =>
                                         handleChatVariantChange(message.id, -1)
                                       }
-                                      title="Previous variant"
+                                      title={copy("Previous variant", "上一个版本")}
                                     >
                                       <ChevronLeft className="h-3 w-3" />
                                     </Button>
@@ -3314,7 +3527,7 @@ export function CreatePageClient({
                                       onClick={() =>
                                         handleChatVariantChange(message.id, 1)
                                       }
-                                      title="Next variant"
+                                      title={copy("Next variant", "下一个版本")}
                                     >
                                       <ChevronRight className="h-3 w-3" />
                                     </Button>
@@ -3328,8 +3541,8 @@ export function CreatePageClient({
                                   onClick={() => handleChatRetry(message.id)}
                                   title={
                                     message.error
-                                      ? "Retry generation"
-                                      : "Generate another variant"
+                                      ? copy("Retry generation", "重试生成")
+                                      : copy("Generate another variant", "再生成一个版本")
                                   }
                                 >
                                   <RefreshCcw className="h-4 w-4" />
@@ -3367,7 +3580,7 @@ export function CreatePageClient({
                       <SelectContent>
                         {CHAT_TIER_OPTIONS.map((tier) => (
                           <SelectItem key={tier} value={String(tier)}>
-                            Batch {tier}
+                            {copy(`Batch ${tier}`, `批量 ${tier}`)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -3384,18 +3597,18 @@ export function CreatePageClient({
                       <SelectContent>
                         {CHAT_THINKING_OPTIONS.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
-                            Thinking {option.label}
+                            {copy("Thinking", "思考")} {thinkingLabel(option.value)}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Cost{" "}
+                    {copy("Cost", "费用")}{" "}
                     <span className="font-medium text-foreground">
                       {formattedBatchCreditCost}
                     </span>{" "}
-                    for {batchTier}
+                    {copy(`for ${batchTier}`, `共 ${batchTier} 张`)}
                   </div>
                 </div>
 
@@ -3403,10 +3616,13 @@ export function CreatePageClient({
                   <div className="mx-auto flex min-h-[560px] max-w-3xl flex-col justify-center px-4 py-10">
                     <div className="mb-5 text-center">
                       <h2 className="font-serif text-2xl font-semibold tracking-tight">
-                        What world will you flood with art?
+                        {copy(
+                          "What world will you flood with art?",
+                          "你想让哪个世界充满图像？"
+                        )}
                       </h2>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        One prompt, endless creations
+                        {copy("One prompt, endless creations", "一个提示词，批量生成灵感")}
                       </p>
                     </div>
                     <form
@@ -3422,7 +3638,7 @@ export function CreatePageClient({
                               key={`${item.file.name}-${item.previewUrl}`}
                               className="relative h-12 w-12 overflow-hidden rounded-md border bg-muted"
                               onClick={() => removeChatAttachment(index)}
-                              title="Remove reference image"
+                              title={copy("Remove reference image", "移除参考图片")}
                             >
                               <Image
                                 src={item.previewUrl}
@@ -3443,7 +3659,7 @@ export function CreatePageClient({
                           size="icon-sm"
                           onClick={() => batchImageInputRef.current?.click()}
                           disabled={chatAttachments.length >= MAX_EDIT_IMAGES}
-                          title="Attach reference image"
+                          title={copy("Attach reference image", "添加参考图片")}
                         >
                           <ImagePlus className="h-4 w-4" />
                         </Button>
@@ -3452,7 +3668,10 @@ export function CreatePageClient({
                           onChange={(event) =>
                             setBatchPrompt(event.target.value)
                           }
-                          placeholder="Describe the images you want to generate..."
+                          placeholder={copy(
+                            "Describe the images you want to generate...",
+                            "描述你想批量生成的图片..."
+                          )}
                           rows={1}
                           className="max-h-40 min-h-9 resize-none border-0 bg-transparent px-0 py-2 text-base shadow-none focus-visible:ring-0"
                           onKeyDown={(event) => {
@@ -3466,7 +3685,7 @@ export function CreatePageClient({
                           type="submit"
                           size="icon-sm"
                           disabled={!batchPrompt.trim()}
-                          title="Generate batch"
+                          title={copy("Generate batch", "批量生成")}
                         >
                           <Send className="h-4 w-4" />
                         </Button>
@@ -3484,7 +3703,7 @@ export function CreatePageClient({
                       </div>
                     </form>
                     <div className="mt-4 flex flex-wrap justify-center gap-2">
-                      {CHAT_SUGGESTIONS.map((suggestion) => (
+                      {chatSuggestions.map((suggestion) => (
                         <Button
                           key={suggestion}
                           type="button"
@@ -3540,7 +3759,7 @@ export function CreatePageClient({
                                   setSelectedRecentId(card.generationId);
                                 }
                               }}
-                              title="Open image preview"
+                              title={copy("Open image preview", "打开图片预览")}
                             >
                               <Image
                                 src={card.imageUrl}
@@ -3553,7 +3772,7 @@ export function CreatePageClient({
                               {card.state === "loading" && (
                                 <span className="absolute left-2 top-2 rounded-full bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm">
                                   <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
-                                  Streaming
+                                  {copy("Streaming", "流式生成中")}
                                 </span>
                               )}
                               {card.state === "image" && (
@@ -3567,7 +3786,7 @@ export function CreatePageClient({
                                       saveBatchCardToRecent(card);
                                     }}
                                     disabled={card.saved}
-                                    title="Save to recent"
+                                    title={copy("Save to recent", "保存到最近生成")}
                                   >
                                     <Save className="h-3 w-3" />
                                   </Button>
@@ -3575,7 +3794,7 @@ export function CreatePageClient({
                                     asChild
                                     variant="secondary"
                                     size="icon-xs"
-                                    title="Download"
+                                    title={copy("Download", "下载")}
                                     onClick={(event) => event.stopPropagation()}
                                   >
                                     <a
@@ -3597,7 +3816,7 @@ export function CreatePageClient({
                                         setSelectedRecentId(card.generationId);
                                       }
                                     }}
-                                    title="Fullscreen"
+                                    title={copy("Fullscreen", "全屏")}
                                   >
                                     <Maximize2 className="h-3 w-3" />
                                   </Button>
@@ -3618,7 +3837,7 @@ export function CreatePageClient({
                           {card.state === "error" && (
                             <div className="space-y-3 p-3 text-sm text-destructive">
                               <p className="break-words">
-                                {card.error || "Generation failed"}
+                                {card.error || copy("Generation failed", "生成失败")}
                               </p>
                               <Button
                                 type="button"
@@ -3631,7 +3850,7 @@ export function CreatePageClient({
                                 }
                               >
                                 <RefreshCcw className="h-4 w-4" />
-                                Retry
+                                {copy("Retry", "重试")}
                               </Button>
                             </div>
                           )}
@@ -3645,12 +3864,12 @@ export function CreatePageClient({
                       {isBatchLoadingMore ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Generating...
+                          {copy("Generating...", "生成中...")}
                         </>
                       ) : (
                         <>
                           <ChevronDown className="h-4 w-4" />
-                          Scroll to generate more
+                          {copy("Scroll to generate more", "继续下拉生成更多")}
                         </>
                       )}
                     </div>
@@ -3673,7 +3892,7 @@ export function CreatePageClient({
             <div className="relative h-full w-full">
               <Image
                 src={streamingPreviewUrl}
-                alt="Streaming preview"
+                alt={copy("Streaming preview", "流式预览")}
                 fill
                 sizes="(max-width: 1024px) 100vw, 768px"
                 className="object-contain"
@@ -3681,13 +3900,15 @@ export function CreatePageClient({
               />
               <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Previewing stream
+                {copy("Previewing stream", "正在预览流式结果")}
               </div>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 text-muted-foreground">
               <Loader2 className="h-8 w-8 animate-spin" />
-              <p className="text-sm">Generating your image...</p>
+              <p className="text-sm">
+                {copy("Generating your image...", "正在生成图片...")}
+              </p>
             </div>
           )}
         </div>
@@ -3708,7 +3929,7 @@ export function CreatePageClient({
             style={{
               aspectRatio: `${parseImageSize(result.size)?.width || width} / ${parseImageSize(result.size)?.height || height}`,
             }}
-            title="Open image preview"
+            title={copy("Open image preview", "打开图片预览")}
           >
             <Image
               src={result.imageUrl}
@@ -3720,22 +3941,22 @@ export function CreatePageClient({
             />
             <span className="absolute right-2 top-2 rounded bg-background/90 px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity hover:opacity-100 focus:opacity-100 group-hover:opacity-100">
               <Eye className="mr-1 inline h-3.5 w-3.5" />
-              Preview
+              {copy("Preview", "预览")}
             </span>
           </button>
           <div className="mx-auto max-w-2xl space-y-3">
             <p className="text-sm text-muted-foreground">{result.prompt}</p>
             <p className="text-xs text-muted-foreground">
-              Model:{" "}
+              {copy("Model", "模型")}:{" "}
               <span className="font-medium text-foreground">
                 {result.model}
               </span>{" "}
-              · Resolution:{" "}
+              · {copy("Resolution", "分辨率")}:{" "}
               <span className="font-medium text-foreground">{result.size}</span>
             </p>
             {result.revisedPrompt && result.revisedPrompt !== result.prompt && (
               <p className="text-xs italic text-muted-foreground">
-                Revised: {result.revisedPrompt}
+                {copy("Revised", "优化提示词")}: {result.revisedPrompt}
               </p>
             )}
             <div className="flex gap-2">
@@ -3747,7 +3968,7 @@ export function CreatePageClient({
                   rel="noopener noreferrer"
                 >
                   <Download className="mr-2 h-4 w-4" />
-                  Download
+                  {copy("Download", "下载")}
                 </a>
               </Button>
               <Button
@@ -3757,7 +3978,7 @@ export function CreatePageClient({
                 onClick={useResultAsReference}
               >
                 <RefreshCcw className="mr-2 h-4 w-4" />
-                Edit this
+                {copy("Edit this", "编辑这张")}
               </Button>
             </div>
           </div>
@@ -3767,13 +3988,24 @@ export function CreatePageClient({
       {recent.length > 0 && (
         <section className="space-y-4">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-            <h2 className="font-serif text-xl font-semibold">Recent</h2>
+            <h2 className="font-serif text-xl font-semibold">
+              {copy("Recent", "最近生成")}
+            </h2>
             <p className="text-xs text-muted-foreground">
               {activeMode === "chat"
-                ? "Click an image to attach it as the next chat reference."
+                ? copy(
+                    "Click an image to attach it as the next chat reference.",
+                    "点击图片可作为下一轮对话参考图。"
+                  )
                 : activeMode === "image"
-                  ? "Click an image to add or remove it as a reference."
-                  : "Click an image to open the full preview."}
+                  ? copy(
+                      "Click an image to add or remove it as a reference.",
+                      "点击图片可添加或移除为参考图。"
+                    )
+                  : copy(
+                      "Click an image to open the full preview.",
+                      "点击图片打开完整预览。"
+                    )}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
@@ -3792,10 +4024,10 @@ export function CreatePageClient({
                   }`}
                   title={
                     activeMode === "chat"
-                      ? "Attach to chat"
+                      ? copy("Attach to chat", "添加到对话")
                       : activeMode === "image"
-                        ? "Use as reference image"
-                        : "Open image preview"
+                        ? copy("Use as reference image", "作为参考图片")
+                        : copy("Open image preview", "打开图片预览")
                   }
                   onClick={() => handleRecentClick(g)}
                   disabled={!g.imageUrl}
@@ -3817,24 +4049,24 @@ export function CreatePageClient({
                     {activeMode === "chat" ? (
                       <>
                         <MessageSquare className="mr-1 h-3 w-3" />
-                        Attach to chat
+                        {copy("Attach to chat", "添加到对话")}
                       </>
                     ) : activeMode === "image" ? (
                       selectedForEdit ? (
                         <>
                           <Check className="mr-1 h-3 w-3" />
-                          Selected
+                          {copy("Selected", "已选择")}
                         </>
                       ) : (
                         <>
                           <ImagePlus className="mr-1 h-3 w-3" />
-                          Use as reference
+                          {copy("Use as reference", "作为参考图")}
                         </>
                       )
                     ) : (
                       <>
                         <Eye className="mr-1 h-3 w-3" />
-                        Preview
+                        {copy("Preview", "预览")}
                       </>
                     )}
                   </span>

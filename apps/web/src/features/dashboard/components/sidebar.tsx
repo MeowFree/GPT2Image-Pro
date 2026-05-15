@@ -342,7 +342,7 @@ export function DashboardSidebar() {
           side="left"
           className="w-64 bg-sidebar p-0 md:hidden [&>button:last-child]:hidden"
         >
-          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <SheetTitle className="sr-only">{t("nav.dashboard")}</SheetTitle>
           <div className="flex h-full flex-col">
             {renderSidebarContent(true)}
           </div>

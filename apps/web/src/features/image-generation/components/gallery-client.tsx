@@ -3,6 +3,7 @@
 import { Button } from "@repo/ui/components/button";
 import { ImagePlus } from "lucide-react";
 import Link from "next/link";
+import { useLocale } from "next-intl";
 import { useState } from "react";
 import { ImageCard } from "@/features/image-generation/components/image-card";
 import {
@@ -33,6 +34,9 @@ export function GalleryClient({
   initialGenerations,
   totalCount,
 }: GalleryClientProps) {
+  const locale = useLocale();
+  const isZh = locale === "zh";
+  const copy = (en: string, zh: string) => (isZh ? zh : en);
   const [items, setItems] = useState<GenerationWithUrl[]>(initialGenerations);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -51,14 +55,18 @@ export function GalleryClient({
           strokeWidth={1.2}
         />
         <h3 className="mt-4 font-serif text-lg font-medium text-foreground">
-          No images yet
+          {copy("No images yet", "还没有图片")}
         </h3>
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          Your generated images will appear here. Start by creating your first
-          one.
+          {copy(
+            "Your generated images will appear here. Start by creating your first one.",
+            "你生成的图片会显示在这里。先创建第一张图片吧。"
+          )}
         </p>
         <Button asChild variant="outline" className="mt-6">
-          <Link href="/dashboard/create">Create an image</Link>
+          <Link href="/dashboard/create">
+            {copy("Create an image", "创建图片")}
+          </Link>
         </Button>
       </div>
     );
@@ -87,7 +95,7 @@ export function GalleryClient({
       {hasMore && (
         <div className="flex justify-center pt-4">
           <Button variant="outline" disabled>
-            Load more
+            {copy("Load more", "加载更多")}
           </Button>
         </div>
       )}
