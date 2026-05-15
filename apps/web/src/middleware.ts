@@ -93,6 +93,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (pathname === "/moderate") {
+    return NextResponse.next();
+  }
+
   // ============================================
   // 非 API 路由：国际化 + 认证保护
   // ============================================

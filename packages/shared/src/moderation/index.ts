@@ -32,6 +32,7 @@ export interface ModerateContentInput {
   mode?: ModerationMode;
   userId?: string;
   generationId?: string;
+  skipProxy?: boolean;
 }
 
 export interface ModerationResult {
@@ -65,6 +66,11 @@ function envFlag(name: string, fallback = false) {
 function envValue(name: string) {
   const value = process.env[name]?.trim();
   return value || undefined;
+}
+
+function envNumber(name: string, fallback: number) {
+  const value = Number(envValue(name));
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function isModerationEnabled() {
@@ -129,6 +135,22 @@ function getOpenAiApiKey() {
   );
 }
 
+function getProxyUrl() {
+  return envValue("CONTENT_MODERATION_PROXY_URL");
+}
+
+function getProxySecret() {
+  return envValue("CONTENT_MODERATION_PROXY_SECRET");
+}
+
+function getProxyTimeoutMs() {
+  return envNumber("CONTENT_MODERATION_PROXY_TIMEOUT_MS", 10_000);
+}
+
+function getProviderTimeoutMs() {
+  return envNumber("CONTENT_MODERATION_PROVIDER_TIMEOUT_MS", 10_000);
+}
+
 export function getConfiguredModerationProviders(): ModerationProvider[] {
   if (!isModerationEnabled()) {
     return [];
@@ -149,6 +171,26 @@ export function getConfiguredModerationProviders(): ModerationProvider[] {
   if (getAliyunConfig()) providers.push("aliyun");
   if (getOpenAiApiKey()) providers.push("openai");
   return providers;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 function toBlockResult(
@@ -503,22 +545,103 @@ async function moderateWithOpenAI(
   return { decision: "allow", provider: "openai", details: result };
 }
 
+async function moderateWithProxy(
+  input: ModerateContentInput
+): Promise<ModerationResult> {
+  const proxyUrl = getProxyUrl();
+  if (!proxyUrl || input.skipProxy) {
+    return { decision: "skipped" };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getProxyTimeoutMs());
+
+  try {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+    };
+    const secret = getProxySecret();
+    if (secret) {
+      headers.authorization = `Bearer ${secret}`;
+      headers["x-moderation-proxy-secret"] = secret;
+    }
+
+    const response = await fetch(proxyUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        prompt: input.prompt,
+        mode: input.mode,
+        userId: input.userId,
+        generationId: input.generationId,
+        images: (input.images || []).map((image) => ({
+          name: image.name,
+          type: image.type,
+          url: image.url,
+          data: image.url ? undefined : image.data.toString("base64"),
+        })),
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Moderation proxy failed: ${response.status}`);
+    }
+
+    const result = (await response.json()) as ModerationResult;
+    if (
+      result.decision === "allow" ||
+      result.decision === "block" ||
+      result.decision === "skipped" ||
+      result.decision === "error"
+    ) {
+      return result;
+    }
+
+    throw new Error("Moderation proxy returned an invalid decision");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function moderateContent(
   input: ModerateContentInput
 ): Promise<ModerationResult> {
   const providers = getConfiguredModerationProviders();
-  if (providers.length === 0) {
+  const proxyUrl = getProxyUrl();
+  if (providers.length === 0 && (!proxyUrl || input.skipProxy)) {
     return { decision: "skipped" };
   }
 
   const errors: Array<{ provider: ModerationProvider; error: string }> = [];
 
+  if (proxyUrl && !input.skipProxy) {
+    try {
+      const result = await moderateWithProxy(input);
+      if (result.decision === "block" || result.decision === "allow") {
+        return result;
+      }
+      if (result.decision === "error") {
+        return result;
+      }
+    } catch (error) {
+      logError(error, {
+        userId: input.userId,
+        generationId: input.generationId,
+        context: "content-moderation-proxy",
+      });
+    }
+  }
+
   for (const provider of providers) {
     try {
-      const result =
+      const result = await withTimeout(
         provider === "aliyun"
-            ? await moderateWithAliyun(input)
-            : await moderateWithOpenAI(input);
+          ? moderateWithAliyun(input)
+          : moderateWithOpenAI(input),
+        getProviderTimeoutMs(),
+        `${provider} moderation`
+      );
 
       if (result.decision === "block") {
         return result;

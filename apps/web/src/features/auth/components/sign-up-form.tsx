@@ -6,7 +6,10 @@ import {
   signInWithGoogle,
   signUpWithEmail,
 } from "@repo/shared/auth/client";
-import { isAllowedRegistrationEmail } from "@repo/shared/auth/email-domain";
+import {
+  ALLOWED_REGISTRATION_EMAIL_DOMAIN_LIST,
+  isAllowedRegistrationEmail,
+} from "@repo/shared/auth/email-domain";
 import { GoogleIcon } from "@repo/shared/components/icons";
 import { Button } from "@repo/ui/components/button";
 import { Input } from "@repo/ui/components/input";
@@ -107,6 +110,13 @@ export function SignUpForm() {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [codeCooldown, setCodeCooldown] = useState(0);
   const isAllowedEmail = (value: string) => isAllowedRegistrationEmail(value);
+  const allowedEmailDomains = ALLOWED_REGISTRATION_EMAIL_DOMAIN_LIST.join(", ");
+  const emailDomainError = t("errors.emailDomainNotAllowed", {
+    domains: allowedEmailDomains,
+  });
+  const trimmedEmail = email.trim();
+  const showEmailDomainError =
+    trimmedEmail.includes("@") && !isAllowedEmail(trimmedEmail);
 
   /**
    * 启动重发冷却倒计时
@@ -166,7 +176,7 @@ export function SignUpForm() {
     }
 
     if (!isAllowedEmail(email)) {
-      setError(t("errors.emailDomainNotAllowed"));
+      setError(emailDomainError);
       return;
     }
 
@@ -179,10 +189,10 @@ export function SignUpForm() {
     } catch (error) {
       setError(
         isEmailDomainError(error)
-          ? t("errors.emailDomainNotAllowed")
+          ? emailDomainError
           : isEmailAlreadyRegistered(error)
-          ? t("errors.emailAlreadyRegistered")
-          : t("errors.verificationSendFailed")
+            ? t("errors.emailAlreadyRegistered")
+            : t("errors.verificationSendFailed")
       );
     } finally {
       setIsSendingCode(false);
@@ -216,7 +226,7 @@ export function SignUpForm() {
     }
 
     if (!isAllowedEmail(email)) {
-      setError(t("errors.emailDomainNotAllowed"));
+      setError(emailDomainError);
       return;
     }
 
@@ -243,10 +253,10 @@ export function SignUpForm() {
       if (result.error) {
         setError(
           isEmailDomainError(result.error)
-            ? t("errors.emailDomainNotAllowed")
+            ? emailDomainError
             : isVerificationCodeError(result.error)
-            ? t("errors.invalidVerificationCode")
-            : isEmailAlreadyRegistered(result.error)
+              ? t("errors.invalidVerificationCode")
+              : isEmailAlreadyRegistered(result.error)
             ? t("errors.emailAlreadyRegistered")
             : t("errors.emailInUse")
         );
@@ -378,7 +388,14 @@ export function SignUpForm() {
             onChange={(e) => setEmail(e.target.value)}
             disabled={isLoading}
             autoComplete="email"
+            aria-invalid={showEmailDomainError}
           />
+          <p className="text-xs text-muted-foreground">
+            {t("emailDomainHint", { domains: allowedEmailDomains })}
+          </p>
+          {showEmailDomainError ? (
+            <p className="text-xs text-destructive">{emailDomainError}</p>
+          ) : null}
         </div>
 
         {/* 验证码输入 */}

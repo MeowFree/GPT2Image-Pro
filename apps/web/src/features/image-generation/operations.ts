@@ -9,7 +9,7 @@ import { nanoid } from "nanoid";
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_IMAGE_SIZE,
-  getImageCreditCost,
+  getImageCreditCostBreakdown,
   normalizeImageModel,
 } from "./resolution";
 import {
@@ -95,7 +95,15 @@ export async function runImageGenerationForUser(
   const generationId = input.generationId || nanoid();
   const apiPrompt = input.apiPrompt || input.prompt;
   const size = input.size || DEFAULT_IMAGE_SIZE;
-  const creditsPerImage = getImageCreditCost(size);
+  const inputImages = getInputImages(input);
+  const creditCost = getImageCreditCostBreakdown(size, {
+    imageModerationCount: inputImages.length,
+  });
+  const creditsPerImage = creditCost.totalCredits;
+  const refundableGenerationCredits = Math.max(
+    0,
+    creditsPerImage - creditCost.moderationOnlyCredits
+  );
   const bucket =
     process.env.NEXT_PUBLIC_GENERATIONS_BUCKET_NAME || "generations";
 
@@ -125,6 +133,7 @@ export async function runImageGenerationForUser(
             hasMask: Boolean(input.mask),
             quality: input.quality || "auto",
             batchCount: input.n || 1,
+            creditCost,
           }
         : input.mode === "chat"
           ? {
@@ -134,16 +143,36 @@ export async function runImageGenerationForUser(
               quality: input.quality || "auto",
               moderation: input.moderation || "auto",
               batchCount: input.n || 1,
+              creditCost,
             }
           : {
               mode: "generate",
               quality: input.quality || "auto",
               moderation: input.moderation || "auto",
               batchCount: input.n || 1,
+              creditCost,
             },
   });
 
   let chargedCredits = 0;
+  const refundChargedCredits = async (
+    amount: number,
+    sourceRef: string,
+    description: string
+  ) => {
+    if (!useCredits || amount <= 0) return;
+    await grantCredits({
+      userId: input.userId,
+      amount,
+      sourceType: "refund",
+      debitAccount: "SYSTEM:generation_refund",
+      transactionType: "refund",
+      sourceRef,
+      description,
+    });
+    chargedCredits = Math.max(0, chargedCredits - amount);
+  };
+
   if (useCredits) {
     try {
       await consumeCredits({
@@ -151,7 +180,12 @@ export async function runImageGenerationForUser(
         amount: creditsPerImage,
         serviceName: "image-generation",
         description: `Image generation: ${input.prompt.substring(0, 50)}`,
-        metadata: { generationId, mode: input.mode, size },
+        metadata: {
+          generationId,
+          mode: input.mode,
+          size,
+          creditCost,
+        },
       });
       chargedCredits = creditsPerImage;
     } catch (error: unknown) {
@@ -167,13 +201,28 @@ export async function runImageGenerationForUser(
 
   const moderation = await moderateContent({
     prompt: apiPrompt,
-    images: getInputImages(input),
-    mode: getInputImages(input).length > 0 ? "image" : "text",
+    images: inputImages,
+    mode: inputImages.length > 0 ? "image" : "text",
     userId: input.userId,
     generationId,
   });
 
   if (moderation.decision === "block" || moderation.decision === "error") {
+    const refundAmount =
+      moderation.decision === "block"
+        ? refundableGenerationCredits
+        : creditsPerImage;
+    if (refundAmount > 0) {
+      try {
+        await refundChargedCredits(
+          refundAmount,
+          `${generationId}:moderation`,
+          `Refund after moderation stop: ${input.prompt.substring(0, 50)}`
+        );
+      } catch {
+        /* best effort refund */
+      }
+    }
     const message =
       moderation.decision === "block"
         ? "Content failed moderation"
@@ -183,6 +232,7 @@ export async function runImageGenerationForUser(
       .set({
         status: "failed",
         error: moderation.reason || message,
+        creditsConsumed: chargedCredits,
       })
       .where(eq(generation.id, generationId));
     return { error: message, generationId, creditsConsumed: chargedCredits };
@@ -238,26 +288,26 @@ export async function runImageGenerationForUser(
           );
 
   if (result.error) {
-    if (useCredits) {
+    if (refundableGenerationCredits > 0) {
       try {
-        await grantCredits({
-          userId: input.userId,
-          amount: creditsPerImage,
-          sourceType: "refund",
-          debitAccount: "SYSTEM:generation_refund",
-          transactionType: "refund",
-          sourceRef: generationId,
-          description: `Refund for failed generation: ${input.prompt.substring(0, 50)}`,
-        });
+        await refundChargedCredits(
+          refundableGenerationCredits,
+          generationId,
+          `Refund for failed generation: ${input.prompt.substring(0, 50)}`
+        );
       } catch {
         /* best effort refund */
       }
     }
     await db
       .update(generation)
-      .set({ status: "failed", error: result.error })
+      .set({
+        status: "failed",
+        error: result.error,
+        creditsConsumed: chargedCredits,
+      })
       .where(eq(generation.id, generationId));
-    return { error: result.error, generationId };
+    return { error: result.error, generationId, creditsConsumed: chargedCredits };
   }
 
   if (!result.imageBase64 && !result.imageUrl) {
@@ -298,22 +348,26 @@ export async function runImageGenerationForUser(
       .update(generation)
       .set({ status: "failed", error: `Storage error: ${message}` })
       .where(eq(generation.id, generationId));
-    if (useCredits) {
+    if (refundableGenerationCredits > 0) {
       try {
-        await grantCredits({
-          userId: input.userId,
-          amount: creditsPerImage,
-          sourceType: "refund",
-          debitAccount: "SYSTEM:generation_refund",
-          transactionType: "refund",
-          sourceRef: generationId,
-          description: `Refund for storage failure: ${input.prompt.substring(0, 50)}`,
-        });
+        await refundChargedCredits(
+          refundableGenerationCredits,
+          generationId,
+          `Refund for storage failure: ${input.prompt.substring(0, 50)}`
+        );
       } catch {
         /* best effort */
       }
     }
-    return { error: "Failed to save image", generationId };
+    await db
+      .update(generation)
+      .set({ creditsConsumed: chargedCredits })
+      .where(eq(generation.id, generationId));
+    return {
+      error: "Failed to save image",
+      generationId,
+      creditsConsumed: chargedCredits,
+    };
   }
 
   await db

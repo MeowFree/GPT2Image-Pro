@@ -447,11 +447,15 @@ export function CreatePageClient({
     return customEditSize;
   }, [chatFirstImageSize, customEditSize, useFirstImageSize]);
   const editImageCreditCost = effectiveEditSize
-    ? getImageCreditCost(effectiveEditSize)
+    ? getImageCreditCost(effectiveEditSize, {
+        imageModerationCount: editImages.length,
+      })
     : getImageCreditCost();
   const editBatchCreditCost = editImageCreditCost * editBatchCount;
   const chatEditImageCreditCost = chatEffectiveEditSize
-    ? getImageCreditCost(chatEffectiveEditSize)
+    ? getImageCreditCost(chatEffectiveEditSize, {
+        imageModerationCount: chatAttachments.length,
+      })
     : getImageCreditCost();
   const chatSingleCreditCost =
     chatAttachments.length > 0 ? chatEditImageCreditCost : textImageCreditCost;
@@ -459,7 +463,10 @@ export function CreatePageClient({
     chatAttachments.length > 0 && chatEffectiveEditSize
       ? chatEffectiveEditSize
       : size;
-  const batchCreditCost = getImageCreditCost(batchFallbackSize) * batchTier;
+  const batchSingleCreditCost = getImageCreditCost(batchFallbackSize, {
+    imageModerationCount: chatAttachments.length,
+  });
+  const batchCreditCost = batchSingleCreditCost * batchTier;
   const sizeCheck = useMemo(() => validateImageSize(size), [size]);
   const customEditSizeCheck = useMemo(
     () => validateImageSize(customEditSize),
@@ -1440,7 +1447,11 @@ export function CreatePageClient({
     const batchSize = Math.min(requestCount, Math.max(available, 0));
     if (batchSize <= 0) return;
 
-    if (balance < getImageCreditCost(fallbackSize) * batchSize) {
+    const requiredCredits =
+      getImageCreditCost(fallbackSize, {
+        imageModerationCount: attachments.length,
+      }) * batchSize;
+    if (balance < requiredCredits) {
       showGenerationError("Insufficient credits");
       return;
     }

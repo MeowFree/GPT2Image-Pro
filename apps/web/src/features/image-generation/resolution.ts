@@ -5,10 +5,10 @@ export const IMAGE_DIMENSION_STEP = 16;
 export const MIN_IMAGE_DIMENSION = 256;
 export const MAX_IMAGE_DIMENSION = 3840;
 export const MAX_IMAGE_PIXELS = 3840 * 2160;
-export const STANDARD_IMAGE_CREDIT_COST = 1;
-export const IMAGE_2K_CREDIT_COST = 3;
-export const IMAGE_4K_CREDIT_COST = 10;
-export const CUSTOM_IMAGE_CREDIT_COST = 10;
+export const IMAGE_4K_BASE_CREDIT_COST = 10;
+export const REFERENCE_CREDIT_PRICE_CNY = 0.05;
+export const TEXT_MODERATION_PRICE_CNY = 0.0015;
+export const IMAGE_MODERATION_PRICE_CNY = 0.003;
 
 export type ImageDimensions = {
   width: number;
@@ -30,28 +30,50 @@ export const IMAGE_RESOLUTION_PRESETS = [
   { value: "2160x3840", label: "4K Tall", detail: "2160 × 3840" },
 ] as const;
 
-const TWO_K_PRESET_VALUES: Set<string> = new Set(["2048x2048", "2048x1152"]);
-const FOUR_K_PRESET_VALUES: Set<string> = new Set(["3840x2160", "2160x3840"]);
-const PRESET_VALUES: Set<string> = new Set(
-  IMAGE_RESOLUTION_PRESETS.map((preset) => preset.value)
-);
+export type ImageCreditCostOptions = {
+  textModerationCount?: number;
+  imageModerationCount?: number;
+};
 
-export function getImageCreditCost(size?: string | null) {
+export function getImageCreditCostBreakdown(
+  size?: string | null,
+  options: ImageCreditCostOptions = {}
+) {
   const normalizedSize = size || DEFAULT_IMAGE_SIZE;
+  const dimensions =
+    parseImageSize(normalizedSize) || parseImageSize(DEFAULT_IMAGE_SIZE);
+  const pixels = dimensions
+    ? dimensions.width * dimensions.height
+    : MAX_IMAGE_PIXELS;
+  const baseCredits =
+    (pixels / MAX_IMAGE_PIXELS) * IMAGE_4K_BASE_CREDIT_COST;
+  const textModerationCount = options.textModerationCount ?? 1;
+  const imageModerationCount = options.imageModerationCount ?? 0;
+  const moderationCny =
+    textModerationCount * TEXT_MODERATION_PRICE_CNY +
+    imageModerationCount * IMAGE_MODERATION_PRICE_CNY;
+  const moderationCredits = moderationCny / REFERENCE_CREDIT_PRICE_CNY;
+  const totalCredits = Math.ceil(baseCredits + moderationCredits);
+  const moderationOnlyCredits =
+    moderationCny > 0 ? Math.ceil(moderationCredits) : 0;
 
-  if (!PRESET_VALUES.has(normalizedSize)) {
-    return CUSTOM_IMAGE_CREDIT_COST;
-  }
+  return {
+    baseCredits,
+    imageModerationCount,
+    moderationCny,
+    moderationCredits,
+    moderationOnlyCredits,
+    pixels,
+    textModerationCount,
+    totalCredits,
+  };
+}
 
-  if (FOUR_K_PRESET_VALUES.has(normalizedSize)) {
-    return IMAGE_4K_CREDIT_COST;
-  }
-
-  if (TWO_K_PRESET_VALUES.has(normalizedSize)) {
-    return IMAGE_2K_CREDIT_COST;
-  }
-
-  return STANDARD_IMAGE_CREDIT_COST;
+export function getImageCreditCost(
+  size?: string | null,
+  options: ImageCreditCostOptions = {}
+) {
+  return getImageCreditCostBreakdown(size, options).totalCredits;
 }
 
 export function parseImageSize(size: string): ImageDimensions | null {
