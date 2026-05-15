@@ -457,33 +457,34 @@ export async function consumeCredits(
       throw new InsufficientCreditsError(amount, balanceRecord.balance);
     }
 
-    const now = new Date();
-    const activeBatches = await tx
-      .select()
-      .from(creditsBatch)
-      .where(
-        and(
-          eq(creditsBatch.userId, userId),
-          eq(creditsBatch.status, "active"),
-          gt(creditsBatch.remaining, 0),
-          or(isNull(creditsBatch.expiresAt), gt(creditsBatch.expiresAt, now))
-        )
-      )
-      .orderBy(
-        creditBatchSourcePriorityOrder(),
-        creditBatchExpiryOrder(),
-        asc(creditsBatch.expiresAt),
-        asc(creditsBatch.issuedAt)
-      );
-
     let remainingToConsume = amount;
     const consumedBatches: Array<{
       batchId: string;
       consumedFromBatch: number;
     }> = [];
 
-    for (const batch of activeBatches) {
-      if (remainingToConsume <= 0) {
+    while (remainingToConsume > 0) {
+      const now = new Date();
+      const [batch] = await tx
+        .select()
+        .from(creditsBatch)
+        .where(
+          and(
+            eq(creditsBatch.userId, userId),
+            eq(creditsBatch.status, "active"),
+            gt(creditsBatch.remaining, 0),
+            or(isNull(creditsBatch.expiresAt), gt(creditsBatch.expiresAt, now))
+          )
+        )
+        .orderBy(
+          creditBatchSourcePriorityOrder(),
+          creditBatchExpiryOrder(),
+          asc(creditsBatch.expiresAt),
+          asc(creditsBatch.issuedAt)
+        )
+        .limit(1);
+
+      if (!batch) {
         break;
       }
 
@@ -491,16 +492,28 @@ export async function consumeCredits(
         batch.remaining,
         remainingToConsume
       );
-      const newRemaining = batch.remaining - consumeFromThisBatch;
+      const newRemainingSql = sql`${creditsBatch.remaining} - ${consumeFromThisBatch}`;
 
-      await tx
+      const [updatedBatch] = await tx
         .update(creditsBatch)
         .set({
-          remaining: newRemaining,
-          status: newRemaining === 0 ? "consumed" : "active",
+          remaining: newRemainingSql,
+          status: sql`CASE WHEN ${newRemainingSql} <= 0 THEN 'consumed' ELSE 'active' END`,
           updatedAt: new Date(),
         })
-        .where(eq(creditsBatch.id, batch.id));
+        .where(
+          and(
+            eq(creditsBatch.id, batch.id),
+            eq(creditsBatch.status, "active"),
+            gte(creditsBatch.remaining, consumeFromThisBatch),
+            or(isNull(creditsBatch.expiresAt), gt(creditsBatch.expiresAt, now))
+          )
+        )
+        .returning({ id: creditsBatch.id });
+
+      if (!updatedBatch) {
+        continue;
+      }
 
       consumedBatches.push({
         batchId: batch.id,

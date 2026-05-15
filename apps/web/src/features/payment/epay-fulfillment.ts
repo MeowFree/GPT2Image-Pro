@@ -286,10 +286,12 @@ async function grantSubscriptionCredits(params: {
   source: "epay-webhook" | "epay-return";
 }) {
   const sourceRef = `epay_subscription:${params.outTradeNo}`;
-  const upgradeCutoff = new Date();
 
   const [existingBatch] = await db
-    .select({ id: creditsBatch.id })
+    .select({
+      id: creditsBatch.id,
+      issuedAt: creditsBatch.issuedAt,
+    })
     .from(creditsBatch)
     .where(
       and(
@@ -307,7 +309,7 @@ async function grantSubscriptionCredits(params: {
         subscriptionId: params.subscriptionId,
         upgradeFromPriceId: params.upgradeFromPriceId,
         upgradeToPriceId: params.priceId,
-        issuedBefore: upgradeCutoff,
+        issuedBefore: existingBatch.issuedAt,
         description: `${params.planType} Epay upgrade voided previous subscription credits`,
         metadata: {
           provider: "epay",
@@ -340,6 +342,7 @@ async function grantSubscriptionCredits(params: {
   const expiresAt = Number.isNaN(params.periodEnd.getTime())
     ? fallbackExpiresAt
     : params.periodEnd;
+  const upgradeCutoff = new Date();
 
   const result = await grantCredits({
     userId: params.userId,
