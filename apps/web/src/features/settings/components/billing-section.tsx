@@ -114,12 +114,13 @@ function getBillingDescription(tx: BillingTransaction, locale: string) {
   if (tx.type === "monthly_grant") {
     const planType = typeof meta?.planType === "string" ? meta.planType : "";
     const interval = meta?.interval === "year" ? "yearly" : "monthly";
+    const isUpgrade = meta?.checkoutMode === "upgrade";
     const plan = planType
       ? `${planType.charAt(0).toUpperCase()}${planType.slice(1)}`
       : "Subscription";
     return locale === "zh"
-      ? `${paymentProvider} ${plan} ${interval === "yearly" ? "年付" : "月付"}订阅`
-      : `${paymentProvider} ${plan} ${interval} subscription`;
+      ? `${paymentProvider} ${plan} ${interval === "yearly" ? "年付" : "月付"}${isUpgrade ? "补差升级" : "订阅"}`
+      : `${paymentProvider} ${plan} ${interval} ${isUpgrade ? "upgrade" : "subscription"}`;
   }
 
   return tx.description ?? "-";
@@ -257,6 +258,12 @@ export function BillingSection() {
             )}
             {userPlan !== "free" && (
               <div className="flex items-center gap-2">
+                <Button asChild size="sm">
+                  <Link href="/#pricing">
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    {t("currentPlan.upgradePlan")}
+                  </Link>
+                </Button>
                 {isCancelPending ? (
                   <Badge variant="secondary" className="text-amber-600">
                     {t("currentPlan.cancelPending", {

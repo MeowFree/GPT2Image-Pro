@@ -1,6 +1,10 @@
 "use client";
 
-import { getPlanPrice, paymentConfig } from "@repo/shared/config/payment";
+import {
+  findPlanByPriceId,
+  getPlanPrice,
+  paymentConfig,
+} from "@repo/shared/config/payment";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import {
@@ -27,6 +31,12 @@ import { AnimatedPrice } from "./animated-price";
  * 计划配置（用于获取价格等非翻译数据）
  */
 const PLAN_IDS = ["free", "starter", "pro", "ultra"] as const;
+const PLAN_RANK: Record<(typeof PLAN_IDS)[number], number> = {
+  free: 0,
+  starter: 1,
+  pro: 2,
+  ultra: 3,
+};
 
 function parsePlanNumber(value: string) {
   return Number.parseInt(value.replace(/,/g, ""), 10);
@@ -159,6 +169,42 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
     return config.prices.some((p) => p.priceId === activePriceId);
   };
 
+  const getPlanIdByPriceId = (priceId: string | null) => {
+    if (!priceId) return null;
+    for (const planId of PLAN_IDS) {
+      const config = getPlanConfig(planId);
+      if (!config || !("prices" in config) || !config.prices) continue;
+      if (config.prices.some((price) => price.priceId === priceId)) {
+        return planId;
+      }
+    }
+    return null;
+  };
+
+  const getActivePriceInterval = () => {
+    if (!activePriceId) return PlanInterval.MONTH;
+    const { price } = findPlanByPriceId(activePriceId);
+    return price?.interval ?? PlanInterval.MONTH;
+  };
+
+  const getCheckoutPrice = (planId: string) => {
+    const config = getPlanConfig(planId);
+    if (!config || !("prices" in config) || !config.prices) return null;
+    return getPlanPrice(
+      { ...config, name: "", description: "", features: [], cta: "" },
+      getActivePriceInterval()
+    );
+  };
+
+  const canUpgradeToPlan = (planId: string) => {
+    if (!activePriceId || planId === "free") return false;
+    const currentPlanId = getPlanIdByPriceId(activePriceId);
+    if (!currentPlanId || !(planId in PLAN_RANK)) return false;
+    return (
+      PLAN_RANK[planId as keyof typeof PLAN_RANK] > PLAN_RANK[currentPlanId]
+    );
+  };
+
   /**
    * 检查用户是否有活跃订阅（任意计划）
    */
@@ -186,7 +232,7 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
       return;
     }
 
-    const price = getCurrentPrice(planId);
+    const price = getCheckoutPrice(planId);
     if (!price?.priceId) return;
 
     setLoadingPlan(planId);
@@ -239,6 +285,7 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
           {PLAN_IDS.map((planId) => {
             const price = getDisplayPrice(planId);
             const isCurrent = isCurrentPlan(planId);
+            const canUpgrade = canUpgradeToPlan(planId);
             const isLoading = loadingPlan === planId;
             const popular = isPopular(planId);
             const featureKeys = PLAN_FEATURE_KEYS[planId] || [];
@@ -347,7 +394,7 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
                       ) : null}
                       {t("manageSubscription")}
                     </Button>
-                  ) : hasSubscription && planId !== "free" ? (
+                  ) : hasSubscription && planId !== "free" && !canUpgrade ? (
                     <Button className="w-full" variant="outline" disabled>
                       {t("alreadySubscribed")}
                     </Button>
@@ -361,7 +408,7 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
                       {isLoading ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : null}
-                      {t(`plans.${planId}.cta`)}
+                      {canUpgrade ? t("upgradePlan") : t(`plans.${planId}.cta`)}
                     </Button>
                   )}
                 </CardContent>

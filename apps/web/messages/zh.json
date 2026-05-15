@@ -350,7 +350,7 @@
   },
   "Pricing": {
     "title": "简单透明的定价",
-    "subtitle": "按积分付费，订阅积分按套餐周期有效，一次性积分包 <strong>发放后 365 天内有效</strong>。出图基础价格按像素量从 4K=10 积分折算，并叠加固定审核成本。",
+    "subtitle": "按积分付费，订阅积分按套餐周期有效，一次性积分包 <strong>发放后 365 天内有效</strong>。出图基础价格按实际像素量从 4K=10 积分折算，并叠加每次审核固定成本。",
     "creditsUpfront": "一次性到账",
     "creditsPerYear": "积分 / 年",
     "monthly": "月付",
@@ -359,6 +359,7 @@
     "mostPopular": "性价比最高",
     "currentPlan": "当前套餐",
     "alreadySubscribed": "已订阅",
+    "upgradePlan": "补差升级",
     "manageSubscription": "管理订阅",
     "booksNote": "≈ 可生成 {count} 张图片",
     "cardsNote": "≈ {count} 次图片生成",

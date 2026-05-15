@@ -385,7 +385,7 @@
   },
   "Pricing": {
     "title": "Simple, transparent pricing",
-    "subtitle": "Pay by credits. Subscription credits are valid for the plan period, and one-time credit packs are <strong>valid for 365 days</strong> after issuance. Image base cost scales by pixels from 4K=10 credits, with fixed moderation cost added.",
+    "subtitle": "Pay by credits. Subscription credits are valid for the plan period, and one-time credit packs are <strong>valid for 365 days</strong> after issuance. Image base cost scales by exact pixels from 4K=10 credits, with fixed moderation cost per check added.",
     "creditsUpfront": "all at once",
     "creditsPerYear": "credits / year",
     "monthly": "Monthly",
@@ -394,6 +394,7 @@
     "mostPopular": "Best Value",
     "currentPlan": "Current Plan",
     "alreadySubscribed": "Already Subscribed",
+    "upgradePlan": "Upgrade",
     "manageSubscription": "Manage Subscription",
     "booksNote": "≈ {count} images generated",
     "cardsNote": "≈ {count} image generations",

@@ -21,6 +21,13 @@ export interface EpayMetadata {
   priceId?: string;
   planId?: string;
   packageId?: string;
+  checkoutMode?: "new_subscription" | "upgrade";
+  expectedAmount?: number;
+  originalAmount?: number;
+  prorationCredit?: number;
+  remainingDays?: number;
+  periodDays?: number;
+  upgradeFromPriceId?: string;
 }
 
 export interface EpayPurchaseInput {
@@ -286,6 +293,28 @@ export function decodeEpayMetadata(param?: string): EpayMetadata | null {
       ...(typeof parsed.planId === "string" && { planId: parsed.planId }),
       ...(typeof parsed.packageId === "string" && {
         packageId: parsed.packageId,
+      }),
+      ...((parsed.checkoutMode === "new_subscription" ||
+        parsed.checkoutMode === "upgrade") && {
+        checkoutMode: parsed.checkoutMode,
+      }),
+      ...(typeof parsed.expectedAmount === "number" && {
+        expectedAmount: parsed.expectedAmount,
+      }),
+      ...(typeof parsed.originalAmount === "number" && {
+        originalAmount: parsed.originalAmount,
+      }),
+      ...(typeof parsed.prorationCredit === "number" && {
+        prorationCredit: parsed.prorationCredit,
+      }),
+      ...(typeof parsed.remainingDays === "number" && {
+        remainingDays: parsed.remainingDays,
+      }),
+      ...(typeof parsed.periodDays === "number" && {
+        periodDays: parsed.periodDays,
+      }),
+      ...(typeof parsed.upgradeFromPriceId === "string" && {
+        upgradeFromPriceId: parsed.upgradeFromPriceId,
       }),
     };
   } catch {

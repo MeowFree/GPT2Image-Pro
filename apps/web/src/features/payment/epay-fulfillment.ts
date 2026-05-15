@@ -70,6 +70,7 @@ async function fulfillSuccessfulEpayPaymentInner(
     await handleSubscription(
       metadata.userId,
       metadata.priceId,
+      metadata,
       verifyInfo,
       source
     );
@@ -152,6 +153,7 @@ async function handleCreditPurchase(
 async function handleSubscription(
   userId: string,
   priceId: string | undefined,
+  metadata: EpayMetadata,
   verifyInfo: EpayVerifyResult,
   source: "epay-webhook" | "epay-return"
 ) {
@@ -165,7 +167,8 @@ async function handleSubscription(
     throw new Error(`Unknown subscription price ID: ${priceId}`);
   }
 
-  if (moneyToCents(verifyInfo.money) !== moneyToCents(price.amount)) {
+  const expectedAmount = metadata.expectedAmount ?? price.amount;
+  if (moneyToCents(verifyInfo.money) !== moneyToCents(expectedAmount)) {
     throw new Error("Epay amount does not match subscription price");
   }
 
@@ -226,6 +229,13 @@ async function handleSubscription(
     periodEnd,
     outTradeNo: verifyInfo.outTradeNo,
     paymentMethod: verifyInfo.type,
+    paidMoney: verifyInfo.money,
+    checkoutMode: metadata.checkoutMode ?? "new_subscription",
+    originalAmount: metadata.originalAmount ?? price.amount,
+    prorationCredit: metadata.prorationCredit ?? 0,
+    remainingDays: metadata.remainingDays ?? 0,
+    periodDays: metadata.periodDays ?? 0,
+    upgradeFromPriceId: metadata.upgradeFromPriceId,
     source,
   });
 
@@ -236,6 +246,9 @@ async function handleSubscription(
     planId: plan.id,
     subscriptionId,
     checkoutType: "subscription",
+    checkoutMode: metadata.checkoutMode ?? "new_subscription",
+    paidMoney: verifyInfo.money,
+    prorationCredit: metadata.prorationCredit,
   });
 }
 
@@ -249,6 +262,13 @@ async function grantSubscriptionCredits(params: {
   periodEnd: Date;
   outTradeNo: string;
   paymentMethod: string;
+  paidMoney: string;
+  checkoutMode: "new_subscription" | "upgrade";
+  originalAmount: number;
+  prorationCredit: number;
+  remainingDays: number;
+  periodDays: number;
+  upgradeFromPriceId?: string;
   source: "epay-webhook" | "epay-return";
 }) {
   const sourceRef = `epay_subscription:${params.outTradeNo}`;
@@ -302,6 +322,15 @@ async function grantSubscriptionCredits(params: {
       periodEnd: params.periodEnd.toISOString(),
       outTradeNo: params.outTradeNo,
       paymentMethod: params.paymentMethod,
+      paidMoney: params.paidMoney,
+      checkoutMode: params.checkoutMode,
+      originalAmount: params.originalAmount,
+      prorationCredit: params.prorationCredit,
+      remainingDays: params.remainingDays,
+      periodDays: params.periodDays,
+      ...(params.upgradeFromPriceId && {
+        upgradeFromPriceId: params.upgradeFromPriceId,
+      }),
     },
   });
 }

@@ -20,6 +20,7 @@ import {
 } from "@repo/shared/payment/epay";
 
 import { creem } from "./creem";
+import { createSubscriptionCheckoutQuote } from "./subscription-upgrade";
 
 /**
  * 创建 Creem Checkout Session
@@ -43,16 +44,14 @@ export const createCheckoutSession = protectedAction
     // 检查是否已有活跃订阅
     const [existingSub] = await db
       .select({
+        priceId: subscription.priceId,
+        currentPeriodStart: subscription.currentPeriodStart,
         currentPeriodEnd: subscription.currentPeriodEnd,
         status: subscription.status,
       })
       .from(subscription)
       .where(eq(subscription.userId, userId))
       .limit(1);
-
-    if (existingSub && isSubscriptionCurrentlyActive(existingSub)) {
-      throw new Error("您已有活跃订阅，请先取消当前订阅后再订阅新计划");
-    }
 
     // 查找计划和价格信息
     const { plan, price } = findPlanByPriceId(priceId);
@@ -61,20 +60,30 @@ export const createCheckoutSession = protectedAction
     }
 
     const baseUrl = getBaseUrl();
+    const hasActiveSub =
+      existingSub && isSubscriptionCurrentlyActive(existingSub);
+    const upgradeQuote = hasActiveSub
+      ? createSubscriptionCheckoutQuote(existingSub, priceId)
+      : null;
 
     logEvent("payment.checkout.started", {
       userId,
       priceId,
       planId: plan.id,
       provider: isEpayPaymentProvider() ? "epay" : "creem",
+      checkoutMode: upgradeQuote ? "upgrade" : "new_subscription",
+      amountDue: upgradeQuote?.amountDue ?? price.amount,
+      prorationCredit: upgradeQuote?.prorationCredit,
     });
 
     if (isEpayPaymentProvider()) {
       const outTradeNo = `SUB${Date.now()}${crypto.randomUUID().slice(0, 8)}`;
       const checkout = createEpayPurchase({
         outTradeNo,
-        name: `GPT2IMAGE ${plan.name} ${price.interval ?? "subscription"}`,
-        money: price.amount,
+        name: upgradeQuote
+          ? `GPT2IMAGE upgrade to ${plan.name} ${price.interval ?? "subscription"}`
+          : `GPT2IMAGE ${plan.name} ${price.interval ?? "subscription"}`,
+        money: upgradeQuote?.amountDue ?? price.amount,
         returnUrl: `${baseUrl}/api/payments/epay/return`,
         param: encodeEpayMetadata({
           type: "subscription",
@@ -82,10 +91,21 @@ export const createCheckoutSession = protectedAction
           outTradeNo,
           priceId,
           planId: plan.id,
+          checkoutMode: upgradeQuote ? "upgrade" : "new_subscription",
+          expectedAmount: upgradeQuote?.amountDue ?? price.amount,
+          originalAmount: upgradeQuote?.originalAmount ?? price.amount,
+          prorationCredit: upgradeQuote?.prorationCredit ?? 0,
+          remainingDays: upgradeQuote?.remainingDays ?? 0,
+          periodDays: upgradeQuote?.periodDays ?? 0,
+          upgradeFromPriceId: upgradeQuote?.upgradeFromPriceId,
         }),
       });
 
       return { url: checkout.url };
+    }
+
+    if (hasActiveSub) {
+      throw new Error("当前支付通道暂不支持自动补差升级，请联系管理员处理");
     }
 
     // 创建 Creem Checkout
