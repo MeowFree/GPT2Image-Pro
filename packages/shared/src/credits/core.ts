@@ -292,9 +292,18 @@ export async function ensureRegistrationBonusExpiry(userId: string) {
       and(
         eq(creditsBatch.userId, userId),
         eq(creditsBatch.sourceType, "bonus"),
-        eq(creditsBatch.sourceRef, sourceRef),
         eq(creditsBatch.status, "active"),
-        isNull(creditsBatch.expiresAt)
+        or(
+          eq(creditsBatch.sourceRef, sourceRef),
+          isNull(creditsBatch.sourceRef)
+        ),
+        or(
+          isNull(creditsBatch.expiresAt),
+          gt(
+            creditsBatch.expiresAt,
+            sql`${creditsBatch.issuedAt} + (${expiryDays} * interval '1 day')`
+          )
+        )
       )
     )
     .returning({ id: creditsBatch.id });
@@ -496,12 +505,13 @@ export async function consumeCredits(
         remainingToConsume
       );
       const newRemainingSql = sql`${creditsBatch.remaining} - ${consumeFromThisBatch}`;
+      const nextStatusSql = sql`(CASE WHEN ${newRemainingSql} <= 0 THEN 'consumed' ELSE 'active' END)::credits_batch_status`;
 
       const [updatedBatch] = await tx
         .update(creditsBatch)
         .set({
           remaining: newRemainingSql,
-          status: sql`CASE WHEN ${newRemainingSql} <= 0 THEN 'consumed' ELSE 'active' END`,
+          status: nextStatusSql,
           updatedAt: new Date(),
         })
         .where(

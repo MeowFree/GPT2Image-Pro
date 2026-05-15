@@ -4,6 +4,8 @@ import {
   canUseChat,
   canUseGpt55Chat,
   canUsePromptOptimization,
+  GPT54_CHAT_MODEL,
+  GPT55_CHAT_MODEL,
   type SubscriptionPlan,
 } from "@repo/shared/config/subscription-plan";
 import { formatCredits } from "@repo/shared/credits/format";
@@ -166,6 +168,7 @@ type ChatStreamState = {
 };
 
 type ChatViewMode = "chat" | "batch";
+type ChatModel = typeof GPT54_CHAT_MODEL | typeof GPT55_CHAT_MODEL;
 type ChatThinkingLevel = "none" | "low" | "medium" | "high" | "xhigh";
 
 type BatchCard = {
@@ -224,6 +227,14 @@ const MODERATION_OPTIONS: Array<{ value: ImageModeration; label: string }> = [
 ];
 const BATCH_OPTIONS = [1, 2, 4, 6, 8, 10] as const;
 const CHAT_TIER_OPTIONS = [1, 5, 10, 20] as const;
+const CHAT_MODEL_OPTIONS: Array<{
+  value: ChatModel;
+  label: string;
+  ultraOnly?: boolean;
+}> = [
+  { value: GPT54_CHAT_MODEL, label: "GPT-5.4" },
+  { value: GPT55_CHAT_MODEL, label: "GPT-5.5", ultraOnly: true },
+];
 const CHAT_THINKING_OPTIONS: Array<{
   value: ChatThinkingLevel;
   label: string;
@@ -456,6 +467,7 @@ export function CreatePageClient({
   const [batchTier, setBatchTier] = useState(5);
   const [isBatchActive, setIsBatchActive] = useState(false);
   const [isBatchLoadingMore, setIsBatchLoadingMore] = useState(false);
+  const [chatModel, setChatModel] = useState<ChatModel>(GPT54_CHAT_MODEL);
   const [chatThinking, setChatThinking] = useState<ChatThinkingLevel>("low");
   const [chatFirstImageSize, setChatFirstImageSize] = useState<{
     width: number;
@@ -737,6 +749,7 @@ export function CreatePageClient({
     formData.append("history", JSON.stringify(toChatHistory(historyMessages)));
     formData.append("quality", quality);
     formData.append("moderation", moderation);
+    formData.append("model", chatModel);
     formData.append("thinking", chatThinking);
     formData.append("size", fallbackSize);
     formData.append("count", "1");
@@ -944,6 +957,12 @@ export function CreatePageClient({
       /* ignore local storage quota errors */
     }
   }, [chatMessages]);
+
+  useEffect(() => {
+    if (!gpt55ChatAllowed && chatModel === GPT55_CHAT_MODEL) {
+      setChatModel(GPT54_CHAT_MODEL);
+    }
+  }, [chatModel, gpt55ChatAllowed]);
 
   useEffect(() => {
     if (!firstPreviewUrl) {
@@ -1518,6 +1537,29 @@ export function CreatePageClient({
         )}
 
         <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Select
+            value={chatModel}
+            onValueChange={(value) => setChatModel(value as ChatModel)}
+            disabled={isChatGenerating}
+          >
+            <SelectTrigger className="h-8 w-[116px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CHAT_MODEL_OPTIONS.map((option) => (
+                <SelectItem
+                  key={option.value}
+                  value={option.value}
+                  disabled={option.ultraOnly && !gpt55ChatAllowed}
+                >
+                  {option.label}
+                  {option.ultraOnly && !gpt55ChatAllowed
+                    ? ` · ${copy("Ultra", "Ultra")}`
+                    : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select
             value={chatThinking}
             onValueChange={(value) =>
@@ -3643,6 +3685,28 @@ export function CreatePageClient({
               <div className="overflow-hidden rounded-lg border border-border bg-background">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-3">
                   <div className="flex flex-wrap items-center gap-2">
+                    <Select
+                      value={chatModel}
+                      onValueChange={(value) => setChatModel(value as ChatModel)}
+                    >
+                      <SelectTrigger className="h-8 w-[116px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CHAT_MODEL_OPTIONS.map((option) => (
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            disabled={option.ultraOnly && !gpt55ChatAllowed}
+                          >
+                            {option.label}
+                            {option.ultraOnly && !gpt55ChatAllowed
+                              ? ` · ${copy("Ultra", "Ultra")}`
+                              : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <Select
                       value={String(batchTier)}
                       onValueChange={(value) => setBatchTier(Number(value))}

@@ -18,6 +18,7 @@ export type SubscriptionPlan = "free" | "starter" | "pro" | "ultra";
 /**
  * 对话模式旗舰模型
  */
+export const GPT54_CHAT_MODEL = "gpt-5.4";
 export const GPT55_CHAT_MODEL = "gpt-5.5";
 
 /**

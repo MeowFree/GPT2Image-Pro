@@ -71,6 +71,13 @@
       "when": 1778889600000,
       "tag": "0009_free_credits_expiry_and_upgrade_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778893200000,
+      "tag": "0010_fix_free_bonus_expiry",
+      "breakpoints": true
     }
   ]
 }

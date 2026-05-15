@@ -5,6 +5,7 @@ import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import {
   canUseCustomApi,
+  GPT54_CHAT_MODEL,
   GPT55_CHAT_MODEL,
 } from "@repo/shared/config/subscription-plan";
 import { eq } from "drizzle-orm";
@@ -36,7 +37,7 @@ const VALID_QUALITIES = new Set<ImageQuality>([
   "high",
 ]);
 const VALID_MODERATION = new Set<ImageModeration>(["auto", "low"]);
-const DEFAULT_RESPONSES_MODEL = "gpt-5.4";
+const DEFAULT_RESPONSES_MODEL = GPT54_CHAT_MODEL;
 
 type ImageOutput = {
   b64_json?: string;
@@ -88,7 +89,7 @@ type ResponsesRequestMessage = {
 
 type ReasoningConfig = {
   effort: ThinkingLevel;
-  generate_summary?: "concise";
+  summary?: "concise";
 };
 
 function getModel(config: ApiConfig, model?: string) {
@@ -103,17 +104,44 @@ function isImageOnlyModel(model: string) {
   return model.toLowerCase().startsWith("gpt-image-");
 }
 
+function normalizeResponsesModel(
+  model: string,
+  options?: { allowGpt55?: boolean },
+  explicit = false
+) {
+  const requested = model.trim();
+  if (!requested || isImageOnlyModel(requested)) return null;
+
+  if (requested === GPT55_CHAT_MODEL && !options?.allowGpt55) {
+    throw new Error("GPT-5.5 chat model requires Ultra plan.");
+  }
+
+  if (requested === GPT54_CHAT_MODEL || requested === GPT55_CHAT_MODEL) {
+    return requested;
+  }
+
+  if (explicit) {
+    throw new Error("Unsupported chat model. Use GPT-5.4 or GPT-5.5.");
+  }
+
+  return null;
+}
+
 export async function getResponsesModel(
   config: ApiConfig,
   model?: string,
   options?: { allowGpt55?: boolean }
 ) {
-  const requested = (model || config.model || "").trim();
-  if (requested === GPT55_CHAT_MODEL && !options?.allowGpt55) {
-    throw new Error("GPT-5.5 chat model requires Ultra plan.");
+  const requested = model?.trim();
+  if (requested) {
+    const normalized = normalizeResponsesModel(requested, options, true);
+    if (normalized) return normalized;
   }
-  if (requested && !isImageOnlyModel(requested)) {
-    return requested;
+
+  const configured = config.model?.trim();
+  if (configured) {
+    const normalized = normalizeResponsesModel(configured, options);
+    if (normalized) return normalized;
   }
 
   if (options?.allowGpt55) {
@@ -125,9 +153,11 @@ export async function getResponsesModel(
     (await getRuntimeSettingString("PLATFORM_CHAT_MODEL")) ||
     DEFAULT_RESPONSES_MODEL;
 
-  return fallbackModel === GPT55_CHAT_MODEL
-    ? DEFAULT_RESPONSES_MODEL
-    : fallbackModel;
+  return (
+    normalizeResponsesModel(fallbackModel, {
+      allowGpt55: options?.allowGpt55,
+    }) || DEFAULT_RESPONSES_MODEL
+  );
 }
 
 function getApiError(errorData: unknown, fallback: string) {
@@ -1055,7 +1085,7 @@ export async function generateChatImage(
 
     const thinking = normalizeThinking(params.thinking);
     const reasoning: ReasoningConfig | undefined = thinking
-      ? { effort: thinking, generate_summary: "concise" }
+      ? { effort: thinking, summary: "concise" }
       : undefined;
 
     const response = await fetch(
