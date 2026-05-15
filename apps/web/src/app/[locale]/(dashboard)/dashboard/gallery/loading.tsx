@@ -8,12 +8,9 @@ export default function GalleryLoading() {
         <div className="h-4 w-48 animate-pulse rounded bg-muted" />
       </div>
 
-      <div className="columns-2 gap-4 md:columns-3 lg:columns-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         {Array.from({ length: 8 }).map((_, i) => (
-          <div
-            key={`gallery-skeleton-${i.toString()}`}
-            className="mb-4 break-inside-avoid"
-          >
+          <div key={`gallery-skeleton-${i.toString()}`}>
             <Card className="overflow-hidden border-border shadow-none">
               <div className="aspect-square w-full animate-pulse bg-muted" />
               <div className="space-y-2 p-3">

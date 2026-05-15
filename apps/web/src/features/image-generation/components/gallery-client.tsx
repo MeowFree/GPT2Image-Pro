@@ -74,9 +74,9 @@ export function GalleryClient({
 
   return (
     <>
-      <div className="columns-2 gap-4 md:columns-3 lg:columns-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         {items.map((item) => (
-          <div key={item.id} className="mb-4 break-inside-avoid">
+          <div key={item.id}>
             <ImageCard
               id={item.id}
               prompt={item.prompt}
