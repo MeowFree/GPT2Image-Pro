@@ -165,6 +165,14 @@ type ChatMessage = {
   createdAt: string;
 };
 
+type ChatConversation = {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 type ChatStreamState = {
   messageId?: string;
   cardId?: string;
@@ -267,7 +275,9 @@ const CHAT_SUGGESTIONS_ZH = [
   "戴眼镜的猫咪水彩肖像",
 ] as const;
 const CHAT_STORAGE_KEY = "gpt2image_chat_messages_v1";
+const CHAT_CONVERSATIONS_STORAGE_KEY = "gpt2image_chat_conversations_v1";
 const CHAT_CONTEXT_MESSAGE_LIMIT = 8;
+const CHAT_CONVERSATION_LIMIT = 30;
 
 const PRESET_LABELS_ZH: Record<string, string> = {
   "2K Square": "2K 方形",
@@ -320,6 +330,85 @@ function readFileAsDataUrl(file: File) {
     reader.onerror = () => reject(new Error("Failed to read image"));
     reader.readAsDataURL(file);
   });
+}
+
+function sanitizeChatMessages(value: unknown): ChatMessage[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((message) => {
+    if (!message || typeof message !== "object") return [];
+    const item = message as Partial<ChatMessage>;
+    if (item.role !== "user" && item.role !== "assistant") return [];
+    if (typeof item.text !== "string") return [];
+    return [
+      {
+        id: typeof item.id === "string" ? item.id : createLocalId(),
+        role: item.role,
+        text: item.text,
+        attachments: item.attachments,
+        variants: item.variants,
+        activeVariant: item.activeVariant,
+        error: item.error,
+        createdAt:
+          typeof item.createdAt === "string"
+            ? item.createdAt
+            : new Date().toISOString(),
+      },
+    ];
+  });
+}
+
+function sanitizePersistedChatMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.slice(-80).map((message) => ({
+    ...message,
+    attachments: message.attachments?.filter(
+      (attachment) => !attachment.previewUrl.startsWith("blob:")
+    ),
+  }));
+}
+
+function createChatConversation(
+  messages: ChatMessage[],
+  title: string,
+  id = createLocalId()
+): ChatConversation {
+  const now = new Date().toISOString();
+  return {
+    id,
+    title,
+    messages,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function sanitizeChatConversations(value: unknown): ChatConversation[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((conversation) => {
+    if (!conversation || typeof conversation !== "object") return [];
+    const item = conversation as Partial<ChatConversation>;
+    const messages = sanitizeChatMessages(item.messages);
+    if (messages.length === 0) return [];
+    const now = new Date().toISOString();
+    return [
+      {
+        id: typeof item.id === "string" ? item.id : createLocalId(),
+        title:
+          typeof item.title === "string" && item.title.trim()
+            ? item.title
+            : "Untitled chat",
+        messages,
+        createdAt: typeof item.createdAt === "string" ? item.createdAt : now,
+        updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : now,
+      },
+    ];
+  });
+}
+
+function getChatConversationTitle(messages: ChatMessage[], fallback: string) {
+  const firstUserMessage = messages.find((message) => message.role === "user");
+  const title = firstUserMessage?.text.trim();
+  if (!title) return fallback;
+  return title.length > 48 ? `${title.slice(0, 48)}...` : title;
 }
 
 function getChatVariants(message: ChatMessage) {
@@ -463,6 +552,12 @@ export function CreatePageClient({
   const [editPrompt, setEditPrompt] = useState("");
   const [promptOptimization, setPromptOptimization] = useState(true);
   const [chatPrompt, setChatPrompt] = useState("");
+  const [chatConversationId, setChatConversationId] = useState(() =>
+    createLocalId()
+  );
+  const [chatConversations, setChatConversations] = useState<
+    ChatConversation[]
+  >([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([]);
   const [chatViewMode, setChatViewMode] = useState<ChatViewMode>("chat");
@@ -516,6 +611,7 @@ export function CreatePageClient({
   const chatImageInputRef = useRef<HTMLInputElement | null>(null);
   const batchImageInputRef = useRef<HTMLInputElement | null>(null);
   const chatMessagesRef = useRef<HTMLDivElement | null>(null);
+  const chatConversationsRef = useRef<ChatConversation[]>([]);
   const didLoadChatRef = useRef(false);
   const batchLoadTriggerRef = useRef<HTMLDivElement | null>(null);
   const batchScrollRef = useRef<HTMLDivElement | null>(null);
@@ -665,6 +761,7 @@ export function CreatePageClient({
   const handleNewChat = () => {
     if (isChatGenerating) return;
     resetChatConversation();
+    setChatConversationId(createLocalId());
     setChatPrompt("");
     clearChatAttachments();
     toast.success(copy("New chat started", "已新建对话"));
@@ -672,8 +769,31 @@ export function CreatePageClient({
 
   const handleClearChatHistory = () => {
     if (isChatGenerating) return;
+    const nextConversations = chatConversations.filter(
+      (conversation) => conversation.id !== chatConversationId
+    );
+    chatConversationsRef.current = nextConversations;
+    setChatConversations(nextConversations);
+    window.localStorage.setItem(
+      CHAT_CONVERSATIONS_STORAGE_KEY,
+      JSON.stringify(nextConversations)
+    );
     resetChatConversation();
+    setChatConversationId(createLocalId());
+    setChatPrompt("");
     toast.success(copy("Chat history cleared", "对话记录已清理"));
+  };
+
+  const handleOpenChatConversation = (conversation: ChatConversation) => {
+    if (isChatGenerating) return;
+    setChatConversationId(conversation.id);
+    setChatMessages(conversation.messages);
+    setChatStream(null);
+    setRetryingChatMessageId(null);
+    clearStreamingPreview();
+    setChatPrompt("");
+    clearChatAttachments();
+    scrollChatToBottom();
   };
 
   const scrollChatToBottom = () => {
@@ -967,28 +1087,56 @@ export function CreatePageClient({
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(CHAT_STORAGE_KEY);
-      if (!raw) {
-        didLoadChatRef.current = true;
-        return;
-      }
-      const parsed = JSON.parse(raw) as ChatMessage[];
-      if (Array.isArray(parsed)) {
-        setChatMessages(
-          parsed.filter(
-            (message) =>
-              message &&
-              (message.role === "user" || message.role === "assistant") &&
-              typeof message.text === "string"
-          )
+      const conversationRaw = window.localStorage.getItem(
+        CHAT_CONVERSATIONS_STORAGE_KEY
+      );
+      const conversations = sanitizeChatConversations(
+        conversationRaw ? JSON.parse(conversationRaw) : []
+      );
+
+      const legacyRaw = window.localStorage.getItem(CHAT_STORAGE_KEY);
+      const legacyMessages = sanitizeChatMessages(
+        legacyRaw ? JSON.parse(legacyRaw) : []
+      );
+      const hasLegacyConversation =
+        legacyMessages.length > 0 &&
+        !conversations.some(
+          (conversation) =>
+            JSON.stringify(conversation.messages) ===
+            JSON.stringify(legacyMessages)
         );
+      const nextConversations = hasLegacyConversation
+        ? [
+            createChatConversation(
+              legacyMessages,
+              getChatConversationTitle(
+                legacyMessages,
+                isZh ? "历史对话" : "Previous chat"
+              )
+            ),
+            ...conversations,
+          ]
+        : conversations;
+
+      if (nextConversations.length > 0) {
+        const sortedConversations = nextConversations
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          )
+          .slice(0, CHAT_CONVERSATION_LIMIT);
+        chatConversationsRef.current = sortedConversations;
+        setChatConversations(sortedConversations);
+        setChatConversationId(sortedConversations[0]?.id || createLocalId());
+        setChatMessages(sortedConversations[0]?.messages || []);
       }
     } catch {
       window.localStorage.removeItem(CHAT_STORAGE_KEY);
+      window.localStorage.removeItem(CHAT_CONVERSATIONS_STORAGE_KEY);
     } finally {
       didLoadChatRef.current = true;
     }
-  }, []);
+  }, [isZh]);
 
   useEffect(() => {
     if (!didLoadChatRef.current) return;
@@ -997,20 +1145,45 @@ export function CreatePageClient({
         window.localStorage.removeItem(CHAT_STORAGE_KEY);
         return;
       }
-      const persistedMessages = chatMessages.slice(-80).map((message) => ({
-        ...message,
-        attachments: message.attachments?.filter(
-          (attachment) => !attachment.previewUrl.startsWith("blob:")
-        ),
-      }));
+      const persistedMessages = sanitizePersistedChatMessages(chatMessages);
+      const title = getChatConversationTitle(
+        persistedMessages,
+        isZh ? "未命名对话" : "Untitled chat"
+      );
+      const now = new Date().toISOString();
+      let nextConversations: ChatConversation[] = [];
+      setChatConversations((prev) => {
+        const existing = prev.find(
+          (conversation) => conversation.id === chatConversationId
+        );
+        const current: ChatConversation = {
+          id: chatConversationId,
+          title,
+          messages: persistedMessages,
+          createdAt: existing?.createdAt || now,
+          updatedAt: now,
+        };
+        nextConversations = [
+          current,
+          ...prev.filter(
+            (conversation) => conversation.id !== chatConversationId
+          ),
+        ].slice(0, CHAT_CONVERSATION_LIMIT);
+        chatConversationsRef.current = nextConversations;
+        return nextConversations;
+      });
       window.localStorage.setItem(
         CHAT_STORAGE_KEY,
         JSON.stringify(persistedMessages)
       );
+      window.localStorage.setItem(
+        CHAT_CONVERSATIONS_STORAGE_KEY,
+        JSON.stringify(chatConversationsRef.current)
+      );
     } catch {
       /* ignore local storage quota errors */
     }
-  }, [chatMessages]);
+  }, [chatConversationId, chatMessages, isZh]);
 
   useEffect(() => {
     if (!gpt55ChatAllowed && chatModel === GPT55_CHAT_MODEL) {
@@ -3512,6 +3685,34 @@ export function CreatePageClient({
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {chatViewMode === "chat" && (
                   <>
+                    <Select
+                      value={chatConversationId}
+                      onValueChange={(value) => {
+                        const conversation = chatConversations.find(
+                          (item) => item.id === value
+                        );
+                        if (conversation) {
+                          handleOpenChatConversation(conversation);
+                        }
+                      }}
+                      disabled={isChatGenerating || chatConversations.length === 0}
+                    >
+                      <SelectTrigger className="h-9 w-[180px] sm:w-[220px]">
+                        <SelectValue
+                          placeholder={copy("Chat history", "历史对话")}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {chatConversations.map((conversation) => (
+                          <SelectItem
+                            key={conversation.id}
+                            value={conversation.id}
+                          >
+                            {conversation.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <Button
                       type="button"
                       variant="outline"
