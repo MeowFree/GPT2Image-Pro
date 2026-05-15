@@ -5,7 +5,10 @@ import { SUBSCRIPTION_MONTHLY_CREDITS } from "@repo/shared/config/payment";
 import { getPlanFromPriceId } from "@repo/shared/config/subscription-plan";
 import { db } from "@repo/database";
 import { creditsBatch, subscription, user } from "@repo/database/schema";
-import { CREDITS_EXPIRY_DAYS, CREDIT_PACKAGES } from "@repo/shared/credits/config";
+import {
+  CREDITS_EXPIRY_DAYS,
+  CREDIT_PACKAGES,
+} from "@repo/shared/credits/config";
 import { grantCredits } from "@repo/shared/credits/core";
 import {
   type CreemCheckoutCompletedData,
@@ -128,7 +131,10 @@ async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
   const checkoutType = data.metadata?.type ?? "subscription";
 
   if (!userId) {
-    logger.error({ source: "creem-webhook" }, "Missing userId in checkout metadata");
+    logger.error(
+      { source: "creem-webhook" },
+      "Missing userId in checkout metadata"
+    );
     return;
   }
 
@@ -208,7 +214,7 @@ async function handleCreditPurchase(
     return;
   }
 
-  // 积分包购买的积分不过期（与系统配置一致）
+  // 积分包购买的积分按系统配置过期
   const expiresAt = CREDITS_EXPIRY_DAYS
     ? new Date(Date.now() + CREDITS_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
     : null;
@@ -268,7 +274,10 @@ async function handleSubscriptionActive(sub: CreemSubscription) {
       .limit(1);
 
     if (!existingSub) {
-      logger.error({ subscriptionId: sub.id }, "Cannot find userId for subscription");
+      logger.error(
+        { subscriptionId: sub.id },
+        "Cannot find userId for subscription"
+      );
       return;
     }
 
@@ -313,7 +322,10 @@ async function handleSubscriptionRenewed(sub: CreemSubscription) {
     .limit(1);
 
   if (!existingSub) {
-    logger.error({ subscriptionId: sub.id }, "Subscription not found for renewal");
+    logger.error(
+      { subscriptionId: sub.id },
+      "Subscription not found for renewal"
+    );
     return;
   }
 
@@ -547,11 +559,21 @@ async function grantSubscriptionCredits(
     });
 
     logger.info(
-      { userId, creditsToGrant, planType, interval: isYearly ? "yearly" : "monthly", batchId: result.batchId },
+      {
+        userId,
+        creditsToGrant,
+        planType,
+        interval: isYearly ? "yearly" : "monthly",
+        batchId: result.batchId,
+      },
       "Subscription credits granted"
     );
   } catch (error) {
-    logError(error, { source: "creem-webhook", stage: "grant-subscription-credits", userId });
+    logError(error, {
+      source: "creem-webhook",
+      stage: "grant-subscription-credits",
+      userId,
+    });
     // 不抛出错误，让 webhook 返回成功
     // 积分发放失败可通过日志追踪，手动补发
   }

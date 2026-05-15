@@ -15,11 +15,9 @@ export const REGISTRATION_BONUS_CREDITS = 100;
 
 /**
  * 积分过期天数（从发放日起）
- * null 表示永不过期
- *
- * 设计理念：Pay as you use - 积分永久有效，用户无需担心过期
+ * 当前策略：所有新发放积分默认 365 天后过期
  */
-export const CREDITS_EXPIRY_DAYS = null;
+export const CREDITS_EXPIRY_DAYS = 365;
 
 /**
  * 积分包配置（一次性购买）

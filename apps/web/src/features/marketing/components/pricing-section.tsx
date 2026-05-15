@@ -37,7 +37,7 @@ function parsePlanNumber(value: string) {
  */
 const PLAN_FEATURE_KEYS: Record<string, string[]> = {
   free: [
-    "creditsNeverExpire",
+    "creditsValidity",
     "input",
     "characters",
     "fileSize",
@@ -45,7 +45,7 @@ const PLAN_FEATURE_KEYS: Record<string, string[]> = {
     "history",
   ],
   starter: [
-    "creditsNeverExpire",
+    "creditsValidity",
     "input",
     "characters",
     "fileSize",
@@ -54,7 +54,7 @@ const PLAN_FEATURE_KEYS: Record<string, string[]> = {
     "support",
   ],
   pro: [
-    "creditsNeverExpire",
+    "creditsValidity",
     "input",
     "characters",
     "fileSize",
@@ -65,7 +65,7 @@ const PLAN_FEATURE_KEYS: Record<string, string[]> = {
     "support",
   ],
   ultra: [
-    "creditsNeverExpire",
+    "creditsValidity",
     "input",
     "characters",
     "fileSize",

@@ -361,9 +361,8 @@ export const purchaseCredits = withProtectedCreditsAction("purchaseCredits")
     const { userId } = ctx;
     const { amount, paymentId, expiresInDays } = parsedInput;
 
-    const expiresAt = expiresInDays
-      ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
-      : null;
+    const expiryDays = expiresInDays ?? CREDITS_EXPIRY_DAYS;
+    const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
 
     const result = await grantCredits({
       userId,

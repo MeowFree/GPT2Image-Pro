@@ -41,7 +41,7 @@
       },
       "batch": {
         "title": "Credits System",
-        "description": "Flexible pay-as-you-go credits that never expire. Track usage, monitor consumption, and top up whenever you need."
+        "description": "Flexible pay-as-you-go credits valid for 365 days after they are issued. Track usage, monitor consumption, and top up whenever you need."
       },
       "multilingual": {
         "title": "Dark Mode",
@@ -129,7 +129,7 @@
         "role": "Content Creator"
       },
       {
-        "content": "Credits that never expire is a huge win. I can generate when inspiration strikes without worrying about a monthly clock running out.",
+        "content": "The balance and expiry reminders are clear. I can use credits at my own creative pace and top up before a batch expires.",
         "author": "Lisa Li",
         "role": "Illustrator"
       },
@@ -155,7 +155,7 @@
       },
       {
         "question": "How does the credits system work?",
-        "answer": "Every image generation consumes a small number of credits based on the model and parameters you choose. Credits never expire, so unused credits are never wasted. You can subscribe to a monthly plan for recurring credits or top up whenever you need more."
+        "answer": "Every image generation consumes a small number of credits based on the model and parameters you choose. Credits are valid for 365 days from issuance, and you can review expiring batches on the usage page. You can subscribe to a monthly plan for recurring credits or top up whenever you need more."
       },
       {
         "question": "How do I get started?",
@@ -316,7 +316,7 @@
         "multiModel": "Multi-model Support",
         "multiModelDesc": "Leading image generation models in one place",
         "credits": "Credits System",
-        "creditsDesc": "Flexible credits that never expire"
+        "creditsDesc": "Flexible credits valid for 365 days"
       }
     }
   },
@@ -384,7 +384,7 @@
   },
   "Pricing": {
     "title": "Simple, transparent pricing",
-    "subtitle": "Pay by credits — <strong>never expire</strong>, so unused credits aren't wasted. 2K output costs 3 credits; 4K and custom sizes cost 10 credits.",
+    "subtitle": "Pay by credits. Credits are <strong>valid for 365 days</strong> after issuance. 2K output costs 3 credits; 4K and custom sizes cost 10 credits.",
     "creditsUpfront": "all at once",
     "creditsPerYear": "credits / year",
     "monthly": "Monthly",
@@ -405,7 +405,7 @@
         "creditsLabel": "credits",
         "creditsNote": "one-time",
         "features": {
-          "creditsNeverExpire": "Credits never expire",
+          "creditsValidity": "Credits valid for 365 days",
           "credits": "100 credits (one-time)",
           "input": "Chat-to-image generation",
           "characters": "Standard image resolutions",
@@ -422,7 +422,7 @@
         "creditsLabel": "credits / month",
         "booksCount": "1,666",
         "features": {
-          "creditsNeverExpire": "Credits never expire",
+          "creditsValidity": "Credits valid for 365 days",
           "credits": "5,000 credits / month",
           "input": "Chat-to-image generation",
           "characters": "Standard image resolutions",
@@ -440,7 +440,7 @@
         "creditsLabel": "credits / month",
         "booksCount": "6,666",
         "features": {
-          "creditsNeverExpire": "Credits never expire",
+          "creditsValidity": "Credits valid for 365 days",
           "credits": "20,000 credits / month",
           "input": "All generation features",
           "characters": "High-resolution outputs",
@@ -460,7 +460,7 @@
         "creditsLabel": "credits / month",
         "booksCount": "26,666",
         "features": {
-          "creditsNeverExpire": "Credits never expire",
+          "creditsValidity": "Credits valid for 365 days",
           "credits": "80,000 credits / month",
           "input": "All generation features",
           "characters": "Maximum-resolution outputs",

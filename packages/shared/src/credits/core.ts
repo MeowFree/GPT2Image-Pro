@@ -15,6 +15,7 @@ import {
   creditsTransaction,
 } from "@repo/database/schema";
 import { logEvent } from "../logger/index";
+import { CREDITS_EXPIRY_DAYS } from "./config";
 
 // ============================================
 // 类型定义
@@ -34,7 +35,7 @@ export interface GrantCreditsParams {
   debitAccount: string;
   /** 交易类型 */
   transactionType: CreditsTransactionType;
-  /** 过期时间（可选） */
+  /** 过期时间，默认按系统积分有效期计算 */
   expiresAt?: Date | null;
   /** 来源引用（如订单 ID） */
   sourceRef?: string;
@@ -158,7 +159,7 @@ export async function getCreditsBalance(userId: string) {
  *
  * @param userId 用户 ID
  * @param bonusAmount 注册奖励积分数量
- * @param expiryDays 过期天数（null 表示永不过期）
+ * @param expiryDays 过期天数
  */
 export async function ensureRegistrationBonus(
   userId: string,
@@ -214,7 +215,7 @@ export async function grantCredits(params: GrantCreditsParams) {
     sourceType,
     debitAccount,
     transactionType,
-    expiresAt = null,
+    expiresAt,
     sourceRef,
     description,
     metadata,
@@ -257,14 +258,18 @@ export async function grantCredits(params: GrantCreditsParams) {
       throw new AccountFrozenError(userId);
     }
 
+    const issuedAt = new Date();
+    const effectiveExpiresAt =
+      expiresAt ??
+      new Date(issuedAt.getTime() + CREDITS_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
     const batchId = crypto.randomUUID();
     await tx.insert(creditsBatch).values({
       id: batchId,
       userId,
       amount,
       remaining: amount,
-      issuedAt: new Date(),
-      expiresAt,
+      issuedAt,
+      expiresAt: effectiveExpiresAt,
       status: "active",
       sourceType,
       sourceRef,

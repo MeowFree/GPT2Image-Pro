@@ -43,6 +43,13 @@
       "when": 1778788800000,
       "tag": "0005_external_api_key",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778860800000,
+      "tag": "0006_expire_existing_credits",
+      "breakpoints": true
     }
   ]
 }

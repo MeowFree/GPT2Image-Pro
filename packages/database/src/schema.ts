@@ -321,7 +321,7 @@ export const creditsBalance = pgTable("credits_balance", {
  * @field amount - 原始积分数量
  * @field remaining - 剩余积分数量
  * @field issuedAt - 发放时间
- * @field expiresAt - 过期时间（可为空，表示永不过期）
+ * @field expiresAt - 过期时间
  * @field status - 批次状态（active/consumed/expired）
  * @field sourceType - 来源类型（purchase/subscription/bonus/refund）
  * @field sourceRef - 来源引用（如订单ID、订阅ID等）
