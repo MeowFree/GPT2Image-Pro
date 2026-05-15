@@ -463,7 +463,6 @@ export const createCreditsPurchaseCheckout = withProtectedCreditsAction(
         outTradeNo,
         name: `GPT2IMAGE Credits ${pkg.credits}`,
         money: pkg.price,
-        returnUrl: `${baseUrl}/api/payments/epay/return`,
         param: encodeEpayMetadata({
           type: "credit_purchase",
           userId,

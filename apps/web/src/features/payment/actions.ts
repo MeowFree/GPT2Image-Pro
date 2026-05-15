@@ -85,7 +85,6 @@ export const createCheckoutSession = protectedAction
           ? `GPT2IMAGE upgrade to ${plan.name} ${price.interval ?? "subscription"}`
           : `GPT2IMAGE ${plan.name} ${price.interval ?? "subscription"}`,
         money: upgradeQuote?.amountDue ?? price.amount,
-        returnUrl: `${baseUrl}/api/payments/epay/return`,
         param: encodeEpayMetadata({
           type: "subscription",
           userId,

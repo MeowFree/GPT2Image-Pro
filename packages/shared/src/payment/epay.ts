@@ -103,6 +103,17 @@ function getEpayNotifyUrl(): string | undefined {
   return notifyUrl || undefined;
 }
 
+function getEpayReturnUrl(baseUrl: string, notifyUrl?: string): string {
+  if (notifyUrl) {
+    try {
+      return new URL("/api/payments/epay/return", notifyUrl).toString();
+    } catch {
+      // Fall back to the public app URL below.
+    }
+  }
+  return `${baseUrl}/api/payments/epay/return`;
+}
+
 function getEpayConfig() {
   const pid = process.env.EPAY_PID?.trim() ?? "";
   const key = process.env.EPAY_KEY?.trim() ?? "";
@@ -208,13 +219,13 @@ export function createEpayPurchase(
 ): EpayPurchaseResult {
   const { pid, apiUrl } = getEpayConfig();
   const baseUrl = getBaseUrl();
+  const notifyUrl = input.notifyUrl ?? getEpayNotifyUrl();
   const params: Record<string, string> = {
     pid,
     type: input.type || getEpayDefaultPaymentType(),
     out_trade_no: input.outTradeNo,
-    notify_url:
-      input.notifyUrl ?? getEpayNotifyUrl() ?? `${baseUrl}/api/webhooks/epay`,
-    return_url: input.returnUrl ?? `${baseUrl}/api/payments/epay/return`,
+    notify_url: notifyUrl ?? `${baseUrl}/api/webhooks/epay`,
+    return_url: input.returnUrl ?? getEpayReturnUrl(baseUrl, notifyUrl),
     name: input.name,
     money: formatMoney(input.money),
     device: "pc",
@@ -254,7 +265,7 @@ export async function createRuntimeEpayPurchase(
     type: paymentType,
     out_trade_no: input.outTradeNo,
     notify_url: notifyUrl,
-    return_url: input.returnUrl ?? `${baseUrl}/api/payments/epay/return`,
+    return_url: input.returnUrl ?? getEpayReturnUrl(baseUrl, notifyUrl),
     name: input.name,
     money: formatMoney(input.money),
     device: "pc",
