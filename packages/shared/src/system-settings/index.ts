@@ -1,6 +1,6 @@
 import { db } from "@repo/database";
 import { systemSetting } from "@repo/database/schema";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 
 import {
   SETTING_DEFINITION_BY_KEY,
@@ -185,6 +185,71 @@ function coerceValue(definition: SettingDefinition, value: unknown) {
   return text;
 }
 
+function getProcessSettingValue(definition: SettingDefinition) {
+  const envValue = process.env[definition.key]?.trim();
+  if (!envValue) return undefined;
+  return coerceValue(definition, envValue);
+}
+
+export async function importSystemSettingsFromEnv(options?: {
+  updatedBy?: string;
+  overwrite?: boolean;
+}) {
+  const rows = await db
+    .select({
+      key: systemSetting.key,
+      value: systemSetting.value,
+    })
+    .from(systemSetting);
+
+  const storedKeys = new Set(
+    rows
+      .filter((row) => normalizeStoredValue(row.value) !== undefined)
+      .map((row) => row.key)
+  );
+  const now = new Date();
+  const values = SYSTEM_SETTING_DEFINITIONS.flatMap((definition) => {
+    if (!options?.overwrite && storedKeys.has(definition.key)) return [];
+
+    const value = getProcessSettingValue(definition);
+    if (value === undefined || value === "") return [];
+
+    return [
+      {
+        key: definition.key,
+        value,
+        isSecret: "secret" in definition && Boolean(definition.secret),
+        ...(options?.updatedBy ? { updatedBy: options.updatedBy } : {}),
+        updatedAt: now,
+      },
+    ];
+  });
+
+  if (values.length === 0) return [] as SettingKey[];
+
+  await db
+    .insert(systemSetting)
+    .values(values)
+    .onConflictDoUpdate({
+      target: systemSetting.key,
+      set: {
+        value: sql`excluded.value`,
+        isSecret: sql`excluded.is_secret`,
+        updatedBy: sql`excluded.updated_by`,
+        updatedAt: now,
+      },
+    });
+
+  clearSystemSettingsCache();
+  return values.map((value) => value.key);
+}
+
+export async function importMissingSystemSettingsFromEnv(updatedBy?: string) {
+  return importSystemSettingsFromEnv(
+    updatedBy === undefined ? undefined : { updatedBy }
+  );
+}
+
 export async function setSystemSettings(
   entries: Array<{
     key: string;
@@ -283,7 +348,9 @@ export async function getAdminSystemSettingsSnapshot() {
       ? ""
       : hasStoredValue
         ? String(row.value)
-        : "";
+        : hasEnvValue
+          ? envValue.trim()
+          : "";
 
     return {
       ...definition,

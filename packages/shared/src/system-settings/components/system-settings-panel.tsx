@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Save, Trash2 } from "lucide-react";
+import { Download, Loader2, Save, Trash2 } from "lucide-react";
 import { useAction } from "next-safe-action/hooks";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui/components/ta
 
 import {
   getSystemSettingsAction,
+  importSystemSettingsFromEnvAction,
   updateSystemSettingsAction,
 } from "../actions";
 import { SETTING_CATEGORIES } from "../definitions";
@@ -150,6 +151,18 @@ export function SystemSettingsPanel() {
       },
     }
   );
+  const { execute: importEnvSettings, isPending: isImporting } = useAction(
+    importSystemSettingsFromEnvAction,
+    {
+      onSuccess: ({ data }) => {
+        if (data?.message) toast.success(data.message);
+        loadSettings();
+      },
+      onError: ({ error }) => {
+        toast.error(error.serverError || "导入环境变量失败");
+      },
+    }
+  );
 
   useEffect(() => {
     loadSettings();
@@ -217,7 +230,7 @@ export function SystemSettingsPanel() {
     setClearKeys((current) => ({ ...current, [key]: true }));
   };
 
-  const disabled = isLoading || isSaving;
+  const disabled = isLoading || isSaving || isImporting;
 
   return (
     <div className="space-y-6">
@@ -228,21 +241,36 @@ export function SystemSettingsPanel() {
             管理审核、登录、支付、套餐、模型、存储和邮件等全局配置。密钥不会在页面回显。
           </p>
         </div>
-        <Button onClick={handleSave} disabled={disabled || settings.length === 0}>
-          {isSaving ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="mr-2 h-4 w-4" />
-          )}
-          保存设置
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => importEnvSettings({ overwrite: true })}
+            disabled={disabled}
+          >
+            {isImporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            导入当前环境变量
+          </Button>
+          <Button onClick={handleSave} disabled={disabled || settings.length === 0}>
+            {isSaving ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-4 w-4" />
+            )}
+            保存设置
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
         已保存配置优先于环境变量；未保存时继续使用环境变量兜底。标记为“需重启”或“需重新构建”的配置，保存后要重启服务或重新部署后才完整生效。
       </div>
 
-      <Tabs defaultValue={SETTING_CATEGORIES[0]?.id} className="w-full">
+      <Tabs defaultValue={SETTING_CATEGORIES[0]?.id ?? "general"} className="w-full">
         <TabsList className="h-auto flex-wrap justify-start bg-transparent p-0">
           {SETTING_CATEGORIES.map((category) => (
             <TabsTrigger

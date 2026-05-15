@@ -1,5 +1,6 @@
 import { db } from "@repo/database";
 import { systemSetting } from "@repo/database/schema";
+import { importMissingSystemSettingsFromEnv } from ".";
 
 let bootstrapped = false;
 
@@ -8,6 +9,8 @@ export async function bootstrapSystemSettingsEnv() {
   bootstrapped = true;
 
   try {
+    await importMissingSystemSettingsFromEnv();
+
     const rows = await db
       .select({
         key: systemSetting.key,

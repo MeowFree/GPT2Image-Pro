@@ -131,25 +131,29 @@ export async function getRuntimePaymentConfig(): Promise<RuntimePaymentConfig> {
     ultraPrices.push(await getRuntimePlanPrice("ultra", "yearly", provider));
   }
 
+  const plans: RuntimePaymentConfig["plans"] = {
+    starter: {
+      ...paymentConfig.plans.starter!,
+      prices: starterPrices,
+    },
+    pro: {
+      ...paymentConfig.plans.pro!,
+      prices: proPrices,
+    },
+    ultra: {
+      ...paymentConfig.plans.ultra!,
+      prices: ultraPrices,
+    },
+  };
+  if (paymentConfig.plans.free) {
+    plans.free = paymentConfig.plans.free;
+  }
+
   return {
     ...paymentConfig,
     provider,
     yearlyEnabled,
-    plans: {
-      free: paymentConfig.plans.free,
-      starter: {
-        ...paymentConfig.plans.starter!,
-        prices: starterPrices,
-      },
-      pro: {
-        ...paymentConfig.plans.pro!,
-        prices: proPrices,
-      },
-      ultra: {
-        ...paymentConfig.plans.ultra!,
-        prices: ultraPrices,
-      },
-    },
+    plans,
   };
 }
 
