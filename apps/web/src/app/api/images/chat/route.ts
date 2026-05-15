@@ -41,6 +41,7 @@ const VALID_THINKING = new Set<ThinkingLevel>([
   "xhigh",
 ]);
 const MAX_BATCH_COUNT = 10;
+const MAX_CHAT_CONTEXT_CHARS = 10_000;
 
 function errorResponse(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -62,6 +63,16 @@ function getCount(formData: FormData) {
     throw new Error(`count must be between 1 and ${MAX_BATCH_COUNT}.`);
   }
   return count;
+}
+
+function getOptionalBoolean(formData: FormData, ...keys: string[]) {
+  for (const key of keys) {
+    const value = getText(formData, key).toLowerCase();
+    if (!value) continue;
+    if (value === "true" || value === "1") return true;
+    if (value === "false" || value === "0") return false;
+  }
+  return undefined;
 }
 
 function wantsStreamResponse(request: NextRequest, formData: FormData) {
@@ -146,6 +157,79 @@ function getHistory(formData: FormData): ChatHistoryMessage[] {
       },
     ];
   });
+}
+
+function getHistoryMessageText(message: ChatHistoryMessage) {
+  if (message.error) return "";
+  if (message.role === "user") return message.text || "";
+
+  const variants = message.variants || [];
+  const variant = variants[message.activeVariant || 0] || variants[0];
+  const imageNote = variant?.imageUrl
+    ? `\nGenerated image: ${variant.imageUrl}`
+    : "";
+  return `${variant?.text || message.text || ""}${imageNote}`;
+}
+
+function trimHistoryMessageText(
+  message: ChatHistoryMessage,
+  maxChars: number
+): ChatHistoryMessage | null {
+  if (maxChars <= 0 || message.error) return null;
+
+  const text = getHistoryMessageText(message);
+  if (!text) return message;
+  const trimmedText = text.length > maxChars ? text.slice(0, maxChars) : text;
+
+  if (message.role === "user") {
+    return { ...message, text: trimmedText };
+  }
+
+  return {
+    ...message,
+    text: trimmedText,
+    variants: undefined,
+    activeVariant: undefined,
+  };
+}
+
+function limitChatContext(params: {
+  prompt: string;
+  apiPrompt?: string;
+  promptOptimization?: boolean;
+  history: ChatHistoryMessage[];
+}): { history: ChatHistoryMessage[]; error?: string } {
+  const currentPrompt =
+    params.promptOptimization === false
+      ? params.prompt
+      : params.apiPrompt || params.prompt;
+  let remaining = MAX_CHAT_CONTEXT_CHARS - currentPrompt.length;
+
+  if (remaining < 0) {
+    return {
+      history: [],
+      error: `Chat input context must be no more than ${MAX_CHAT_CONTEXT_CHARS} characters.`,
+    };
+  }
+
+  const limited: ChatHistoryMessage[] = [];
+  for (let index = params.history.length - 1; index >= 0; index--) {
+    const message = params.history[index];
+    if (!message || message.error) continue;
+
+    const textLength = getHistoryMessageText(message).length;
+    if (textLength <= remaining) {
+      limited.unshift(message);
+      remaining -= textLength;
+      continue;
+    }
+
+    const trimmed = trimHistoryMessageText(message, remaining);
+    if (trimmed) limited.unshift(trimmed);
+    break;
+  }
+
+  return { history: limited };
 }
 
 function validateImageFile(file: File) {
@@ -275,6 +359,11 @@ export const POST = withApiLogging(async (request: NextRequest) => {
   if (apiPrompt && apiPrompt.length > 8000) {
     return errorResponse("Context prompt exceeds the 8000 character limit.");
   }
+  const promptOptimization = getOptionalBoolean(
+    formData,
+    "promptOptimization",
+    "prompt_optimization"
+  );
   let history: ChatHistoryMessage[] = [];
   try {
     history = getHistory(formData);
@@ -283,6 +372,16 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       error instanceof Error ? error.message : "Invalid history."
     );
   }
+  const limitedContext = limitChatContext({
+    prompt,
+    apiPrompt,
+    promptOptimization,
+    history,
+  });
+  if (limitedContext.error) {
+    return errorResponse(limitedContext.error);
+  }
+  history = limitedContext.history;
 
   const size = getText(formData, "size") || DEFAULT_IMAGE_SIZE;
   const sizeCheck = validateImageSize(size);
@@ -365,6 +464,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           generationId,
           prompt,
           apiPrompt,
+          promptOptimization,
           images: await buildImages(),
           history,
           size,

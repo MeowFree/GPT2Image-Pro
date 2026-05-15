@@ -298,6 +298,7 @@ function appendImageParams(
     size?: string;
     quality?: ImageQuality;
     moderation?: ImageModeration;
+    promptOptimization?: boolean;
   }
 ) {
   formData.append("model", getModel(config, params.model));
@@ -322,6 +323,13 @@ function appendImageParams(
   const moderation = normalizeModeration(params.moderation);
   if (moderation) {
     formData.append("moderation", moderation);
+  }
+
+  if (
+    config.supportsPromptOptimizationControl &&
+    params.promptOptimization === false
+  ) {
+    formData.append("prompt_optimization", "false");
   }
 
   if (config.useStream) {
@@ -852,6 +860,7 @@ async function getPlatformConfig(): Promise<ApiConfig> {
   return {
     baseUrl,
     apiKey,
+    supportsPromptOptimizationControl: true,
     model:
       normalizeImageModel(await getRuntimeSettingString("PLATFORM_IMAGE_MODEL")) ||
       DEFAULT_IMAGE_MODEL,
@@ -901,7 +910,10 @@ export async function generateImage(
 ): Promise<GenerateImageResult> {
   const model = getModel(config, params.model);
   try {
-    const prompt = params.apiPrompt || params.prompt;
+    const prompt =
+      params.promptOptimization === false
+        ? params.prompt
+        : params.apiPrompt || params.prompt;
     const size = params.size || DEFAULT_IMAGE_SIZE;
     const dimensions = parseImageSize(size);
     const response = await fetch(`${config.baseUrl}/images/generations`, {
@@ -923,6 +935,10 @@ export async function generateImage(
           : {}),
         ...(normalizeModeration(params.moderation)
           ? { moderation: normalizeModeration(params.moderation) }
+          : {}),
+        ...(config.supportsPromptOptimizationControl &&
+        params.promptOptimization === false
+          ? { prompt_optimization: false }
           : {}),
         ...(config.useStream ? { stream: true, partial_images: 2 } : {}),
         response_format: "b64_json",
@@ -951,14 +967,19 @@ export async function editImage(
 ): Promise<GenerateImageResult> {
   const model = getModel(config, params.model);
   try {
+    const prompt =
+      params.promptOptimization === false
+        ? params.prompt
+        : params.apiPrompt || params.prompt;
     const formData = new FormData();
     appendImageParams(formData, config, {
-      prompt: params.apiPrompt || params.prompt,
+      prompt,
       model,
       n: params.n,
       size: params.size,
       quality: params.quality,
       moderation: params.moderation,
+      promptOptimization: params.promptOptimization,
     });
 
     for (const image of params.images) {
@@ -1009,9 +1030,16 @@ export async function generateChatImage(
     allowGpt55: params.allowGpt55,
   });
   try {
-    const prompt = params.apiPrompt || params.prompt;
+    const prompt =
+      params.promptOptimization === false
+        ? params.prompt
+        : params.apiPrompt || params.prompt;
     const size = params.size || DEFAULT_IMAGE_SIZE;
     const input = buildResponsesInput(prompt, params.images, params.history);
+    const instructions =
+      params.promptOptimization === false
+        ? "Use the user's original image prompt exactly as written when calling the image_generation tool. Do not rewrite, expand, translate, polish, or optimize the latest user prompt before image generation."
+        : undefined;
     const tool: {
       type: "image_generation";
       action: "auto";
@@ -1042,6 +1070,7 @@ export async function generateChatImage(
           model,
           input,
           tools: [tool],
+          ...(instructions ? { instructions } : {}),
           ...(reasoning ? { reasoning } : {}),
           ...(params.stream || config.useStream ? { stream: true } : {}),
         }),

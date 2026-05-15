@@ -3,6 +3,7 @@
 import {
   canUseChat,
   canUseGpt55Chat,
+  canUsePromptOptimization,
   type SubscriptionPlan,
 } from "@repo/shared/config/subscription-plan";
 import { formatCredits } from "@repo/shared/credits/format";
@@ -202,6 +203,7 @@ const defaultDimensions = parseImageSize(DEFAULT_IMAGE_SIZE) || {
 const MAX_EDIT_IMAGES = 16;
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const MAX_EDIT_REQUEST_BYTES = 75 * 1024 * 1024;
+const CHAT_TEXT_ONLY_CREDITS = 1;
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp";
 const EDIT_MODEL_OPTIONS = [
   { value: "default", label: "Default" },
@@ -436,9 +438,11 @@ export function CreatePageClient({
   };
   const chatAllowed = canUseChat(plan);
   const gpt55ChatAllowed = canUseGpt55Chat(plan);
+  const promptOptimizationAllowed = canUsePromptOptimization(plan);
   const [activeMode, setActiveMode] = useState<ActiveMode>("text");
   const [prompt, setPrompt] = useState("");
   const [editPrompt, setEditPrompt] = useState("");
+  const [promptOptimization, setPromptOptimization] = useState(true);
   const [chatPrompt, setChatPrompt] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([]);
@@ -545,7 +549,7 @@ export function CreatePageClient({
       })
     : getImageCreditCost();
   const chatSingleCreditCost =
-    chatAttachments.length > 0 ? chatEditImageCreditCost : textImageCreditCost;
+    chatAttachments.length > 0 ? chatEditImageCreditCost : CHAT_TEXT_ONLY_CREDITS;
   const batchFallbackSize =
     chatAttachments.length > 0 && chatEffectiveEditSize
       ? chatEffectiveEditSize
@@ -588,6 +592,38 @@ export function CreatePageClient({
     height,
   };
   const chatSuggestions = isZh ? CHAT_SUGGESTIONS_ZH : CHAT_SUGGESTIONS;
+  const promptOptimizationField = (id: string, disabled = false) => (
+    <label
+      htmlFor={id}
+      className={`flex items-start gap-2 rounded-md border border-border bg-muted/30 p-3 text-sm ${
+        promptOptimizationAllowed
+          ? "cursor-pointer text-foreground"
+          : "cursor-not-allowed text-muted-foreground"
+      }`}
+    >
+      <Checkbox
+        id={id}
+        checked={promptOptimizationAllowed ? promptOptimization : true}
+        onCheckedChange={(checked) => setPromptOptimization(checked === true)}
+        disabled={disabled || !promptOptimizationAllowed}
+        className="mt-0.5"
+      />
+      <span>
+        {copy("Prompt optimization", "提示词优化")}
+        <span className="mt-1 block text-xs font-normal text-muted-foreground">
+          {promptOptimizationAllowed
+            ? copy(
+                "When enabled, the platform may improve the prompt before image generation.",
+                "开启后平台可能在出图前优化提示词。"
+              )
+            : copy(
+                "Pro plan or higher can turn this off.",
+                "专业版或更高套餐可关闭。"
+              )}
+        </span>
+      </span>
+    </label>
+  );
 
   const clearStreamingPreview = () => {
     setStreamingPreviewUrl(null);
@@ -705,6 +741,9 @@ export function CreatePageClient({
     formData.append("size", fallbackSize);
     formData.append("count", "1");
     formData.append("stream", "true");
+    if (promptOptimizationAllowed) {
+      formData.append("prompt_optimization", String(promptOptimization));
+    }
     attachments.forEach(({ file }) => {
       formData.append(attachments.length === 1 ? "image" : "image[]", file);
     });
@@ -1539,6 +1578,9 @@ export function CreatePageClient({
             </span>
           </span>
         </div>
+        <div className="mb-2">
+          {promptOptimizationField("chat-prompt-optimization", isChatGenerating)}
+        </div>
 
         {chatCustomResolutionOpen && (
           <div className="mb-2 rounded-md border border-border bg-muted/30 p-2">
@@ -1891,7 +1933,7 @@ export function CreatePageClient({
     }));
     const isEditRequest = attachments.length > 0;
     const fallbackSize = isEditRequest ? chatEffectiveEditSize : size;
-    const cost = isEditRequest ? chatEditImageCreditCost : textImageCreditCost;
+    const cost = isEditRequest ? chatEditImageCreditCost : CHAT_TEXT_ONLY_CREDITS;
 
     if (balance < cost) {
       showGenerationError("Insufficient credits");
@@ -2068,6 +2110,9 @@ export function CreatePageClient({
           stream: true,
           count: batchCount,
           moderation,
+          ...(promptOptimizationAllowed
+            ? { promptOptimization }
+            : {}),
         }),
       });
       const data = await readImageStreamResponse(response);
@@ -2163,6 +2208,9 @@ export function CreatePageClient({
     });
     if (maskFile) formData.append("mask", maskFile.file);
     formData.append("count", String(editBatchCount));
+    if (promptOptimizationAllowed) {
+      formData.append("prompt_optimization", String(promptOptimization));
+    }
 
     setIsEditing(true);
     setResult(null);
@@ -2814,6 +2862,7 @@ export function CreatePageClient({
               disabled={isGenerating}
               className="resize-none border-input bg-background text-base"
             />
+            {promptOptimizationField("text-prompt-optimization", isGenerating)}
             {resolutionControls}
             <div className="flex justify-end">
               <Button type="submit" disabled={isGenerating || !prompt.trim()}>
@@ -2850,6 +2899,7 @@ export function CreatePageClient({
               disabled={isEditing}
               className="resize-none border-input bg-background text-base"
             />
+            {promptOptimizationField("edit-prompt-optimization", isEditing)}
 
             <div className="space-y-4 rounded-lg border border-border bg-background p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -3626,12 +3676,18 @@ export function CreatePageClient({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {copy("Cost", "费用")}{" "}
-                    <span className="font-medium text-foreground">
-                      {formattedBatchCreditCost}
-                    </span>{" "}
-                    {copy(`for ${batchTier}`, `共 ${batchTier} 张`)}
+                  <div className="flex flex-wrap items-center justify-end gap-3">
+                    {promptOptimizationField(
+                      "batch-prompt-optimization",
+                      isBatchActive
+                    )}
+                    <div className="text-xs text-muted-foreground">
+                      {copy("Cost", "费用")}{" "}
+                      <span className="font-medium text-foreground">
+                        {formattedBatchCreditCost}
+                      </span>{" "}
+                      {copy(`for ${batchTier}`, `共 ${batchTier} 张`)}
+                    </div>
                   </div>
                 </div>
 

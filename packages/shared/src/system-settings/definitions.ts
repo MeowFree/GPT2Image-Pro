@@ -105,9 +105,6 @@ export type SettingKey =
   | "RESEND_API_KEY"
   | "REGISTRATION_BONUS_CREDITS"
   | "CREDITS_EXPIRY_DAYS"
-  | "CHAT_NO_IMAGE_PENALTY_ENABLED"
-  | "CHAT_NO_IMAGE_PENALTY_THRESHOLD"
-  | "CHAT_NO_IMAGE_PENALTY_CREDITS"
   | "NEXT_PUBLIC_GA_ID"
   | "NEXT_PUBLIC_SENTRY_DSN"
   | "SENTRY_AUTH_TOKEN"
@@ -875,30 +872,6 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     defaultValue: 365,
   },
   {
-    key: "CHAT_NO_IMAGE_PENALTY_ENABLED",
-    label: "纯聊天罚扣",
-    description: "开启后 chat 连续多次未出图时额外扣积分。",
-    category: "credits",
-    valueType: "boolean",
-    defaultValue: true,
-  },
-  {
-    key: "CHAT_NO_IMAGE_PENALTY_THRESHOLD",
-    label: "纯聊天罚扣次数",
-    description: "连续多少次 chat 未出图后触发罚扣。",
-    category: "credits",
-    valueType: "number",
-    defaultValue: 3,
-  },
-  {
-    key: "CHAT_NO_IMAGE_PENALTY_CREDITS",
-    label: "纯聊天罚扣积分",
-    description: "触发纯聊天罚扣时额外扣除的积分。",
-    category: "credits",
-    valueType: "number",
-    defaultValue: 100,
-  },
-  {
     key: "NEXT_PUBLIC_GA_ID",
     label: "Google Analytics ID",
     description: "GA Measurement ID。",
@@ -1048,7 +1021,7 @@ export const SETTING_CATEGORIES: Array<{
   {
     id: "credits",
     label: "积分",
-    description: "注册奖励、积分有效期和纯聊天罚扣规则。",
+    description: "注册奖励和积分有效期规则。",
   },
   {
     id: "analytics",

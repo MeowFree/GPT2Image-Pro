@@ -37,6 +37,7 @@ import {
   AccountFrozenError,
   consumeCredits,
   ensureRegistrationBonus,
+  ensureRegistrationBonusNeverExpires,
   getCreditsBalance,
   getUserActiveBatches,
   getUserTransactions,
@@ -101,12 +102,11 @@ export const grantRegistrationBonus = withProtectedCreditsAction(
       .limit(1);
 
     if (existing.length > 0) {
+      await ensureRegistrationBonusNeverExpires(userId);
       return { success: true, alreadyGranted: true };
     }
 
     const bonusCredits = await getRuntimeRegistrationBonusCredits();
-    const expiryDays = await getRuntimeCreditsExpiryDays();
-    const expiresAt = getExpiryDate(expiryDays);
 
     const result = await grantCredits({
       userId,
@@ -114,7 +114,7 @@ export const grantRegistrationBonus = withProtectedCreditsAction(
       sourceType: "bonus",
       debitAccount: "SYSTEM:registration_bonus",
       transactionType: "registration_bonus",
-      expiresAt,
+      expiresAt: null,
       sourceRef: `registration_bonus:${userId}`,
       description: "新用户注册奖励",
       metadata: {
@@ -142,8 +142,7 @@ export const getMyCreditsBalance = withProtectedCreditsAction(
   // 懒加载: 确保新用户获得注册奖励
   await ensureRegistrationBonus(
     userId,
-    await getRuntimeRegistrationBonusCredits(),
-    await getRuntimeCreditsExpiryDays()
+    await getRuntimeRegistrationBonusCredits()
   );
 
   // 获取余额

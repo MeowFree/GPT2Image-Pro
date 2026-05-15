@@ -168,6 +168,13 @@ export function canUseChat(plan: SubscriptionPlan): boolean {
 }
 
 /**
+ * 是否允许自定义提示词优化开关
+ */
+export function canUsePromptOptimization(plan: SubscriptionPlan): boolean {
+  return isPlanAtLeast(plan, "pro");
+}
+
+/**
  * 是否允许对话生图使用 GPT-5.5
  */
 export function canUseGpt55Chat(plan: SubscriptionPlan): boolean {

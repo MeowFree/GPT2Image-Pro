@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@repo/ui/components/select";
-import { updateTicketStatusAction } from "../actions";
+import { updateTicketStatusAction } from "../actions/ticket";
 import { ticketStatuses } from "../schemas";
 
 interface AdminTicketStatusSelectProps {

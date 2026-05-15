@@ -60,6 +60,16 @@ function getBoolean(formData: FormData, key: string) {
   return value === "true" || value === "1";
 }
 
+function getOptionalBoolean(formData: FormData, ...keys: string[]) {
+  for (const key of keys) {
+    const value = getText(formData, key).toLowerCase();
+    if (!value) continue;
+    if (value === "true" || value === "1") return true;
+    if (value === "false" || value === "0") return false;
+  }
+  return undefined;
+}
+
 function getImageFiles(formData: FormData) {
   const images: File[] = [];
 
@@ -240,6 +250,16 @@ export const POST = withApiLogging(async (request: NextRequest) => {
   if (prompt.length > 4000) {
     return openAIImageError("Prompt exceeds the 4000 character limit.");
   }
+  const apiPrompt =
+    getText(formData, "apiPrompt") || getText(formData, "api_prompt") || undefined;
+  if (apiPrompt && apiPrompt.length > 8000) {
+    return openAIImageError("Context prompt exceeds the 8000 character limit.");
+  }
+  const promptOptimization = getOptionalBoolean(
+    formData,
+    "promptOptimization",
+    "prompt_optimization"
+  );
 
   const size = getText(formData, "size") || undefined;
   if (size) {
@@ -335,6 +355,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           userId: auth.userId,
           generationId,
           prompt,
+          apiPrompt,
+          promptOptimization,
           size: displaySize || size,
           model,
           quality,

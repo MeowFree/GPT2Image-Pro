@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@repo/ui/components/select";
 import { Textarea } from "@repo/ui/components/textarea";
-import { createTicketAction } from "@repo/shared/support/actions";
+import { createTicketAction } from "@repo/shared/support/actions/ticket";
 import { ticketCategories, ticketPriorities } from "@repo/shared/support/schemas";
 
 /**

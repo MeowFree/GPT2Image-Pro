@@ -1,6 +1,7 @@
 export interface GenerateImageParams {
   prompt: string;
   apiPrompt?: string;
+  promptOptimization?: boolean;
   size?: string;
   width?: number;
   height?: number;
@@ -47,6 +48,7 @@ export type ThinkingLevel = "none" | "low" | "medium" | "high" | "xhigh";
 export interface EditImageParams {
   prompt: string;
   apiPrompt?: string;
+  promptOptimization?: boolean;
   images: ImageInputFile[];
   mask?: ImageInputFile;
   size?: string;
@@ -59,6 +61,7 @@ export interface EditImageParams {
 export interface ChatImageParams {
   prompt: string;
   apiPrompt?: string;
+  promptOptimization?: boolean;
   images?: ImageInputFile[];
   history?: ChatHistoryMessage[];
   size?: string;
@@ -92,6 +95,7 @@ export interface ApiConfig {
   apiKey: string;
   model?: string;
   useStream?: boolean;
+  supportsPromptOptimizationControl?: boolean;
 }
 
 export interface GenerationRecord {

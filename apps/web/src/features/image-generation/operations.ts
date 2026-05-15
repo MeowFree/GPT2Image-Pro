@@ -7,9 +7,10 @@ import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import {
   canUseChat,
   canUseGpt55Chat,
+  canUsePromptOptimization,
 } from "@repo/shared/config/subscription-plan";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 import {
@@ -19,10 +20,6 @@ import {
   normalizeImageModel,
   roundCreditAmount,
 } from "./resolution";
-import {
-  recordChatNoImageResult,
-  resetChatNoImageState,
-} from "./chat-no-image-penalty";
 import {
   editImage,
   generateChatImage,
@@ -37,6 +34,7 @@ import type {
   GenerateImageParams,
   ImageGenerationCallbacks,
   ImageInputFile,
+  ChatHistoryMessage,
 } from "./types";
 
 type RunImageGenerationInput =
@@ -55,6 +53,9 @@ type RunImageGenerationInput =
       userId: string;
       generationId?: string;
     } & ChatImageParams);
+
+const CHAT_TEXT_ONLY_CREDITS = 1;
+const MAX_CHAT_CONTEXT_CHARS = 10_000;
 
 export type ImageGenerationOperationResult = {
   error?: string;
@@ -99,30 +100,91 @@ function getInputImages(input: RunImageGenerationInput): ImageInputFile[] {
   return input.images || [];
 }
 
+function getChatHistoryText(message: ChatHistoryMessage) {
+  if (message.error) return "";
+  if (message.role === "user") return message.text || "";
+
+  const variants = message.variants || [];
+  const variant = variants[message.activeVariant || 0] || variants[0];
+  const imageNote = variant?.imageUrl
+    ? `\nGenerated image: ${variant.imageUrl}`
+    : "";
+  return `${variant?.text || message.text || ""}${imageNote}`;
+}
+
+function getChatContextLength(params: {
+  prompt: string;
+  apiPrompt?: string;
+  promptOptimization?: boolean;
+  history?: ChatHistoryMessage[];
+}) {
+  const currentPrompt =
+    params.promptOptimization === false
+      ? params.prompt
+      : params.apiPrompt || params.prompt;
+
+  return (
+    currentPrompt.length +
+    (params.history || []).reduce(
+      (total, message) => total + getChatHistoryText(message).length,
+      0
+    )
+  );
+}
+
 export async function runImageGenerationForUser(
   input: RunImageGenerationInput,
   callbacks?: ImageGenerationCallbacks
 ): Promise<ImageGenerationOperationResult> {
   const generationId = input.generationId || nanoid();
-  const apiPrompt = input.apiPrompt || input.prompt;
-  const moderationPrompt = input.mode === "chat" ? input.prompt : apiPrompt;
   const size = input.size || DEFAULT_IMAGE_SIZE;
   const inputImages = getInputImages(input);
   const creditCost = getImageCreditCostBreakdown(size, {
     imageModerationCount: inputImages.length,
   });
   const creditsPerImage = creditCost.totalCredits;
-  const refundableGenerationCredits = roundCreditAmount(
-    Math.max(0, creditsPerImage - creditCost.moderationOnlyCredits)
-  );
+  const isTextOnlyChatInput = input.mode === "chat" && inputImages.length === 0;
+  const initialCreditCharge = isTextOnlyChatInput
+    ? CHAT_TEXT_ONLY_CREDITS
+    : creditsPerImage;
   const bucket =
     (await getRuntimeSettingString("NEXT_PUBLIC_GENERATIONS_BUCKET_NAME")) ||
     "generations";
   const userPlan = await getUserPlan(input.userId);
+  const promptOptimizationAllowed = canUsePromptOptimization(userPlan.plan);
+  const explicitPromptOptimization =
+    input.promptOptimization !== undefined || Boolean(input.apiPrompt);
+
+  if (explicitPromptOptimization && !promptOptimizationAllowed) {
+    return {
+      error: "Prompt optimization control requires Pro plan or higher.",
+      generationId,
+    };
+  }
+
+  const promptOptimization = input.promptOptimization ?? true;
+  const apiPrompt = promptOptimization
+    ? input.apiPrompt || input.prompt
+    : input.prompt;
+  const moderationPrompt = input.mode === "chat" ? input.prompt : apiPrompt;
 
   if (input.mode === "chat" && !canUseChat(userPlan.plan)) {
     return {
       error: "Chat mode requires Pro plan or higher.",
+      generationId,
+    };
+  }
+  if (
+    input.mode === "chat" &&
+    getChatContextLength({
+      prompt: input.prompt,
+      apiPrompt,
+      promptOptimization,
+      history: input.history,
+    }) > MAX_CHAT_CONTEXT_CHARS
+  ) {
+    return {
+      error: `Chat input context must be no more than ${MAX_CHAT_CONTEXT_CHARS} characters.`,
       generationId,
     };
   }
@@ -153,7 +215,7 @@ export async function runImageGenerationForUser(
     model,
     size,
     status: "pending",
-    creditsConsumed: useCredits ? creditsPerImage : 0,
+    creditsConsumed: useCredits ? initialCreditCharge : 0,
     storageBucket: bucket,
     metadata:
       input.mode === "edit"
@@ -202,22 +264,66 @@ export async function runImageGenerationForUser(
     });
     chargedCredits = roundCreditAmount(Math.max(0, chargedCredits - amount));
   };
+  const chargeAdditionalCredits = async (
+    amount: number,
+    serviceName: string,
+    description: string,
+    metadata?: Record<string, unknown>
+  ) => {
+    if (!useCredits || amount <= 0) return;
+    await consumeCredits({
+      userId: input.userId,
+      amount: roundCreditAmount(amount),
+      serviceName,
+      description,
+      metadata,
+    });
+    chargedCredits = roundCreditAmount(chargedCredits + amount);
+  };
+  const settleChargedCredits = async (
+    targetCredits: number,
+    serviceName: string,
+    sourceRef: string,
+    description: string,
+    metadata?: Record<string, unknown>
+  ) => {
+    if (!useCredits) return;
+
+    const roundedTarget = roundCreditAmount(Math.max(0, targetCredits));
+    const delta = roundCreditAmount(roundedTarget - chargedCredits);
+    if (delta > 0) {
+      await chargeAdditionalCredits(delta, serviceName, description, {
+        ...metadata,
+        previousCredits: chargedCredits,
+        targetCredits: roundedTarget,
+      });
+      return;
+    }
+
+    if (delta < 0) {
+      await refundChargedCredits(Math.abs(delta), sourceRef, description);
+    }
+  };
 
   if (useCredits) {
     try {
       await consumeCredits({
         userId: input.userId,
-        amount: creditsPerImage,
-        serviceName: "image-generation",
-        description: `Image generation: ${input.prompt.substring(0, 50)}`,
+        amount: initialCreditCharge,
+        serviceName: isTextOnlyChatInput ? "chat-input" : "image-generation",
+        description: isTextOnlyChatInput
+          ? `Chat input: ${input.prompt.substring(0, 50)}`
+          : `Image generation: ${input.prompt.substring(0, 50)}`,
         metadata: {
           generationId,
           mode: input.mode,
           size,
           creditCost,
+          initialCredits: initialCreditCharge,
+          targetImageCredits: creditsPerImage,
         },
       });
-      chargedCredits = creditsPerImage;
+      chargedCredits = initialCreditCharge;
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Insufficient credits";
@@ -238,20 +344,24 @@ export async function runImageGenerationForUser(
   });
 
   if (moderation.decision === "block" || moderation.decision === "error") {
-    const refundAmount =
+    const targetCredits =
       moderation.decision === "block"
-        ? refundableGenerationCredits
-        : creditsPerImage;
-    if (refundAmount > 0) {
-      try {
-        await refundChargedCredits(
-          refundAmount,
-          `${generationId}:moderation`,
-          `Refund after moderation stop: ${input.prompt.substring(0, 50)}`
-        );
-      } catch {
-        /* best effort refund */
-      }
+        ? creditCost.moderationOnlyCredits
+        : 0;
+    try {
+      await settleChargedCredits(
+        targetCredits,
+        "content-moderation",
+        `${generationId}:moderation`,
+        `Settle after moderation stop: ${input.prompt.substring(0, 50)}`,
+        {
+          generationId,
+          moderationDecision: moderation.decision,
+          creditCost,
+        }
+      );
+    } catch {
+      /* best effort settlement */
     }
     const message =
       moderation.decision === "block"
@@ -275,6 +385,7 @@ export async function runImageGenerationForUser(
           {
             prompt: input.prompt,
             apiPrompt,
+            promptOptimization,
             images: input.images,
             mask: input.mask,
             size: input.size,
@@ -291,6 +402,7 @@ export async function runImageGenerationForUser(
             {
               prompt: input.prompt,
               apiPrompt,
+              promptOptimization,
               images: input.images,
               history: input.history,
               size,
@@ -309,6 +421,7 @@ export async function runImageGenerationForUser(
             {
               prompt: input.prompt,
               apiPrompt,
+              promptOptimization,
               size,
               model,
               n: input.n,
@@ -319,16 +432,19 @@ export async function runImageGenerationForUser(
           );
 
   if (result.error) {
-    if (refundableGenerationCredits > 0) {
-      try {
-        await refundChargedCredits(
-          refundableGenerationCredits,
+    try {
+      await settleChargedCredits(
+        creditCost.moderationOnlyCredits,
+        "content-moderation",
+        `${generationId}:generation-error`,
+        `Settle failed generation: ${input.prompt.substring(0, 50)}`,
+        {
           generationId,
-          `Refund for failed generation: ${input.prompt.substring(0, 50)}`
-        );
-      } catch {
-        /* best effort refund */
-      }
+          creditCost,
+        }
+      );
+    } catch {
+      /* best effort settlement */
     }
     await db
       .update(generation)
@@ -343,16 +459,19 @@ export async function runImageGenerationForUser(
 
   if (!result.imageBase64 && !result.imageUrl) {
     let finalChargedCredits = chargedCredits;
-    if (input.mode === "chat") {
+    if (isTextOnlyChatInput) {
       try {
-        const penalty = await recordChatNoImageResult({
-          userId: input.userId,
-          generationId,
-          prompt: input.prompt,
-          currentCreditsConsumed: chargedCredits,
-          useCredits,
-        });
-        finalChargedCredits = penalty.chargedCredits;
+        await settleChargedCredits(
+          CHAT_TEXT_ONLY_CREDITS,
+          "chat-text-only",
+          `${generationId}:chat-text-only`,
+          `Settle chat text response: ${input.prompt.substring(0, 50)}`,
+          {
+            generationId,
+            creditCost,
+          }
+        );
+        finalChargedCredits = chargedCredits;
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Insufficient credits";
@@ -374,6 +493,15 @@ export async function runImageGenerationForUser(
         status: "completed",
         revisedPrompt: result.revisedPrompt,
         creditsConsumed: finalChargedCredits,
+        metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
+          isTextOnlyChatInput
+            ? {
+                chatTextOnlyCharge: {
+                  credits: useCredits ? CHAT_TEXT_ONLY_CREDITS : 0,
+                },
+              }
+            : {}
+        )}::jsonb`,
         completedAt: new Date(),
       })
       .where(eq(generation.id, generationId));
@@ -387,6 +515,39 @@ export async function runImageGenerationForUser(
       responseThinking: result.responseThinking,
       creditsConsumed: finalChargedCredits,
     };
+  }
+
+  if (isTextOnlyChatInput) {
+    try {
+      await settleChargedCredits(
+        creditsPerImage,
+        "image-generation",
+        `${generationId}:chat-image-upgrade`,
+        `Settle chat image generation: ${input.prompt.substring(0, 50)}`,
+        {
+          generationId,
+          mode: input.mode,
+          size,
+          creditCost,
+        }
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Insufficient credits";
+      await db
+        .update(generation)
+        .set({
+          status: "failed",
+          error: message,
+          creditsConsumed: chargedCredits,
+        })
+        .where(eq(generation.id, generationId));
+      return {
+        error: "Insufficient credits",
+        generationId,
+        creditsConsumed: chargedCredits,
+      };
+    }
   }
 
   let storageKey = "";
@@ -406,16 +567,19 @@ export async function runImageGenerationForUser(
       .update(generation)
       .set({ status: "failed", error: `Storage error: ${message}` })
       .where(eq(generation.id, generationId));
-    if (refundableGenerationCredits > 0) {
-      try {
-        await refundChargedCredits(
-          refundableGenerationCredits,
+    try {
+      await settleChargedCredits(
+        creditCost.moderationOnlyCredits,
+        "content-moderation",
+        `${generationId}:storage-error`,
+        `Settle storage failure: ${input.prompt.substring(0, 50)}`,
+        {
           generationId,
-          `Refund for storage failure: ${input.prompt.substring(0, 50)}`
-        );
-      } catch {
-        /* best effort */
-      }
+          creditCost,
+        }
+      );
+    } catch {
+      /* best effort settlement */
     }
     await db
       .update(generation)
@@ -435,13 +599,10 @@ export async function runImageGenerationForUser(
       storageKey,
       fileSize,
       revisedPrompt: result.revisedPrompt,
+      creditsConsumed: chargedCredits,
       completedAt: new Date(),
     })
     .where(eq(generation.id, generationId));
-
-  if (input.mode === "chat") {
-    await resetChatNoImageState(input.userId);
-  }
 
   return {
     generationId,

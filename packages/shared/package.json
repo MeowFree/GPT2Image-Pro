@@ -28,6 +28,8 @@
     "./system-settings/components": "./src/system-settings/components/index.ts",
     "./system-settings/env-file": "./src/system-settings/env-file.ts",
     "./support/actions": "./src/support/actions/index.ts",
+    "./support/actions/ticket": "./src/support/actions/ticket.ts",
+    "./support/actions/admin-users": "./src/support/actions/admin-users.ts",
     "./support/schemas": "./src/support/schemas/index.ts",
     "./support/components": "./src/support/components/index.ts",
     "./support/components/admin-ticket-reply-form": "./src/support/components/admin-ticket-reply-form.tsx",

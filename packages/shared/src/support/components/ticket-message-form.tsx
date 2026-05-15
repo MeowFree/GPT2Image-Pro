@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@repo/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/ui/components/card";
 import { Textarea } from "@repo/ui/components/textarea";
-import { addTicketMessageAction } from "../actions";
+import { addTicketMessageAction } from "../actions/ticket";
 
 interface TicketMessageFormProps {
   /** 工单 ID */

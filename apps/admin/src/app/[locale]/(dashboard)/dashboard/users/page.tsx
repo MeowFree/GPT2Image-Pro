@@ -25,7 +25,7 @@ import {
   adminGrantCreditsAction,
   banUserAction,
   getAllUsersAction,
-} from "@repo/shared/support/actions";
+} from "@repo/shared/support/actions/admin-users";
 import { UserRoleSelect } from "@repo/shared/support/components";
 
 /**

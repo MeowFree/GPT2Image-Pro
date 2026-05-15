@@ -182,12 +182,10 @@ export async function getCreditsBalance(userId: string) {
  *
  * @param userId 用户 ID
  * @param bonusAmount 注册奖励积分数量
- * @param expiryDays 过期天数
  */
 export async function ensureRegistrationBonus(
   userId: string,
-  bonusAmount: number,
-  expiryDays: number | null
+  bonusAmount: number
 ) {
   const [existingTransaction] = await db
     .select({ id: creditsTransaction.id })
@@ -201,12 +199,9 @@ export async function ensureRegistrationBonus(
     .limit(1);
 
   if (existingTransaction) {
+    await ensureRegistrationBonusNeverExpires(userId);
     return { granted: false, reason: "Registration bonus already granted" };
   }
-
-  const expiresAt = expiryDays
-    ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000)
-    : null;
 
   const result = await grantCredits({
     userId,
@@ -214,7 +209,7 @@ export async function ensureRegistrationBonus(
     sourceType: "bonus",
     debitAccount: "SYSTEM:registration_bonus",
     transactionType: "registration_bonus",
-    expiresAt,
+    expiresAt: null,
     sourceRef: `registration_bonus:${userId}`,
     description: "新用户注册奖励",
     metadata: {
@@ -227,6 +222,92 @@ export async function ensureRegistrationBonus(
     granted: true,
     ...result,
   };
+}
+
+/**
+ * 注册奖励积分不应过期。保留这个修正逻辑可以让已有活跃注册奖励批次
+ * 在用户下次读取余额时自动移除旧的一年有效期。
+ */
+export async function ensureRegistrationBonusNeverExpires(userId: string) {
+  const sourceRef = `registration_bonus:${userId}`;
+
+  await db
+    .update(creditsBatch)
+    .set({
+      expiresAt: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(creditsBatch.userId, userId),
+        eq(creditsBatch.sourceType, "bonus"),
+        eq(creditsBatch.sourceRef, sourceRef),
+        eq(creditsBatch.status, "active")
+      )
+    );
+
+  const expiredBatches = await db
+    .select({ id: creditsBatch.id })
+    .from(creditsBatch)
+    .where(
+      and(
+        eq(creditsBatch.userId, userId),
+        eq(creditsBatch.sourceType, "bonus"),
+        eq(creditsBatch.sourceRef, sourceRef),
+        eq(creditsBatch.status, "expired"),
+        gt(creditsBatch.remaining, 0)
+      )
+    );
+
+  for (const batch of expiredBatches) {
+    await db.transaction(async (tx) => {
+      const [restoredBatch] = await tx
+        .update(creditsBatch)
+        .set({
+          status: "active",
+          expiresAt: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(creditsBatch.id, batch.id),
+            eq(creditsBatch.status, "expired"),
+            gt(creditsBatch.remaining, 0)
+          )
+        )
+        .returning({
+          id: creditsBatch.id,
+          remaining: creditsBatch.remaining,
+        });
+
+      if (!restoredBatch) {
+        return;
+      }
+
+      await tx.insert(creditsTransaction).values({
+        id: crypto.randomUUID(),
+        userId,
+        type: "refund",
+        amount: restoredBatch.remaining,
+        debitAccount: "SYSTEM:registration_bonus_expiry_restore",
+        creditAccount: `WALLET:${userId}`,
+        description: "恢复注册奖励积分（取消过期）",
+        metadata: {
+          batchId: restoredBatch.id,
+          sourceRef,
+          reason: "registration_bonus_no_expiry",
+        },
+      });
+
+      await tx
+        .update(creditsBalance)
+        .set({
+          balance: sql`${creditsBalance.balance} + ${restoredBatch.remaining}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(creditsBalance.userId, userId));
+    });
+  }
 }
 
 /**
@@ -289,7 +370,9 @@ export async function grantCredits(params: GrantCreditsParams) {
 
     const issuedAt = new Date();
     const effectiveExpiresAt =
-      expiresAt ?? (await getDefaultCreditsExpiryDate(issuedAt));
+      expiresAt === undefined
+        ? await getDefaultCreditsExpiryDate(issuedAt)
+        : expiresAt;
     const batchId = crypto.randomUUID();
     await tx.insert(creditsBatch).values({
       id: batchId,

@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@repo/ui/components/select";
-import { updateUserRoleAction } from "../actions";
+import { updateUserRoleAction } from "../actions/admin-users";
 
 interface UserRoleSelectProps {
   /** 用户 ID */

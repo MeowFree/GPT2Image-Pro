@@ -14,6 +14,7 @@ import { createImageStreamResponse } from "@/features/image-generation/streaming
 const generateImageSchema = z.object({
   prompt: z.string().min(1).max(4000),
   apiPrompt: z.string().min(1).max(8000).optional(),
+  promptOptimization: z.boolean().optional(),
   size: z
     .string()
     .optional()
@@ -61,6 +62,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     userId: session.user.id,
     prompt: parsed.data.prompt,
     apiPrompt: parsed.data.apiPrompt,
+    promptOptimization: parsed.data.promptOptimization,
     size: parsed.data.size || DEFAULT_IMAGE_SIZE,
     model: parsed.data.model,
     moderation: parsed.data.moderation || "auto",

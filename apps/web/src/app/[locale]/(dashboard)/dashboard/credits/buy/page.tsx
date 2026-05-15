@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { BuyCreditPackagesView } from "./buy-credits-view";
 
@@ -13,5 +14,9 @@ export const metadata: Metadata = {
  * 展示积分套餐供用户选择并购买
  */
 export default function BuyCreditsPage() {
-  return <BuyCreditPackagesView />;
+  return (
+    <Suspense fallback={null}>
+      <BuyCreditPackagesView />
+    </Suspense>
+  );
 }
