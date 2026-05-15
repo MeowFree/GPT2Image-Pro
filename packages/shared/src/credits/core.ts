@@ -17,6 +17,19 @@ import {
 import { logEvent } from "../logger/index";
 import { CREDITS_EXPIRY_DAYS } from "./config";
 
+const CREDIT_DECIMAL_PLACES = 2;
+const CREDIT_DECIMAL_FACTOR = 10 ** CREDIT_DECIMAL_PLACES;
+
+function normalizeCreditAmount(amount: number) {
+  if (!Number.isFinite(amount)) {
+    throw new Error("积分数量必须是有效数字");
+  }
+  return (
+    Math.round((amount + Number.EPSILON) * CREDIT_DECIMAL_FACTOR) /
+    CREDIT_DECIMAL_FACTOR
+  );
+}
+
 // ============================================
 // 类型定义
 // ============================================
@@ -211,7 +224,6 @@ export async function ensureRegistrationBonus(
 export async function grantCredits(params: GrantCreditsParams) {
   const {
     userId,
-    amount,
     sourceType,
     debitAccount,
     transactionType,
@@ -220,6 +232,7 @@ export async function grantCredits(params: GrantCreditsParams) {
     description,
     metadata,
   } = params;
+  const amount = normalizeCreditAmount(params.amount);
 
   if (amount <= 0) {
     throw new Error("积分数量必须大于 0");
@@ -325,7 +338,8 @@ export async function grantCredits(params: GrantCreditsParams) {
 export async function consumeCredits(
   params: ConsumeCreditsParams
 ): Promise<ConsumeCreditsResult> {
-  const { userId, amount, serviceName, description, metadata } = params;
+  const { userId, serviceName, description, metadata } = params;
+  const amount = normalizeCreditAmount(params.amount);
 
   if (amount <= 0) {
     throw new Error("消费数量必须大于 0");

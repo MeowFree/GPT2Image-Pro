@@ -2,6 +2,7 @@ import {
   boolean,
   integer,
   json,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -299,9 +300,23 @@ export const creditsBalance = pgTable("credits_balance", {
     .notNull()
     .unique()
     .references(() => user.id, { onDelete: "cascade" }),
-  balance: integer("balance").notNull().default(0),
-  totalEarned: integer("total_earned").notNull().default(0),
-  totalSpent: integer("total_spent").notNull().default(0),
+  balance: numeric("balance", { precision: 18, scale: 2, mode: "number" })
+    .notNull()
+    .default(0),
+  totalEarned: numeric("total_earned", {
+    precision: 18,
+    scale: 2,
+    mode: "number",
+  })
+    .notNull()
+    .default(0),
+  totalSpent: numeric("total_spent", {
+    precision: 18,
+    scale: 2,
+    mode: "number",
+  })
+    .notNull()
+    .default(0),
   status: creditsBalanceStatusEnum("status").notNull().default("active"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -333,8 +348,10 @@ export const creditsBatch = pgTable("credits_batch", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-  amount: integer("amount").notNull(),
-  remaining: integer("remaining").notNull(),
+  amount: numeric("amount", { precision: 18, scale: 2, mode: "number" })
+    .notNull(),
+  remaining: numeric("remaining", { precision: 18, scale: 2, mode: "number" })
+    .notNull(),
   issuedAt: timestamp("issued_at").notNull().defaultNow(),
   expiresAt: timestamp("expires_at"),
   status: creditsBatchStatusEnum("status").notNull().default("active"),
@@ -369,7 +386,8 @@ export const creditsTransaction = pgTable("credits_transaction", {
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
   type: creditsTransactionTypeEnum("type").notNull(),
-  amount: integer("amount").notNull(),
+  amount: numeric("amount", { precision: 18, scale: 2, mode: "number" })
+    .notNull(),
   debitAccount: text("debit_account").notNull(),
   creditAccount: text("credit_account").notNull(),
   description: text("description"),
@@ -590,7 +608,13 @@ export const generation = pgTable("generation", {
   storageKey: text("storage_key"),
   storageBucket: text("storage_bucket").default("generations"),
   fileSize: integer("file_size"),
-  creditsConsumed: integer("credits_consumed").notNull().default(0),
+  creditsConsumed: numeric("credits_consumed", {
+    precision: 18,
+    scale: 2,
+    mode: "number",
+  })
+    .notNull()
+    .default(0),
   error: text("error"),
   metadata: json("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),

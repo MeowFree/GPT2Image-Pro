@@ -9,6 +9,9 @@ export const IMAGE_4K_BASE_CREDIT_COST = 10;
 export const REFERENCE_CREDIT_PRICE_CNY = 0.05;
 export const TEXT_MODERATION_PRICE_CNY = 0.0015;
 export const IMAGE_MODERATION_PRICE_CNY = 0.003;
+const CREDIT_DECIMAL_PLACES = 2;
+const CREDIT_DECIMAL_FACTOR = 10 ** CREDIT_DECIMAL_PLACES;
+const CREDIT_ROUNDING_EPSILON = 1e-9;
 
 export type ImageDimensions = {
   width: number;
@@ -35,6 +38,20 @@ export type ImageCreditCostOptions = {
   imageModerationCount?: number;
 };
 
+export function roundCreditAmount(value: number) {
+  return (
+    Math.round((value + Number.EPSILON) * CREDIT_DECIMAL_FACTOR) /
+    CREDIT_DECIMAL_FACTOR
+  );
+}
+
+export function roundUpCreditAmount(value: number) {
+  return (
+    Math.ceil((value - CREDIT_ROUNDING_EPSILON) * CREDIT_DECIMAL_FACTOR) /
+    CREDIT_DECIMAL_FACTOR
+  );
+}
+
 export function getImageCreditCostBreakdown(
   size?: string | null,
   options: ImageCreditCostOptions = {}
@@ -53,15 +70,15 @@ export function getImageCreditCostBreakdown(
     textModerationCount * TEXT_MODERATION_PRICE_CNY +
     imageModerationCount * IMAGE_MODERATION_PRICE_CNY;
   const moderationCredits = moderationCny / REFERENCE_CREDIT_PRICE_CNY;
-  const totalCredits = Math.ceil(baseCredits + moderationCredits);
+  const totalCredits = roundUpCreditAmount(baseCredits + moderationCredits);
   const moderationOnlyCredits =
-    moderationCny > 0 ? Math.ceil(moderationCredits) : 0;
+    moderationCny > 0 ? roundUpCreditAmount(moderationCredits) : 0;
 
   return {
-    baseCredits,
+    baseCredits: roundUpCreditAmount(baseCredits),
     imageModerationCount,
     moderationCny,
-    moderationCredits,
+    moderationCredits: roundCreditAmount(moderationCredits),
     moderationOnlyCredits,
     pixels,
     textModerationCount,

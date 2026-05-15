@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { formatCredits } from "@repo/shared/credits/format";
 import { Avatar, AvatarFallback, AvatarImage } from "@repo/ui/components/avatar";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
@@ -165,7 +166,7 @@ export default function AdminUsersPage() {
   const handleGrant = async () => {
     if (!selectedUser) return;
 
-    const amount = parseInt(grantAmount, 10);
+    const amount = Number.parseFloat(grantAmount);
     if (isNaN(amount) || amount <= 0) {
       toast.error(t("users.errors.invalidAmount"));
       return;
@@ -445,7 +446,7 @@ export default function AdminUsersPage() {
                         <div className="flex items-center gap-2">
                           <Coins className="h-4 w-4 text-muted-foreground" />
                           <span className="font-medium">
-                            {u.creditsBalance ?? 0}
+                            {formatCredits(u.creditsBalance ?? 0)}
                           </span>
                         </div>
                       </td>
@@ -569,7 +570,8 @@ export default function AdminUsersPage() {
                 placeholder={t("users.grant.amountPlaceholder")}
                 value={grantAmount}
                 onChange={(e) => setGrantAmount(e.target.value)}
-                min={1}
+                min={0.01}
+                step={0.01}
                 max={100000}
               />
             </div>

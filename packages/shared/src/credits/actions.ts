@@ -200,7 +200,7 @@ export const getMyTransactions = withProtectedCreditsAction("getMyTransactions")
 export const useCredits = withProtectedCreditsAction("useCredits")
   .schema(
     z.object({
-      amount: z.number().min(1),
+      amount: z.number().positive(),
       serviceName: z.string().min(1),
       description: z.string().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
@@ -260,7 +260,7 @@ export const checkCreditsAvailable = withProtectedCreditsAction(
 )
   .schema(
     z.object({
-      amount: z.number().min(1),
+      amount: z.number().positive(),
     })
   )
   .action(async ({ parsedInput, ctx }) => {
@@ -352,7 +352,7 @@ export const grantMonthlySubscriptionCredits = withPublicCreditsAction(
 export const purchaseCredits = withProtectedCreditsAction("purchaseCredits")
   .schema(
     z.object({
-      amount: z.number().min(1),
+      amount: z.number().positive(),
       paymentId: z.string().min(1),
       expiresInDays: z.number().optional(),
     })

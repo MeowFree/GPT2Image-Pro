@@ -1,5 +1,6 @@
 "use client";
 
+import { formatCredits } from "@repo/shared/credits/format";
 import { Button } from "@repo/ui/components/button";
 import { Checkbox } from "@repo/ui/components/checkbox";
 import { Input } from "@repo/ui/components/input";
@@ -467,6 +468,11 @@ export function CreatePageClient({
     imageModerationCount: chatAttachments.length,
   });
   const batchCreditCost = batchSingleCreditCost * batchTier;
+  const formattedBalance = formatCredits(balance);
+  const formattedTextBatchCreditCost = formatCredits(textBatchCreditCost);
+  const formattedEditBatchCreditCost = formatCredits(editBatchCreditCost);
+  const formattedChatSingleCreditCost = formatCredits(chatSingleCreditCost);
+  const formattedBatchCreditCost = formatCredits(batchCreditCost);
   const sizeCheck = useMemo(() => validateImageSize(size), [size]);
   const customEditSizeCheck = useMemo(
     () => validateImageSize(customEditSize),
@@ -907,7 +913,10 @@ export function CreatePageClient({
       if (data.revisedPrompt) nextResult.revisedPrompt = data.revisedPrompt;
       setResult(nextResult);
     }
-    setBalance((b) => Math.max(0, b - (data.creditsConsumed || 0)));
+    setBalance(
+      (b) =>
+        Math.round(Math.max(0, b - (data.creditsConsumed || 0)) * 100) / 100
+    );
     if (data.imageUrl && data.generationId) {
       const generationId = data.generationId;
       setRecent((prev) => [
@@ -964,7 +973,9 @@ export function CreatePageClient({
 
   const syncChargedCredits = (creditsConsumed?: number) => {
     if (!creditsConsumed || creditsConsumed <= 0) return;
-    setBalance((b) => Math.max(0, b - creditsConsumed));
+    setBalance(
+      (b) => Math.round(Math.max(0, b - creditsConsumed) * 100) / 100
+    );
   };
 
   const showGenerationError = (
@@ -1334,7 +1345,7 @@ export function CreatePageClient({
         <span className="ml-auto text-xs text-muted-foreground">
           Cost{" "}
           <span className="font-medium text-foreground">
-            {chatSingleCreditCost}
+            {formattedChatSingleCreditCost}
           </span>
         </span>
       </div>
@@ -2388,10 +2399,12 @@ export function CreatePageClient({
           <Coins className="h-3.5 w-3.5" />
           <span>
             Balance:{" "}
-            <span className="font-medium text-foreground">{balance}</span> ·
-            Cost:{" "}
             <span className="font-medium text-foreground">
-              {textBatchCreditCost}
+              {formattedBalance}
+            </span>{" "}
+            · Cost:{" "}
+            <span className="font-medium text-foreground">
+              {formattedTextBatchCreditCost}
             </span>
             {batchCount > 1 ? ` for ${batchCount}` : "/image"}
           </span>
@@ -2889,7 +2902,7 @@ export function CreatePageClient({
                   <p className="mt-1">
                     Cost:{" "}
                     <span className="font-medium text-foreground">
-                      {editBatchCreditCost}
+                      {formattedEditBatchCreditCost}
                     </span>
                     {editBatchCount > 1 ? ` for ${editBatchCount}` : "/image"}
                   </p>
@@ -3243,7 +3256,7 @@ export function CreatePageClient({
                   <div className="text-xs text-muted-foreground">
                     Cost{" "}
                     <span className="font-medium text-foreground">
-                      {batchCreditCost}
+                      {formattedBatchCreditCost}
                     </span>{" "}
                     for {batchTier}
                   </div>

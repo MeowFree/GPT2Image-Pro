@@ -20,6 +20,7 @@ import {
   ticket,
   user,
 } from "@repo/database/schema";
+import { formatCredits } from "@repo/shared/credits/format";
 
 /**
  * Admin 控制面板页面
@@ -232,7 +233,7 @@ export default async function AdminDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stats.credits.totalBalance.toLocaleString()}
+              {formatCredits(stats.credits.totalBalance)}
             </div>
             <p className="text-xs text-muted-foreground">
               {t("dashboard.stats.currentUserCredits")}
@@ -356,7 +357,7 @@ export default async function AdminDashboardPage() {
                 {t("dashboard.details.currentBalance")}
               </span>
               <span className="font-medium">
-                {stats.credits.totalBalance.toLocaleString()}
+                {formatCredits(stats.credits.totalBalance)}
               </span>
             </div>
             <div className="flex justify-between">
@@ -364,7 +365,7 @@ export default async function AdminDashboardPage() {
                 {t("dashboard.details.totalGranted")}
               </span>
               <span className="font-medium">
-                +{stats.credits.totalEarned.toLocaleString()}
+                +{formatCredits(stats.credits.totalEarned)}
               </span>
             </div>
             <div className="flex justify-between">
@@ -372,7 +373,7 @@ export default async function AdminDashboardPage() {
                 {t("dashboard.details.totalSpent")}
               </span>
               <span className="font-medium">
-                -{stats.credits.totalSpent.toLocaleString()}
+                -{formatCredits(stats.credits.totalSpent)}
               </span>
             </div>
             <div className="flex justify-between border-t pt-2">
@@ -421,7 +422,7 @@ export default async function AdminDashboardPage() {
                 {t("dashboard.details.creditsConsumed")}
               </span>
               <span className="font-medium">
-                {generationStats.creditsConsumed}
+                {formatCredits(generationStats.creditsConsumed)}
               </span>
             </div>
           </CardContent>

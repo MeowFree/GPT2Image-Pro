@@ -29,6 +29,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
 import { useEffect, useState } from "react";
 import { getMyTransactions } from "../actions";
+import { formatCredits } from "../format";
 
 /**
  * 交易类型键
@@ -260,7 +261,7 @@ export function TransactionHistory() {
                     )}
                   >
                     {isIncome ? "+" : "-"}
-                    {tx.amount}
+                    {formatCredits(tx.amount)}
                   </div>
                 </div>
               );

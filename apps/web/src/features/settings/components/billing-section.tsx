@@ -17,6 +17,7 @@ import {
 } from "@repo/shared/config/subscription-plan";
 import { getMyTransactions } from "@repo/shared/credits/actions";
 import { CREDIT_PACKAGES } from "@repo/shared/credits/config";
+import { formatCredits } from "@repo/shared/credits/format";
 import { getMyPlanAction } from "@repo/shared/subscription/actions/get-user-plan";
 import {
   PlanBadge,
@@ -94,7 +95,7 @@ function getBillingAmount(tx: BillingTransaction) {
     if (pkg) return formatCurrency(pkg.price);
   }
 
-  return `${tx.amount.toLocaleString("en-US")} credits`;
+  return `${formatCredits(tx.amount)} credits`;
 }
 
 function getBillingDescription(tx: BillingTransaction, locale: string) {

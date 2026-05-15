@@ -1,6 +1,5 @@
 "use client";
 
-import { useSession } from "@repo/shared/auth/client";
 import { getPlanPrice, paymentConfig } from "@repo/shared/config/payment";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
@@ -18,6 +17,7 @@ import {
   createCheckoutSession,
   getUserSubscription,
 } from "@/features/payment/actions";
+import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 import { PlanInterval } from "@/features/payment/types";
 import { useRouter } from "@/i18n/routing";
 
@@ -94,7 +94,7 @@ export function PricingSection({ currentPriceId }: PricingSectionProps) {
   const [isPending, startTransition] = useTransition();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session } = useCurrentSession();
 
   // 获取用户当前订阅状态
   const [activePriceId, setActivePriceId] = useState<string | null>(

@@ -11,6 +11,7 @@ import {
   DEFAULT_IMAGE_SIZE,
   getImageCreditCostBreakdown,
   normalizeImageModel,
+  roundCreditAmount,
 } from "./resolution";
 import {
   editImage,
@@ -94,15 +95,15 @@ export async function runImageGenerationForUser(
 ): Promise<ImageGenerationOperationResult> {
   const generationId = input.generationId || nanoid();
   const apiPrompt = input.apiPrompt || input.prompt;
+  const moderationPrompt = input.mode === "chat" ? input.prompt : apiPrompt;
   const size = input.size || DEFAULT_IMAGE_SIZE;
   const inputImages = getInputImages(input);
   const creditCost = getImageCreditCostBreakdown(size, {
     imageModerationCount: inputImages.length,
   });
   const creditsPerImage = creditCost.totalCredits;
-  const refundableGenerationCredits = Math.max(
-    0,
-    creditsPerImage - creditCost.moderationOnlyCredits
+  const refundableGenerationCredits = roundCreditAmount(
+    Math.max(0, creditsPerImage - creditCost.moderationOnlyCredits)
   );
   const bucket =
     process.env.NEXT_PUBLIC_GENERATIONS_BUCKET_NAME || "generations";
@@ -163,14 +164,14 @@ export async function runImageGenerationForUser(
     if (!useCredits || amount <= 0) return;
     await grantCredits({
       userId: input.userId,
-      amount,
+      amount: roundCreditAmount(amount),
       sourceType: "refund",
       debitAccount: "SYSTEM:generation_refund",
       transactionType: "refund",
       sourceRef,
       description,
     });
-    chargedCredits = Math.max(0, chargedCredits - amount);
+    chargedCredits = roundCreditAmount(Math.max(0, chargedCredits - amount));
   };
 
   if (useCredits) {
@@ -200,7 +201,7 @@ export async function runImageGenerationForUser(
   }
 
   const moderation = await moderateContent({
-    prompt: apiPrompt,
+    prompt: moderationPrompt,
     images: inputImages,
     mode: inputImages.length > 0 ? "image" : "text",
     userId: input.userId,

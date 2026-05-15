@@ -45,6 +45,16 @@ function getApiRateLimitType(pathname: string): RateLimitType | null {
   return null;
 }
 
+function setPrivateNoStore(response: NextResponse) {
+  response.headers.set(
+    "Cache-Control",
+    "private, no-store, no-cache, max-age=0, must-revalidate"
+  );
+  response.headers.set("Pragma", "no-cache");
+  response.headers.set("Expires", "0");
+  return response;
+}
+
 /**
  * 中间件配置
  *
@@ -67,6 +77,13 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
+    if (
+      pathname.startsWith("/api/auth/") ||
+      pathname === "/api/session/current"
+    ) {
+      return setPrivateNoStore(NextResponse.next());
+    }
+
     // 白名单模式：只对匹配的敏感路由做限流
     const rateLimitType = getApiRateLimitType(pathname);
     if (rateLimitType) {
@@ -82,7 +99,10 @@ export async function middleware(request: NextRequest) {
       for (const [key, value] of Object.entries(headers)) {
         response.headers.set(key, value);
       }
-      return response;
+      return pathname.startsWith("/api/auth/") ||
+        pathname === "/api/session/current"
+        ? setPrivateNoStore(response)
+        : response;
     }
 
     // 未匹配的 API 路由直接放行，不触发 Redis
@@ -137,16 +157,19 @@ export async function middleware(request: NextRequest) {
     const signInUrl = new URL(`/${locale}/sign-in`, request.url);
     // 保存原始 URL，登录后可以重定向回来
     signInUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(signInUrl);
+    return setPrivateNoStore(NextResponse.redirect(signInUrl));
   }
 
   // 如果已登录用户访问认证页面，重定向到 Dashboard
   if (isAuthRoute && sessionToken) {
-    return NextResponse.redirect(new URL(`/${locale}/dashboard`, request.url));
+    return setPrivateNoStore(
+      NextResponse.redirect(new URL(`/${locale}/dashboard`, request.url))
+    );
   }
 
   // 执行国际化中间件
-  return intlMiddleware(request);
+  const response = intlMiddleware(request);
+  return isProtectedRoute || isAuthRoute ? setPrivateNoStore(response) : response;
 }
 
 /**

@@ -1,6 +1,5 @@
 "use client";
 
-import { useSession } from "@repo/shared/auth/client";
 import { ModeToggle } from "@repo/shared/components";
 import { mainNav, productsNav } from "@repo/shared/config/nav";
 import {
@@ -15,6 +14,7 @@ import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 import { Link } from "@/i18n/routing";
 
 import { NavMenu } from "./nav-menu";
@@ -40,7 +40,7 @@ const productsTitleMap: Record<string, string> = {
  */
 export function Header() {
   // 获取当前用户会话状态
-  const { data: session, isPending } = useSession();
+  const { data: session, isPending } = useCurrentSession();
   const user = session?.user;
   const t = useTranslations("Header");
   const tNav = useTranslations("Navigation");

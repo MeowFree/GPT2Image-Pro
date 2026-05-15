@@ -1,6 +1,7 @@
 import { db } from "@repo/database";
 import { creditsBalance, generation } from "@repo/database/schema";
 import { auth } from "@repo/shared/auth";
+import { formatCredits } from "@repo/shared/credits/format";
 import { Button } from "@repo/ui/components/button";
 import {
   Card,
@@ -42,7 +43,7 @@ export default async function DashboardPage() {
         .where(eq(generation.userId, userId)),
     ]);
 
-  const balance = Math.floor(balanceData?.balance ?? 0).toLocaleString("en-US");
+  const balance = formatCredits(balanceData?.balance ?? 0);
   const totalGenerations = totalGenerationsResult[0]?.count ?? 0;
 
   const generationsWithUrls = recentGenerations.map((gen) => ({
@@ -76,7 +77,7 @@ export default async function DashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold">{balance}</div>
               <p className="text-xs text-muted-foreground">
-                2K: 3 credits · 4K/custom: 10 credits
+                Pixel-based pricing, 4K base 10 credits
               </p>
             </CardContent>
           </Card>

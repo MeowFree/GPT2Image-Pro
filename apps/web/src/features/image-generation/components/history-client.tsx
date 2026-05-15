@@ -1,5 +1,6 @@
 "use client";
 
+import { formatCredits } from "@repo/shared/credits/format";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import {
@@ -165,7 +166,7 @@ export function HistoryClient({
                   {item.size}
                 </div>
                 <div className="hidden text-xs text-foreground md:block">
-                  {item.creditsConsumed}
+                  {formatCredits(item.creditsConsumed)}
                 </div>
                 <div className="hidden md:block">
                   <Badge

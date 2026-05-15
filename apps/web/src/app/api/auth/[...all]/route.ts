@@ -16,5 +16,22 @@ import { auth } from "@repo/shared/auth";
  */
 const authHandlers = toNextJsHandler(auth);
 
-export const GET = withApiLogging(authHandlers.GET);
-export const POST = withApiLogging(authHandlers.POST);
+type AuthHandler = (request: Request, context?: unknown) => Promise<Response>;
+
+function withPrivateNoStore<T extends AuthHandler>(handler: T): T {
+  const wrapped = async (request: Request, context?: unknown) => {
+    const response = await handler(request, context);
+    response.headers.set(
+      "Cache-Control",
+      "private, no-store, no-cache, max-age=0, must-revalidate"
+    );
+    response.headers.set("Pragma", "no-cache");
+    response.headers.set("Expires", "0");
+    return response;
+  };
+
+  return wrapped as T;
+}
+
+export const GET = withApiLogging(withPrivateNoStore(authHandlers.GET));
+export const POST = withApiLogging(withPrivateNoStore(authHandlers.POST));

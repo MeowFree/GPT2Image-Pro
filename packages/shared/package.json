@@ -17,6 +17,7 @@
     "./credits/actions": "./src/credits/actions.ts",
     "./credits/core": "./src/credits/core.ts",
     "./credits/config": "./src/credits/config.ts",
+    "./credits/format": "./src/credits/format.ts",
     "./credits/components": "./src/credits/components/index.ts",
     "./storage": "./src/storage/index.ts",
     "./storage/providers": "./src/storage/providers/index.ts",

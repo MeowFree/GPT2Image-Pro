@@ -24,6 +24,7 @@ import {
   getMyActiveBatches,
   getMyCreditsBalance,
 } from "../actions";
+import { formatCredits } from "../format";
 
 import { TransactionHistory } from "./transaction-history";
 
@@ -101,7 +102,7 @@ export function CreditUsageSection() {
           ) : (
             <>
               <div className="text-4xl font-bold">
-                {balance.toLocaleString("en-US")}
+                {formatCredits(balance)}
               </div>
               <div className="text-sm text-muted-foreground">
                 {t("creditsAvailable")}
@@ -142,7 +143,7 @@ export function CreditUsageSection() {
                 </p>
                 <p className="text-sm text-amber-700 dark:text-amber-400">
                   {t("expiringSoon.message", {
-                    count: expiringBatch.remaining,
+                    count: formatCredits(expiringBatch.remaining),
                     date: formatDate(expiringBatch.expiresAt, locale),
                   })}
                 </p>

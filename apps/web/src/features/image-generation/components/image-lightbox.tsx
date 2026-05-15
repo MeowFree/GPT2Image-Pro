@@ -1,5 +1,6 @@
 "use client";
 
+import { formatCredits } from "@repo/shared/credits/format";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import { Dialog, DialogContent, DialogTitle } from "@repo/ui/components/dialog";
@@ -173,7 +174,7 @@ export function ImageLightbox({
                     Credits
                   </dt>
                   <dd className="mt-0.5 text-xs text-foreground">
-                    {generation.creditsConsumed}
+                    {formatCredits(generation.creditsConsumed)}
                   </dd>
                 </div>
                 <div>

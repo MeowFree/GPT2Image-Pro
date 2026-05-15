@@ -25,8 +25,9 @@ import {
   PlanBadge,
   type PlanType,
 } from "@repo/shared/subscription/components/plan-badge";
-import { signOut, useSession } from "@repo/shared/auth/client";
+import { signOut } from "@repo/shared/auth/client";
 import { cn } from "@repo/ui/utils";
+import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 
 /**
  * Dashboard 侧边栏组件
@@ -47,7 +48,7 @@ export function DashboardSidebar() {
   const t = useTranslations("Dashboard");
 
   // 获取当前用户会话
-  const { data: session } = useSession();
+  const { data: session } = useCurrentSession();
   const user = session?.user;
 
   // Popover 开关状态

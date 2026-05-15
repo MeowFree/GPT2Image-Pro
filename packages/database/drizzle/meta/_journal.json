@@ -50,6 +50,13 @@
       "when": 1778860800000,
       "tag": "0006_expire_existing_credits",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1778864400000,
+      "tag": "0007_decimal_credits",
+      "breakpoints": true
     }
   ]
 }

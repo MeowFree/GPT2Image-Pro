@@ -37,7 +37,7 @@ const grantCreditsSchema = z.object({
   userId: z.string().min(1, "用户ID不能为空"),
   amount: z
     .number()
-    .min(1, "积分数量必须大于0")
+    .positive("积分数量必须大于0")
     .max(100000, "单次最多充值10万积分"),
   reason: z.string().min(1, "请填写充值原因").max(200, "原因最多200字符"),
 });
