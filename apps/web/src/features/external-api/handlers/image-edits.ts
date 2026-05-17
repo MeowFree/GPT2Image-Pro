@@ -12,6 +12,7 @@ import {
   getPublicImageUrl,
   openAIImageError,
   toOpenAIImageData,
+  toOpenAIErrorPayload,
   wantsImageStreamResponse,
 } from "@/features/external-api/images";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
@@ -229,16 +230,6 @@ function toPartialPayload(image: PartialImageResult, index: number) {
   };
 }
 
-function toOpenAIErrorPayload(message: string) {
-  return {
-    error: {
-      message,
-      type: "invalid_request_error",
-      code: null,
-    },
-  };
-}
-
 function invalidImageModelError() {
   return openAIImageError(
     "Unsupported model for /v1/images/edits. Use a gpt-image-* model."
@@ -421,7 +412,10 @@ export const postExternalImageEdits = withApiLogging(
                   data: {
                     type: "upstream_error",
                     message: result.error,
-                    error: { message: result.error },
+                    error: toOpenAIErrorPayload(result.error, {
+                      generationId: result.generationId,
+                      creditsConsumed: result.creditsConsumed,
+                    }).error,
                     generation_id: result.generationId,
                     generationId: result.generationId,
                     credits_consumed: result.creditsConsumed,
@@ -454,7 +448,10 @@ export const postExternalImageEdits = withApiLogging(
           for (let index = 0; index < count; index++) {
             const result = await runEdit(randomUUID());
             if (result.error) {
-              return toOpenAIErrorPayload(result.error);
+              return toOpenAIErrorPayload(result.error, {
+                generationId: result.generationId,
+                creditsConsumed: result.creditsConsumed,
+              });
             }
             data.push(await toOpenAIImageData(request, result, responseFormat));
           }

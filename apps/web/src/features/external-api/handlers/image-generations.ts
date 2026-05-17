@@ -10,6 +10,7 @@ import {
   getPublicImageUrl,
   openAIImageError,
   toOpenAIImageData,
+  toOpenAIErrorPayload,
   wantsImageStreamResponse,
 } from "@/features/external-api/images";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
@@ -77,16 +78,6 @@ function toPartialPayload(image: PartialImageResult, index: number) {
     partial_image_index: image.partialImageIndex,
     b64_json: image.imageBase64,
     url: image.imageUrl,
-  };
-}
-
-function toOpenAIErrorPayload(message: string) {
-  return {
-    error: {
-      message,
-      type: "invalid_request_error",
-      code: null,
-    },
   };
 }
 
@@ -159,7 +150,10 @@ export const postExternalImageGenerations = withApiLogging(
               data: {
                 type: "upstream_error",
                 message: result.error,
-                error: { message: result.error },
+                error: toOpenAIErrorPayload(result.error, {
+                  generationId: result.generationId,
+                  creditsConsumed: result.creditsConsumed,
+                }).error,
                 generation_id: result.generationId,
                 generationId: result.generationId,
                 credits_consumed: result.creditsConsumed,
@@ -188,7 +182,10 @@ export const postExternalImageGenerations = withApiLogging(
       for (let index = 0; index < count; index++) {
         const result = await runImageGenerationForUser(input);
         if (result.error) {
-          return toOpenAIErrorPayload(result.error);
+          return toOpenAIErrorPayload(result.error, {
+            generationId: result.generationId,
+            creditsConsumed: result.creditsConsumed,
+          });
         }
         data.push(await toOpenAIImageData(request, result, responseFormat));
       }

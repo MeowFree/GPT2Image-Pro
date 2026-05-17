@@ -17,6 +17,14 @@ type JsonKeepAliveOptions = {
   status?: number;
 };
 
+export type ExternalApiErrorOptions = {
+  type?: string;
+  code?: string | null;
+  status?: number;
+  generationId?: string;
+  creditsConsumed?: number;
+};
+
 function getRequestBaseUrl(request: Request) {
   return (
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -75,13 +83,11 @@ export async function toOpenAIImageData(
 
 export function openAIImageError(message: string, status = 400, code?: string) {
   return Response.json(
-    {
-      error: {
-        message,
-        type: "invalid_request_error",
-        code: code || null,
-      },
-    },
+    toOpenAIErrorPayload(message, {
+      type: "invalid_request_error",
+      code: code ?? null,
+      status,
+    }),
     { status }
   );
 }
@@ -196,13 +202,83 @@ export function createExternalImageStreamResponse(
   );
 }
 
-function toOpenAIErrorPayload(message: string) {
+function classifyExternalApiError(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("content failed moderation") ||
+    normalized.includes("content blocked")
+  ) {
+    return {
+      type: "invalid_request_error",
+      code: "content_policy_violation",
+      status: 400,
+    };
+  }
+
+  if (
+    normalized.includes("moderation") ||
+    normalized.includes("aliyun") ||
+    normalized.includes("green-cip") ||
+    normalized.includes("readtimeout") ||
+    normalized.includes("connecttimeout")
+  ) {
+    return {
+      type: "upstream_error",
+      code: "content_moderation_failed",
+      status: 502,
+    };
+  }
+
+  if (normalized.includes("insufficient credits")) {
+    return {
+      type: "insufficient_quota",
+      code: "insufficient_credits",
+      status: 402,
+    };
+  }
+
+  if (normalized.includes("unsupported model")) {
+    return {
+      type: "invalid_request_error",
+      code: "unsupported_model",
+      status: 400,
+    };
+  }
+
+  return {
+    type: "upstream_error",
+    code: "image_generation_failed",
+    status: 502,
+  };
+}
+
+export function toOpenAIErrorPayload(
+  message: string,
+  options?: ExternalApiErrorOptions
+) {
+  const classification = classifyExternalApiError(message);
+  const status = options?.status ?? classification.status;
+  const code =
+    options && "code" in options ? options.code : classification.code;
+  const generationId = options?.generationId;
+  const creditsConsumed = options?.creditsConsumed;
+
   return {
     error: {
       message,
-      type: "invalid_request_error",
-      code: null,
+      type: options?.type ?? classification.type,
+      code,
+      status,
+      ...(generationId ? { generation_id: generationId, generationId } : {}),
+      ...(creditsConsumed !== undefined
+        ? { credits_consumed: creditsConsumed }
+        : {}),
     },
+    ...(generationId ? { generation_id: generationId, generationId } : {}),
+    ...(creditsConsumed !== undefined
+      ? { credits_consumed: creditsConsumed }
+      : {}),
   };
 }
 
@@ -211,6 +287,10 @@ function isErrorPayload(data: unknown) {
 }
 
 function getJsonStatus(data: unknown, fallback = 200) {
+  if (data && typeof data === "object" && "error" in data) {
+    const error = (data as { error?: { status?: unknown } }).error;
+    if (typeof error?.status === "number") return error.status;
+  }
   if (isErrorPayload(data)) return 400;
   return fallback;
 }

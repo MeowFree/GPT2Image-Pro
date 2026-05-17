@@ -10,6 +10,7 @@ import {
   createJsonKeepAliveResponse,
   getImageBase64,
   openAIImageError,
+  toOpenAIErrorPayload,
   toOpenAIResponseImageItem,
   toOpenAIResponseTextItem,
   wantsImageStreamResponse,
@@ -175,18 +176,15 @@ function toResponsePayload(params: {
 }
 
 function toResponseErrorPayload(message: string, requestId?: string) {
+  const payload = toOpenAIErrorPayload(message);
   return {
-    error: {
-      message,
-      type: "invalid_request_error",
-      code: null,
-    },
+    error: payload.error,
     ...(requestId
       ? {
           response: {
             id: requestId,
             status: "failed",
-            error: { message },
+            error: payload.error,
           },
         }
       : {}),
@@ -277,6 +275,10 @@ export const postExternalResponses = withApiLogging(
         });
 
         if (result.error) {
+          const payload = toOpenAIErrorPayload(result.error, {
+            generationId: result.generationId,
+            creditsConsumed: result.creditsConsumed,
+          });
           await emit({
             event: "response.failed",
             data: {
@@ -284,9 +286,12 @@ export const postExternalResponses = withApiLogging(
               response: {
                 id: requestId,
                 status: "failed",
-                error: { message: result.error },
+                error: payload.error,
               },
-              error: { message: result.error },
+              error: payload.error,
+              generation_id: result.generationId,
+              generationId: result.generationId,
+              credits_consumed: result.creditsConsumed,
             },
           });
           return;
@@ -319,7 +324,22 @@ export const postExternalResponses = withApiLogging(
     return createJsonKeepAliveResponse(async () => {
       const result = await runImageGenerationForUser(input);
       if (result.error) {
-        return toResponseErrorPayload(result.error, requestId);
+        const payload = toOpenAIErrorPayload(result.error, {
+          generationId: result.generationId,
+          creditsConsumed: result.creditsConsumed,
+        });
+        return {
+          ...toResponseErrorPayload(result.error, requestId),
+          error: payload.error,
+          response: {
+            id: requestId,
+            status: "failed",
+            error: payload.error,
+          },
+          generation_id: result.generationId,
+          generationId: result.generationId,
+          credits_consumed: result.creditsConsumed,
+        };
       }
 
       const imageBase64 = result.imageUrl
