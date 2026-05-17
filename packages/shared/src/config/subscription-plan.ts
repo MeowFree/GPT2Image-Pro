@@ -20,11 +20,13 @@ export type SubscriptionPlan = "free" | "starter" | "pro" | "ultra";
  */
 export const GPT54_CHAT_MODEL = "gpt-5.4";
 export const GPT54_MINI_CHAT_MODEL = "gpt-5.4-mini";
+export const GPT52_CHAT_MODEL = "gpt-5.2";
 export const GPT55_CHAT_MODEL = "gpt-5.5";
 
 export const RESPONSES_IMAGE_MODELS = [
   GPT54_CHAT_MODEL,
   GPT54_MINI_CHAT_MODEL,
+  GPT52_CHAT_MODEL,
   GPT55_CHAT_MODEL,
 ] as const;
 

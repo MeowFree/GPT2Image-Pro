@@ -82,6 +82,7 @@ const PLAN_FEATURE_KEYS: Record<string, string[]> = {
     "characters",
     "fileSize",
     "chatGpt55",
+    "moderationSettlement",
     "promptOptimization",
     "queue",
     "export",

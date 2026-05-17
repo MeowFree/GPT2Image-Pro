@@ -1,6 +1,7 @@
 import {
   canUseExternalResponsesImageApi,
   canUseGpt55Chat,
+  GPT52_CHAT_MODEL,
   GPT54_CHAT_MODEL,
   GPT54_MINI_CHAT_MODEL,
   GPT55_CHAT_MODEL,
@@ -27,7 +28,11 @@ export function getExternalResponsesImageModels(plan: SubscriptionPlan) {
     return [];
   }
 
-  const models: string[] = [GPT54_CHAT_MODEL, GPT54_MINI_CHAT_MODEL];
+  const models: string[] = [
+    GPT54_CHAT_MODEL,
+    GPT54_MINI_CHAT_MODEL,
+    GPT52_CHAT_MODEL,
+  ];
   if (canUseGpt55Chat(plan)) {
     models.push(GPT55_CHAT_MODEL);
   }

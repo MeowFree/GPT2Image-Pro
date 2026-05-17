@@ -435,7 +435,7 @@
       },
       "ultra": {
         "name": "旗舰版",
-        "description": "对话生图可用 GPT-5.5",
+        "description": "适合高频创作，包含 GPT-5.5、最高优先级和更稳妥的审核成本",
         "cta": "订阅",
         "creditsAmount": "80,000",
         "creditsLabel": "积分 / 月",
@@ -447,6 +447,7 @@
           "characters": "最高分辨率输出",
           "fileSize": "每批最多 10 张图",
           "chatGpt55": "对话生图支持 GPT-5.5",
+          "moderationSettlement": "审核失败只扣审核积分",
           "promptOptimization": "可关闭提示词优化",
           "queue": "最高优先队列",
           "export": "下载与分享",

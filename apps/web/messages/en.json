@@ -471,7 +471,7 @@
       },
       "ultra": {
         "name": "Ultra",
-        "description": "Chat-to-image with GPT-5.5",
+        "description": "For high-volume creation with GPT-5.5, top priority, and safer review costs",
         "cta": "Subscribe",
         "creditsAmount": "80,000",
         "creditsLabel": "credits / month",
@@ -483,6 +483,7 @@
           "characters": "Maximum-resolution outputs",
           "fileSize": "Up to 10 images per batch",
           "chatGpt55": "Chat-to-image supports GPT-5.5",
+          "moderationSettlement": "Moderation failures only charge review credits",
           "promptOptimization": "Prompt optimization can be turned off",
           "queue": "Highest priority queue",
           "export": "Download & share",

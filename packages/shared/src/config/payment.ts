@@ -229,13 +229,15 @@ export function getPricingPlansFromConfig(config: PaymentConfig): Plan[] {
     plans.push({
       ...config.plans.ultra,
       name: "Ultra",
-      description: "Chat-to-image with GPT-5.5",
+      description:
+        "For high-volume creation with GPT-5.5, top priority, and safer review costs",
       features: [
         "80,000 credits / month",
         "Text-to-image and image editing",
         "Maximum resolution output",
         "Up to 10 images per batch",
         "Chat-to-image supports GPT-5.5",
+        "Moderation failures only charge review credits",
         "Highest priority queue",
         "Download & share",
         "Gallery history saved forever",
