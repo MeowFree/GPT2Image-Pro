@@ -5,11 +5,17 @@ import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import { Dialog, DialogContent, DialogTitle } from "@repo/ui/components/dialog";
 import { Separator } from "@repo/ui/components/separator";
-import { Download, ImageIcon, Loader2, Trash2 } from "lucide-react";
+import {
+  Download,
+  GripVertical,
+  ImageIcon,
+  Loader2,
+  Trash2,
+} from "lucide-react";
 import Image from "next/image";
 import { useLocale } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
-import { useState } from "react";
+import { type PointerEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 import { deleteGenerationAction } from "@/features/image-generation/actions";
 
@@ -68,6 +74,13 @@ export function ImageLightbox({
   const statusLabel = (status: string) =>
     isZh ? STATUS_LABELS_ZH[status] || status : status;
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [detailsWidth, setDetailsWidth] = useState(44);
+  const dragState = useRef<{
+    startX: number;
+    startWidth: number;
+    containerWidth: number;
+  } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const { execute: executeDelete, isExecuting: isDeleting } = useAction(
     deleteGenerationAction,
@@ -100,6 +113,36 @@ export function ImageLightbox({
     executeDelete({ generationId: generation.id });
   };
 
+  const handleResizeStart = (event: PointerEvent<HTMLButtonElement>) => {
+    const container = containerRef.current;
+    if (!container) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragState.current = {
+      startX: event.clientX,
+      startWidth: detailsWidth,
+      containerWidth: container.getBoundingClientRect().width,
+    };
+  };
+
+  const handleResizeMove = (event: PointerEvent<HTMLButtonElement>) => {
+    const state = dragState.current;
+    if (!state) return;
+    const deltaPercent =
+      ((state.startX - event.clientX) / state.containerWidth) * 100;
+    const nextWidth = Math.min(
+      58,
+      Math.max(30, state.startWidth + deltaPercent)
+    );
+    setDetailsWidth(nextWidth);
+  };
+
+  const handleResizeEnd = (event: PointerEvent<HTMLButtonElement>) => {
+    dragState.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
   return (
     <Dialog
       open={open}
@@ -110,12 +153,20 @@ export function ImageLightbox({
         }
       }}
     >
-      <DialogContent className="max-w-5xl gap-0 border-border bg-background p-0">
+      <DialogContent className="max-h-[92vh] max-w-6xl gap-0 overflow-y-auto border-border bg-background p-0 md:overflow-hidden">
         <DialogTitle className="sr-only">
           {copy("Image details", "图片详情")}
         </DialogTitle>
-        <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr]">
-          <div className="relative aspect-square w-full overflow-hidden bg-muted md:aspect-auto md:min-h-[520px]">
+        <div
+          ref={containerRef}
+          className="grid grid-cols-1 md:flex md:max-h-[92vh] md:min-h-[560px]"
+        >
+          <div
+            className="relative aspect-square w-full shrink overflow-hidden bg-muted md:aspect-auto"
+            style={{
+              flexBasis: `calc(${100 - detailsWidth}% - 6px)`,
+            }}
+          >
             {imageUrl && generation.status === "completed" ? (
               <Image
                 src={imageUrl}
@@ -132,92 +183,112 @@ export function ImageLightbox({
             )}
           </div>
 
-          <div className="flex flex-col p-6">
-            <div className="space-y-4">
-              <div>
-                <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-                  {copy("Prompt", "提示词")}
-                </p>
-                <p className="mt-1 whitespace-pre-wrap font-serif text-base leading-relaxed text-foreground">
-                  {generation.prompt}
-                </p>
-              </div>
+          <button
+            type="button"
+            aria-label={copy("Resize details panel", "调整详情面板宽度")}
+            className="group hidden w-3 shrink-0 cursor-col-resize items-center justify-center border-x border-border bg-muted/40 transition-colors hover:bg-muted md:flex"
+            onPointerDown={handleResizeStart}
+            onPointerMove={handleResizeMove}
+            onPointerUp={handleResizeEnd}
+            onPointerCancel={handleResizeEnd}
+            style={{ touchAction: "none" }}
+          >
+            <span className="flex h-12 w-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border transition-colors group-hover:text-foreground">
+              <GripVertical className="h-4 w-4" />
+            </span>
+          </button>
 
-              {generation.revisedPrompt &&
-                generation.revisedPrompt !== generation.prompt && (
-                  <div>
-                    <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-                      {copy("Revised Prompt", "优化提示词")}
+          <div
+            className="flex min-h-0 w-full min-w-0 flex-col md:shrink-0"
+            style={{ flexBasis: `calc(${detailsWidth}% - 6px)` }}
+          >
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                    {copy("Prompt", "提示词")}
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap font-serif text-base leading-relaxed text-foreground">
+                    {generation.prompt}
+                  </p>
+                </div>
+
+                {generation.revisedPrompt &&
+                  generation.revisedPrompt !== generation.prompt && (
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                        {copy("Revised Prompt", "优化提示词")}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                        {generation.revisedPrompt}
+                      </p>
+                    </div>
+                  )}
+
+                {generation.status === "failed" && generation.error && (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                    <p className="text-[11px] font-medium uppercase tracking-widest text-destructive">
+                      {copy("Error", "错误")}
                     </p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                      {generation.revisedPrompt}
+                    <p className="mt-1 text-sm text-destructive">
+                      {generation.error}
                     </p>
                   </div>
                 )}
 
-              {generation.status === "failed" && generation.error && (
-                <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
-                  <p className="text-[11px] font-medium uppercase tracking-widest text-destructive">
-                    {copy("Error", "错误")}
-                  </p>
-                  <p className="mt-1 text-sm text-destructive">
-                    {generation.error}
-                  </p>
-                </div>
-              )}
+                <Separator />
 
-              <Separator />
-
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    {copy("Model", "模型")}
-                  </dt>
-                  <dd className="mt-0.5 font-mono text-xs text-foreground">
-                    {generation.model}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    {copy("Size", "尺寸")}
-                  </dt>
-                  <dd className="mt-0.5 font-mono text-xs text-foreground">
-                    {generation.size}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    {copy("Credits", "积分")}
-                  </dt>
-                  <dd className="mt-0.5 text-xs text-foreground">
-                    {formatCredits(generation.creditsConsumed)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    {copy("Status", "状态")}
-                  </dt>
-                  <dd className="mt-0.5">
-                    <Badge
-                      variant="outline"
-                      className="rounded-full border-border font-normal text-[10px] uppercase tracking-wide"
-                    >
-                      {statusLabel(generation.status)}
-                    </Badge>
-                  </dd>
-                </div>
-                <div className="col-span-2">
-                  <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    {copy("Created", "创建时间")}
-                  </dt>
-                  <dd className="mt-0.5 text-xs text-foreground">
-                    {formatDate(generation.createdAt, locale)}
-                  </dd>
-                </div>
-              </dl>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      {copy("Model", "模型")}
+                    </dt>
+                    <dd className="mt-0.5 font-mono text-xs text-foreground">
+                      {generation.model}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      {copy("Size", "尺寸")}
+                    </dt>
+                    <dd className="mt-0.5 font-mono text-xs text-foreground">
+                      {generation.size}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      {copy("Credits", "积分")}
+                    </dt>
+                    <dd className="mt-0.5 text-xs text-foreground">
+                      {formatCredits(generation.creditsConsumed)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      {copy("Status", "状态")}
+                    </dt>
+                    <dd className="mt-0.5">
+                      <Badge
+                        variant="outline"
+                        className="rounded-full border-border font-normal text-[10px] uppercase tracking-wide"
+                      >
+                        {statusLabel(generation.status)}
+                      </Badge>
+                    </dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      {copy("Created", "创建时间")}
+                    </dt>
+                    <dd className="mt-0.5 text-xs text-foreground">
+                      {formatDate(generation.createdAt, locale)}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
             </div>
 
-            <div className="mt-auto flex flex-col gap-2 pt-6">
+            <div className="flex flex-col gap-2 border-t border-border bg-background p-6">
               {imageUrl && generation.status === "completed" && (
                 <Button
                   asChild
