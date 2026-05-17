@@ -6,14 +6,22 @@ import { generation } from "@repo/database/schema";
 import { GalleryClient } from "@/features/image-generation/components/gallery-client";
 import { getCurrentUser } from "@repo/shared/auth/server";
 
-export default async function GalleryPage() {
+interface GalleryPageProps {
+  searchParams: Promise<{ page?: string }>;
+}
+
+export default async function GalleryPage({ searchParams }: GalleryPageProps) {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
   const locale = await getLocale();
   const isZh = locale === "zh";
   const copy = (en: string, zh: string) => (isZh ? zh : en);
 
+  const params = await searchParams;
   const PAGE_SIZE = 20;
+  const pageParam = Number(params.page);
+  const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+  const limit = page * PAGE_SIZE;
 
   const [generations, totalResult] = await Promise.all([
     db
@@ -23,7 +31,7 @@ export default async function GalleryPage() {
         and(eq(generation.userId, user.id), eq(generation.status, "completed"))
       )
       .orderBy(desc(generation.createdAt))
-      .limit(PAGE_SIZE),
+      .limit(limit),
     db
       .select({ count: count() })
       .from(generation)
@@ -61,6 +69,7 @@ export default async function GalleryPage() {
       <GalleryClient
         initialGenerations={withUrls}
         totalCount={totalResult[0]?.count ?? 0}
+        page={page}
       />
     </div>
   );

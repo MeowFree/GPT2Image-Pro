@@ -13,7 +13,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useLocale } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ImageLightbox,
   type LightboxGeneration,
@@ -90,6 +90,14 @@ export function HistoryClient({
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const selected = items.find((i) => i.id === selectedId) ?? null;
+  const historyHref = (nextPage: number) =>
+    `/${locale}/dashboard/history?page=${nextPage}`;
+  const createHref = `/${locale}/dashboard/create`;
+
+  useEffect(() => {
+    setItems(initialGenerations);
+    setSelectedId(null);
+  }, [initialGenerations]);
 
   const handleDelete = (id: string) => {
     setItems((prev) => prev.filter((x) => x.id !== id));
@@ -112,9 +120,7 @@ export function HistoryClient({
           )}
         </p>
         <Button asChild variant="outline" className="mt-6">
-          <Link href="/dashboard/create">
-            {copy("Create an image", "创建图片")}
-          </Link>
+          <Link href={createHref}>{copy("Create an image", "创建图片")}</Link>
         </Button>
       </div>
     );
@@ -219,7 +225,7 @@ export function HistoryClient({
               disabled={page <= 1}
             >
               {page > 1 ? (
-                <Link href={`/dashboard/history?page=${page - 1}`}>
+                <Link href={historyHref(page - 1)}>
                   <ChevronLeft className="mr-1 h-4 w-4" />
                   {copy("Previous", "上一页")}
                 </Link>
@@ -237,7 +243,7 @@ export function HistoryClient({
               disabled={page >= totalPages}
             >
               {page < totalPages ? (
-                <Link href={`/dashboard/history?page=${page + 1}`}>
+                <Link href={historyHref(page + 1)}>
                   {copy("Next", "下一页")}
                   <ChevronRight className="ml-1 h-4 w-4" />
                 </Link>
