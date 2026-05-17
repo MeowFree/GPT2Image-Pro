@@ -1,4 +1,5 @@
 import { withApiLogging } from "@repo/shared/api-logger";
+import { canUseExternalResponsesImageApi } from "@repo/shared/config/subscription-plan";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -104,6 +105,14 @@ export const POST = withApiLogging(async (request: NextRequest) => {
   }
 
   const plan = await getUserPlan(auth.userId);
+  if (!canUseExternalResponsesImageApi(plan.plan)) {
+    return openAIImageError(
+      "External Responses image generation requires Pro plan or higher.",
+      403,
+      "insufficient_plan"
+    );
+  }
+
   if (!isExternalResponsesImageModelAllowed(parsed.data.model, plan.plan)) {
     return openAIImageError(
       "Unsupported model for this plan. Use /v1/models to list available Responses image models."

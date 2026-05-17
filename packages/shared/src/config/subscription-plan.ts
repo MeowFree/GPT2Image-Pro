@@ -174,7 +174,16 @@ export function canUseCustomApi(plan: SubscriptionPlan): boolean {
  * 是否允许使用对话生图
  */
 export function canUseChat(plan: SubscriptionPlan): boolean {
-  return isPlanAtLeast(plan, "starter");
+  return isPlanAtLeast(plan, "pro");
+}
+
+/**
+ * 是否允许外接 Responses 生图接口
+ */
+export function canUseExternalResponsesImageApi(
+  plan: SubscriptionPlan
+): boolean {
+  return isPlanAtLeast(plan, "pro");
 }
 
 /**
@@ -188,6 +197,15 @@ export function canUsePromptOptimization(plan: SubscriptionPlan): boolean {
  * 是否允许对话生图使用 GPT-5.5
  */
 export function canUseGpt55Chat(plan: SubscriptionPlan): boolean {
+  return isPlanAtLeast(plan, "ultra");
+}
+
+/**
+ * 审核命中时是否只结算审核积分
+ */
+export function canUseModerationOnlyFailureSettlement(
+  plan: SubscriptionPlan
+): boolean {
   return isPlanAtLeast(plan, "ultra");
 }
 

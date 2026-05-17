@@ -7,6 +7,7 @@ import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import {
   canUseChat,
   canUseGpt55Chat,
+  canUseModerationOnlyFailureSettlement,
   canUsePromptOptimization,
 } from "@repo/shared/config/subscription-plan";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
@@ -148,13 +149,17 @@ export async function runImageGenerationForUser(
   const initialCreditCharge = isTextOnlyChatInput
     ? CHAT_TEXT_ONLY_CREDITS
     : creditsPerImage;
-  const moderationFailureCredits = isTextOnlyChatInput
-    ? Math.min(TEXT_MODERATION_ONLY_CREDITS, CHAT_TEXT_ONLY_CREDITS)
-    : creditCost.moderationOnlyCredits;
   const bucket =
     (await getRuntimeSettingString("NEXT_PUBLIC_GENERATIONS_BUCKET_NAME")) ||
     "generations";
   const userPlan = await getUserPlan(input.userId);
+  const moderationFailureCredits = canUseModerationOnlyFailureSettlement(
+    userPlan.plan
+  )
+    ? isTextOnlyChatInput
+      ? Math.min(TEXT_MODERATION_ONLY_CREDITS, CHAT_TEXT_ONLY_CREDITS)
+      : creditCost.moderationOnlyCredits
+    : initialCreditCharge;
   const promptOptimizationAllowed = canUsePromptOptimization(userPlan.plan);
   const explicitPromptOptimization =
     input.promptOptimization !== undefined || Boolean(input.apiPrompt);
@@ -174,7 +179,7 @@ export async function runImageGenerationForUser(
 
   if (input.mode === "chat" && !canUseChat(userPlan.plan)) {
     return {
-      error: "Chat mode requires Starter plan or higher.",
+      error: "Chat mode requires Pro plan or higher.",
       generationId,
     };
   }

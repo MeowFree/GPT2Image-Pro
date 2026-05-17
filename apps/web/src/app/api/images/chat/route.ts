@@ -334,7 +334,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
 
   const plan = await getUserPlan(session.user.id);
   if (!canUseChat(plan.plan)) {
-    return errorResponse("Chat mode requires Starter plan or higher.", 403);
+    return errorResponse("Chat mode requires Pro plan or higher.", 403);
   }
 
   let formData: FormData;

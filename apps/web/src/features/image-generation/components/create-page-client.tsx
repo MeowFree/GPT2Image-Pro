@@ -3124,7 +3124,7 @@ export function CreatePageClient({
         value={activeMode}
         onValueChange={(value) => {
           if (value === "chat" && !chatAllowed) {
-            toast.error(copy("Chat requires Starter plan or higher.", "对话功能需要入门版或更高套餐。"));
+            toast.error(copy("Chat requires Pro plan or higher.", "对话功能需要专业版或更高套餐。"));
             return;
           }
           setActiveMode(value as ActiveMode);
