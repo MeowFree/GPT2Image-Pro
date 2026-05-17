@@ -185,12 +185,13 @@ export function getPricingPlansFromConfig(config: PaymentConfig): Plan[] {
     plans.push({
       ...config.plans.starter,
       name: "Starter",
-      description: "External API and custom API access",
+      description: "Chat-to-image, external API, and custom API access",
       features: [
         "5,000 credits / month",
         "Text-to-image and image editing",
         "Standard image resolution",
         "Up to 10 images per batch",
+        "Chat-to-image mode",
         "External API key calls",
         "Custom OpenAI-compatible API",
         "Download & share",
@@ -206,13 +207,12 @@ export function getPricingPlansFromConfig(config: PaymentConfig): Plan[] {
     plans.push({
       ...config.plans.pro,
       name: "Pro",
-      description: "Adds chat-to-image",
+      description: "Adds prompt controls and priority queue",
       features: [
         "20,000 credits / month",
         "Text-to-image and image editing",
         "High resolution output",
         "Up to 10 images per batch",
-        "Chat-to-image mode",
         "Priority generation queue",
         "Download & share",
         "Gallery history saved forever",

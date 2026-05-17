@@ -19,7 +19,16 @@ export type SubscriptionPlan = "free" | "starter" | "pro" | "ultra";
  * 对话模式旗舰模型
  */
 export const GPT54_CHAT_MODEL = "gpt-5.4";
+export const GPT54_MINI_CHAT_MODEL = "gpt-5.4-mini";
 export const GPT55_CHAT_MODEL = "gpt-5.5";
+
+export const RESPONSES_IMAGE_MODELS = [
+  GPT54_CHAT_MODEL,
+  GPT54_MINI_CHAT_MODEL,
+  GPT55_CHAT_MODEL,
+] as const;
+
+export type ResponsesImageModel = (typeof RESPONSES_IMAGE_MODELS)[number];
 
 /**
  * 队列优先级
@@ -165,7 +174,7 @@ export function canUseCustomApi(plan: SubscriptionPlan): boolean {
  * 是否允许使用对话生图
  */
 export function canUseChat(plan: SubscriptionPlan): boolean {
-  return isPlanAtLeast(plan, "pro");
+  return isPlanAtLeast(plan, "starter");
 }
 
 /**

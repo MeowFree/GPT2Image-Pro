@@ -428,7 +428,7 @@
       },
       "starter": {
         "name": "Starter",
-        "description": "External API and custom API access",
+        "description": "Chat-to-image, external API, and custom API access",
         "cta": "Subscribe",
         "creditsAmount": "5,000",
         "creditsLabel": "credits / month",
@@ -439,6 +439,7 @@
           "input": "Text-to-image and image editing",
           "characters": "Standard image resolutions",
           "fileSize": "Up to 10 images per batch",
+          "chat": "Chat-to-image mode",
           "externalApi": "External API key calls",
           "customApi": "Custom OpenAI-compatible API",
           "export": "Download & share",
@@ -448,7 +449,7 @@
       },
       "pro": {
         "name": "Pro",
-        "description": "Adds chat-to-image",
+        "description": "Adds prompt controls and priority queue",
         "cta": "Subscribe",
         "creditsAmount": "20,000",
         "creditsLabel": "credits / month",

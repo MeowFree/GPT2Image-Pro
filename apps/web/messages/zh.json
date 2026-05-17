@@ -392,7 +392,7 @@
       },
       "starter": {
         "name": "入门版",
-        "description": "开放外接 API 和自接 API",
+        "description": "开放对话生图、外接 API 和自接 API",
         "cta": "订阅",
         "creditsAmount": "5,000",
         "creditsLabel": "积分 / 月",
@@ -403,6 +403,7 @@
           "input": "文生图与图生图",
           "characters": "标准图像分辨率",
           "fileSize": "每批最多 10 张图",
+          "chat": "对话生图功能",
           "externalApi": "外接 API Key 调用",
           "customApi": "自接 OpenAI 兼容 API",
           "export": "下载与分享",
@@ -412,7 +413,7 @@
       },
       "pro": {
         "name": "专业版",
-        "description": "增加对话生图能力",
+        "description": "增加提示词控制和优先队列",
         "cta": "订阅",
         "creditsAmount": "20,000",
         "creditsLabel": "积分 / 月",

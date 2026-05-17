@@ -11,35 +11,35 @@ export type ExternalImageStreamEvent = {
   data: unknown;
 };
 
+function getRequestBaseUrl(request: Request) {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.BETTER_AUTH_URL ||
+    new URL(request.url).origin
+  );
+}
+
 export function getPublicImageUrl(request: Request, imageUrl?: string) {
   if (!imageUrl) return undefined;
   if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
     return imageUrl;
   }
 
-  const publicBaseUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.BETTER_AUTH_URL ||
-    new URL(request.url).origin;
-
-  return new URL(imageUrl, publicBaseUrl).toString();
+  return new URL(imageUrl, getRequestBaseUrl(request)).toString();
 }
 
 export async function getImageBase64(request: Request, imageUrl?: string) {
   if (!imageUrl) return undefined;
 
-  const publicBaseUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.BETTER_AUTH_URL ||
-    new URL(request.url).origin;
   const url =
     imageUrl.startsWith("http://") || imageUrl.startsWith("https://")
       ? imageUrl
-      : publicBaseUrl
-        ? new URL(imageUrl, publicBaseUrl).toString()
-        : imageUrl;
+      : new URL(imageUrl, getRequestBaseUrl(request)).toString();
 
-  const response = await fetch(url);
+  const authorization = request.headers.get("authorization");
+  const response = await fetch(url, {
+    headers: authorization ? { Authorization: authorization } : undefined,
+  });
   if (!response.ok) {
     throw new Error(`Failed to load generated image: ${response.status}`);
   }
@@ -83,6 +83,36 @@ export function openAIImageError(message: string, status = 400, code?: string) {
 export function wantsImageStreamResponse(request: Request, stream?: boolean) {
   if (stream) return true;
   return request.headers.get("accept")?.includes("text/event-stream") ?? false;
+}
+
+export function toOpenAIResponseImageItem(params: {
+  id: string;
+  b64Json: string;
+  revisedPrompt?: string;
+}) {
+  return {
+    id: params.id,
+    type: "image_generation_call",
+    status: "completed",
+    result: params.b64Json,
+    ...(params.revisedPrompt ? { revised_prompt: params.revisedPrompt } : {}),
+  };
+}
+
+export function toOpenAIResponseTextItem(params: { id: string; text: string }) {
+  return {
+    id: params.id,
+    type: "message",
+    status: "completed",
+    role: "assistant",
+    content: [
+      {
+        type: "output_text",
+        text: params.text,
+        annotations: [],
+      },
+    ],
+  };
 }
 
 export function createExternalImageStreamResponse(

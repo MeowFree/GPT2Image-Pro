@@ -41,7 +41,7 @@ const VALID_THINKING = new Set<ThinkingLevel>([
   "xhigh",
 ]);
 const MAX_BATCH_COUNT = 10;
-const MAX_CHAT_CONTEXT_CHARS = 10_000;
+const MAX_CHAT_CONTEXT_CHARS = 30_000;
 
 function errorResponse(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -334,7 +334,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
 
   const plan = await getUserPlan(session.user.id);
   if (!canUseChat(plan.plan)) {
-    return errorResponse("Chat mode requires Pro plan or higher.", 403);
+    return errorResponse("Chat mode requires Starter plan or higher.", 403);
   }
 
   let formData: FormData;

@@ -1,4 +1,5 @@
 import { withApiLogging } from "@repo/shared/api-logger";
+import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -11,6 +12,7 @@ import {
   toOpenAIImageData,
   wantsImageStreamResponse,
 } from "@/features/external-api/images";
+import { isExternalResponsesImageModelAllowed } from "@/features/external-api/models";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
   DEFAULT_IMAGE_SIZE,
@@ -101,8 +103,15 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     );
   }
 
+  const plan = await getUserPlan(auth.userId);
+  if (!isExternalResponsesImageModelAllowed(parsed.data.model, plan.plan)) {
+    return openAIImageError(
+      "Unsupported model for this plan. Use /v1/models to list available Responses image models."
+    );
+  }
+
   const input = {
-    mode: "generate" as const,
+    mode: "chat" as const,
     userId: auth.userId,
     prompt: parsed.data.prompt,
     apiPrompt: parsed.data.apiPrompt || parsed.data.api_prompt,

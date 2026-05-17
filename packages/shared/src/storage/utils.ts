@@ -28,7 +28,7 @@ export function isExternalUrl(value: string | null | undefined): boolean {
  *
  * 根据传入的值返回正确的 URL:
  * - 如果是外部 URL (http/https 开头)，直接返回
- * - 如果是存储键名，转换为 image-proxy URL
+ * - 如果是存储键名，转换为本地存储读取 URL
  * - 如果为空，返回 undefined
  *
  * @param image - 用户的 image 字段值 (可能是 URL 或存储键名)
@@ -42,7 +42,7 @@ export function isExternalUrl(value: string | null | undefined): boolean {
  *
  * // 存储键名
  * getAvatarUrl("user-abc123-1234567890.jpg")
- * // => "/image-proxy/avatars/user-abc123-1234567890.jpg"
+ * // => "/api/storage/avatars/user-abc123-1234567890.jpg"
  *
  * // 空值
  * getAvatarUrl(null) // => undefined
@@ -58,9 +58,9 @@ export function getAvatarUrl(image: string | null | undefined): string | undefin
     return image;
   }
 
-  // 否则是存储键名，转换为 image-proxy URL
+  // 否则是存储键名，转换为本地存储读取 URL
   const avatarsBucket = process.env.NEXT_PUBLIC_AVATARS_BUCKET_NAME ?? "avatars";
-  return `/image-proxy/${avatarsBucket}/${image}`;
+  return `/api/storage/${avatarsBucket}/${image}`;
 }
 
 /**

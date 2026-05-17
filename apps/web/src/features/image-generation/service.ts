@@ -6,7 +6,9 @@ import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import {
   canUseCustomApi,
   GPT54_CHAT_MODEL,
+  GPT54_MINI_CHAT_MODEL,
   GPT55_CHAT_MODEL,
+  RESPONSES_IMAGE_MODELS,
 } from "@repo/shared/config/subscription-plan";
 import { eq } from "drizzle-orm";
 import {
@@ -116,12 +118,18 @@ function normalizeResponsesModel(
     throw new Error("GPT-5.5 chat model requires Ultra plan.");
   }
 
-  if (requested === GPT54_CHAT_MODEL || requested === GPT55_CHAT_MODEL) {
+  if (
+    requested === GPT54_CHAT_MODEL ||
+    requested === GPT54_MINI_CHAT_MODEL ||
+    requested === GPT55_CHAT_MODEL
+  ) {
     return requested;
   }
 
   if (explicit) {
-    throw new Error("Unsupported chat model. Use GPT-5.4 or GPT-5.5.");
+    throw new Error(
+      `Unsupported chat model. Use ${RESPONSES_IMAGE_MODELS.join(", ")}.`
+    );
   }
 
   return null;

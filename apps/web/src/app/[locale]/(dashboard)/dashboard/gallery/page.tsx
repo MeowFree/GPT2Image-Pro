@@ -32,8 +32,6 @@ export default async function GalleryPage() {
       ),
   ]);
 
-  const endpoint = process.env.STORAGE_ENDPOINT;
-
   const withUrls = generations.map((g) => ({
     id: g.id,
     prompt: g.prompt,
@@ -45,9 +43,7 @@ export default async function GalleryPage() {
     storageKey: g.storageKey,
     storageBucket: g.storageBucket,
     imageUrl: g.storageKey
-      ? endpoint
-        ? `/image-proxy/${g.storageBucket}/${g.storageKey}`
-        : `/api/storage/${g.storageBucket}/${g.storageKey}`
+      ? `/api/storage/${g.storageBucket}/${g.storageKey}`
       : null,
     createdAt: g.createdAt.toISOString(),
   }));

@@ -53,9 +53,7 @@ export default async function DashboardPage() {
   const generationsWithUrls = recentGenerations.map((gen) => ({
     ...gen,
     imageUrl: gen.storageKey
-      ? process.env.STORAGE_ENDPOINT
-        ? `/image-proxy/${gen.storageBucket}/${gen.storageKey}`
-        : `/api/storage/${gen.storageBucket}/${gen.storageKey}`
+      ? `/api/storage/${gen.storageBucket}/${gen.storageKey}`
       : null,
   }));
 

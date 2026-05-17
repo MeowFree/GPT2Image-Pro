@@ -122,6 +122,7 @@ export function ExternalApiKeySection() {
           )}
           <div className="space-y-1 font-mono text-xs text-muted-foreground">
             <p>GET /v1/models</p>
+            <p>POST /v1/responses</p>
             <p>POST /v1/images/generations</p>
             <p>POST /v1/images/edits</p>
           </div>

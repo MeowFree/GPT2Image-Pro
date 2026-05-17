@@ -27,9 +27,7 @@ export default async function CreatePage() {
     creditsConsumed: g.creditsConsumed,
     status: g.status,
     imageUrl: g.storageKey
-      ? process.env.STORAGE_ENDPOINT
-        ? `/image-proxy/${g.storageBucket}/${g.storageKey}`
-        : `/api/storage/${g.storageBucket}/${g.storageKey}`
+      ? `/api/storage/${g.storageBucket}/${g.storageKey}`
       : null,
     createdAt: g.createdAt.toISOString(),
   }));

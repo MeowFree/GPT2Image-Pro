@@ -55,7 +55,10 @@ type RunImageGenerationInput =
     } & ChatImageParams);
 
 const CHAT_TEXT_ONLY_CREDITS = 1;
-const MAX_CHAT_CONTEXT_CHARS = 10_000;
+const MAX_CHAT_CONTEXT_CHARS = 30_000;
+const TEXT_MODERATION_ONLY_CREDITS = getImageCreditCostBreakdown(
+  DEFAULT_IMAGE_SIZE
+).moderationOnlyCredits;
 
 export type ImageGenerationOperationResult = {
   error?: string;
@@ -70,9 +73,7 @@ export type ImageGenerationOperationResult = {
 };
 
 async function getStoredImageUrl(bucket: string, storageKey: string) {
-  return (await getRuntimeSettingString("STORAGE_ENDPOINT"))
-    ? `/image-proxy/${bucket}/${storageKey}`
-    : `/api/storage/${bucket}/${storageKey}`;
+  return `/api/storage/${bucket}/${storageKey}`;
 }
 
 async function toImageBuffer(result: {
@@ -147,6 +148,9 @@ export async function runImageGenerationForUser(
   const initialCreditCharge = isTextOnlyChatInput
     ? CHAT_TEXT_ONLY_CREDITS
     : creditsPerImage;
+  const moderationFailureCredits = isTextOnlyChatInput
+    ? Math.min(TEXT_MODERATION_ONLY_CREDITS, CHAT_TEXT_ONLY_CREDITS)
+    : creditCost.moderationOnlyCredits;
   const bucket =
     (await getRuntimeSettingString("NEXT_PUBLIC_GENERATIONS_BUCKET_NAME")) ||
     "generations";
@@ -170,7 +174,7 @@ export async function runImageGenerationForUser(
 
   if (input.mode === "chat" && !canUseChat(userPlan.plan)) {
     return {
-      error: "Chat mode requires Pro plan or higher.",
+      error: "Chat mode requires Starter plan or higher.",
       generationId,
     };
   }
@@ -226,6 +230,7 @@ export async function runImageGenerationForUser(
             quality: input.quality || "auto",
             batchCount: input.n || 1,
             creditCost,
+            moderationFailureCredits,
           }
         : input.mode === "chat"
           ? {
@@ -236,6 +241,7 @@ export async function runImageGenerationForUser(
               moderation: input.moderation || "auto",
               batchCount: input.n || 1,
               creditCost,
+              moderationFailureCredits,
             }
           : {
               mode: "generate",
@@ -243,6 +249,7 @@ export async function runImageGenerationForUser(
               moderation: input.moderation || "auto",
               batchCount: input.n || 1,
               creditCost,
+              moderationFailureCredits,
             },
   });
 
@@ -346,7 +353,7 @@ export async function runImageGenerationForUser(
   if (moderation.decision === "block" || moderation.decision === "error") {
     const targetCredits =
       moderation.decision === "block"
-        ? creditCost.moderationOnlyCredits
+        ? moderationFailureCredits
         : 0;
     try {
       await settleChargedCredits(
@@ -434,7 +441,7 @@ export async function runImageGenerationForUser(
   if (result.error) {
     try {
       await settleChargedCredits(
-        creditCost.moderationOnlyCredits,
+        moderationFailureCredits,
         "content-moderation",
         `${generationId}:generation-error`,
         `Settle failed generation: ${input.prompt.substring(0, 50)}`,
@@ -569,7 +576,7 @@ export async function runImageGenerationForUser(
       .where(eq(generation.id, generationId));
     try {
       await settleChargedCredits(
-        creditCost.moderationOnlyCredits,
+        moderationFailureCredits,
         "content-moderation",
         `${generationId}:storage-error`,
         `Settle storage failure: ${input.prompt.substring(0, 50)}`,
