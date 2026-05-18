@@ -102,7 +102,11 @@ export const createCheckoutSession = protectedAction
         }),
       });
 
-      return { url: checkout.url };
+      return {
+        url: checkout.url,
+        params: checkout.params,
+        method: "POST" as const,
+      };
     }
 
     if (hasActiveSub) {

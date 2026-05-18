@@ -28,6 +28,25 @@ import { useRouter } from "@/i18n/routing";
 
 import { AnimatedPrice } from "./animated-price";
 
+function submitEpayForm(url: string, params: Record<string, string>) {
+  const form = document.createElement("form");
+  form.action = url;
+  form.method = "POST";
+  form.style.display = "none";
+
+  for (const [key, value] of Object.entries(params)) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = key;
+    input.value = value;
+    form.appendChild(input);
+  }
+
+  document.body.appendChild(form);
+  form.submit();
+  document.body.removeChild(form);
+}
+
 /**
  * 计划配置（用于获取价格等非翻译数据）
  */
@@ -300,7 +319,11 @@ export function PricingSection({
           type: price.type,
         });
         if (result?.data?.url) {
-          window.location.href = result.data.url;
+          if (result.data.method === "POST" && result.data.params) {
+            submitEpayForm(result.data.url, result.data.params);
+          } else {
+            window.location.href = result.data.url;
+          }
         }
       } catch (error) {
         console.error("Failed to create checkout session:", error);

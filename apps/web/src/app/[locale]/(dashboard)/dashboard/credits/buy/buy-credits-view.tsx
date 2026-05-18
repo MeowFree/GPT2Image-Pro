@@ -69,6 +69,25 @@ const PACKAGE_DESCRIPTIONS_ZH: Record<string, string> = {
 
 const MAX_ENTERPRISE_PACK_QUANTITY = 999;
 
+function submitEpayForm(url: string, params: Record<string, string>) {
+  const form = document.createElement("form");
+  form.action = url;
+  form.method = "POST";
+  form.style.display = "none";
+
+  for (const [key, value] of Object.entries(params)) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = key;
+    input.value = value;
+    form.appendChild(input);
+  }
+
+  document.body.appendChild(form);
+  form.submit();
+  document.body.removeChild(form);
+}
+
 /**
  * 购买积分套餐视图
  */
@@ -90,7 +109,11 @@ export function BuyCreditPackagesView() {
   const { execute, isPending } = useAction(createCreditsPurchaseCheckout, {
     onSuccess: ({ data }) => {
       if (data?.url) {
-        window.location.href = data.url;
+        if (data.method === "POST" && data.params) {
+          submitEpayForm(data.url, data.params);
+        } else {
+          window.location.href = data.url;
+        }
       }
     },
     onError: ({ error }) => {

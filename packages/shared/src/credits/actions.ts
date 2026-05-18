@@ -527,7 +527,11 @@ export const createCreditsPurchaseCheckout = withProtectedCreditsAction(
         }),
       });
 
-      return { url: checkout.url };
+      return {
+        url: checkout.url,
+        params: checkout.params,
+        method: "POST" as const,
+      };
     }
 
     // 创建 Creem Checkout Session（一次性支付）

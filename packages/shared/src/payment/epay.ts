@@ -120,6 +120,12 @@ function getEpayConfig() {
   return { pid, key, apiUrl };
 }
 
+function getEpaySubmitUrl(apiUrl: string): URL {
+  const submitUrl = new URL(apiUrl.endsWith("/") ? apiUrl : `${apiUrl}/`);
+  submitUrl.pathname = `${submitUrl.pathname.replace(/\/+$/, "")}/submit.php`;
+  return submitUrl;
+}
+
 async function getRuntimeEpayConfig() {
   const pid = (await getRuntimeSettingString("EPAY_PID")) ?? "";
   const key = (await getRuntimeSettingString("EPAY_KEY")) ?? "";
@@ -231,9 +237,7 @@ export function createEpayPurchase(
   }
 
   const signedParams = withEpaySignature(params);
-  const submitUrl = new URL(apiUrl.endsWith("/") ? apiUrl : `${apiUrl}/`);
-  submitUrl.pathname = `${submitUrl.pathname.replace(/\/+$/, "")}/submit.php`;
-  submitUrl.search = new URLSearchParams(signedParams).toString();
+  const submitUrl = getEpaySubmitUrl(apiUrl);
 
   return {
     url: submitUrl.toString(),
@@ -275,9 +279,7 @@ export async function createRuntimeEpayPurchase(
     sign: await signRuntimeEpayParams(params),
     sign_type: "MD5",
   };
-  const submitUrl = new URL(apiUrl.endsWith("/") ? apiUrl : `${apiUrl}/`);
-  submitUrl.pathname = `${submitUrl.pathname.replace(/\/+$/, "")}/submit.php`;
-  submitUrl.search = new URLSearchParams(signedParams).toString();
+  const submitUrl = getEpaySubmitUrl(apiUrl);
 
   return {
     url: submitUrl.toString(),

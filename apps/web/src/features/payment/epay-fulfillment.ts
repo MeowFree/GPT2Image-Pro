@@ -34,6 +34,8 @@ interface FulfillEpayPaymentResult {
   metadata: EpayMetadata;
 }
 
+type EpayFulfillmentSource = "epay-webhook" | "epay-return";
+
 const inFlightFulfillments = new Map<
   string,
   Promise<FulfillEpayPaymentResult>
@@ -50,9 +52,22 @@ async function getCreditPackExpiresAt() {
     : null;
 }
 
+function isExpectedEpayAmount(
+  verifyInfo: EpayVerifyResult,
+  expectedAmount: number
+) {
+  const expectedCents = moneyToCents(expectedAmount);
+  const paidCents = moneyToCents(verifyInfo.money);
+  if (!Number.isFinite(expectedCents) || !Number.isFinite(paidCents)) {
+    return false;
+  }
+
+  return paidCents >= expectedCents && paidCents <= expectedCents + 10;
+}
+
 export async function fulfillSuccessfulEpayPayment(
   verifyInfo: EpayVerifyResult,
-  source: "epay-webhook" | "epay-return"
+  source: EpayFulfillmentSource
 ): Promise<FulfillEpayPaymentResult> {
   const runningFulfillment = inFlightFulfillments.get(verifyInfo.outTradeNo);
   if (runningFulfillment) {
@@ -73,7 +88,7 @@ export async function fulfillSuccessfulEpayPayment(
 
 async function fulfillSuccessfulEpayPaymentInner(
   verifyInfo: EpayVerifyResult,
-  source: "epay-webhook" | "epay-return"
+  source: EpayFulfillmentSource
 ): Promise<FulfillEpayPaymentResult> {
   const metadata = decodeEpayMetadata(verifyInfo.param);
   if (!metadata || metadata.outTradeNo !== verifyInfo.outTradeNo) {
@@ -106,7 +121,7 @@ async function handleCreditPurchase(
   packageId: string | undefined,
   quantity: number,
   verifyInfo: EpayVerifyResult,
-  source: "epay-webhook" | "epay-return"
+  source: EpayFulfillmentSource
 ) {
   if (!packageId) {
     throw new Error("Missing credit package ID");
@@ -132,7 +147,7 @@ async function handleCreditPurchase(
   const creditsAmount = pkg.credits * normalizedQuantity;
   const expectedAmount = pkg.price * normalizedQuantity;
 
-  if (moneyToCents(verifyInfo.money) !== moneyToCents(expectedAmount)) {
+  if (!isExpectedEpayAmount(verifyInfo, expectedAmount)) {
     throw new Error("Epay amount does not match credit package price");
   }
 
@@ -196,7 +211,7 @@ async function handleSubscription(
   priceId: string | undefined,
   metadata: EpayMetadata,
   verifyInfo: EpayVerifyResult,
-  source: "epay-webhook" | "epay-return"
+  source: EpayFulfillmentSource
 ) {
   if (!priceId) {
     throw new Error("Missing subscription price ID");
@@ -209,7 +224,7 @@ async function handleSubscription(
   }
 
   const expectedAmount = metadata.expectedAmount ?? price.amount;
-  if (moneyToCents(verifyInfo.money) !== moneyToCents(expectedAmount)) {
+  if (!isExpectedEpayAmount(verifyInfo, expectedAmount)) {
     throw new Error("Epay amount does not match subscription price");
   }
 
@@ -310,7 +325,7 @@ async function grantSubscriptionCredits(params: {
   remainingDays: number;
   periodDays: number;
   upgradeFromPriceId?: string;
-  source: "epay-webhook" | "epay-return";
+  source: EpayFulfillmentSource;
 }) {
   const sourceRef = `epay_subscription:${params.outTradeNo}`;
 
