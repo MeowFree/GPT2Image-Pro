@@ -3,6 +3,7 @@ import { getBaseUrl } from "@repo/shared/config/payment";
 import {
   decodeEpayMetadata,
   EPAY_TRADE_SUCCESS,
+  getEpayOrderMetadata,
   isRuntimeEpayConfigured,
   parseEpayRequestParams,
   verifyRuntimeEpayParams,
@@ -30,7 +31,8 @@ async function handleReturn(req: Request) {
   const params = await parseEpayRequestParams(req);
   const verifyInfo = await verifyRuntimeEpayParams(params);
   const metadata = verifyInfo.verifyStatus
-    ? decodeEpayMetadata(verifyInfo.param)
+    ? decodeEpayMetadata(verifyInfo.param) ??
+      (await getEpayOrderMetadata(verifyInfo.outTradeNo))
     : null;
   const redirectPath =
     metadata?.type === "subscription"

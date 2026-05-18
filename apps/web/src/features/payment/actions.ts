@@ -15,8 +15,8 @@ import { logEvent } from "@repo/shared/logger";
 import { protectedAction } from "@repo/shared/safe-action";
 import {
   createRuntimeEpayPurchase,
-  encodeEpayMetadata,
   isRuntimeEpayPaymentProvider,
+  saveEpayOrder,
 } from "@repo/shared/payment/epay";
 
 import { creem } from "./creem";
@@ -80,26 +80,30 @@ export const createCheckoutSession = protectedAction
 
     if (useEpay) {
       const outTradeNo = `SUB${Date.now()}${crypto.randomUUID().slice(0, 8)}`;
+      const amountDue = upgradeQuote?.amountDue ?? price.amount;
+      const metadata = {
+        type: "subscription" as const,
+        userId,
+        outTradeNo,
+        priceId,
+        planId: plan.id,
+        checkoutMode: upgradeQuote
+          ? ("upgrade" as const)
+          : ("new_subscription" as const),
+        expectedAmount: amountDue,
+        originalAmount: upgradeQuote?.originalAmount ?? price.amount,
+        prorationCredit: upgradeQuote?.prorationCredit ?? 0,
+        remainingDays: upgradeQuote?.remainingDays ?? 0,
+        periodDays: upgradeQuote?.periodDays ?? 0,
+        upgradeFromPriceId: upgradeQuote?.upgradeFromPriceId,
+      };
+      await saveEpayOrder(metadata, amountDue);
       const checkout = await createRuntimeEpayPurchase({
         outTradeNo,
         name: upgradeQuote
           ? `GPT2IMAGE upgrade to ${plan.name} ${price.interval ?? "subscription"}`
           : `GPT2IMAGE ${plan.name} ${price.interval ?? "subscription"}`,
-        money: upgradeQuote?.amountDue ?? price.amount,
-        param: encodeEpayMetadata({
-          type: "subscription",
-          userId,
-          outTradeNo,
-          priceId,
-          planId: plan.id,
-          checkoutMode: upgradeQuote ? "upgrade" : "new_subscription",
-          expectedAmount: upgradeQuote?.amountDue ?? price.amount,
-          originalAmount: upgradeQuote?.originalAmount ?? price.amount,
-          prorationCredit: upgradeQuote?.prorationCredit ?? 0,
-          remainingDays: upgradeQuote?.remainingDays ?? 0,
-          periodDays: upgradeQuote?.periodDays ?? 0,
-          upgradeFromPriceId: upgradeQuote?.upgradeFromPriceId,
-        }),
+        money: amountDue,
       });
 
       return {

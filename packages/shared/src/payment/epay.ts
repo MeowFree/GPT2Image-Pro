@@ -12,6 +12,9 @@ import {
   getRuntimeSettingSelect,
   getRuntimeSettingString,
 } from "../system-settings";
+import { db } from "@repo/database";
+import { epayOrder } from "@repo/database/schema";
+import { eq } from "drizzle-orm";
 
 export const EPAY_TRADE_SUCCESS = "TRADE_SUCCESS";
 
@@ -61,6 +64,8 @@ export interface EpayVerifyResult {
   param?: string;
   raw: Record<string, string>;
 }
+
+export type EpayOrderStatus = "pending" | "success" | "failed";
 
 export function getPaymentProvider(): PaymentProvider {
   const providerValues = [
@@ -232,10 +237,6 @@ export function createEpayPurchase(
     sign_type: "MD5",
   };
 
-  if (input.param) {
-    params.param = input.param;
-  }
-
   const signedParams = withEpaySignature(params);
   const submitUrl = getEpaySubmitUrl(apiUrl);
 
@@ -270,10 +271,6 @@ export async function createRuntimeEpayPurchase(
     sign_type: "MD5",
   };
 
-  if (input.param) {
-    params.param = input.param;
-  }
-
   const signedParams = {
     ...params,
     sign: await signRuntimeEpayParams(params),
@@ -285,6 +282,66 @@ export async function createRuntimeEpayPurchase(
     url: submitUrl.toString(),
     params: signedParams,
   };
+}
+
+export async function saveEpayOrder(
+  metadata: EpayMetadata,
+  amount: number | string
+): Promise<void> {
+  await db
+    .insert(epayOrder)
+    .values({
+      outTradeNo: metadata.outTradeNo,
+      userId: metadata.userId,
+      businessType: metadata.type,
+      amount: Number(formatMoney(amount)),
+      status: "pending",
+      metadata: metadata as unknown as Record<string, unknown>,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: epayOrder.outTradeNo,
+      set: {
+        userId: metadata.userId,
+        businessType: metadata.type,
+        amount: Number(formatMoney(amount)),
+        status: "pending",
+        metadata: metadata as unknown as Record<string, unknown>,
+        updatedAt: new Date(),
+      },
+    });
+}
+
+export async function getEpayOrderMetadata(
+  outTradeNo: string
+): Promise<EpayMetadata | null> {
+  if (!outTradeNo) return null;
+
+  const [order] = await db
+    .select({
+      metadata: epayOrder.metadata,
+    })
+    .from(epayOrder)
+    .where(eq(epayOrder.outTradeNo, outTradeNo))
+    .limit(1);
+
+  if (!order?.metadata) return null;
+  return normalizeEpayMetadata(order.metadata);
+}
+
+export async function updateEpayOrderStatus(
+  outTradeNo: string,
+  status: EpayOrderStatus
+): Promise<void> {
+  if (!outTradeNo) return;
+
+  await db
+    .update(epayOrder)
+    .set({
+      status,
+      updatedAt: new Date(),
+    })
+    .where(eq(epayOrder.outTradeNo, outTradeNo));
 }
 
 export function verifyEpayParams(
@@ -434,89 +491,93 @@ export function decodeEpayMetadata(param?: string): EpayMetadata | null {
     const parsed = JSON.parse(
       Buffer.from(param, "base64url").toString("utf8")
     ) as Partial<EpayMetadata> & Record<string, unknown>;
-
-    const type =
-      parsed.type ??
-      (parsed.t === "s"
-        ? "subscription"
-        : parsed.t === "c"
-          ? "credit_purchase"
-          : undefined);
-    const userId = parsed.userId ?? parsed.u;
-    const outTradeNo = parsed.outTradeNo ?? parsed.o;
-    const priceId = parsed.priceId ?? parsed.p;
-    const planId = parsed.planId ?? parsed.l;
-    const packageId = parsed.packageId ?? parsed.g;
-    const numberValue = (value: unknown) =>
-      typeof value === "number"
-        ? value
-        : typeof value === "string" && value.trim()
-          ? Number(value)
-          : undefined;
-    const quantity = numberValue(parsed.quantity ?? parsed.q);
-    const checkoutMode =
-      parsed.checkoutMode ??
-      (parsed.m === "u"
-        ? "upgrade"
-        : parsed.m === "n"
-          ? "new_subscription"
-          : undefined);
-    const expectedAmount = numberValue(parsed.expectedAmount ?? parsed.e);
-    const originalAmount = numberValue(parsed.originalAmount ?? parsed.a);
-    const prorationCredit = numberValue(parsed.prorationCredit ?? parsed.c);
-    const remainingDays = numberValue(parsed.remainingDays ?? parsed.r);
-    const periodDays = numberValue(parsed.periodDays ?? parsed.d);
-    const upgradeFromPriceId = parsed.upgradeFromPriceId ?? parsed.f;
-
-    if (
-      (type !== "subscription" && type !== "credit_purchase") ||
-      typeof userId !== "string" ||
-      typeof outTradeNo !== "string"
-    ) {
-      return null;
-    }
-
-    return {
-      type,
-      userId,
-      outTradeNo,
-      ...(typeof priceId === "string" && { priceId }),
-      ...(typeof planId === "string" && { planId }),
-      ...(typeof packageId === "string" && { packageId }),
-      ...(typeof quantity === "number" &&
-        Number.isFinite(quantity) &&
-        quantity > 0 && {
-          quantity: Math.floor(quantity),
-        }),
-      ...((checkoutMode === "new_subscription" ||
-        checkoutMode === "upgrade") && {
-        checkoutMode,
-      }),
-      ...(typeof expectedAmount === "number" &&
-        Number.isFinite(expectedAmount) && {
-        expectedAmount,
-      }),
-      ...(typeof originalAmount === "number" &&
-        Number.isFinite(originalAmount) && {
-        originalAmount,
-      }),
-      ...(typeof prorationCredit === "number" &&
-        Number.isFinite(prorationCredit) && {
-        prorationCredit,
-      }),
-      ...(typeof remainingDays === "number" && Number.isFinite(remainingDays) && {
-        remainingDays,
-      }),
-      ...(typeof periodDays === "number" && Number.isFinite(periodDays) && {
-        periodDays,
-      }),
-      ...(typeof upgradeFromPriceId === "string" && {
-        upgradeFromPriceId,
-      }),
-    };
+    return normalizeEpayMetadata(parsed);
   } catch {
     return null;
   }
+}
+
+function normalizeEpayMetadata(
+  metadata: Partial<EpayMetadata> & Record<string, unknown>
+): EpayMetadata | null {
+  const type =
+    metadata.type ??
+    (metadata.t === "s"
+      ? "subscription"
+      : metadata.t === "c"
+        ? "credit_purchase"
+        : undefined);
+  const userId = metadata.userId ?? metadata.u;
+  const outTradeNo = metadata.outTradeNo ?? metadata.o;
+  const priceId = metadata.priceId ?? metadata.p;
+  const planId = metadata.planId ?? metadata.l;
+  const packageId = metadata.packageId ?? metadata.g;
+  const numberValue = (value: unknown) =>
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : undefined;
+  const quantity = numberValue(metadata.quantity ?? metadata.q);
+  const checkoutMode =
+    metadata.checkoutMode ??
+    (metadata.m === "u"
+      ? "upgrade"
+      : metadata.m === "n"
+        ? "new_subscription"
+        : undefined);
+  const expectedAmount = numberValue(metadata.expectedAmount ?? metadata.e);
+  const originalAmount = numberValue(metadata.originalAmount ?? metadata.a);
+  const prorationCredit = numberValue(metadata.prorationCredit ?? metadata.c);
+  const remainingDays = numberValue(metadata.remainingDays ?? metadata.r);
+  const periodDays = numberValue(metadata.periodDays ?? metadata.d);
+  const upgradeFromPriceId = metadata.upgradeFromPriceId ?? metadata.f;
+
+  if (
+    (type !== "subscription" && type !== "credit_purchase") ||
+    typeof userId !== "string" ||
+    typeof outTradeNo !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    type,
+    userId,
+    outTradeNo,
+    ...(typeof priceId === "string" && { priceId }),
+    ...(typeof planId === "string" && { planId }),
+    ...(typeof packageId === "string" && { packageId }),
+    ...(typeof quantity === "number" &&
+      Number.isFinite(quantity) &&
+      quantity > 0 && {
+        quantity: Math.floor(quantity),
+      }),
+    ...((checkoutMode === "new_subscription" || checkoutMode === "upgrade") && {
+      checkoutMode,
+    }),
+    ...(typeof expectedAmount === "number" &&
+      Number.isFinite(expectedAmount) && {
+      expectedAmount,
+    }),
+    ...(typeof originalAmount === "number" &&
+      Number.isFinite(originalAmount) && {
+      originalAmount,
+    }),
+    ...(typeof prorationCredit === "number" &&
+      Number.isFinite(prorationCredit) && {
+      prorationCredit,
+    }),
+    ...(typeof remainingDays === "number" && Number.isFinite(remainingDays) && {
+      remainingDays,
+    }),
+    ...(typeof periodDays === "number" && Number.isFinite(periodDays) && {
+      periodDays,
+    }),
+    ...(typeof upgradeFromPriceId === "string" && {
+      upgradeFromPriceId,
+    }),
+  };
 }
 
 export function moneyToCents(value: number | string): number {

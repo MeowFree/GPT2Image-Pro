@@ -22,8 +22,8 @@ import {
 import { creem } from "../payment/creem";
 import {
   createRuntimeEpayPurchase,
-  encodeEpayMetadata,
   isRuntimeEpayPaymentProvider,
+  saveEpayOrder,
 } from "../payment/epay";
 import { logEvent } from "../logger/index";
 import { actionClient, protectedAction } from "../safe-action";
@@ -511,6 +511,14 @@ export const createCreditsPurchaseCheckout = withProtectedCreditsAction(
 
     if (useEpay) {
       const outTradeNo = `CR${Date.now()}${crypto.randomUUID().slice(0, 8)}`;
+      const metadata = {
+        type: "credit_purchase" as const,
+        userId,
+        outTradeNo,
+        packageId: pkg.id,
+        quantity,
+      };
+      await saveEpayOrder(metadata, totalPrice);
       const checkout = await createRuntimeEpayPurchase({
         outTradeNo,
         name:
@@ -518,13 +526,6 @@ export const createCreditsPurchaseCheckout = withProtectedCreditsAction(
             ? `GPT2IMAGE Credits ${pkg.credits} x ${quantity}`
             : `GPT2IMAGE Credits ${pkg.credits}`,
         money: totalPrice,
-        param: encodeEpayMetadata({
-          type: "credit_purchase",
-          userId,
-          outTradeNo,
-          packageId: pkg.id,
-          quantity,
-        }),
       });
 
       return {

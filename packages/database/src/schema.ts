@@ -269,6 +269,29 @@ export type Subscription = typeof subscription.$inferSelect;
 export type NewSubscription = typeof subscription.$inferInsert;
 
 // ============================================
+// Epay 订单表
+// ============================================
+/**
+ * 易支付订单表 - 本地保存业务元数据，避免把长 param 透传给支付网关。
+ */
+export const epayOrder = pgTable("epay_order", {
+  outTradeNo: text("out_trade_no").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  businessType: text("business_type").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2, mode: "number" })
+    .notNull(),
+  status: text("status").notNull().default("pending"),
+  metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type EpayOrder = typeof epayOrder.$inferSelect;
+export type NewEpayOrder = typeof epayOrder.$inferInsert;
+
+// ============================================
 // 积分系统枚举
 // ============================================
 

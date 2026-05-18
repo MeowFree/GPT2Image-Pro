@@ -24,9 +24,11 @@ import { getRuntimeSettingNumber } from "@repo/shared/system-settings";
 import { getUserPlanType } from "@repo/shared/subscription/services/user-plan";
 import {
   decodeEpayMetadata,
+  getEpayOrderMetadata,
   type EpayMetadata,
   type EpayVerifyResult,
   moneyToCents,
+  updateEpayOrderStatus,
 } from "@repo/shared/payment/epay";
 import { logger, logEvent } from "@repo/shared/logger";
 
@@ -90,29 +92,38 @@ async function fulfillSuccessfulEpayPaymentInner(
   verifyInfo: EpayVerifyResult,
   source: EpayFulfillmentSource
 ): Promise<FulfillEpayPaymentResult> {
-  const metadata = decodeEpayMetadata(verifyInfo.param);
+  const metadata =
+    decodeEpayMetadata(verifyInfo.param) ??
+    (await getEpayOrderMetadata(verifyInfo.outTradeNo));
   if (!metadata || metadata.outTradeNo !== verifyInfo.outTradeNo) {
+    await updateEpayOrderStatus(verifyInfo.outTradeNo, "failed");
     throw new Error("Invalid or mismatched Epay metadata");
   }
 
-  if (metadata.type === "credit_purchase") {
-    await handleCreditPurchase(
-      metadata.userId,
-      metadata.packageId,
-      metadata.quantity ?? 1,
-      verifyInfo,
-      source
-    );
-  } else {
-    await handleSubscription(
-      metadata.userId,
-      metadata.priceId,
-      metadata,
-      verifyInfo,
-      source
-    );
+  try {
+    if (metadata.type === "credit_purchase") {
+      await handleCreditPurchase(
+        metadata.userId,
+        metadata.packageId,
+        metadata.quantity ?? 1,
+        verifyInfo,
+        source
+      );
+    } else {
+      await handleSubscription(
+        metadata.userId,
+        metadata.priceId,
+        metadata,
+        verifyInfo,
+        source
+      );
+    }
+  } catch (error) {
+    await updateEpayOrderStatus(verifyInfo.outTradeNo, "failed");
+    throw error;
   }
 
+  await updateEpayOrderStatus(verifyInfo.outTradeNo, "success");
   return { metadata };
 }
 
