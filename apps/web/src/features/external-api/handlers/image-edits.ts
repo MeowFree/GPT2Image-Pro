@@ -391,6 +391,7 @@ export const postExternalImageEdits = withApiLogging(
             prompt,
             apiPrompt,
             promptOptimization,
+            moderationBlockRiskLevel: auth.moderationBlockRiskLevel,
             size: displaySize || size,
             model,
             quality,

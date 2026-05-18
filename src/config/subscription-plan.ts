@@ -15,6 +15,23 @@ import { PRICE_IDS } from "./payment";
  */
 export type SubscriptionPlan = "free" | "starter" | "pro" | "ultra";
 
+export type ModerationBlockRiskLevel = "low" | "medium" | "high";
+
+export const MODERATION_BLOCK_RISK_LEVELS = [
+  "low",
+  "medium",
+  "high",
+] as const;
+
+const MODERATION_BLOCK_RISK_LEVEL_RANK: Record<
+  ModerationBlockRiskLevel,
+  number
+> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+};
+
 /**
  * 队列优先级
  */
@@ -118,6 +135,54 @@ export function getPlanFromPriceId(priceId: string): SubscriptionPlan | null {
  */
 export function getPlanPrivileges(plan: SubscriptionPlan): PlanPrivileges {
   return PLAN_PRIVILEGES[plan];
+}
+
+export function canUseModerationRiskLevelControl(
+  plan: SubscriptionPlan
+): boolean {
+  return plan === "ultra";
+}
+
+export function getDefaultModerationBlockRiskLevel(
+  plan: SubscriptionPlan
+): ModerationBlockRiskLevel {
+  return plan === "ultra" ? "medium" : "low";
+}
+
+export function getMaxModerationBlockRiskLevelForPlan(
+  plan: SubscriptionPlan
+): ModerationBlockRiskLevel {
+  return plan === "ultra" ? "medium" : "low";
+}
+
+export function isModerationBlockRiskLevel(
+  value: unknown
+): value is ModerationBlockRiskLevel {
+  return value === "low" || value === "medium" || value === "high";
+}
+
+export function getAllowedModerationBlockRiskLevels(
+  plan: SubscriptionPlan
+): ModerationBlockRiskLevel[] {
+  const maxLevel = getMaxModerationBlockRiskLevelForPlan(plan);
+  const maxRank = MODERATION_BLOCK_RISK_LEVEL_RANK[maxLevel];
+  return MODERATION_BLOCK_RISK_LEVELS.filter(
+    (level) => MODERATION_BLOCK_RISK_LEVEL_RANK[level] <= maxRank
+  );
+}
+
+export function normalizeModerationBlockRiskLevelForPlan(
+  plan: SubscriptionPlan,
+  value?: string | null
+): ModerationBlockRiskLevel {
+  const fallback = getDefaultModerationBlockRiskLevel(plan);
+  const requested = isModerationBlockRiskLevel(value) ? value : fallback;
+  const maxLevel = getMaxModerationBlockRiskLevelForPlan(plan);
+
+  return MODERATION_BLOCK_RISK_LEVEL_RANK[requested] >
+    MODERATION_BLOCK_RISK_LEVEL_RANK[maxLevel]
+    ? maxLevel
+    : requested;
 }
 
 /**

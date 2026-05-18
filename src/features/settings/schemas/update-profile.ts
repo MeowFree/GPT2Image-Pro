@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const moderationBlockRiskLevelSchema = z.enum(["low", "medium", "high"]);
+
 /**
  * 更新用户资料的 Zod Schema
  *
@@ -16,6 +18,7 @@ export const updateProfileSchema = z.object({
     .string()
     .max(255, "头像路径过长")
     .optional(),
+  moderationBlockRiskLevel: moderationBlockRiskLevelSchema.optional(),
 });
 
 /**

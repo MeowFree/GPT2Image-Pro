@@ -2,6 +2,7 @@ export interface GenerateImageParams {
   prompt: string;
   apiPrompt?: string;
   promptOptimization?: boolean;
+  moderationBlockRiskLevel?: ModerationBlockRiskLevel;
   size?: string;
   width?: number;
   height?: number;
@@ -35,6 +36,7 @@ export interface ImageGenerationCallbacks {
 
 export type ImageQuality = "auto" | "low" | "medium" | "high";
 export type ImageModeration = "auto" | "low";
+export type ModerationBlockRiskLevel = "low" | "medium" | "high";
 
 export interface ImageInputFile {
   data: Buffer;
@@ -49,6 +51,7 @@ export interface EditImageParams {
   prompt: string;
   apiPrompt?: string;
   promptOptimization?: boolean;
+  moderationBlockRiskLevel?: ModerationBlockRiskLevel;
   images: ImageInputFile[];
   mask?: ImageInputFile;
   size?: string;
@@ -62,6 +65,7 @@ export interface ChatImageParams {
   prompt: string;
   apiPrompt?: string;
   promptOptimization?: boolean;
+  moderationBlockRiskLevel?: ModerationBlockRiskLevel;
   images?: ImageInputFile[];
   history?: ChatHistoryMessage[];
   size?: string;

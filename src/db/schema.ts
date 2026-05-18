@@ -38,6 +38,7 @@ export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
  * @field role - 用户角色 (user/admin)
  * @field banned - 是否被封禁
  * @field bannedReason - 封禁原因
+ * @field moderationBlockRiskLevel - 用户默认审核拦截级别
  * @field customerId - 支付提供商客户 ID (Creem)
  * @field createdAt - 创建时间
  * @field updatedAt - 更新时间
@@ -51,6 +52,9 @@ export const user = pgTable("user", {
   role: userRoleEnum("role").notNull().default("user"),
   banned: boolean("banned").notNull().default(false),
   bannedReason: text("banned_reason"),
+  moderationBlockRiskLevel: text("moderation_block_risk_level")
+    .notNull()
+    .default("low"),
   customerId: text("customer_id").unique(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -558,6 +562,9 @@ export const externalApiKey = pgTable("external_api_key", {
   keyPrefix: text("key_prefix").notNull(),
   keyHash: text("key_hash").notNull().unique(),
   lastFour: text("last_four").notNull(),
+  moderationBlockRiskLevel: text("moderation_block_risk_level")
+    .notNull()
+    .default("low"),
   lastUsedAt: timestamp("last_used_at"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),

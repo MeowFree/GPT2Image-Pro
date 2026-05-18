@@ -1,7 +1,11 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { db } from "@repo/database";
 import { externalApiKey, user } from "@repo/database/schema";
-import { canUseExternalApi } from "@repo/shared/config/subscription-plan";
+import {
+  canUseExternalApi,
+  isModerationBlockRiskLevel,
+  type ModerationBlockRiskLevel,
+} from "@repo/shared/config/subscription-plan";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import { and, eq } from "drizzle-orm";
 
@@ -40,6 +44,7 @@ export async function authenticateExternalApiRequest(request: Request) {
       id: externalApiKey.id,
       userId: externalApiKey.userId,
       keyHash: externalApiKey.keyHash,
+      moderationBlockRiskLevel: externalApiKey.moderationBlockRiskLevel,
       userBanned: user.banned,
     })
     .from(externalApiKey)
@@ -67,5 +72,10 @@ export async function authenticateExternalApiRequest(request: Request) {
   return {
     apiKeyId: apiKey.id,
     userId: apiKey.userId,
+    moderationBlockRiskLevel: (
+      isModerationBlockRiskLevel(apiKey.moderationBlockRiskLevel)
+        ? apiKey.moderationBlockRiskLevel
+        : "low"
+    ) satisfies ModerationBlockRiskLevel,
   };
 }

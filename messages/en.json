@@ -66,11 +66,11 @@
         "title": "AI Generates",
         "description": "Our AI interprets your prompt and produces high-quality images in seconds. Generate variations to explore every creative direction."
       }
-      },
-      "completion": {
-        "title": "Download & Share",
-        "description": "Save your favorites or share them directly. Every image stays in your gallery for future reference."
-      }
+    },
+    "completion": {
+      "title": "Download & Share",
+      "description": "Save your favorites or share them directly. Every image stays in your gallery for future reference."
+    }
   },
   "UseCases": {
     "label": "Use Cases",
@@ -81,25 +81,41 @@
         "title": "Designers & Artists",
         "subtitle": "Visual Ideation",
         "description": "Sketch concepts, explore styles, and generate reference images to accelerate your creative process.",
-        "examples": ["Mood boards", "Concept art", "Style exploration"]
+        "examples": [
+          "Mood boards",
+          "Concept art",
+          "Style exploration"
+        ]
       },
       "marketers": {
         "title": "Marketers",
         "subtitle": "Content at Scale",
         "description": "Produce on-brand visuals for campaigns, social posts, and blog headers without waiting on stock photos or design queues.",
-        "examples": ["Social graphics", "Ad creative", "Blog images"]
+        "examples": [
+          "Social graphics",
+          "Ad creative",
+          "Blog images"
+        ]
       },
       "creators": {
         "title": "Creators & Storytellers",
         "subtitle": "Visual Narratives",
         "description": "Illustrate stories, build worlds, and visualize characters. Turn ideas into imagery that draws your audience in.",
-        "examples": ["Story illustrations", "Character art", "World-building"]
+        "examples": [
+          "Story illustrations",
+          "Character art",
+          "World-building"
+        ]
       },
       "developers": {
         "title": "Developers",
         "subtitle": "Automated Workflows",
         "description": "Integrate image generation into your applications and workflows. Build product features that leverage AI visuals natively.",
-        "examples": ["App integrations", "Automated pipelines", "Custom tools"]
+        "examples": [
+          "App integrations",
+          "Automated pipelines",
+          "Custom tools"
+        ]
       }
     }
   },
@@ -399,7 +415,9 @@
           "fileSize": "Up to 5 images per batch",
           "queue": "Up to 2 concurrent generations",
           "export": "Download & share",
-          "history": "Gallery history saved forever"
+          "history": "Gallery history saved forever",
+          "creditsValidity": "Credits follow the plan period",
+          "batch": "Batch image generation"
         }
       },
       "starter": {
@@ -417,7 +435,11 @@
           "queue": "Up to 5 concurrent generations",
           "export": "Download & share",
           "history": "Gallery history saved forever",
-          "support": "Email support"
+          "support": "Email support",
+          "creditsValidity": "Credits follow the plan period",
+          "batch": "Batch image generation",
+          "externalApi": "Create multiple external API keys",
+          "customApi": "Configure your own OpenAI-compatible API"
         }
       },
       "pro": {
@@ -436,7 +458,13 @@
           "export": "Download & share",
           "history": "Gallery history saved forever",
           "customCards": "Advanced model access",
-          "support": "Priority support"
+          "support": "Priority support",
+          "creditsValidity": "Credits follow the plan period",
+          "batch": "Batch image generation",
+          "chat": "Chat-to-image and edit mode",
+          "promptOptimization": "Control prompt optimization",
+          "externalApi": "Create multiple external API keys",
+          "customApi": "Configure your own OpenAI-compatible API"
         }
       },
       "ultra": {
@@ -456,6 +484,41 @@
           "history": "Gallery history saved forever",
           "customCards": "Premium model access",
           "aiAssist": "Higher generation limits",
+          "support": "Dedicated support",
+          "creditsValidity": "Credits follow the plan period",
+          "batch": "Batch image generation",
+          "chatGpt55": "Use GPT-5.5 in chat-to-image",
+          "moderationSettlement": "Moderation blocks settle moderation cost only",
+          "moderationLowControl": "Option to allow low-risk moderation results",
+          "promptOptimization": "Control prompt optimization",
+          "externalApi": "Create multiple external API keys",
+          "customApi": "Configure your own OpenAI-compatible API"
+        }
+      },
+      "enterprise": {
+        "name": "Enterprise",
+        "description": "For scaled team production",
+        "cta": "Subscribe",
+        "creditsAmount": "64,000",
+        "creditsLabel": "credits / month",
+        "booksCount": "184",
+        "features": {
+          "creditsValidity": "Credits follow the plan period",
+          "credits": "64,000 credits / month",
+          "input": "All generation features",
+          "batch": "Batch image generation",
+          "fileSize": "Up to 100 images per batch",
+          "chatGpt55": "Use GPT-5.5 in chat-to-image",
+          "moderationSettlement": "Moderation blocks settle moderation cost only",
+          "moderationMediumControl": "Option to allow low and medium-risk moderation results",
+          "promptOptimization": "Control prompt optimization",
+          "queue": "Highest priority queue, up to 100 concurrent generations",
+          "enterpriseResourcePack": "Enterprise resource pack access",
+          "enterpriseResourcePackUnlimited": "Unlimited enterprise resource pack purchases",
+          "export": "Download & share",
+          "history": "Gallery history saved forever",
+          "externalApi": "Create multiple external API keys",
+          "customApi": "Configure your own OpenAI-compatible API",
           "support": "Dedicated support"
         }
       }
@@ -564,7 +627,15 @@
       "modelHint": "Leave blank to use the default model",
       "save": "Save Configuration",
       "remove": "Remove",
-      "docsLink": "API Documentation"
+      "docsLink": "API Documentation",
+      "paidOnly": "Custom API configuration requires Starter plan or higher.",
+      "requiresPaid": "Custom API configuration requires Starter plan or higher.",
+      "saveFailed": "Failed to save configuration",
+      "saved": "Configuration saved",
+      "removed": "Configuration removed",
+      "updateFailed": "Failed to update configuration",
+      "useStream": "Streaming output",
+      "useStreamDescription": "When enabled, web API calls return streaming deltas where supported."
     },
     "general": {
       "title": "General",
@@ -721,6 +792,62 @@
           "admin_grant": "Admin granted credits",
           "refund": "Credits refund"
         }
+      }
+    },
+    "moderation": {
+      "title": "Moderation block level",
+      "description": "This setting applies to web generation. External API keys can use their own level.",
+      "upgradeHint": "Ultra can allow low-risk results. Enterprise can also allow medium-risk results.",
+      "options": {
+        "low": {
+          "label": "Block low and above",
+          "description": "Strictest: low, medium, and high are blocked."
+        },
+        "medium": {
+          "label": "Allow low",
+          "description": "Blocks medium and high only. Available on Ultra."
+        },
+        "high": {
+          "label": "Block high only",
+          "description": "Allows low and medium. Available on Enterprise."
+        }
+      }
+    },
+    "externalApi": {
+      "title": "External API Access",
+      "description": "Create OpenAI-compatible API keys for model listing and image generation. External calls consume your account credits and appear in generation history.",
+      "defaultName": "Default API key",
+      "namePlaceholder": "API key name",
+      "create": "Create API Key",
+      "refresh": "Refresh API keys",
+      "loading": "Loading...",
+      "empty": "No API keys yet",
+      "active": "Active",
+      "revoked": "Revoked",
+      "revoke": "Revoke",
+      "lastUsed": "Last used",
+      "never": "Never",
+      "newKeyLabel": "New API Key",
+      "requiresStarter": "External API access requires Starter plan or higher.",
+      "moderation": {
+        "label": "Moderation level",
+        "options": {
+          "low": "Block low and above",
+          "medium": "Allow low",
+          "high": "Block high only"
+        }
+      },
+      "success": {
+        "created": "API key created",
+        "copied": "Copied",
+        "revoked": "API key revoked",
+        "updated": "Moderation level updated"
+      },
+      "errors": {
+        "load": "Failed to load API keys",
+        "create": "Failed to create API key",
+        "revoke": "Failed to revoke API key",
+        "update": "Failed to update moderation level"
       }
     }
   },

@@ -7,7 +7,10 @@ import { z } from "zod";
 
 import { db } from "@repo/database";
 import { externalApiKey } from "@repo/database/schema";
-import { canUseExternalApi } from "@repo/shared/config/subscription-plan";
+import {
+  canUseExternalApi,
+  normalizeModerationBlockRiskLevelForPlan,
+} from "@repo/shared/config/subscription-plan";
 import { protectedAction } from "@repo/shared/safe-action";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 
@@ -29,6 +32,7 @@ async function ensureExternalApiAllowed(userId: string) {
   if (!canUseExternalApi(plan.plan)) {
     throw new Error("External API access requires Starter plan or higher.");
   }
+  return plan.plan;
 }
 
 export const getExternalApiKeys = withExternalApiKeyAction("list").action(
@@ -39,6 +43,7 @@ export const getExternalApiKeys = withExternalApiKeyAction("list").action(
         name: externalApiKey.name,
         keyPrefix: externalApiKey.keyPrefix,
         lastFour: externalApiKey.lastFour,
+        moderationBlockRiskLevel: externalApiKey.moderationBlockRiskLevel,
         lastUsedAt: externalApiKey.lastUsedAt,
         isActive: externalApiKey.isActive,
         createdAt: externalApiKey.createdAt,
@@ -55,10 +60,11 @@ export const createExternalApiKey = withExternalApiKeyAction("create")
   .schema(
     z.object({
       name: z.string().trim().min(1).max(80).optional(),
+      moderationBlockRiskLevel: z.enum(["low", "medium", "high"]).optional(),
     })
   )
   .action(async ({ parsedInput, ctx }) => {
-    await ensureExternalApiAllowed(ctx.userId);
+    const plan = await ensureExternalApiAllowed(ctx.userId);
 
     const apiKey = createApiKey();
     const keyPrefix = apiKey.slice(0, 7);
@@ -70,6 +76,10 @@ export const createExternalApiKey = withExternalApiKeyAction("create")
       keyPrefix,
       keyHash: hashApiKey(apiKey),
       lastFour: apiKey.slice(-4),
+      moderationBlockRiskLevel: normalizeModerationBlockRiskLevelForPlan(
+        plan,
+        parsedInput.moderationBlockRiskLevel
+      ),
     });
 
     return { apiKey };
@@ -108,4 +118,36 @@ export const revokeExternalApiKey = withExternalApiKeyAction("revoke")
       );
 
     return { success: true };
+  });
+
+export const updateExternalApiKeyModeration = withExternalApiKeyAction(
+  "updateModeration"
+)
+  .schema(
+    z.object({
+      id: z.string().min(1),
+      moderationBlockRiskLevel: z.enum(["low", "medium", "high"]),
+    })
+  )
+  .action(async ({ parsedInput, ctx }) => {
+    const plan = await ensureExternalApiAllowed(ctx.userId);
+    const normalized = normalizeModerationBlockRiskLevelForPlan(
+      plan,
+      parsedInput.moderationBlockRiskLevel
+    );
+
+    await db
+      .update(externalApiKey)
+      .set({
+        moderationBlockRiskLevel: normalized,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(externalApiKey.id, parsedInput.id),
+          eq(externalApiKey.userId, ctx.userId)
+        )
+      );
+
+    return { success: true, moderationBlockRiskLevel: normalized };
   });

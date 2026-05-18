@@ -124,6 +124,7 @@ export const postExternalImageGenerations = withApiLogging(
       apiPrompt: parsed.data.apiPrompt || parsed.data.api_prompt,
       promptOptimization:
         parsed.data.promptOptimization ?? parsed.data.prompt_optimization,
+      moderationBlockRiskLevel: auth.moderationBlockRiskLevel,
       size: parsed.data.size || DEFAULT_IMAGE_SIZE,
       model: imageModel,
       quality: parsed.data.quality,

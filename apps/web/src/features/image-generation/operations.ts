@@ -1,10 +1,11 @@
 import { db } from "@repo/database";
-import { generation } from "@repo/database/schema";
+import { generation, user } from "@repo/database/schema";
 import {
   canUseChat,
   canUseGpt55Chat,
   canUseModerationOnlyFailureSettlement,
   canUsePromptOptimization,
+  normalizeModerationBlockRiskLevelForPlan,
   PLAN_PRIVILEGES,
 } from "@repo/shared/config/subscription-plan";
 import { consumeCredits, grantCredits } from "@repo/shared/credits/core";
@@ -36,6 +37,7 @@ import type {
   GenerateImageParams,
   ImageGenerationCallbacks,
   ImageInputFile,
+  ModerationBlockRiskLevel,
 } from "./types";
 
 type RunImageGenerationInput =
@@ -133,6 +135,27 @@ function getChatContextLength(params: {
   );
 }
 
+async function getUserModerationBlockRiskLevel(
+  userId: string,
+  plan: Awaited<ReturnType<typeof getUserPlan>>["plan"],
+  requested?: ModerationBlockRiskLevel
+) {
+  if (requested) {
+    return normalizeModerationBlockRiskLevelForPlan(plan, requested);
+  }
+
+  const [row] = await db
+    .select({ moderationBlockRiskLevel: user.moderationBlockRiskLevel })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+
+  return normalizeModerationBlockRiskLevelForPlan(
+    plan,
+    row?.moderationBlockRiskLevel
+  );
+}
+
 export async function runImageGenerationForUser(
   input: RunImageGenerationInput,
   callbacks?: ImageGenerationCallbacks
@@ -152,6 +175,11 @@ export async function runImageGenerationForUser(
     (await getRuntimeSettingString("NEXT_PUBLIC_GENERATIONS_BUCKET_NAME")) ||
     "generations";
   const userPlan = await getUserPlan(input.userId);
+  const moderationBlockRiskLevel = await getUserModerationBlockRiskLevel(
+    input.userId,
+    userPlan.plan,
+    input.moderationBlockRiskLevel
+  );
   const moderationFailureCredits = canUseModerationOnlyFailureSettlement(
     userPlan.plan
   )
@@ -249,6 +277,7 @@ export async function runImageGenerationForUser(
           initialCreditCharge,
           bucket,
           userPlan,
+          moderationBlockRiskLevel,
           moderationFailureCredits,
           promptOptimization,
           apiPrompt,
@@ -281,6 +310,7 @@ async function runQueuedImageGenerationForUser({
   initialCreditCharge,
   bucket,
   userPlan,
+  moderationBlockRiskLevel,
   moderationFailureCredits,
   promptOptimization,
   apiPrompt,
@@ -300,6 +330,7 @@ async function runQueuedImageGenerationForUser({
   initialCreditCharge: number;
   bucket: string;
   userPlan: Awaited<ReturnType<typeof getUserPlan>>;
+  moderationBlockRiskLevel: ModerationBlockRiskLevel;
   moderationFailureCredits: number;
   promptOptimization: boolean;
   apiPrompt: string;
@@ -444,6 +475,7 @@ async function runQueuedImageGenerationForUser({
     mode: inputImages.length > 0 ? "image" : "text",
     userId: input.userId,
     userPlan: userPlan.plan,
+    userModerationBlockRiskLevel: moderationBlockRiskLevel,
     generationId,
   });
 

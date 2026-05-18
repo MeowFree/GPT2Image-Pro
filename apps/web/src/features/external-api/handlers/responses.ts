@@ -247,6 +247,7 @@ export const postExternalResponses = withApiLogging(
       userId: auth.userId,
       prompt,
       history,
+      moderationBlockRiskLevel: auth.moderationBlockRiskLevel,
       size: parsed.data.size || DEFAULT_IMAGE_SIZE,
       model: parsed.data.model,
       quality: parsed.data.quality as ImageQuality | undefined,

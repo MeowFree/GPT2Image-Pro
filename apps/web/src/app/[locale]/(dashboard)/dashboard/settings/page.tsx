@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { getLocale } from "next-intl/server";
 import { SettingsProfileView } from "@/features/settings/components";
 import { getServerSession } from "@repo/shared/auth/server";
+import { db, user } from "@repo/database";
+import { eq } from "drizzle-orm";
 
 /**
  * 设置页面元数据
@@ -27,6 +29,12 @@ export default async function SettingsPage() {
     redirect(`/${locale}/sign-in`);
   }
 
+  const [profile] = await db
+    .select({ moderationBlockRiskLevel: user.moderationBlockRiskLevel })
+    .from(user)
+    .where(eq(user.id, session.user.id))
+    .limit(1);
+
   return (
     <SettingsProfileView
       user={{
@@ -34,6 +42,11 @@ export default async function SettingsPage() {
         name: session.user.name || "",
         email: session.user.email || "",
         image: session.user.image,
+        moderationBlockRiskLevel:
+          profile?.moderationBlockRiskLevel === "medium" ||
+          profile?.moderationBlockRiskLevel === "high"
+            ? profile.moderationBlockRiskLevel
+            : "low",
       }}
     />
   );

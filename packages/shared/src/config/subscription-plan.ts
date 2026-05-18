@@ -20,6 +20,23 @@ export type SubscriptionPlan =
   | "ultra"
   | "enterprise";
 
+export type ModerationBlockRiskLevel = "low" | "medium" | "high";
+
+export const MODERATION_BLOCK_RISK_LEVELS = [
+  "low",
+  "medium",
+  "high",
+] as const;
+
+const MODERATION_BLOCK_RISK_LEVEL_RANK: Record<
+  ModerationBlockRiskLevel,
+  number
+> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+};
+
 /**
  * 对话模式旗舰模型
  */
@@ -284,6 +301,72 @@ export function canUseModerationOnlyFailureSettlement(
   plan: SubscriptionPlan
 ): boolean {
   return isPlanAtLeast(plan, "ultra");
+}
+
+/**
+ * 是否允许用户/API Key 调整审核拦截级别。
+ */
+export function canUseModerationRiskLevelControl(
+  plan: SubscriptionPlan
+): boolean {
+  return isPlanAtLeast(plan, "ultra");
+}
+
+/**
+ * 套餐默认审核拦截级别。
+ *
+ * low = low/medium/high 均拦截
+ * medium = 放开 low，仅拦截 medium/high
+ * high = 放开 low/medium，仅拦截 high
+ */
+export function getDefaultModerationBlockRiskLevel(
+  plan: SubscriptionPlan
+): ModerationBlockRiskLevel {
+  if (plan === "enterprise") return "high";
+  if (plan === "ultra") return "medium";
+  return "low";
+}
+
+export function getMaxModerationBlockRiskLevelForPlan(
+  plan: SubscriptionPlan
+): ModerationBlockRiskLevel {
+  if (plan === "enterprise") return "high";
+  if (plan === "ultra") return "medium";
+  return "low";
+}
+
+export function isModerationBlockRiskLevel(
+  value: unknown
+): value is ModerationBlockRiskLevel {
+  return (
+    value === "low" ||
+    value === "medium" ||
+    value === "high"
+  );
+}
+
+export function getAllowedModerationBlockRiskLevels(
+  plan: SubscriptionPlan
+): ModerationBlockRiskLevel[] {
+  const maxLevel = getMaxModerationBlockRiskLevelForPlan(plan);
+  const maxRank = MODERATION_BLOCK_RISK_LEVEL_RANK[maxLevel];
+  return MODERATION_BLOCK_RISK_LEVELS.filter(
+    (level) => MODERATION_BLOCK_RISK_LEVEL_RANK[level] <= maxRank
+  );
+}
+
+export function normalizeModerationBlockRiskLevelForPlan(
+  plan: SubscriptionPlan,
+  value?: string | null
+): ModerationBlockRiskLevel {
+  const fallback = getDefaultModerationBlockRiskLevel(plan);
+  const requested = isModerationBlockRiskLevel(value) ? value : fallback;
+  const maxLevel = getMaxModerationBlockRiskLevelForPlan(plan);
+
+  return MODERATION_BLOCK_RISK_LEVEL_RANK[requested] >
+    MODERATION_BLOCK_RISK_LEVEL_RANK[maxLevel]
+    ? maxLevel
+    : requested;
 }
 
 /**

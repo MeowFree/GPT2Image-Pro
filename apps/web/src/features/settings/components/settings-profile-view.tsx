@@ -5,7 +5,7 @@ import { Camera, Loader2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
@@ -31,6 +31,8 @@ import {
   FormMessage,
 } from "@repo/ui/components/form";
 import { Input } from "@repo/ui/components/input";
+import { Label } from "@repo/ui/components/label";
+import { RadioGroup, RadioGroupItem } from "@repo/ui/components/radio-group";
 import {
   Select,
   SelectContent,
@@ -40,7 +42,14 @@ import {
 } from "@repo/ui/components/select";
 import { Separator } from "@repo/ui/components/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui/components/tabs";
+import {
+  canUseModerationRiskLevelControl,
+  getAllowedModerationBlockRiskLevels,
+  type ModerationBlockRiskLevel,
+  type SubscriptionPlan,
+} from "@repo/shared/config/subscription-plan";
 import { CreditUsageSection } from "@repo/shared/credits/components";
+import { getMyPlanAction } from "@repo/shared/subscription/actions/get-user-plan";
 import {
   deleteAccountAction,
   updateProfileAction,
@@ -67,6 +76,7 @@ interface SettingsProfileViewProps {
     name: string;
     email: string;
     image?: string | null | undefined;
+    moderationBlockRiskLevel: ModerationBlockRiskLevel;
   };
 }
 
@@ -87,6 +97,9 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [userPlan, setUserPlan] = useState<SubscriptionPlan>("free");
+  const moderationOptions = getAllowedModerationBlockRiskLevels(userPlan);
+  const moderationControlAllowed = canUseModerationRiskLevelControl(userPlan);
 
   const handleLanguageChange = (newLocale: string) => {
     startLocaleTransition(() => {
@@ -113,8 +126,23 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
     resolver: zodResolver(updateProfileSchema),
     defaultValues: {
       name: user.name,
+      moderationBlockRiskLevel: user.moderationBlockRiskLevel,
     },
   });
+
+  useEffect(() => {
+    getMyPlanAction().then((result) => {
+      if (result?.data?.plan) {
+        const nextPlan = result.data.plan;
+        setUserPlan(nextPlan);
+        const allowed = getAllowedModerationBlockRiskLevels(nextPlan);
+        const current = form.getValues("moderationBlockRiskLevel");
+        if (current && !allowed.includes(current)) {
+          form.setValue("moderationBlockRiskLevel", allowed.at(-1) || "low");
+        }
+      }
+    });
+  }, [form]);
 
   const { execute: executeUpdateProfile, isPending } = useAction(
     updateProfileAction,
@@ -355,6 +383,70 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
                     {t("general.emailDescription")}
                   </p>
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="moderationBlockRiskLevel"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("moderation.title")}</FormLabel>
+                      <FormControl>
+                        <RadioGroup
+                          value={field.value}
+                          onValueChange={(value) =>
+                            field.onChange(value as ModerationBlockRiskLevel)
+                          }
+                          className="grid max-w-2xl gap-3 md:grid-cols-3"
+                          disabled={isPending || !moderationControlAllowed}
+                        >
+                          {(
+                            [
+                              "low",
+                              "medium",
+                              "high",
+                            ] as ModerationBlockRiskLevel[]
+                          ).map((level) => {
+                            const optionAllowed =
+                              moderationOptions.includes(level);
+                            return (
+                              <Label
+                                key={level}
+                                htmlFor={`moderation-risk-${level}`}
+                                className={`rounded-md border border-border p-3 text-sm ${
+                                  optionAllowed
+                                    ? "cursor-pointer hover:bg-muted/50"
+                                    : "cursor-not-allowed opacity-50"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <RadioGroupItem
+                                    id={`moderation-risk-${level}`}
+                                    value={level}
+                                    disabled={!optionAllowed}
+                                  />
+                                  <span className="font-medium">
+                                    {t(`moderation.options.${level}.label`)}
+                                  </span>
+                                </div>
+                                <p className="mt-2 text-xs font-normal text-muted-foreground">
+                                  {t(
+                                    `moderation.options.${level}.description`
+                                  )}
+                                </p>
+                              </Label>
+                            );
+                          })}
+                        </RadioGroup>
+                      </FormControl>
+                      <FormDescription>
+                        {moderationControlAllowed
+                          ? t("moderation.description")
+                          : t("moderation.upgradeHint")}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </form>
             </Form>
           </section>

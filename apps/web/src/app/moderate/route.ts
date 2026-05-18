@@ -2,7 +2,11 @@ import {
   moderateContent,
   type ModerationImageInput,
 } from "@repo/shared/moderation";
-import type { SubscriptionPlan } from "@repo/shared/config/subscription-plan";
+import {
+  isModerationBlockRiskLevel,
+  type ModerationBlockRiskLevel,
+  type SubscriptionPlan,
+} from "@repo/shared/config/subscription-plan";
 import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -56,6 +60,12 @@ function parsePlan(value: unknown): SubscriptionPlan | undefined {
     : undefined;
 }
 
+function parseModerationBlockRiskLevel(
+  value: unknown
+): ModerationBlockRiskLevel | undefined {
+  return isModerationBlockRiskLevel(value) ? value : undefined;
+}
+
 export async function POST(request: NextRequest) {
   if (!(await verifyProxySecret(request))) {
     return errorResponse("Unauthorized", 401);
@@ -101,6 +111,9 @@ export async function POST(request: NextRequest) {
     mode,
     userId: typeof input.userId === "string" ? input.userId : undefined,
     userPlan: parsePlan(input.userPlan),
+    userModerationBlockRiskLevel: parseModerationBlockRiskLevel(
+      input.userModerationBlockRiskLevel
+    ),
     generationId:
       typeof input.generationId === "string" ? input.generationId : undefined,
     skipProxy: true,

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 
 import { db, user } from "@/db";
+import { normalizeModerationBlockRiskLevelForPlan } from "@/config/subscription-plan";
+import { getUserPlan } from "@/features/subscription/services/user-plan";
 import { protectedAction } from "@/lib/safe-action";
 import { updateProfileSchema } from "@/features/settings/schemas";
 
@@ -23,7 +25,12 @@ export const updateProfileAction = protectedAction
   .schema(updateProfileSchema)
   .action(async ({ parsedInput: data, ctx }) => {
     // 构建更新对象
-    const updateData: { name?: string; image?: string; updatedAt: Date } = {
+    const updateData: {
+      name?: string;
+      image?: string;
+      moderationBlockRiskLevel?: string;
+      updatedAt: Date;
+    } = {
       updatedAt: new Date(),
     };
 
@@ -35,6 +42,15 @@ export const updateProfileAction = protectedAction
     // 如果提供了 image，添加到更新对象
     if (data.image !== undefined) {
       updateData.image = data.image;
+    }
+
+    if (data.moderationBlockRiskLevel !== undefined) {
+      const { plan } = await getUserPlan(ctx.userId);
+      updateData.moderationBlockRiskLevel =
+        normalizeModerationBlockRiskLevelForPlan(
+          plan,
+          data.moderationBlockRiskLevel
+        );
     }
 
     // 使用 Drizzle 更新用户资料

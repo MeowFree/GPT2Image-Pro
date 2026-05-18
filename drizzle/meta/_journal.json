@@ -43,6 +43,13 @@
       "when": 1778868000000,
       "tag": "0005_system_settings_and_chat_state",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779177600000,
+      "tag": "0006_moderation_risk_levels",
+      "breakpoints": true
     }
   ]
 }

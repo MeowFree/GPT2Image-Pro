@@ -6,7 +6,11 @@ import Green20220302Module, {
 import { Config as AliyunOpenApiConfig } from "@alicloud/openapi-client";
 import { RuntimeOptions as AliyunRuntimeOptions } from "@alicloud/tea-util";
 import OpenAI from "openai";
-import type { SubscriptionPlan } from "../config/subscription-plan";
+import type {
+  ModerationBlockRiskLevel,
+  SubscriptionPlan,
+} from "../config/subscription-plan";
+import { normalizeModerationBlockRiskLevelForPlan } from "../config/subscription-plan";
 import { logError, logWarn } from "../logger";
 import {
   getRuntimeSettingBoolean,
@@ -46,6 +50,7 @@ export interface ModerateContentInput {
   mode?: ModerationMode;
   userId?: string;
   userPlan?: SubscriptionPlan;
+  userModerationBlockRiskLevel?: ModerationBlockRiskLevel;
   generationId?: string;
   skipProxy?: boolean;
 }
@@ -178,14 +183,20 @@ async function getAliyunBlockRiskLevel(): Promise<AliyunRiskLevel> {
 
 function getEffectiveAliyunBlockRiskLevel(
   blockRiskLevel: AliyunRiskLevel,
-  userPlan?: SubscriptionPlan
+  userPlan?: SubscriptionPlan,
+  userModerationBlockRiskLevel?: ModerationBlockRiskLevel
 ): AliyunRiskLevel {
-  if (userPlan !== "enterprise") {
+  if (!userPlan) {
     return blockRiskLevel;
   }
 
-  return ALIYUN_RISK_ORDER[blockRiskLevel] < ALIYUN_RISK_ORDER.medium
-    ? "medium"
+  const planLevel = normalizeModerationBlockRiskLevelForPlan(
+    userPlan,
+    userModerationBlockRiskLevel
+  );
+
+  return ALIYUN_RISK_ORDER[planLevel] > ALIYUN_RISK_ORDER[blockRiskLevel]
+    ? planLevel
     : blockRiskLevel;
 }
 
@@ -553,7 +564,8 @@ async function moderateWithAliyun(
   const isImageMode = input.mode === "image" || Boolean(input.images?.length);
   const blockRiskLevel = getEffectiveAliyunBlockRiskLevel(
     await getAliyunBlockRiskLevel(),
-    input.userPlan
+    input.userPlan,
+    input.userModerationBlockRiskLevel
   );
 
   if (!isImageMode && config.textService) {
@@ -671,6 +683,7 @@ async function moderateWithProxy(
         mode: input.mode,
         userId: input.userId,
         userPlan: input.userPlan,
+        userModerationBlockRiskLevel: input.userModerationBlockRiskLevel,
         generationId: input.generationId,
         images: (input.images || []).map((image) => ({
           name: image.name,

@@ -81,25 +81,41 @@
         "title": "设计师与艺术家",
         "subtitle": "视觉创意",
         "description": "勾勒概念、探索风格、生成参考图，加速你的创作流程。",
-        "examples": ["情绪板", "概念设计", "风格探索"]
+        "examples": [
+          "情绪板",
+          "概念设计",
+          "风格探索"
+        ]
       },
       "marketers": {
         "title": "营销人员",
         "subtitle": "规模化内容",
         "description": "为营销活动、社交媒体与博客头图生产符合品牌调性的视觉素材，无需等待素材库或设计排期。",
-        "examples": ["社交图像", "广告创意", "博客配图"]
+        "examples": [
+          "社交图像",
+          "广告创意",
+          "博客配图"
+        ]
       },
       "creators": {
         "title": "创作者与讲故事的人",
         "subtitle": "视觉叙事",
         "description": "为故事绘制插图、构建世界观、呈现角色形象。把想法变成能吸引读者的画面。",
-        "examples": ["故事插画", "角色设定", "世界构建"]
+        "examples": [
+          "故事插画",
+          "角色设定",
+          "世界构建"
+        ]
       },
       "developers": {
         "title": "开发者",
         "subtitle": "自动化工作流",
         "description": "将图像生成能力集成到你的应用和工作流中。打造原生集成 AI 视觉的产品功能。",
-        "examples": ["应用集成", "自动化流程", "自定义工具"]
+        "examples": [
+          "应用集成",
+          "自动化流程",
+          "自定义工具"
+        ]
       }
     }
   },
@@ -363,7 +379,9 @@
           "fileSize": "每批最多 5 张图",
           "queue": "单用户最多 2 个并发生图",
           "export": "下载与分享",
-          "history": "画廊历史永久保存"
+          "history": "画廊历史永久保存",
+          "creditsValidity": "积分按套餐周期有效",
+          "batch": "批量生图"
         }
       },
       "starter": {
@@ -381,7 +399,11 @@
           "queue": "单用户最多 5 个并发生图",
           "export": "下载与分享",
           "history": "画廊历史永久保存",
-          "support": "邮件支持"
+          "support": "邮件支持",
+          "creditsValidity": "积分按套餐周期有效",
+          "batch": "批量生图",
+          "externalApi": "可创建多个外接 API Key",
+          "customApi": "可配置自接 OpenAI 兼容 API"
         }
       },
       "pro": {
@@ -400,7 +422,13 @@
           "export": "下载与分享",
           "history": "画廊历史永久保存",
           "customCards": "高级模型访问",
-          "support": "优先支持"
+          "support": "优先支持",
+          "creditsValidity": "积分按套餐周期有效",
+          "batch": "批量生图",
+          "chat": "对话生图与编辑模式",
+          "promptOptimization": "可自定义提示词优化开关",
+          "externalApi": "可创建多个外接 API Key",
+          "customApi": "可配置自接 OpenAI 兼容 API"
         }
       },
       "ultra": {
@@ -420,6 +448,41 @@
           "history": "画廊历史永久保存",
           "customCards": "旗舰模型访问",
           "aiAssist": "更高生成额度",
+          "support": "专属支持",
+          "creditsValidity": "积分按套餐周期有效",
+          "batch": "批量生图",
+          "chatGpt55": "对话生图可使用 GPT-5.5",
+          "moderationSettlement": "审核拦截仅结算审核成本",
+          "moderationLowControl": "可选择放开 low 级审核拦截",
+          "promptOptimization": "可自定义提示词优化开关",
+          "externalApi": "可创建多个外接 API Key",
+          "customApi": "可配置自接 OpenAI 兼容 API"
+        }
+      },
+      "enterprise": {
+        "name": "企业版",
+        "description": "适合团队规模化生产",
+        "cta": "订阅",
+        "creditsAmount": "64,000",
+        "creditsLabel": "积分 / 月",
+        "booksCount": "184",
+        "features": {
+          "creditsValidity": "积分按套餐周期有效",
+          "credits": "每月 64,000 积分",
+          "input": "全部生成功能",
+          "batch": "批量生图",
+          "fileSize": "每批最多 100 张图",
+          "chatGpt55": "对话生图可使用 GPT-5.5",
+          "moderationSettlement": "审核拦截仅结算审核成本",
+          "moderationMediumControl": "可选择放开 low 和 medium 级审核拦截",
+          "promptOptimization": "可自定义提示词优化开关",
+          "queue": "最高优先队列，单用户最多 100 个并发生图",
+          "enterpriseResourcePack": "企业资源包购买权限",
+          "enterpriseResourcePackUnlimited": "企业资源包不限次数购买",
+          "export": "下载与分享",
+          "history": "画廊历史永久保存",
+          "externalApi": "可创建多个外接 API Key",
+          "customApi": "可配置自接 OpenAI 兼容 API",
           "support": "专属支持"
         }
       }
@@ -564,7 +627,15 @@
       "modelHint": "留空则使用默认模型",
       "save": "保存配置",
       "remove": "删除",
-      "docsLink": "API 文档"
+      "docsLink": "API 文档",
+      "paidOnly": "自接 API 需要入门版或更高套餐。",
+      "requiresPaid": "自接 API 需要入门版或更高套餐。",
+      "saveFailed": "保存配置失败",
+      "saved": "配置已保存",
+      "removed": "配置已删除",
+      "updateFailed": "更新配置失败",
+      "useStream": "流式输出",
+      "useStreamDescription": "启用后，网页 API 在支持时返回流式增量结果。"
     },
     "general": {
       "title": "基本信息",
@@ -721,6 +792,62 @@
           "admin_grant": "管理员发放积分",
           "refund": "积分退款"
         }
+      }
+    },
+    "moderation": {
+      "title": "审核拦截级别",
+      "description": "该设置会应用到网页端生成；外接 API Key 可单独设置。",
+      "upgradeHint": "旗舰版可放开 low 级拦截，企业版可继续放开 medium 级拦截。",
+      "options": {
+        "low": {
+          "label": "拦截 low 及以上",
+          "description": "最严格：low、medium、high 均会拦截。"
+        },
+        "medium": {
+          "label": "放开 low",
+          "description": "仅拦截 medium、high，旗舰版可选。"
+        },
+        "high": {
+          "label": "仅拦截 high",
+          "description": "放开 low、medium，仅企业版可选。"
+        }
+      }
+    },
+    "externalApi": {
+      "title": "外接 API 访问",
+      "description": "创建 OpenAI 兼容的模型查询和图片生成 API Key。外部调用会消耗你的账户积分，并写入生成历史。",
+      "defaultName": "默认 API Key",
+      "namePlaceholder": "API Key 名称",
+      "create": "创建 API Key",
+      "refresh": "刷新 API Key",
+      "loading": "加载中...",
+      "empty": "暂无 API Key",
+      "active": "启用中",
+      "revoked": "已撤销",
+      "revoke": "撤销",
+      "lastUsed": "最近使用",
+      "never": "从未使用",
+      "newKeyLabel": "新 API Key",
+      "requiresStarter": "外接 API 需要入门版或更高套餐。",
+      "moderation": {
+        "label": "审核级别",
+        "options": {
+          "low": "拦截 low 及以上",
+          "medium": "放开 low",
+          "high": "仅拦截 high"
+        }
+      },
+      "success": {
+        "created": "API Key 已创建",
+        "copied": "已复制",
+        "revoked": "API Key 已撤销",
+        "updated": "审核级别已更新"
+      },
+      "errors": {
+        "load": "加载 API Key 失败",
+        "create": "创建 API Key 失败",
+        "revoke": "撤销 API Key 失败",
+        "update": "更新审核级别失败"
       }
     }
   },

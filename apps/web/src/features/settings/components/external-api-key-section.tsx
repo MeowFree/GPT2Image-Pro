@@ -1,10 +1,22 @@
 "use client";
 
-import { canUseExternalApi } from "@repo/shared/config/subscription-plan";
+import {
+  canUseExternalApi,
+  getAllowedModerationBlockRiskLevels,
+  type ModerationBlockRiskLevel,
+  type SubscriptionPlan,
+} from "@repo/shared/config/subscription-plan";
 import { getMyPlanAction } from "@repo/shared/subscription/actions/get-user-plan";
 import { Button } from "@repo/ui/components/button";
 import { Input } from "@repo/ui/components/input";
 import { Label } from "@repo/ui/components/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@repo/ui/components/select";
 import { Copy, KeyRound, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
@@ -15,6 +27,7 @@ import {
   createExternalApiKey,
   getExternalApiKeys,
   revokeExternalApiKey,
+  updateExternalApiKeyModeration,
 } from "../actions";
 
 type ExternalApiKeySummary = {
@@ -22,6 +35,7 @@ type ExternalApiKeySummary = {
   name: string;
   keyPrefix: string;
   lastFour: string;
+  moderationBlockRiskLevel: ModerationBlockRiskLevel;
   lastUsedAt: Date | string | null;
   isActive: boolean;
   createdAt: Date | string;
@@ -41,14 +55,28 @@ export function ExternalApiKeySection() {
   const [keys, setKeys] = useState<ExternalApiKeySummary[]>([]);
   const [newKey, setNewKey] = useState("");
   const [keyName, setKeyName] = useState(t("defaultName"));
+  const [newKeyModerationLevel, setNewKeyModerationLevel] =
+    useState<ModerationBlockRiskLevel>("low");
   const [loading, setLoading] = useState(true);
   const [externalApiAllowed, setExternalApiAllowed] = useState(false);
+  const [userPlan, setUserPlan] = useState<SubscriptionPlan>("free");
+  const moderationOptions = getAllowedModerationBlockRiskLevels(userPlan);
+  const moderationOptionSet = new Set(moderationOptions);
 
   const { execute: loadKeys, isPending: isRefreshing } = useAction(
     getExternalApiKeys,
     {
       onSuccess: ({ data }) => {
-        setKeys(data || []);
+        setKeys(
+          (data || []).map((key) => ({
+            ...key,
+            moderationBlockRiskLevel:
+              key.moderationBlockRiskLevel === "medium" ||
+              key.moderationBlockRiskLevel === "high"
+                ? key.moderationBlockRiskLevel
+                : "low",
+          }))
+        );
         setLoading(false);
       },
       onError: ({ error }) => {
@@ -87,14 +115,31 @@ export function ExternalApiKeySection() {
     }
   );
 
+  const {
+    execute: updateKeyModeration,
+    isPending: isUpdatingModeration,
+  } = useAction(updateExternalApiKeyModeration, {
+    onSuccess: () => {
+      toast.success(t("success.updated"));
+      loadKeys();
+    },
+    onError: ({ error }) => {
+      toast.error(error.serverError || t("errors.update"));
+    },
+  });
+
   useEffect(() => {
     if (didLoadRef.current) return;
     didLoadRef.current = true;
     loadKeys();
     getMyPlanAction().then((result) => {
+      const plan = result?.data?.plan || "free";
+      setUserPlan(plan);
       setExternalApiAllowed(
         result?.data?.plan ? canUseExternalApi(result.data.plan) : false
       );
+      const allowed = getAllowedModerationBlockRiskLevels(plan);
+      setNewKeyModerationLevel(allowed.at(-1) || "low");
     });
   }, [loadKeys]);
 
@@ -170,9 +215,32 @@ export function ExternalApiKeySection() {
           placeholder={t("namePlaceholder")}
           className="sm:max-w-xs"
         />
+        <Select
+          value={newKeyModerationLevel}
+          onValueChange={(value) =>
+            setNewKeyModerationLevel(value as ModerationBlockRiskLevel)
+          }
+          disabled={!externalApiAllowed}
+        >
+          <SelectTrigger className="sm:w-48">
+            <SelectValue placeholder={t("moderation.label")} />
+          </SelectTrigger>
+          <SelectContent>
+            {moderationOptions.map((level) => (
+              <SelectItem key={level} value={level}>
+                {t(`moderation.options.${level}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button
           type="button"
-          onClick={() => createKey({ name: keyName || undefined })}
+          onClick={() =>
+            createKey({
+              name: keyName || undefined,
+              moderationBlockRiskLevel: newKeyModerationLevel,
+            })
+          }
           disabled={isCreating || !externalApiAllowed}
         >
           {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -209,6 +277,40 @@ export function ExternalApiKeySection() {
                   {key.keyPrefix}...{key.lastFour} · {t("lastUsed")}{" "}
                   {formatDate(key.lastUsedAt, t("never"))}
                 </p>
+                <div className="mt-3 max-w-xs">
+                  <Label htmlFor={`external-key-moderation-${key.id}`}>
+                    {t("moderation.label")}
+                  </Label>
+                  <Select
+                    value={
+                      moderationOptionSet.has(key.moderationBlockRiskLevel)
+                        ? key.moderationBlockRiskLevel
+                        : moderationOptions.at(-1) || "low"
+                    }
+                    onValueChange={(value) =>
+                      updateKeyModeration({
+                        id: key.id,
+                        moderationBlockRiskLevel:
+                          value as ModerationBlockRiskLevel,
+                      })
+                    }
+                    disabled={!externalApiAllowed || isUpdatingModeration}
+                  >
+                    <SelectTrigger
+                      id={`external-key-moderation-${key.id}`}
+                      className="mt-1"
+                    >
+                      <SelectValue placeholder={t("moderation.label")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {moderationOptions.map((level) => (
+                        <SelectItem key={level} value={level}>
+                          {t(`moderation.options.${level}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               {key.isActive && (
                 <Button
