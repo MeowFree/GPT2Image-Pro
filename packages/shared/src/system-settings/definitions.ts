@@ -695,10 +695,10 @@ export const SYSTEM_SETTING_DEFINITIONS = [
   {
     key: "ALIYUN_MODERATION_TEXT_SERVICE",
     label: "阿里云文本服务",
-    description: "如 ai_art_detection。",
+    description: "阿里云文本审核 service code。",
     category: "moderation",
     valueType: "string",
-    defaultValue: "ai_art_detection",
+    defaultValue: "ugc_moderation_byllm_cb",
   },
   {
     key: "ALIYUN_MODERATION_IMAGE_REGION_ID",
