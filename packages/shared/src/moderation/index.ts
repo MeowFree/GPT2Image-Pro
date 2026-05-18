@@ -6,6 +6,7 @@ import Green20220302Module, {
 import { Config as AliyunOpenApiConfig } from "@alicloud/openapi-client";
 import { RuntimeOptions as AliyunRuntimeOptions } from "@alicloud/tea-util";
 import OpenAI from "openai";
+import type { SubscriptionPlan } from "../config/subscription-plan";
 import { logError, logWarn } from "../logger";
 import {
   getRuntimeSettingBoolean,
@@ -44,6 +45,7 @@ export interface ModerateContentInput {
   images?: ModerationImageInput[];
   mode?: ModerationMode;
   userId?: string;
+  userPlan?: SubscriptionPlan;
   generationId?: string;
   skipProxy?: boolean;
 }
@@ -172,6 +174,19 @@ async function getAliyunBlockRiskLevel(): Promise<AliyunRiskLevel> {
   return value === "low" || value === "medium" || value === "high"
     ? value
     : "medium";
+}
+
+function getEffectiveAliyunBlockRiskLevel(
+  blockRiskLevel: AliyunRiskLevel,
+  userPlan?: SubscriptionPlan
+): AliyunRiskLevel {
+  if (userPlan !== "enterprise") {
+    return blockRiskLevel;
+  }
+
+  return ALIYUN_RISK_ORDER[blockRiskLevel] < ALIYUN_RISK_ORDER.medium
+    ? "medium"
+    : blockRiskLevel;
 }
 
 function shouldBlockAliyunRisk(
@@ -536,7 +551,10 @@ async function moderateWithAliyun(
   }
 
   const isImageMode = input.mode === "image" || Boolean(input.images?.length);
-  const blockRiskLevel = await getAliyunBlockRiskLevel();
+  const blockRiskLevel = getEffectiveAliyunBlockRiskLevel(
+    await getAliyunBlockRiskLevel(),
+    input.userPlan
+  );
 
   if (!isImageMode && config.textService) {
     return moderateWithAliyunTextPlus(
@@ -652,6 +670,7 @@ async function moderateWithProxy(
         prompt: input.prompt,
         mode: input.mode,
         userId: input.userId,
+        userPlan: input.userPlan,
         generationId: input.generationId,
         images: (input.images || []).map((image) => ({
           name: image.name,

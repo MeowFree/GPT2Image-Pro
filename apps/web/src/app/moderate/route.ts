@@ -2,6 +2,7 @@ import {
   moderateContent,
   type ModerationImageInput,
 } from "@repo/shared/moderation";
+import type { SubscriptionPlan } from "@repo/shared/config/subscription-plan";
 import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -43,6 +44,16 @@ function parseImage(image: ModerationRequestImage): ModerationImageInput | null 
     type: image.type || "image/png",
     url: image.url,
   };
+}
+
+function parsePlan(value: unknown): SubscriptionPlan | undefined {
+  return value === "free" ||
+    value === "starter" ||
+    value === "pro" ||
+    value === "ultra" ||
+    value === "enterprise"
+    ? value
+    : undefined;
 }
 
 export async function POST(request: NextRequest) {
@@ -89,6 +100,7 @@ export async function POST(request: NextRequest) {
     images,
     mode,
     userId: typeof input.userId === "string" ? input.userId : undefined,
+    userPlan: parsePlan(input.userPlan),
     generationId:
       typeof input.generationId === "string" ? input.generationId : undefined,
     skipProxy: true,

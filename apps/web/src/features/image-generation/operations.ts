@@ -443,6 +443,7 @@ async function runQueuedImageGenerationForUser({
     images: inputImages,
     mode: inputImages.length > 0 ? "image" : "text",
     userId: input.userId,
+    userPlan: userPlan.plan,
     generationId,
   });
 
