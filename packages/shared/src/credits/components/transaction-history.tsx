@@ -7,6 +7,7 @@
  */
 
 import { SUBSCRIPTION_MONTHLY_CREDITS } from "@repo/shared/config/payment";
+import { ENTERPRISE_RESOURCE_PACKAGE_ID } from "@repo/shared/credits/config";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import {
@@ -154,6 +155,15 @@ export function TransactionHistory() {
       case "admin_grant":
         return t("descriptions.admin_grant");
       case "purchase":
+        if (meta?.packageId === ENTERPRISE_RESOURCE_PACKAGE_ID) {
+          const quantity =
+            typeof meta.quantity === "number" && meta.quantity > 1
+              ? meta.quantity
+              : null;
+          return quantity
+            ? `${t("descriptions.purchase")} (${quantity}x enterprise resource pack)`
+            : `${t("descriptions.purchase")} (enterprise resource pack)`;
+        }
         return t("descriptions.purchase");
       case "refund":
         return t("descriptions.refund");

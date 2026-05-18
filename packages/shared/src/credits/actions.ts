@@ -15,6 +15,7 @@ import { creditsTransaction, subscription } from "@repo/database/schema";
 import { getBaseUrl } from "../config/payment";
 import {
   getPlanFromPriceId,
+  isPlanAtLeast,
   PLAN_PRIVILEGES,
   type SubscriptionPlan,
 } from "../config/subscription-plan";
@@ -26,9 +27,14 @@ import {
 } from "../payment/epay";
 import { logEvent } from "../logger/index";
 import { actionClient, protectedAction } from "../safe-action";
+import { getUserPlanType } from "../subscription/services/user-plan";
 import { getRuntimeSettingNumber } from "../system-settings";
 
-import { CREDIT_CONFIG_DEFAULTS } from "./config";
+import {
+  CREDIT_CONFIG_DEFAULTS,
+  ENTERPRISE_RESOURCE_PACKAGE_ID,
+  isCreditPackageVisible,
+} from "./config";
 import {
   getRuntimeCreditPackageById,
   getRuntimeCreditPackages,
@@ -50,6 +56,8 @@ const withPublicCreditsAction = (name: string) =>
   actionClient.metadata({ action: `credits.${name}` });
 const withProtectedCreditsAction = (name: string) =>
   protectedAction.metadata({ action: `credits.${name}` });
+
+const CREDIT_PACKAGE_MAX_QUANTITY = 999;
 
 async function getRuntimeRegistrationBonusCredits() {
   return getRuntimeSettingNumber(
@@ -79,6 +87,12 @@ function getExpiryDate(expiryDays: number) {
   return expiryDays
     ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000)
     : null;
+}
+
+async function getUserPlanForCreditsAction(
+  userId: string
+): Promise<SubscriptionPlan> {
+  return getUserPlanType(userId);
 }
 
 // ============================================
@@ -441,6 +455,12 @@ export const createCreditsPurchaseCheckout = withProtectedCreditsAction(
   .schema(
     z.object({
       packageId: z.string().min(1),
+      quantity: z
+        .number()
+        .int()
+        .min(1)
+        .max(CREDIT_PACKAGE_MAX_QUANTITY)
+        .optional(),
       successUrl: z.string().optional(),
       cancelUrl: z.string().optional(),
     })
@@ -448,21 +468,43 @@ export const createCreditsPurchaseCheckout = withProtectedCreditsAction(
   .action(async ({ parsedInput, ctx }) => {
     const { packageId, successUrl } = parsedInput;
     const { userId } = ctx;
+    const requestedQuantity = parsedInput.quantity ?? 1;
 
     // 查找套餐配置
-    const pkg = await getRuntimeCreditPackageById(packageId);
+    const pkg = await getRuntimeCreditPackageById(packageId, {
+      includeHidden: true,
+    });
     if (!pkg) {
       throw new Error("无效的积分套餐");
     }
+    const userPlan = await getUserPlanForCreditsAction(userId);
+    const isEnterprisePack = pkg.id === ENTERPRISE_RESOURCE_PACKAGE_ID;
+    if (!isEnterprisePack && !isCreditPackageVisible(pkg)) {
+      throw new Error("无效的积分套餐");
+    }
+    if (isEnterprisePack && !isPlanAtLeast(userPlan, "enterprise")) {
+      throw new Error("企业资源包仅企业版套餐可购买");
+    }
+    if (!isEnterprisePack && requestedQuantity !== 1) {
+      throw new Error("该积分包不支持数量购买");
+    }
+
+    const quantity = isEnterprisePack ? requestedQuantity : 1;
+    const creditsAmount = pkg.credits * quantity;
+    const totalPrice = pkg.price * quantity;
 
     const baseUrl = getBaseUrl();
 
     const useEpay = await isRuntimeEpayPaymentProvider();
+    if (!useEpay && quantity > 1) {
+      throw new Error("当前支付通道暂不支持数量购买，请分次购买");
+    }
 
     logEvent("payment.checkout.started", {
       userId,
       packageId: pkg.id,
-      credits: pkg.credits,
+      credits: creditsAmount,
+      quantity,
       provider: useEpay ? "epay" : "creem",
       checkoutType: "credits",
     });
@@ -471,13 +513,17 @@ export const createCreditsPurchaseCheckout = withProtectedCreditsAction(
       const outTradeNo = `CR${Date.now()}${crypto.randomUUID().slice(0, 8)}`;
       const checkout = await createRuntimeEpayPurchase({
         outTradeNo,
-        name: `GPT2IMAGE Credits ${pkg.credits}`,
-        money: pkg.price,
+        name:
+          quantity > 1
+            ? `GPT2IMAGE Credits ${pkg.credits} x ${quantity}`
+            : `GPT2IMAGE Credits ${pkg.credits}`,
+        money: totalPrice,
         param: encodeEpayMetadata({
           type: "credit_purchase",
           userId,
           outTradeNo,
           packageId: pkg.id,
+          quantity,
         }),
       });
 
@@ -491,13 +537,14 @@ export const createCreditsPurchaseCheckout = withProtectedCreditsAction(
       product_id: `credits_${packageId}`, // 需要在 Creem 后台创建对应产品
       success_url:
         successUrl ??
-        `${baseUrl}/dashboard/settings?tab=usage&success=true&credits=${pkg.credits}`,
+        `${baseUrl}/dashboard/settings?tab=usage&success=true&credits=${creditsAmount}`,
       request_id: `credit_purchase_${userId}_${Date.now()}`,
       metadata: {
         userId,
         type: "credit_purchase", // 关键: Webhook 用此判断类型
-        credits: String(pkg.credits),
+        credits: String(creditsAmount),
         packageId: pkg.id,
+        quantity: String(quantity),
       },
     });
 
@@ -509,14 +556,24 @@ export const createCreditsPurchaseCheckout = withProtectedCreditsAction(
  */
 export const getCreditPackages = withProtectedCreditsAction(
   "getCreditPackages"
-).action(async () => {
-  const packages = await getRuntimeCreditPackages();
-  return packages.map((pkg) => ({
-    id: pkg.id,
-    name: pkg.name,
-    credits: pkg.credits,
-    price: pkg.price,
-    description: pkg.description,
-    popular: "popular" in pkg ? pkg.popular : false,
-  }));
+).action(async ({ ctx }) => {
+  const userPlan = await getUserPlanForCreditsAction(ctx.userId);
+  const packages = await getRuntimeCreditPackages({
+    includeHidden: isPlanAtLeast(userPlan, "enterprise"),
+  });
+  return packages
+    .filter((pkg) => {
+      if (pkg.id === ENTERPRISE_RESOURCE_PACKAGE_ID) {
+        return isPlanAtLeast(userPlan, "enterprise");
+      }
+      return isCreditPackageVisible(pkg);
+    })
+    .map((pkg) => ({
+      id: pkg.id,
+      name: pkg.name,
+      credits: pkg.credits,
+      price: pkg.price,
+      description: pkg.description,
+      popular: "popular" in pkg ? pkg.popular : false,
+    }));
 });

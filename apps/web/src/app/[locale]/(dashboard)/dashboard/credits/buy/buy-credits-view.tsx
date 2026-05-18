@@ -13,6 +13,7 @@ import {
 } from "@repo/shared/credits/actions";
 import {
   CREDIT_PACKAGES,
+  ENTERPRISE_RESOURCE_PACKAGE_ID,
   isCreditPackageVisible,
 } from "@repo/shared/credits/config";
 import { Badge } from "@repo/ui/components/badge";
@@ -23,13 +24,14 @@ import {
   CardFooter,
   CardHeader,
 } from "@repo/ui/components/card";
+import { Input } from "@repo/ui/components/input";
 import { Separator } from "@repo/ui/components/separator";
 import { cn } from "@repo/ui/utils";
-import { ArrowLeft, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Minus, Plus } from "lucide-react";
 import { useLocale } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type CreditPackageCard = {
@@ -54,14 +56,18 @@ const FALLBACK_PACKAGES: CreditPackageCard[] = CREDIT_PACKAGES.filter(
 
 const PACKAGE_NAMES_ZH: Record<string, string> = {
   payg_starter: "按量付费",
+  enterprise_resource: "企业资源包",
 };
 
 const PACKAGE_DESCRIPTIONS_ZH: Record<string, string> = {
   payg_starter: "与入门版同价同积分的一次性积分包",
+  enterprise_resource: "企业版专属资源包，可按数量购买",
   lite: "少量补充，适合临时生成几张图片",
   standard: "适合日常使用的高性价比选择",
   pro: "更多积分，更适合高频创作",
 };
+
+const MAX_ENTERPRISE_PACK_QUANTITY = 999;
 
 /**
  * 购买积分套餐视图
@@ -73,6 +79,7 @@ export function BuyCreditPackagesView() {
   const searchParams = useSearchParams();
   const canceled = searchParams.get("canceled");
   const copy = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
   const {
     execute: fetchPackages,
     result: packagesResult,
@@ -110,10 +117,39 @@ export function BuyCreditPackagesView() {
    * 处理购买按钮点击
    */
   const handlePurchase = (packageId: string) => {
-    execute({ packageId });
+    execute({
+      packageId,
+      quantity:
+        packageId === ENTERPRISE_RESOURCE_PACKAGE_ID
+          ? (quantities[packageId] ?? 1)
+          : 1,
+    });
   };
 
-  const packages = (packagesResult.data ?? FALLBACK_PACKAGES) as CreditPackageCard[];
+  const packages = (packagesResult.data ??
+    FALLBACK_PACKAGES) as CreditPackageCard[];
+  const normalizedQuantities = useMemo(
+    () =>
+      Object.fromEntries(
+        packages.map((pkg) => [
+          pkg.id,
+          Math.min(
+            MAX_ENTERPRISE_PACK_QUANTITY,
+            Math.max(1, Math.trunc(quantities[pkg.id] ?? 1))
+          ),
+        ])
+      ) as Record<string, number>,
+    [packages, quantities]
+  );
+  const setPackageQuantity = (packageId: string, value: number) => {
+    setQuantities((current) => ({
+      ...current,
+      [packageId]: Math.min(
+        MAX_ENTERPRISE_PACK_QUANTITY,
+        Math.max(1, Math.trunc(Number.isFinite(value) ? value : 1))
+      ),
+    }));
+  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-10 px-4 py-8">
@@ -143,6 +179,10 @@ export function BuyCreditPackagesView() {
       >
         {packages.map((pkg) => {
           const isPopular = pkg.popular;
+          const isEnterprisePack = pkg.id === ENTERPRISE_RESOURCE_PACKAGE_ID;
+          const quantity = normalizedQuantities[pkg.id] ?? 1;
+          const totalCredits = pkg.credits * quantity;
+          const totalPrice = pkg.price * quantity;
           const perCredit = (pkg.price / pkg.credits).toFixed(4);
 
           return (
@@ -172,10 +212,15 @@ export function BuyCreditPackagesView() {
                 {/* 积分数量 */}
                 <div className="text-center">
                   <span className="font-serif text-5xl font-bold tracking-tight">
-                    {pkg.credits.toLocaleString()}
+                    {totalCredits.toLocaleString()}
                   </span>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {copy("credits", "积分")}
+                    {isEnterprisePack
+                      ? copy(
+                          `${pkg.credits.toLocaleString()} credits x ${quantity}`,
+                          `${pkg.credits.toLocaleString()} 积分 x ${quantity}`
+                        )
+                      : copy("credits", "积分")}
                   </p>
                 </div>
 
@@ -183,11 +228,71 @@ export function BuyCreditPackagesView() {
 
                 {/* 价格 */}
                 <div className="text-center">
-                  <span className="text-3xl font-semibold">¥{pkg.price}</span>
+                  <span className="text-3xl font-semibold">¥{totalPrice}</span>
                   <span className="ml-1 text-sm text-muted-foreground">
                     {copy("CNY", "元")}
                   </span>
                 </div>
+
+                {isEnterprisePack && (
+                  <div className="w-full space-y-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{copy("Quantity", "购买数量")}</span>
+                      <span>
+                        {copy(
+                          `${quantity} pack${quantity > 1 ? "s" : ""}`,
+                          `${quantity} 份`
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex h-9 items-center rounded-md border">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-none"
+                        disabled={
+                          quantity <= 1 || isPending || isPackagesLoading
+                        }
+                        onClick={() =>
+                          setPackageQuantity(pkg.id, quantity - 1)
+                        }
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={MAX_ENTERPRISE_PACK_QUANTITY}
+                        value={quantity}
+                        className="h-8 border-0 text-center shadow-none focus-visible:ring-0"
+                        disabled={isPending || isPackagesLoading}
+                        onChange={(event) =>
+                          setPackageQuantity(
+                            pkg.id,
+                            Number(event.target.value)
+                          )
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-none"
+                        disabled={
+                          quantity >= MAX_ENTERPRISE_PACK_QUANTITY ||
+                          isPending ||
+                          isPackagesLoading
+                        }
+                        onClick={() =>
+                          setPackageQuantity(pkg.id, quantity + 1)
+                        }
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {/* 描述 + 每积分价格 */}
                 <p className="text-center text-xs text-muted-foreground">
@@ -227,8 +332,8 @@ export function BuyCreditPackagesView() {
                     </>
                   ) : (
                     copy(
-                      `Buy ${pkg.credits.toLocaleString()} Credits`,
-                      `购买 ${pkg.credits.toLocaleString()} 积分`
+                      `Buy ${totalCredits.toLocaleString()} Credits`,
+                      `购买 ${totalCredits.toLocaleString()} 积分`
                     )
                   )}
                 </Button>

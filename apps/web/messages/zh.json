@@ -386,6 +386,7 @@
           "input": "文生图与图生图",
           "characters": "标准图像分辨率",
           "fileSize": "每批最多 10 张图",
+          "queue": "单用户最多 2 并发",
           "export": "下载与分享",
           "history": "画廊历史永久保存"
         }
@@ -403,6 +404,7 @@
           "input": "文生图与图生图",
           "characters": "标准图像分辨率",
           "fileSize": "每批最多 10 张图",
+          "queue": "单用户最多 5 并发",
           "externalApi": "外接 API Key 调用",
           "customApi": "自接 OpenAI 兼容 API",
           "export": "下载与分享",
@@ -425,7 +427,7 @@
           "fileSize": "每批最多 10 张图",
           "chat": "对话生图功能",
           "promptOptimization": "可关闭提示词优化",
-          "queue": "优先生成队列",
+          "queue": "优先队列，单用户最多 15 并发",
           "export": "下载与分享",
           "history": "画廊历史永久保存",
           "externalApi": "外接 API Key 调用",
@@ -449,7 +451,32 @@
           "chatGpt55": "对话生图支持 GPT-5.5",
           "moderationSettlement": "审核失败只扣审核积分",
           "promptOptimization": "可关闭提示词优化",
-          "queue": "最高优先队列",
+          "queue": "最高优先队列，单用户最多 50 并发",
+          "export": "下载与分享",
+          "history": "画廊历史永久保存",
+          "externalApi": "外接 API Key 调用",
+          "customApi": "自接 OpenAI 兼容 API",
+          "support": "专属支持"
+        }
+      },
+      "enterprise": {
+        "name": "企业版",
+        "description": "包含旗舰版能力，并开放企业资源包持续扩容",
+        "cta": "订阅",
+        "creditsAmount": "80,000",
+        "creditsLabel": "积分 / 月",
+        "booksCount": "7,976",
+        "features": {
+          "creditsValidity": "订阅积分按套餐周期有效",
+          "credits": "每月 80,000 积分",
+          "input": "文生图与图生图",
+          "fileSize": "每批最多 10 张图",
+          "chatGpt55": "对话生图支持 GPT-5.5",
+          "moderationSettlement": "审核失败只扣审核积分",
+          "promptOptimization": "可关闭提示词优化",
+          "queue": "最高优先队列，单用户最多 50 并发",
+          "enterpriseResourcePack": "企业资源包：每份 5,000 积分，约 3 分 / 张 4K",
+          "enterpriseResourcePackUnlimited": "企业资源包可按数量不限量购买",
           "export": "下载与分享",
           "history": "画廊历史永久保存",
           "externalApi": "外接 API Key 调用",
@@ -535,7 +562,8 @@
       "free": "免费版",
       "starter": "入门版",
       "pro": "专业版",
-      "ultra": "旗舰版"
+      "ultra": "旗舰版",
+      "enterprise": "企业版"
     }
   },
   "Dashboard": {

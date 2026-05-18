@@ -8,11 +8,12 @@
  * - Starter: 蓝色微光
  * - Pro: 金色流光动画
  * - Ultra: 紫色极光 + 脉冲光晕
+ * - Enterprise: 深色商务高亮
  */
 
 import "./plan-badge.css";
 
-import { Crown, Gem, Sparkles, User } from "lucide-react";
+import { Building2, Crown, Gem, Sparkles, User } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@repo/ui/utils";
@@ -20,7 +21,7 @@ import { cn } from "@repo/ui/utils";
 /**
  * 订阅计划类型
  */
-export type PlanType = "free" | "starter" | "pro" | "ultra";
+export type PlanType = "free" | "starter" | "pro" | "ultra" | "enterprise";
 
 /**
  * 徽章尺寸
@@ -99,6 +100,14 @@ const planConfig: Record<
     glowStyles: "shadow-[0_0_20px_rgba(168,85,247,0.5)]",
     animationClass: "plan-badge-aurora",
   },
+  enterprise: {
+    icon: Building2,
+    labelKey: "enterprise",
+    baseStyles:
+      "bg-gradient-to-r from-zinc-900 via-slate-800 to-zinc-900 text-white dark:from-zinc-100 dark:via-slate-200 dark:to-zinc-100 dark:text-zinc-950",
+    glowStyles: "shadow-[0_0_20px_rgba(15,23,42,0.35)]",
+    animationClass: "plan-badge-enterprise",
+  },
 };
 
 /**
@@ -133,7 +142,8 @@ export function PlanBadge({
             "absolute inset-0 opacity-0",
             plan === "starter" && "plan-badge-shimmer-bg",
             plan === "pro" && "plan-badge-shine-bg",
-            plan === "ultra" && "plan-badge-aurora-bg"
+            plan === "ultra" && "plan-badge-aurora-bg",
+            plan === "enterprise" && "plan-badge-enterprise-bg"
           )}
         />
       )}

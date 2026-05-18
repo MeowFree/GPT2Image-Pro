@@ -203,7 +203,8 @@ async function handleCreditPurchase(
     return;
   }
 
-  const creditsAmount = pkg.credits;
+  const quantity = 1;
+  const creditsAmount = pkg.credits * quantity;
 
   // 幂等性检查：同一订单只发放一次积分
   const sourceRef = `credit_purchase:${orderId}`;
@@ -244,12 +245,15 @@ async function handleCreditPurchase(
         packageId,
         checkoutId: data.id,
         paymentType: "one-time",
-        paidMoney: pkg.price,
+        quantity,
+        unitCredits: pkg.credits,
+        unitPrice: pkg.price,
+        paidMoney: pkg.price * quantity,
       },
     });
 
     logger.info(
-      { userId, creditsAmount, packageId, batchId: result.batchId },
+      { userId, creditsAmount, packageId, quantity, batchId: result.batchId },
       "Credits granted for credit pack purchase"
     );
   } catch (error) {

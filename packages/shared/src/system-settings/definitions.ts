@@ -31,6 +31,8 @@ export type SettingKey =
   | "NEXT_PUBLIC_CREEM_PRICE_PRO_YEARLY"
   | "NEXT_PUBLIC_CREEM_PRICE_ULTRA_MONTHLY"
   | "NEXT_PUBLIC_CREEM_PRICE_ULTRA_YEARLY"
+  | "NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_MONTHLY"
+  | "NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_YEARLY"
   | "CREEM_API_KEY"
   | "CREEM_WEBHOOK_SECRET"
   | "EPAY_PID"
@@ -43,12 +45,17 @@ export type SettingKey =
   | "PLAN_STARTER_MONTHLY_CREDITS"
   | "PLAN_PRO_MONTHLY_CREDITS"
   | "PLAN_ULTRA_MONTHLY_CREDITS"
+  | "PLAN_ENTERPRISE_MONTHLY_CREDITS"
   | "PLAN_STARTER_MONTHLY_AMOUNT"
   | "PLAN_STARTER_YEARLY_AMOUNT"
   | "PLAN_PRO_MONTHLY_AMOUNT"
   | "PLAN_PRO_YEARLY_AMOUNT"
   | "PLAN_ULTRA_MONTHLY_AMOUNT"
   | "PLAN_ULTRA_YEARLY_AMOUNT"
+  | "PLAN_ENTERPRISE_MONTHLY_AMOUNT"
+  | "PLAN_ENTERPRISE_YEARLY_AMOUNT"
+  | "ENTERPRISE_RESOURCE_PACK_CREDITS"
+  | "ENTERPRISE_RESOURCE_PACK_PRICE"
   | "CONTENT_MODERATION_ENABLED"
   | "CONTENT_MODERATION_FAIL_CLOSED"
   | "CONTENT_MODERATION_PROVIDER"
@@ -339,6 +346,14 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     defaultValue: 80000,
   },
   {
+    key: "PLAN_ENTERPRISE_MONTHLY_CREDITS",
+    label: "Enterprise 月积分",
+    description: "Enterprise 套餐每月发放积分。",
+    category: "plans",
+    valueType: "number",
+    defaultValue: 80000,
+  },
+  {
     key: "PLAN_STARTER_MONTHLY_AMOUNT",
     label: "Starter 月付价格",
     description: "Starter 月付价格，单位 CNY。",
@@ -387,6 +402,22 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     defaultValue: 1440,
   },
   {
+    key: "PLAN_ENTERPRISE_MONTHLY_AMOUNT",
+    label: "Enterprise 月付价格",
+    description: "Enterprise 月付价格，单位 CNY。",
+    category: "plans",
+    valueType: "number",
+    defaultValue: 800,
+  },
+  {
+    key: "PLAN_ENTERPRISE_YEARLY_AMOUNT",
+    label: "Enterprise 年付价格",
+    description: "Enterprise 年付价格，单位 CNY。",
+    category: "plans",
+    valueType: "number",
+    defaultValue: 5760,
+  },
+  {
     key: "NEXT_PUBLIC_CREEM_PRICE_STARTER_MONTHLY",
     label: "Creem Starter 月付 Price ID",
     description: "Creem Starter 月付产品/价格 ID。",
@@ -430,6 +461,22 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     key: "NEXT_PUBLIC_CREEM_PRICE_ULTRA_YEARLY",
     label: "Creem Ultra 年付 Price ID",
     description: "Creem Ultra 年付产品/价格 ID。",
+    category: "plans",
+    valueType: "string",
+    requiresRebuild: true,
+  },
+  {
+    key: "NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_MONTHLY",
+    label: "Creem Enterprise 月付 Price ID",
+    description: "Creem Enterprise 月付产品/价格 ID。",
+    category: "plans",
+    valueType: "string",
+    requiresRebuild: true,
+  },
+  {
+    key: "NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_YEARLY",
+    label: "Creem Enterprise 年付 Price ID",
+    description: "Creem Enterprise 年付产品/价格 ID。",
     category: "plans",
     valueType: "string",
     requiresRebuild: true,
@@ -879,6 +926,22 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     category: "credits",
     valueType: "number",
     defaultValue: 365,
+  },
+  {
+    key: "ENTERPRISE_RESOURCE_PACK_CREDITS",
+    label: "企业资源包积分",
+    description: "每份企业资源包发放的积分数量。",
+    category: "credits",
+    valueType: "number",
+    defaultValue: 5000,
+  },
+  {
+    key: "ENTERPRISE_RESOURCE_PACK_PRICE",
+    label: "企业资源包价格",
+    description: "每份企业资源包价格，单位 CNY。",
+    category: "credits",
+    valueType: "number",
+    defaultValue: 15,
   },
   {
     key: "NEXT_PUBLIC_GA_ID",

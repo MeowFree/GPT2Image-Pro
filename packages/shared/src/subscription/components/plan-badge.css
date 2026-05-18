@@ -112,6 +112,38 @@
   }
 }
 
+/* Enterprise - understated business sweep */
+.plan-badge-enterprise {
+  position: relative;
+  overflow: hidden;
+}
+
+.plan-badge-enterprise::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 120%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.28),
+    transparent
+  );
+  animation: enterprise-sweep 3.5s infinite;
+}
+
+@keyframes enterprise-sweep {
+  0% {
+    left: -120%;
+  }
+  45%,
+  100% {
+    left: 120%;
+  }
+}
+
 /* 暗色模式调整 */
 @media (prefers-color-scheme: dark) {
   .plan-badge-shimmer::before {
@@ -130,6 +162,15 @@
       rgba(255, 215, 0, 0.2),
       rgba(255, 255, 255, 0.3),
       rgba(255, 215, 0, 0.2),
+      transparent
+    );
+  }
+
+  .plan-badge-enterprise::before {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(15, 23, 42, 0.18),
       transparent
     );
   }

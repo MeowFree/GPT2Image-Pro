@@ -66,11 +66,11 @@
         "title": "AI Generates",
         "description": "Our AI interprets your prompt and produces high-quality images in seconds. Generate variations to explore every creative direction."
       }
-    },
-    "completion": {
-      "title": "Download & Share",
-      "description": "Save your favorites in high resolution or share them directly. Every image stays in your gallery for future reference."
-    }
+      },
+      "completion": {
+        "title": "Download & Share",
+        "description": "Save your favorites or share them directly. Every image stays in your gallery for future reference."
+      }
   },
   "UseCases": {
     "label": "Use Cases",
@@ -167,7 +167,7 @@
       },
       {
         "question": "Can I download and use the images commercially?",
-        "answer": "Yes. Images you generate on GPT2IMAGE are yours to use — for personal, editorial, or commercial projects. Downloads are available in high resolution, and your full generation history stays in your gallery."
+        "answer": "Yes. Images you generate on GPT2IMAGE are yours to use — for personal, editorial, or commercial projects. Downloads are available from your gallery, and your full generation history stays saved."
       }
     ]
   },
@@ -396,8 +396,8 @@
           "creditsNeverExpire": "Credits never expire",
           "credits": "200 credits (one-time)",
           "input": "Chat-to-image generation",
-          "characters": "Standard image resolutions",
           "fileSize": "Up to 5 images per batch",
+          "queue": "Up to 2 concurrent generations",
           "export": "Download & share",
           "history": "Gallery history saved forever"
         }
@@ -413,8 +413,8 @@
           "creditsNeverExpire": "Credits never expire",
           "credits": "3,000 credits / month",
           "input": "Chat-to-image generation",
-          "characters": "Standard image resolutions",
           "fileSize": "Up to 10 images per batch",
+          "queue": "Up to 5 concurrent generations",
           "export": "Download & share",
           "history": "Gallery history saved forever",
           "support": "Email support"
@@ -431,9 +431,8 @@
           "creditsNeverExpire": "Credits never expire",
           "credits": "8,000 credits / month",
           "input": "All generation features",
-          "characters": "High-resolution outputs",
           "fileSize": "Up to 25 images per batch",
-          "queue": "Priority generation queue",
+          "queue": "Priority queue, up to 15 concurrent generations",
           "export": "Download & share",
           "history": "Gallery history saved forever",
           "customCards": "Advanced model access",
@@ -451,9 +450,8 @@
           "creditsNeverExpire": "Credits never expire",
           "credits": "16,000 credits / month",
           "input": "All generation features",
-          "characters": "Maximum-resolution outputs",
           "fileSize": "Up to 50 images per batch",
-          "queue": "Highest priority queue",
+          "queue": "Highest priority queue, up to 50 concurrent generations",
           "export": "Download & share",
           "history": "Gallery history saved forever",
           "customCards": "Premium model access",

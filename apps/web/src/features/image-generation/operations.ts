@@ -1,23 +1,24 @@
 import { db } from "@repo/database";
 import { generation } from "@repo/database/schema";
-import { consumeCredits, grantCredits } from "@repo/shared/credits/core";
-import { moderateContent } from "@repo/shared/moderation";
-import { getStorageProvider } from "@repo/shared/storage/providers";
-import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import {
   canUseChat,
   canUseGpt55Chat,
   canUseModerationOnlyFailureSettlement,
   canUsePromptOptimization,
+  PLAN_PRIVILEGES,
 } from "@repo/shared/config/subscription-plan";
+import { consumeCredits, grantCredits } from "@repo/shared/credits/core";
+import { moderateContent } from "@repo/shared/moderation";
+import { getStorageProvider } from "@repo/shared/storage/providers";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
+import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-
+import { withImageGenerationQueue } from "./queue";
 import {
   DEFAULT_IMAGE_SIZE,
-  getImageModel,
   getImageCreditCostBreakdown,
+  getImageModel,
   roundCreditAmount,
 } from "./resolution";
 import {
@@ -29,12 +30,12 @@ import {
   getUserApiConfig,
 } from "./service";
 import type {
+  ChatHistoryMessage,
   ChatImageParams,
   EditImageParams,
   GenerateImageParams,
   ImageGenerationCallbacks,
   ImageInputFile,
-  ChatHistoryMessage,
 } from "./types";
 
 type RunImageGenerationInput =
@@ -227,6 +228,86 @@ export async function runImageGenerationForUser(
     };
   }
 
+  try {
+    return await withImageGenerationQueue(
+      {
+        userId: input.userId,
+        priority: PLAN_PRIVILEGES[userPlan.plan].queuePriority,
+        userConcurrency:
+          PLAN_PRIVILEGES[userPlan.plan].imageGenerationConcurrency,
+      },
+      () =>
+        runQueuedImageGenerationForUser({
+          input,
+          callbacks,
+          generationId,
+          size,
+          inputImages,
+          creditCost,
+          creditsPerImage,
+          isTextOnlyChatInput,
+          initialCreditCharge,
+          bucket,
+          userPlan,
+          moderationFailureCredits,
+          promptOptimization,
+          apiPrompt,
+          moderationPrompt,
+          config,
+          useCredits,
+          model,
+        })
+    );
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Image generation queue is busy. Please retry shortly.",
+      generationId,
+    };
+  }
+}
+
+async function runQueuedImageGenerationForUser({
+  input,
+  callbacks,
+  generationId,
+  size,
+  inputImages,
+  creditCost,
+  creditsPerImage,
+  isTextOnlyChatInput,
+  initialCreditCharge,
+  bucket,
+  userPlan,
+  moderationFailureCredits,
+  promptOptimization,
+  apiPrompt,
+  moderationPrompt,
+  config,
+  useCredits,
+  model,
+}: {
+  input: RunImageGenerationInput;
+  callbacks?: ImageGenerationCallbacks;
+  generationId: string;
+  size: string;
+  inputImages: ImageInputFile[];
+  creditCost: ReturnType<typeof getImageCreditCostBreakdown>;
+  creditsPerImage: number;
+  isTextOnlyChatInput: boolean;
+  initialCreditCharge: number;
+  bucket: string;
+  userPlan: Awaited<ReturnType<typeof getUserPlan>>;
+  moderationFailureCredits: number;
+  promptOptimization: boolean;
+  apiPrompt: string;
+  moderationPrompt: string;
+  config: Awaited<ReturnType<typeof getEffectiveConfig>>["config"];
+  useCredits: boolean;
+  model: string;
+}): Promise<ImageGenerationOperationResult> {
   await db.insert(generation).values({
     id: generationId,
     userId: input.userId,

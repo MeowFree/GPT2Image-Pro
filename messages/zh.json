@@ -167,7 +167,7 @@
       },
       {
         "question": "生成的图片可以下载并用于商业用途吗？",
-        "answer": "可以。你在 GPT2IMAGE 上生成的图片归你所有，可用于个人、编辑或商业项目。支持高分辨率下载，所有历史生成记录都保存在画廊中。"
+        "answer": "可以。你在 GPT2IMAGE 上生成的图片归你所有，可用于个人、编辑或商业项目。图片可在画廊中下载，所有历史生成记录都会保存。"
       }
     ]
   },
@@ -360,8 +360,8 @@
           "creditsNeverExpire": "积分永久有效，不清零",
           "credits": "200 积分（一次性）",
           "input": "对话生图功能",
-          "characters": "标准图像分辨率",
           "fileSize": "每批最多 5 张图",
+          "queue": "单用户最多 2 个并发生图",
           "export": "下载与分享",
           "history": "画廊历史永久保存"
         }
@@ -377,8 +377,8 @@
           "creditsNeverExpire": "积分永久有效，不清零",
           "credits": "每月 3,000 积分",
           "input": "对话生图功能",
-          "characters": "标准图像分辨率",
           "fileSize": "每批最多 10 张图",
+          "queue": "单用户最多 5 个并发生图",
           "export": "下载与分享",
           "history": "画廊历史永久保存",
           "support": "邮件支持"
@@ -395,9 +395,8 @@
           "creditsNeverExpire": "积分永久有效，不清零",
           "credits": "每月 8,000 积分",
           "input": "全部生成功能",
-          "characters": "高分辨率输出",
           "fileSize": "每批最多 25 张图",
-          "queue": "优先生成队列",
+          "queue": "优先队列，单用户最多 15 个并发生图",
           "export": "下载与分享",
           "history": "画廊历史永久保存",
           "customCards": "高级模型访问",
@@ -415,9 +414,8 @@
           "creditsNeverExpire": "积分永久有效，不清零",
           "credits": "每月 16,000 积分",
           "input": "全部生成功能",
-          "characters": "最高分辨率输出",
           "fileSize": "每批最多 50 张图",
-          "queue": "最高优先队列",
+          "queue": "最高优先队列，单用户最多 50 个并发生图",
           "export": "下载与分享",
           "history": "画廊历史永久保存",
           "customCards": "旗舰模型访问",

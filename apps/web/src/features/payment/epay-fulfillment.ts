@@ -7,14 +7,21 @@ import {
   getSubscriptionMonthlyCredits,
   type PaidPlanId,
 } from "@repo/shared/config/payment-runtime";
-import { getPlanFromPriceId } from "@repo/shared/config/subscription-plan";
-import { CREDIT_CONFIG_DEFAULTS } from "@repo/shared/credits/config";
+import {
+  getPlanFromPriceId,
+  isPlanAtLeast,
+} from "@repo/shared/config/subscription-plan";
+import {
+  CREDIT_CONFIG_DEFAULTS,
+  ENTERPRISE_RESOURCE_PACKAGE_ID,
+} from "@repo/shared/credits/config";
 import {
   grantCredits,
   voidActiveSubscriptionCreditsForUpgrade,
 } from "@repo/shared/credits/core";
 import { getRuntimeCreditPackageById } from "@repo/shared/credits/packages";
 import { getRuntimeSettingNumber } from "@repo/shared/system-settings";
+import { getUserPlanType } from "@repo/shared/subscription/services/user-plan";
 import {
   decodeEpayMetadata,
   type EpayMetadata,
@@ -77,6 +84,7 @@ async function fulfillSuccessfulEpayPaymentInner(
     await handleCreditPurchase(
       metadata.userId,
       metadata.packageId,
+      metadata.quantity ?? 1,
       verifyInfo,
       source
     );
@@ -96,6 +104,7 @@ async function fulfillSuccessfulEpayPaymentInner(
 async function handleCreditPurchase(
   userId: string,
   packageId: string | undefined,
+  quantity: number,
   verifyInfo: EpayVerifyResult,
   source: "epay-webhook" | "epay-return"
 ) {
@@ -109,8 +118,21 @@ async function handleCreditPurchase(
   if (!pkg) {
     throw new Error(`Unknown credit package: ${packageId}`);
   }
+  const normalizedQuantity =
+    Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
+  const isEnterpriseResourcePack = packageId === ENTERPRISE_RESOURCE_PACKAGE_ID;
+  if (
+    isEnterpriseResourcePack &&
+    !isPlanAtLeast(await getUserPlanType(userId), "enterprise")
+  ) {
+    throw new Error(
+      "Enterprise resource pack purchase requires Enterprise plan"
+    );
+  }
+  const creditsAmount = pkg.credits * normalizedQuantity;
+  const expectedAmount = pkg.price * normalizedQuantity;
 
-  if (moneyToCents(verifyInfo.money) !== moneyToCents(pkg.price)) {
+  if (moneyToCents(verifyInfo.money) !== moneyToCents(expectedAmount)) {
     throw new Error("Epay amount does not match credit package price");
   }
 
@@ -135,28 +157,33 @@ async function handleCreditPurchase(
 
   const result = await grantCredits({
     userId,
-    amount: pkg.credits,
+    amount: creditsAmount,
     sourceType: "purchase",
     debitAccount: `PAYMENT:${verifyInfo.outTradeNo}`,
     transactionType: "purchase",
     expiresAt,
     sourceRef,
-    description: `Epay credit pack purchase: ${pkg.credits} credits (${pkg.id})`,
+    description: `Epay credit pack purchase: ${creditsAmount} credits (${pkg.id})`,
     metadata: {
       provider: "epay",
       outTradeNo: verifyInfo.outTradeNo,
       tradeNo: verifyInfo.tradeNo,
       paymentMethod: verifyInfo.type,
       packageId: pkg.id,
+      quantity: normalizedQuantity,
+      unitCredits: pkg.credits,
+      unitPrice: pkg.price,
       paidMoney: verifyInfo.money,
     },
   });
 
   logEvent("credits.purchased", {
     userId,
-    amount: pkg.credits,
+    amount: creditsAmount,
     paymentId: verifyInfo.outTradeNo,
     source: "epay",
+    packageId: pkg.id,
+    quantity: normalizedQuantity,
   });
   logger.info(
     { source, batchId: result.batchId, userId },

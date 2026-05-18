@@ -1,8 +1,5 @@
 import { db } from "@repo/database";
 import { userApiConfig } from "@repo/database/schema";
-import { logError } from "@repo/shared/logger";
-import { getRuntimeSettingString } from "@repo/shared/system-settings";
-import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import {
   canUseCustomApi,
   GPT52_CHAT_MODEL,
@@ -11,6 +8,9 @@ import {
   GPT55_CHAT_MODEL,
   RESPONSES_IMAGE_MODELS,
 } from "@repo/shared/config/subscription-plan";
+import { logError } from "@repo/shared/logger";
+import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
+import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { eq } from "drizzle-orm";
 import {
   DEFAULT_IMAGE_MODEL,
@@ -208,6 +208,33 @@ function getApiError(errorData: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function truncateResponseBody(value: string) {
+  return value.replace(/\s+/g, " ").trim().slice(0, 500);
+}
+
+function getHttpErrorMessage(
+  response: Response,
+  rawBody: string,
+  apiName: "Images API" | "Responses API"
+) {
+  const fallback = `Upstream ${apiName} returned HTTP ${response.status}`;
+  const trimmedBody = truncateResponseBody(rawBody);
+
+  if (!trimmedBody) return fallback;
+  if (trimmedBody.startsWith("<")) {
+    return `${fallback}: HTML response body. Check that the API base URL points to an OpenAI-compatible /v1 endpoint.`;
+  }
+
+  let errorData: unknown = trimmedBody;
+  try {
+    errorData = JSON.parse(rawBody);
+  } catch {
+    return `${fallback}: ${trimmedBody}`;
+  }
+
+  return getApiError(errorData, `${fallback}: ${trimmedBody}`);
 }
 
 function normalizeQuality(quality?: string): ImageQuality | undefined {
@@ -673,19 +700,8 @@ async function parseResponsesResponse(
 ): Promise<GenerateImageResult> {
   if (!response.ok) {
     const rawBody = await response.text().catch(() => "");
-    let errorData: unknown = {};
-    try {
-      errorData = rawBody ? JSON.parse(rawBody) : {};
-    } catch {
-      errorData = rawBody;
-    }
     return {
-      error: getApiError(
-        errorData,
-        rawBody.trim().startsWith("<")
-          ? "API returned an HTML page instead of a Responses API response. Check that the API base URL points to an OpenAI-compatible /v1 endpoint."
-          : `API error: ${response.status}`
-      ),
+      error: getHttpErrorMessage(response, rawBody, "Responses API"),
     };
   }
 
@@ -866,19 +882,8 @@ async function parseImageResponse(
 ): Promise<GenerateImageResult> {
   if (!response.ok) {
     const rawBody = await response.text().catch(() => "");
-    let errorData: unknown = {};
-    try {
-      errorData = rawBody ? JSON.parse(rawBody) : {};
-    } catch {
-      errorData = rawBody;
-    }
     return {
-      error: getApiError(
-        errorData,
-        rawBody.trim().startsWith("<")
-          ? "API returned an HTML page instead of an Images API response. Check that the API base URL points to an OpenAI-compatible /v1 endpoint."
-          : `API error: ${response.status}`
-      ),
+      error: getHttpErrorMessage(response, rawBody, "Images API"),
     };
   }
 
@@ -900,7 +905,7 @@ async function parseImageResponse(
   const result = extractImageFromPayload(data);
 
   if (!result) {
-    return { error: "API returned no image data" };
+    return { error: getPayloadError(data) || "API returned no image data" };
   }
 
   return result;

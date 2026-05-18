@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  getPlanPrice,
-  paymentConfig,
-} from "@repo/shared/config/payment";
+import { getPlanPrice, paymentConfig } from "@repo/shared/config/payment";
 import {
   PLAN_RANK,
   type SubscriptionPlan,
@@ -21,11 +18,11 @@ import { cn } from "@repo/ui/utils";
 import { Check, Coins, ImageIcon, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useState, useTransition } from "react";
+import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 import {
   createCheckoutSession,
   getUserSubscription,
 } from "@/features/payment/actions";
-import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 import { PlanInterval } from "@/features/payment/types";
 import { useRouter } from "@/i18n/routing";
 
@@ -34,7 +31,7 @@ import { AnimatedPrice } from "./animated-price";
 /**
  * 计划配置（用于获取价格等非翻译数据）
  */
-const PLAN_IDS = ["free", "starter", "pro", "ultra"] as const;
+const PLAN_IDS = ["free", "starter", "pro", "ultra", "enterprise"] as const;
 function parsePlanNumber(value: string) {
   return Number.parseInt(value.replace(/,/g, ""), 10);
 }
@@ -43,19 +40,12 @@ function parsePlanNumber(value: string) {
  * 计划功能 keys（按顺序显示，credits 单独突出显示）
  */
 const PLAN_FEATURE_KEYS: Record<string, string[]> = {
-  free: [
-    "creditsValidity",
-    "input",
-    "characters",
-    "fileSize",
-    "export",
-    "history",
-  ],
+  free: ["creditsValidity", "input", "fileSize", "queue", "export", "history"],
   starter: [
     "creditsValidity",
     "input",
-    "characters",
     "fileSize",
+    "queue",
     "externalApi",
     "customApi",
     "export",
@@ -65,7 +55,6 @@ const PLAN_FEATURE_KEYS: Record<string, string[]> = {
   pro: [
     "creditsValidity",
     "input",
-    "characters",
     "fileSize",
     "chat",
     "promptOptimization",
@@ -79,12 +68,27 @@ const PLAN_FEATURE_KEYS: Record<string, string[]> = {
   ultra: [
     "creditsValidity",
     "input",
-    "characters",
     "fileSize",
     "chatGpt55",
     "moderationSettlement",
     "promptOptimization",
     "queue",
+    "export",
+    "history",
+    "externalApi",
+    "customApi",
+    "support",
+  ],
+  enterprise: [
+    "creditsValidity",
+    "input",
+    "fileSize",
+    "chatGpt55",
+    "moderationSettlement",
+    "promptOptimization",
+    "queue",
+    "enterpriseResourcePack",
+    "enterpriseResourcePackUnlimited",
     "export",
     "history",
     "externalApi",
@@ -105,7 +109,10 @@ interface PricingSectionProps {
 /**
  * 价格计划展示组件
  */
-export function PricingSection({ currentPriceId, payment }: PricingSectionProps) {
+export function PricingSection({
+  currentPriceId,
+  payment,
+}: PricingSectionProps) {
   const t = useTranslations("Pricing");
   const [isPending, startTransition] = useTransition();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
@@ -291,7 +298,7 @@ export function PricingSection({ currentPriceId, payment }: PricingSectionProps)
         </div>
 
         {/* Cards */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
           {PLAN_IDS.map((planId) => {
             const price = getDisplayPrice(planId);
             const isCurrent = isCurrentPlan(planId);
@@ -306,6 +313,8 @@ export function PricingSection({ currentPriceId, payment }: PricingSectionProps)
                 className={cn(
                   "relative flex flex-col rounded-xl",
                   popular && "border-foreground shadow-lg shadow-foreground/10",
+                  planId === "enterprise" &&
+                    "border-foreground/60 bg-muted/20",
                   isCurrent && "ring-2 ring-foreground"
                 )}
               >

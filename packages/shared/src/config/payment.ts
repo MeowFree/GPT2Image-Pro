@@ -48,6 +48,12 @@ export const PRICE_IDS = {
   ULTRA_YEARLY:
     process.env.NEXT_PUBLIC_CREEM_PRICE_ULTRA_YEARLY ??
     (paymentProvider === "epay" ? "ultra_yearly" : ""),
+  ENTERPRISE_MONTHLY:
+    process.env.NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_MONTHLY ??
+    (paymentProvider === "epay" ? "enterprise_monthly" : ""),
+  ENTERPRISE_YEARLY:
+    process.env.NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_YEARLY ??
+    (paymentProvider === "epay" ? "enterprise_yearly" : ""),
 } as const;
 
 // ============================================
@@ -58,6 +64,7 @@ export const SUBSCRIPTION_MONTHLY_CREDITS = {
   starter: 5000,
   pro: 20000,
   ultra: 80000,
+  enterprise: 80000,
 } as const;
 
 // ============================================
@@ -144,6 +151,25 @@ export const paymentConfig: PaymentConfig = {
         },
       ],
     },
+
+    enterprise: {
+      id: "enterprise",
+      isEnterprise: true,
+      prices: [
+        {
+          type: PaymentType.SUBSCRIPTION,
+          priceId: PRICE_IDS.ENTERPRISE_MONTHLY,
+          amount: 800,
+          interval: PlanInterval.MONTH,
+        },
+        {
+          type: PaymentType.SUBSCRIPTION,
+          priceId: PRICE_IDS.ENTERPRISE_YEARLY,
+          amount: 5760,
+          interval: PlanInterval.YEAR,
+        },
+      ],
+    },
   },
 };
 
@@ -171,8 +197,8 @@ export function getPricingPlansFromConfig(config: PaymentConfig): Plan[] {
       features: [
         "100 credits (one-time)",
         "Text-to-image and image editing",
-        "Standard image resolution",
         "Up to 10 images per batch",
+        "Up to 2 concurrent generations",
         "Download & share",
         "Gallery history saved forever",
       ],
@@ -189,8 +215,8 @@ export function getPricingPlansFromConfig(config: PaymentConfig): Plan[] {
       features: [
         "5,000 credits / month",
         "Text-to-image and image editing",
-        "Standard image resolution",
         "Up to 10 images per batch",
+        "Up to 5 concurrent generations",
         "External API key calls",
         "Custom OpenAI-compatible API",
         "Download & share",
@@ -210,10 +236,9 @@ export function getPricingPlansFromConfig(config: PaymentConfig): Plan[] {
       features: [
         "20,000 credits / month",
         "Text-to-image and image editing",
-        "High resolution output",
         "Up to 10 images per batch",
         "Chat-to-image mode",
-        "Priority generation queue",
+        "Priority queue, up to 15 concurrent generations",
         "Download & share",
         "Gallery history saved forever",
         "External API key calls",
@@ -234,11 +259,36 @@ export function getPricingPlansFromConfig(config: PaymentConfig): Plan[] {
       features: [
         "80,000 credits / month",
         "Text-to-image and image editing",
-        "Maximum resolution output",
         "Up to 10 images per batch",
         "Chat-to-image supports GPT-5.5",
         "Moderation failures only charge review credits",
-        "Highest priority queue",
+        "Highest priority queue, up to 50 concurrent generations",
+        "Download & share",
+        "Gallery history saved forever",
+        "External API key calls",
+        "Custom OpenAI-compatible API",
+        "Dedicated support",
+      ],
+      cta: "Subscribe",
+    });
+  }
+
+  // Enterprise 计划
+  if (config.plans.enterprise) {
+    plans.push({
+      ...config.plans.enterprise,
+      name: "Enterprise",
+      description:
+        "Ultra capabilities plus enterprise resource packs for sustained volume",
+      features: [
+        "80,000 credits / month",
+        "Text-to-image and image editing",
+        "Up to 10 images per batch",
+        "Chat-to-image supports GPT-5.5",
+        "Moderation failures only charge review credits",
+        "Highest priority queue, up to 50 concurrent generations",
+        "Enterprise resource packs: 5,000 credits per pack",
+        "Unlimited enterprise resource pack purchases",
         "Download & share",
         "Gallery history saved forever",
         "External API key calls",

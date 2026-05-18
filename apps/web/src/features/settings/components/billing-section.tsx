@@ -101,10 +101,24 @@ function getBillingDescription(tx: BillingTransaction, locale: string) {
 
   if (tx.type === "purchase") {
     const packageId = typeof meta?.packageId === "string" ? meta.packageId : "";
+    const quantity =
+      typeof meta?.quantity === "number" && meta.quantity > 1
+        ? meta.quantity
+        : null;
     if (packageId === "payg_starter") {
       return locale === "zh"
         ? `${paymentProvider} 按量付费积分购买`
         : `${paymentProvider} pay-as-you-go credit purchase`;
+    }
+    if (packageId === "enterprise_resource") {
+      const quantitySuffix = quantity
+        ? locale === "zh"
+          ? ` x ${quantity} 份`
+          : ` x ${quantity}`
+        : "";
+      return locale === "zh"
+        ? `${paymentProvider} 企业资源包购买${quantitySuffix}`
+        : `${paymentProvider} enterprise resource pack purchase${quantitySuffix}`;
     }
 
     const packageSuffix = packageId ? ` (${packageId})` : "";

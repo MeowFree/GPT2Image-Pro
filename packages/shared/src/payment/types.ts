@@ -135,6 +135,7 @@ export interface PaymentConfig {
     starter?: PlanConfig;
     pro?: PlanConfig;
     ultra?: PlanConfig;
+    enterprise?: PlanConfig;
   };
 }
 

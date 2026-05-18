@@ -2,6 +2,9 @@ import { SUBSCRIPTION_MONTHLY_CREDITS } from "../config/payment";
 import { getRuntimeSettingNumber } from "../system-settings";
 import {
   CREDIT_PACKAGES,
+  ENTERPRISE_RESOURCE_PACKAGE_DEFAULT_CREDITS,
+  ENTERPRISE_RESOURCE_PACKAGE_DEFAULT_PRICE,
+  ENTERPRISE_RESOURCE_PACKAGE_ID,
   PAY_AS_YOU_GO_PACKAGE_ID,
   isCreditPackageVisible,
   type CreditPackage,
@@ -30,17 +33,37 @@ export async function getRuntimeCreditPackages(options?: {
       { positive: true }
     ),
   ]);
+  const [enterpriseCredits, enterprisePrice] = await Promise.all([
+    getRuntimeSettingNumber(
+      "ENTERPRISE_RESOURCE_PACK_CREDITS",
+      ENTERPRISE_RESOURCE_PACKAGE_DEFAULT_CREDITS,
+      { positive: true }
+    ),
+    getRuntimeSettingNumber(
+      "ENTERPRISE_RESOURCE_PACK_PRICE",
+      ENTERPRISE_RESOURCE_PACKAGE_DEFAULT_PRICE,
+      { positive: true }
+    ),
+  ]);
 
   const packages = CREDIT_PACKAGES.map((pkg) => {
-    if (pkg.id !== PAY_AS_YOU_GO_PACKAGE_ID) {
-      return pkg;
+    if (pkg.id === PAY_AS_YOU_GO_PACKAGE_ID) {
+      return {
+        ...pkg,
+        credits: starterCredits,
+        price: starterPrice,
+      };
     }
 
-    return {
-      ...pkg,
-      credits: starterCredits,
-      price: starterPrice,
-    };
+    if (pkg.id === ENTERPRISE_RESOURCE_PACKAGE_ID) {
+      return {
+        ...pkg,
+        credits: enterpriseCredits,
+        price: enterprisePrice,
+      };
+    }
+
+    return pkg;
   }) as RuntimeCreditPackage[];
 
   if (options?.includeHidden) {

@@ -3,7 +3,7 @@ import {
   type PlanType,
 } from "@repo/shared/subscription/components/plan-badge";
 
-const plans: PlanType[] = ["free", "starter", "pro", "ultra"];
+const plans: PlanType[] = ["free", "starter", "pro", "ultra", "enterprise"];
 const sizes: Array<"xs" | "sm" | "md" | "lg"> = ["xs", "sm", "md", "lg"];
 
 export default function PlanBadgesDemoPage() {

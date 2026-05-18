@@ -25,6 +25,7 @@ export interface EpayMetadata {
   priceId?: string;
   planId?: string;
   packageId?: string;
+  quantity?: number;
   checkoutMode?: "new_subscription" | "upgrade";
   expectedAmount?: number;
   originalAmount?: number;
@@ -404,6 +405,7 @@ export function encodeEpayMetadata(metadata: EpayMetadata): string {
   if (metadata.priceId) compact.p = metadata.priceId;
   if (metadata.planId) compact.l = metadata.planId;
   if (metadata.packageId) compact.g = metadata.packageId;
+  if (metadata.quantity && metadata.quantity > 1) compact.q = metadata.quantity;
 
   if (metadata.checkoutMode === "upgrade") {
     compact.m = "u";
@@ -450,6 +452,13 @@ export function decodeEpayMetadata(param?: string): EpayMetadata | null {
     const priceId = parsed.priceId ?? parsed.p;
     const planId = parsed.planId ?? parsed.l;
     const packageId = parsed.packageId ?? parsed.g;
+    const numberValue = (value: unknown) =>
+      typeof value === "number"
+        ? value
+        : typeof value === "string" && value.trim()
+          ? Number(value)
+          : undefined;
+    const quantity = numberValue(parsed.quantity ?? parsed.q);
     const checkoutMode =
       parsed.checkoutMode ??
       (parsed.m === "u"
@@ -457,12 +466,6 @@ export function decodeEpayMetadata(param?: string): EpayMetadata | null {
         : parsed.m === "n"
           ? "new_subscription"
           : undefined);
-    const numberValue = (value: unknown) =>
-      typeof value === "number"
-        ? value
-        : typeof value === "string" && value.trim()
-          ? Number(value)
-          : undefined;
     const expectedAmount = numberValue(parsed.expectedAmount ?? parsed.e);
     const originalAmount = numberValue(parsed.originalAmount ?? parsed.a);
     const prorationCredit = numberValue(parsed.prorationCredit ?? parsed.c);
@@ -485,6 +488,11 @@ export function decodeEpayMetadata(param?: string): EpayMetadata | null {
       ...(typeof priceId === "string" && { priceId }),
       ...(typeof planId === "string" && { planId }),
       ...(typeof packageId === "string" && { packageId }),
+      ...(typeof quantity === "number" &&
+        Number.isFinite(quantity) &&
+        quantity > 0 && {
+          quantity: Math.floor(quantity),
+        }),
       ...((checkoutMode === "new_subscription" ||
         checkoutMode === "upgrade") && {
         checkoutMode,

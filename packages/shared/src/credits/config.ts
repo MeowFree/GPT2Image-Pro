@@ -28,6 +28,9 @@ export const CREDIT_CONFIG_DEFAULTS = {
 } as const;
 
 export const PAY_AS_YOU_GO_PACKAGE_ID = "payg_starter";
+export const ENTERPRISE_RESOURCE_PACKAGE_ID = "enterprise_resource";
+export const ENTERPRISE_RESOURCE_PACKAGE_DEFAULT_CREDITS = 5000;
+export const ENTERPRISE_RESOURCE_PACKAGE_DEFAULT_PRICE = 15;
 
 /**
  * 积分包配置（一次性购买）
@@ -45,6 +48,15 @@ export const CREDIT_PACKAGES = [
     price: 20,
     popular: true,
     description: "One-time credits priced like Starter",
+  },
+  {
+    id: ENTERPRISE_RESOURCE_PACKAGE_ID,
+    name: "Enterprise Resource Pack",
+    credits: ENTERPRISE_RESOURCE_PACKAGE_DEFAULT_CREDITS,
+    price: ENTERPRISE_RESOURCE_PACKAGE_DEFAULT_PRICE,
+    description: "Enterprise-only 5,000-credit resource pack",
+    requiresPlan: "enterprise",
+    visible: false,
   },
   {
     id: "lite",

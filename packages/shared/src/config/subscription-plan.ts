@@ -13,7 +13,12 @@ import { PRICE_IDS } from "./payment";
 /**
  * 订阅计划类型
  */
-export type SubscriptionPlan = "free" | "starter" | "pro" | "ultra";
+export type SubscriptionPlan =
+  | "free"
+  | "starter"
+  | "pro"
+  | "ultra"
+  | "enterprise";
 
 /**
  * 对话模式旗舰模型
@@ -47,6 +52,8 @@ export interface PlanPrivileges {
   maxFileSizeBytes: number;
   /** 队列优先级 */
   queuePriority: QueuePriority;
+  /** 单用户图片生成并发上限 */
+  imageGenerationConcurrency: number;
   /** 月度积分配额 (免费版为一次性) */
   monthlyCredits: number;
 }
@@ -63,24 +70,35 @@ export const PLAN_PRIVILEGES: Record<SubscriptionPlan, PlanPrivileges> = {
     name: "Free",
     maxFileSizeBytes: 5 * 1024 * 1024, // 5MB
     queuePriority: "normal",
+    imageGenerationConcurrency: 2,
     monthlyCredits: 100, // 一次性
   },
   starter: {
     name: "Starter",
     maxFileSizeBytes: 20 * 1024 * 1024, // 20MB
     queuePriority: "normal",
+    imageGenerationConcurrency: 5,
     monthlyCredits: 5_000,
   },
   pro: {
     name: "Pro",
     maxFileSizeBytes: 50 * 1024 * 1024, // 50MB
     queuePriority: "priority",
+    imageGenerationConcurrency: 15,
     monthlyCredits: 20_000,
   },
   ultra: {
     name: "Ultra",
     maxFileSizeBytes: 100 * 1024 * 1024, // 100MB
     queuePriority: "highest",
+    imageGenerationConcurrency: 50,
+    monthlyCredits: 80_000,
+  },
+  enterprise: {
+    name: "Enterprise",
+    maxFileSizeBytes: 100 * 1024 * 1024, // 100MB
+    queuePriority: "highest",
+    imageGenerationConcurrency: 50,
     monthlyCredits: 80_000,
   },
 };
@@ -93,6 +111,7 @@ export const PLAN_RANK: Record<SubscriptionPlan, number> = {
   starter: 1,
   pro: 2,
   ultra: 3,
+  enterprise: 4,
 };
 
 // ============================================
@@ -125,6 +144,14 @@ export function getPlanFromPriceId(priceId: string): SubscriptionPlan | null {
     priceId === PRICE_IDS.ULTRA_YEARLY
   ) {
     return "ultra";
+  }
+
+  // Enterprise
+  if (
+    priceId === PRICE_IDS.ENTERPRISE_MONTHLY ||
+    priceId === PRICE_IDS.ENTERPRISE_YEARLY
+  ) {
+    return "enterprise";
   }
 
   return null;
@@ -252,7 +279,9 @@ export function getUpgradeMessage(
       ? "Starter"
       : currentPlan === "starter"
         ? "Pro"
-        : "Ultra";
+        : currentPlan === "pro"
+          ? "Ultra"
+          : "Enterprise";
 
   return `${requiredFeature} requires ${upgradeTo} plan or higher. Please upgrade to continue.`;
 }

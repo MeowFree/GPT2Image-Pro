@@ -422,6 +422,7 @@
           "input": "Text-to-image and image editing",
           "characters": "Standard image resolutions",
           "fileSize": "Up to 10 images per batch",
+          "queue": "Up to 2 concurrent generations",
           "export": "Download & share",
           "history": "Gallery history saved forever"
         }
@@ -439,6 +440,7 @@
           "input": "Text-to-image and image editing",
           "characters": "Standard image resolutions",
           "fileSize": "Up to 10 images per batch",
+          "queue": "Up to 5 concurrent generations",
           "externalApi": "External API key calls",
           "customApi": "Custom OpenAI-compatible API",
           "export": "Download & share",
@@ -461,7 +463,7 @@
           "fileSize": "Up to 10 images per batch",
           "chat": "Chat-to-image mode",
           "promptOptimization": "Prompt optimization can be turned off",
-          "queue": "Priority generation queue",
+          "queue": "Priority queue, up to 15 concurrent generations",
           "export": "Download & share",
           "history": "Gallery history saved forever",
           "externalApi": "External API key calls",
@@ -485,7 +487,32 @@
           "chatGpt55": "Chat-to-image supports GPT-5.5",
           "moderationSettlement": "Moderation failures only charge review credits",
           "promptOptimization": "Prompt optimization can be turned off",
-          "queue": "Highest priority queue",
+          "queue": "Highest priority queue, up to 50 concurrent generations",
+          "export": "Download & share",
+          "history": "Gallery history saved forever",
+          "externalApi": "External API key calls",
+          "customApi": "Custom OpenAI-compatible API",
+          "support": "Dedicated support"
+        }
+      },
+      "enterprise": {
+        "name": "Enterprise",
+        "description": "Ultra capabilities plus enterprise resource packs for sustained volume",
+        "cta": "Subscribe",
+        "creditsAmount": "80,000",
+        "creditsLabel": "credits / month",
+        "booksCount": "7,976",
+        "features": {
+          "creditsValidity": "Credits valid for the plan period",
+          "credits": "80,000 credits / month",
+          "input": "Text-to-image and image editing",
+          "fileSize": "Up to 10 images per batch",
+          "chatGpt55": "Chat-to-image supports GPT-5.5",
+          "moderationSettlement": "Moderation failures only charge review credits",
+          "promptOptimization": "Prompt optimization can be turned off",
+          "queue": "Highest priority queue, up to 50 concurrent generations",
+          "enterpriseResourcePack": "Enterprise resource packs: 5,000 credits per pack, about ¥0.03 per 4K image",
+          "enterpriseResourcePackUnlimited": "Unlimited enterprise resource pack purchases by quantity",
           "export": "Download & share",
           "history": "Gallery history saved forever",
           "externalApi": "External API key calls",
@@ -535,7 +562,8 @@
       "free": "Free",
       "starter": "Starter",
       "pro": "Pro",
-      "ultra": "Ultra"
+      "ultra": "Ultra",
+      "enterprise": "Enterprise"
     }
   },
   "Dashboard": {

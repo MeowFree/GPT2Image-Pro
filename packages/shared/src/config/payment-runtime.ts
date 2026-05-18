@@ -18,7 +18,7 @@ import {
   getRuntimeSettingString,
 } from "../system-settings";
 
-export type PaidPlanId = "starter" | "pro" | "ultra";
+export type PaidPlanId = "starter" | "pro" | "ultra" | "enterprise";
 
 export type RuntimePaymentConfig = PaymentConfig & {
   yearlyEnabled: boolean;
@@ -43,12 +43,19 @@ const PLAN_PRICE_ENV_KEYS = {
     monthlyAmount: "PLAN_ULTRA_MONTHLY_AMOUNT",
     yearlyAmount: "PLAN_ULTRA_YEARLY_AMOUNT",
   },
+  enterprise: {
+    monthly: "NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_MONTHLY",
+    yearly: "NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_YEARLY",
+    monthlyAmount: "PLAN_ENTERPRISE_MONTHLY_AMOUNT",
+    yearlyAmount: "PLAN_ENTERPRISE_YEARLY_AMOUNT",
+  },
 } as const;
 
 const PLAN_DEFAULT_AMOUNTS = {
   starter: { monthly: 20, yearly: 144 },
   pro: { monthly: 60, yearly: 432 },
   ultra: { monthly: 200, yearly: 1440 },
+  enterprise: { monthly: 800, yearly: 5760 },
 } as const;
 
 type RuntimePaymentProvider = "creem" | "epay";
@@ -72,6 +79,11 @@ export async function getSubscriptionMonthlyCredits() {
     ultra: await getRuntimeSettingNumber(
       "PLAN_ULTRA_MONTHLY_CREDITS",
       SUBSCRIPTION_MONTHLY_CREDITS.ultra,
+      { positive: true }
+    ),
+    enterprise: await getRuntimeSettingNumber(
+      "PLAN_ENTERPRISE_MONTHLY_CREDITS",
+      SUBSCRIPTION_MONTHLY_CREDITS.enterprise,
       { positive: true }
     ),
   } as const;
@@ -125,10 +137,16 @@ export async function getRuntimePaymentConfig(): Promise<RuntimePaymentConfig> {
   const ultraPrices = [
     await getRuntimePlanPrice("ultra", "monthly", provider),
   ];
+  const enterprisePrices = [
+    await getRuntimePlanPrice("enterprise", "monthly", provider),
+  ];
   if (yearlyEnabled) {
     starterPrices.push(await getRuntimePlanPrice("starter", "yearly", provider));
     proPrices.push(await getRuntimePlanPrice("pro", "yearly", provider));
     ultraPrices.push(await getRuntimePlanPrice("ultra", "yearly", provider));
+    enterprisePrices.push(
+      await getRuntimePlanPrice("enterprise", "yearly", provider)
+    );
   }
 
   const plans: RuntimePaymentConfig["plans"] = {
@@ -143,6 +161,10 @@ export async function getRuntimePaymentConfig(): Promise<RuntimePaymentConfig> {
     ultra: {
       ...paymentConfig.plans.ultra!,
       prices: ultraPrices,
+    },
+    enterprise: {
+      ...paymentConfig.plans.enterprise!,
+      prices: enterprisePrices,
     },
   };
   if (paymentConfig.plans.free) {
