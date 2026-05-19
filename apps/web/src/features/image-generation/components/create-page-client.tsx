@@ -770,12 +770,12 @@ export function CreatePageClient({
         <span className="mt-1 block text-xs font-normal text-muted-foreground">
           {promptOptimizationAllowed
             ? copy(
-                "When enabled, GPT2Image may rewrite the prompt before sending it to the image model.",
-                "开启后 GPT2Image 可能在提交给生图模型前改写提示词。"
+                "Turn this off to minimize prompt changes. Some backends may still interpret or revise the prompt internally.",
+                "关闭后将尽量减少对提示词的改动，但部分后端仍可能在内部理解或优化提示词。"
               )
             : copy(
-                "Pro plan or higher can turn this off.",
-                "专业版或更高套餐可关闭。"
+                "Pro plan or higher can reduce prompt changes.",
+                "专业版或更高套餐可尽量减少提示词改动。"
               )}
         </span>
       </span>
