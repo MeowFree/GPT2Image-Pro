@@ -314,7 +314,7 @@ export async function runImageGenerationForUser(
       ? "image_generation"
       : input.mode === "edit"
         ? "image_edit"
-        : "responses");
+        : "chat");
   let effectiveConfig: Awaited<ReturnType<typeof getEffectiveConfig>>;
   try {
     effectiveConfig = await getEffectiveConfig(userConfig, {

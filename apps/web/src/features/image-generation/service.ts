@@ -1313,7 +1313,16 @@ export async function generateChatImage(
     allowGpt55: params.allowGpt55,
   });
   if (isPoolAccountBackend(config, "web")) {
-    return { error: "Web backend accounts do not support /v1/responses." };
+    return generateImageWithChatGptWeb(config, {
+      prompt: params.prompt,
+      apiPrompt: params.apiPrompt,
+      promptOptimization: params.promptOptimization,
+      size: params.size,
+      model: params.model,
+      quality: params.quality,
+      n: params.n,
+      moderation: params.moderation,
+    });
   }
   try {
     const prompt = getEffectivePrompt(params);

@@ -1,6 +1,7 @@
 export type ImageBackendRequestKind =
   | "image_generation"
   | "image_edit"
+  | "chat"
   | "responses";
 export type ImageBackendAccountBackend = "web" | "responses";
 export type ImageBackendMemberType = "api" | "account";
