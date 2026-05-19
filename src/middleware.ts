@@ -14,6 +14,7 @@ import {
  * 创建国际化中间件
  */
 const intlMiddleware = createIntlMiddleware(routing);
+const VERSIONED_ASSET_PREFIX_PATTERN = /^\/gpt2-assets-[^/]+(\/_next\/.*)$/;
 
 /**
  * API 路由限流配置（白名单模式）
@@ -57,6 +58,12 @@ function getApiRateLimitType(pathname: string): RateLimitType | null {
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (VERSIONED_ASSET_PREFIX_PATTERN.test(pathname)) {
+    const rewrittenUrl = request.nextUrl.clone();
+    rewrittenUrl.pathname = pathname.replace(/^\/gpt2-assets-[^/]+/, "");
+    return NextResponse.rewrite(rewrittenUrl);
+  }
 
   // ============================================
   // API 路由限流
@@ -151,13 +158,12 @@ export const config = {
     /*
      * 匹配所有路径除了:
      * - _next/static (static files)
-     * - gpt2-assets-* (versioned static files behind Cloudflare)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public folder files
      *
      * 注意: 现在包含 /api 路由以便进行限流
      */
-    "/((?!_next/static|gpt2-assets-[^/]+/_next/static|_next/image|favicon.ico|sitemap\\.xml|robots\\.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sitemap\\.xml|robots\\.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
