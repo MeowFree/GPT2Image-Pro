@@ -770,8 +770,8 @@ export function CreatePageClient({
         <span className="mt-1 block text-xs font-normal text-muted-foreground">
           {promptOptimizationAllowed
             ? copy(
-                "When enabled, the platform may improve the prompt before image generation.",
-                "开启后平台可能在出图前优化提示词。"
+                "When enabled, GPT2Image may rewrite the prompt before sending it to the image model.",
+                "开启后 GPT2Image 可能在提交给生图模型前改写提示词。"
               )
             : copy(
                 "Pro plan or higher can turn this off.",

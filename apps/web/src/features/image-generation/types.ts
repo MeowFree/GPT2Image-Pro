@@ -16,6 +16,7 @@ export interface GenerateImageResult {
   imageBase64?: string;
   imageUrl?: string;
   revisedPrompt?: string;
+  upstreamRevisedPrompt?: string;
   responseText?: string;
   responseThinking?: string;
   error?: string;

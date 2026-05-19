@@ -68,8 +68,6 @@ const CHAT_TEXT_ONLY_CREDITS = 1;
 const MAX_CHAT_CONTEXT_CHARS = 30_000;
 const TEXT_MODERATION_ONLY_CREDITS =
   getImageCreditCostBreakdown(DEFAULT_IMAGE_SIZE).moderationOnlyCredits;
-const ORIGINAL_PROMPT_INSTRUCTION =
-  "Use the following image prompt exactly as the user's requested generation prompt. Do not rewrite, expand, translate, polish, summarize, optimize, or add style words before generating the image.";
 
 export type ImageGenerationOperationResult = {
   error?: string;
@@ -144,10 +142,6 @@ function getChatContextLength(params: {
   );
 }
 
-function buildOriginalPromptText(prompt: string) {
-  return `${ORIGINAL_PROMPT_INSTRUCTION}\n\nOriginal prompt:\n${prompt}`;
-}
-
 function buildPromptOptimizationMetadata(params: {
   input: RunImageGenerationInput;
   promptOptimization: boolean;
@@ -161,10 +155,11 @@ function buildPromptOptimizationMetadata(params: {
       apiPromptProvided: Boolean(requestedApiPrompt),
       apiPromptUsed:
         params.promptOptimization && params.apiPrompt !== params.input.prompt,
-      originalPromptInstructionInjected: !params.promptOptimization,
+      platformPromptRewriteDisabled: !params.promptOptimization,
+      originalPromptInstructionInjected: false,
       effectivePromptChanged: params.apiPrompt !== params.input.prompt,
       effectivePromptKind: !params.promptOptimization
-        ? "original_with_instruction"
+        ? "original"
         : params.apiPrompt !== params.input.prompt
           ? "api_prompt"
           : "original",
@@ -177,17 +172,26 @@ function buildPromptOptimizationMetadata(params: {
 function buildRevisedPromptMetadata(params: {
   input: RunImageGenerationInput;
   apiPrompt: string;
-  result: { revisedPrompt?: string };
+  result: { revisedPrompt?: string; upstreamRevisedPrompt?: string };
 }) {
-  const revisedPrompt = params.result.revisedPrompt?.trim() || "";
+  const upstreamRevisedPrompt =
+    params.result.upstreamRevisedPrompt?.trim() ||
+    params.result.revisedPrompt?.trim() ||
+    "";
   return {
     promptOptimizationResult: {
-      hasRevisedPrompt: Boolean(revisedPrompt),
-      revisedPromptChangedFromOriginal:
-        Boolean(revisedPrompt) && revisedPrompt !== params.input.prompt,
-      revisedPromptChangedFromEffective:
-        Boolean(revisedPrompt) && revisedPrompt !== params.apiPrompt,
-      revisedPromptLength: revisedPrompt.length,
+      hasRevisedPrompt: Boolean(params.result.revisedPrompt?.trim()),
+      hasUpstreamRevisedPrompt: Boolean(upstreamRevisedPrompt),
+      upstreamRevisedPromptChangedFromOriginal:
+        Boolean(upstreamRevisedPrompt) &&
+        upstreamRevisedPrompt !== params.input.prompt,
+      upstreamRevisedPromptChangedFromEffective:
+        Boolean(upstreamRevisedPrompt) &&
+        upstreamRevisedPrompt !== params.apiPrompt,
+      upstreamRevisedPromptLength: upstreamRevisedPrompt.length,
+      upstreamRevisedPromptSuppressed:
+        params.input.promptOptimization === false &&
+        Boolean(upstreamRevisedPrompt),
     },
   };
 }
@@ -258,7 +262,7 @@ export async function runImageGenerationForUser(
   const promptOptimization = input.promptOptimization ?? true;
   const apiPrompt = promptOptimization
     ? input.apiPrompt || input.prompt
-    : buildOriginalPromptText(input.prompt);
+    : input.prompt;
   const moderationPrompt =
     input.mode === "chat" || !promptOptimization ? input.prompt : apiPrompt;
 

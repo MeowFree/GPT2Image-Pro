@@ -59,7 +59,7 @@ function getToolModel(config: ApiConfig, model?: string) {
 
 function getPrompt(params: GenerateImageParams | EditImageParams) {
   if (params.promptOptimization === false) {
-    return `Use the following image prompt exactly as the user's requested generation prompt. Do not rewrite, expand, translate, polish, summarize, optimize, or add style words before generating the image.\n\nOriginal prompt:\n${params.prompt}`;
+    return params.prompt;
   }
   return params.apiPrompt || params.prompt;
 }

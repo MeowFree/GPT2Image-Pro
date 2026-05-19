@@ -388,6 +388,30 @@ function withoutPoolBackendReport(config: ApiConfig): ApiConfig {
   };
 }
 
+function applyPromptOptimizationResultVisibility(
+  params: { promptOptimization?: boolean },
+  result: GenerateImageResult
+): GenerateImageResult {
+  if (result.error) return result;
+  const upstreamRevisedPrompt =
+    result.upstreamRevisedPrompt || result.revisedPrompt;
+  if (!upstreamRevisedPrompt) return result;
+
+  if (params.promptOptimization === false) {
+    return {
+      ...result,
+      revisedPrompt: undefined,
+      upstreamRevisedPrompt,
+    };
+  }
+
+  return {
+    ...result,
+    revisedPrompt: result.revisedPrompt || upstreamRevisedPrompt,
+    upstreamRevisedPrompt,
+  };
+}
+
 function getDataUrl(image: ImageInputFile) {
   if (image.url?.startsWith("http://") || image.url?.startsWith("https://")) {
     return image.url;
@@ -456,20 +480,13 @@ function buildResponsesInput(
   return input;
 }
 
-const ORIGINAL_PROMPT_INSTRUCTION =
-  "Use the following image prompt exactly as the user's requested generation prompt. Do not rewrite, expand, translate, polish, summarize, optimize, or add style words before generating the image.";
-
-function buildOriginalPromptText(prompt: string) {
-  return `${ORIGINAL_PROMPT_INSTRUCTION}\n\nOriginal prompt:\n${prompt}`;
-}
-
 function getEffectivePrompt(params: {
   prompt: string;
   apiPrompt?: string;
   promptOptimization?: boolean;
 }) {
   if (params.promptOptimization === false) {
-    return buildOriginalPromptText(params.prompt);
+    return params.prompt;
   }
   return params.apiPrompt || params.prompt;
 }
@@ -521,7 +538,7 @@ function toGenerateImageResult(image: ImageOutput): GenerateImageResult {
   const result: GenerateImageResult = {};
   if (image.b64_json) result.imageBase64 = image.b64_json;
   if (image.url) result.imageUrl = image.url;
-  if (image.revised_prompt) result.revisedPrompt = image.revised_prompt;
+  if (image.revised_prompt) result.upstreamRevisedPrompt = image.revised_prompt;
   return result;
 }
 
@@ -615,7 +632,7 @@ function parseResponsesOutput(
 
   return {
     imageBase64,
-    revisedPrompt,
+    upstreamRevisedPrompt: revisedPrompt,
     responseText,
     responseThinking,
   };
@@ -663,7 +680,7 @@ async function processResponsesEventPayload(
       await callbacks?.onPartialImage?.(partialImage);
       state.fallbackResult = {
         imageBase64: item.result,
-        revisedPrompt: item.revised_prompt,
+        upstreamRevisedPrompt: item.revised_prompt,
       };
     }
     return null;
@@ -1108,7 +1125,10 @@ export async function generateImage(
           ),
         }
       );
-      return await parseResponsesResponse(response, callbacks);
+      return applyPromptOptimizationResultVisibility(
+        params,
+        await parseResponsesResponse(response, callbacks)
+      );
     } catch (error) {
       logImageRequestError(error, {
         operation: "generate",
@@ -1152,7 +1172,10 @@ export async function generateImage(
       }),
     });
 
-    return await parseImageResponse(response, callbacks);
+    return applyPromptOptimizationResultVisibility(
+      params,
+      await parseImageResponse(response, callbacks)
+    );
   } catch (error) {
     logImageRequestError(error, {
       operation: "generate",
@@ -1196,7 +1219,10 @@ export async function editImage(
           ),
         }
       );
-      return await parseResponsesResponse(response, callbacks);
+      return applyPromptOptimizationResultVisibility(
+        params,
+        await parseResponsesResponse(response, callbacks)
+      );
     } catch (error) {
       logImageRequestError(error, {
         operation: "edit",
@@ -1247,7 +1273,10 @@ export async function editImage(
       body: formData,
     });
 
-    return await parseImageResponse(response, callbacks);
+    return applyPromptOptimizationResultVisibility(
+      params,
+      await parseImageResponse(response, callbacks)
+    );
   } catch (error) {
     logImageRequestError(error, {
       operation: "edit",
@@ -1331,7 +1360,10 @@ export async function generateChatImage(
       }
     );
 
-    return await parseResponsesResponse(response, callbacks);
+    return applyPromptOptimizationResultVisibility(
+      params,
+      await parseResponsesResponse(response, callbacks)
+    );
   } catch (error) {
     logImageRequestError(error, {
       operation: "chat",
