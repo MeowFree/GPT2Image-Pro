@@ -386,7 +386,7 @@
   },
   "Pricing": {
     "title": "Simple, transparent pricing",
-    "subtitle": "Pay by credits. Subscription credits are valid for the plan period, and other credits follow the batch expiry shown on the usage page. Image base cost scales by exact pixels from 4K=10 credits, with fixed moderation cost per check added.",
+    "subtitle": "Pay by credits. Subscription credits are valid for the plan period, and other credits follow the batch expiry shown on the usage page. Image base cost scales by exact pixels from 4K=10 credits, with fixed text moderation (0.04) and image moderation (0.06) costs added.",
     "creditsUpfront": "all at once",
     "creditsPerYear": "credits / year",
     "monthly": "Monthly",
@@ -404,7 +404,7 @@
       "title": "Credit billing rules",
       "items": [
         "Base image generation: 3840×2160 (4K) = 10 credits. Other sizes scale by exact output pixels.",
-        "Text moderation: fixed 0.03 credits per request, calculated only from the latest input text.",
+        "Text moderation: fixed 0.04 credits per request, calculated only from the latest input text.",
         "Image moderation: fixed 0.06 credits for each image in the current input; text-to-image has no image moderation fee.",
         "Final price = base image credits + text moderation credits + input image moderation credits, shown and charged with two decimals."
       ]
@@ -457,7 +457,7 @@
         "cta": "Subscribe",
         "creditsAmount": "20,000",
         "creditsLabel": "credits / month",
-        "booksCount": "1,994",
+        "booksCount": "1,992",
         "features": {
           "creditsValidity": "Credits valid for the plan period",
           "credits": "20,000 credits / month",
@@ -481,7 +481,7 @@
         "cta": "Subscribe",
         "creditsAmount": "80,000",
         "creditsLabel": "credits / month",
-        "booksCount": "7,976",
+        "booksCount": "7,968",
         "features": {
           "creditsValidity": "Credits valid for the plan period",
           "credits": "80,000 credits / month",
@@ -507,7 +507,7 @@
         "cta": "Subscribe",
         "creditsAmount": "320,000",
         "creditsLabel": "credits / month",
-        "booksCount": "31,904",
+        "booksCount": "31,872",
         "features": {
           "creditsValidity": "Credits valid for the plan period",
           "credits": "320,000 credits / month",
