@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@repo/ui/components/ca
 import { Checkbox } from "@repo/ui/components/checkbox";
 import { Input } from "@repo/ui/components/input";
 import { Label } from "@repo/ui/components/label";
+import { Progress } from "@repo/ui/components/progress";
 import {
   Select,
   SelectContent,
@@ -33,6 +34,7 @@ import {
   deleteImageBackendGroupAction,
   deleteImageBackendMemberAction,
   getAdminImageBackendPoolAction,
+  getSub2ApiSourceGroupsAction,
   refreshImageBackendAccountInfoAction,
   saveImageBackendAccountAction,
   saveImageBackendApiAction,
@@ -109,6 +111,19 @@ type ContentSafetyFormValue = "inherit" | "enabled" | "disabled";
 type AccountBackendFormValue = "web" | "responses";
 type TokenSyncMode = "web" | "responses" | "both";
 
+type Sub2ApiSourceGroup = {
+  id: string;
+  name: string;
+  platform: string | null;
+  accountCount: number;
+};
+
+type SyncProgressState = {
+  status: "idle" | "running" | "success" | "error";
+  value: number;
+  message: string;
+};
+
 function groupName(groups: Group[], groupId: string | null) {
   return groups.find((group) => group.id === groupId)?.name || "未分组";
 }
@@ -162,6 +177,9 @@ function normalizeBackendFormValue(value: string): AccountBackendFormValue {
 
 export function ImageBackendPoolAdminPanel() {
   const [groups, setGroups] = useState<Group[]>([]);
+  const [sub2ApiSourceGroups, setSub2ApiSourceGroups] = useState<
+    Sub2ApiSourceGroup[]
+  >([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [apis, setApis] = useState<Api[]>([]);
   const [groupForm, setGroupForm] = useState({
@@ -201,11 +219,17 @@ export function ImageBackendPoolAdminPanel() {
     priority: 50,
   });
   const [importForm, setImportForm] = useState({
+    sourceGroupId: "default",
     webGroupId: "default",
     responsesGroupId: "default",
     syncMode: "both" as TokenSyncMode,
     contentSafetyEnabled: true,
     limit: 100,
+  });
+  const [syncProgress, setSyncProgress] = useState<SyncProgressState>({
+    status: "idle",
+    value: 0,
+    message: "等待开始同步",
   });
 
   const groupOptions = useMemo(
@@ -317,6 +341,15 @@ export function ImageBackendPoolAdminPanel() {
 
   const reload = () => loadPool();
 
+  const { execute: loadSub2ApiSourceGroups, isPending: isLoadingSourceGroups } =
+    useAction(getSub2ApiSourceGroupsAction, {
+      onSuccess: ({ data }) => {
+        setSub2ApiSourceGroups((data?.groups || []) as Sub2ApiSourceGroup[]);
+      },
+      onError: ({ error }) =>
+        toast.error(error.serverError || "加载 Sub2API 来源分组失败"),
+    });
+
   const { execute: saveGroup, isPending: isSavingGroup } = useAction(
     saveImageBackendGroupAction,
     {
@@ -357,13 +390,30 @@ export function ImageBackendPoolAdminPanel() {
     syncImageBackendAccountsFromSub2ApiAction,
     {
       onSuccess: ({ data }) => {
+        const sourceCount = data?.sourceCount || 0;
+        const syncedCount = data?.syncedCount || 0;
+        const skippedCount =
+          (data?.skipped?.web || 0) + (data?.skipped?.responses || 0);
+        const failedCount = data?.failed || 0;
+        setSyncProgress({
+          status: "success",
+          value: 100,
+          message: `完成：读取 ${sourceCount} 个，写入 ${syncedCount} 个，跳过 ${skippedCount} 个，失败 ${failedCount} 个`,
+        });
         toast.success(
-          `已读取 ${data?.sourceCount || 0} 个 Sub2API 账号，同步 ${data?.syncedCount || 0} 个本地后端，回写 RT ${data?.refreshTokenWriteBackCount || 0} 个`
+          `已读取 ${sourceCount} 个 Sub2API 账号，同步 ${syncedCount} 个本地后端，回写 RT ${data?.refreshTokenWriteBackCount || 0} 个，跳过 ${skippedCount} 个`
         );
         reload();
       },
-      onError: ({ error }) =>
-        toast.error(error.serverError || "从 Sub2API 获取 AT 失败"),
+      onError: ({ error }) => {
+        const message = error.serverError || "从 Sub2API 获取 AT 失败";
+        setSyncProgress({
+          status: "error",
+          value: 100,
+          message,
+        });
+        toast.error(message);
+      },
     }
   );
 
@@ -404,7 +454,8 @@ export function ImageBackendPoolAdminPanel() {
 
   useEffect(() => {
     loadPool();
-  }, [loadPool]);
+    loadSub2ApiSourceGroups();
+  }, [loadPool, loadSub2ApiSourceGroups]);
 
   return (
     <div className="space-y-6">
@@ -964,6 +1015,42 @@ export function ImageBackendPoolAdminPanel() {
               <p className="text-sm text-muted-foreground">
                 连接 Sub2API Postgres。Codex 直接复用 Sub2API 当前 access_token；Web 必须读取 Sub2API 的 RT 换取平台 AT，并把刷新返回的新 RT 写回 Sub2API，避免账号失效。
               </p>
+              <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                <Select
+                  value={importForm.sourceGroupId}
+                  onValueChange={(value) =>
+                    setImportForm((current) => ({
+                      ...current,
+                      sourceGroupId: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sub2API 来源分组" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">全部 Sub2API OpenAI 账号</SelectItem>
+                    {sub2ApiSourceGroups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name} · {group.accountCount} 个账号
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => loadSub2ApiSourceGroups()}
+                  disabled={isLoadingSourceGroups}
+                >
+                  {isLoadingSourceGroups ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  刷新来源
+                </Button>
+              </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Select
                   value={importForm.syncMode}
@@ -1054,23 +1141,44 @@ export function ImageBackendPoolAdminPanel() {
                   }))
                 }
               />
-              <Button
-                onClick={() =>
-                  syncSub2ApiAccounts({
-                    webGroupId: importForm.webGroupId,
-                    responsesGroupId: importForm.responsesGroupId,
-                    syncMode: importForm.syncMode,
-                    contentSafetyEnabled: importForm.contentSafetyEnabled,
-                    limit: importForm.limit,
-                  })
-                }
-                disabled={isSyncingSub2Api}
-              >
-                {isSyncingSub2Api && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <div className="space-y-3">
+                <Button
+                  onClick={() => {
+                    setSyncProgress({
+                      status: "running",
+                      value: 35,
+                      message: "正在读取 Sub2API 账号并换取 AT",
+                    });
+                    syncSub2ApiAccounts({
+                      sourceGroupId: importForm.sourceGroupId,
+                      webGroupId: importForm.webGroupId,
+                      responsesGroupId: importForm.responsesGroupId,
+                      syncMode: importForm.syncMode,
+                      contentSafetyEnabled: importForm.contentSafetyEnabled,
+                      limit: importForm.limit,
+                    });
+                  }}
+                  disabled={isSyncingSub2Api}
+                >
+                  {isSyncingSub2Api && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  获取 AT
+                </Button>
+                {(isSyncingSub2Api || syncProgress.status !== "idle") && (
+                  <div className="space-y-2 rounded-md border p-3">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span>{syncProgress.message}</span>
+                      <span className="text-muted-foreground">
+                        {isSyncingSub2Api ? "同步中" : "已结束"}
+                      </span>
+                    </div>
+                    <Progress
+                      value={isSyncingSub2Api ? syncProgress.value : 100}
+                    />
+                  </div>
                 )}
-                获取 AT
-              </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

@@ -11,6 +11,7 @@ import {
   getRuntimeSettingNumber,
   getRuntimeSettingString,
 } from "@repo/shared/system-settings";
+import { logWarn } from "@repo/shared/logger";
 import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { Pool } from "pg";
@@ -920,6 +921,13 @@ export async function upsertImageBackendAccount(input: UpsertAccountInput) {
 
 type Sub2ApiTokenSyncMode = "web" | "responses" | "both";
 
+export type Sub2ApiSourceGroupSummary = {
+  id: string;
+  name: string;
+  platform: string | null;
+  accountCount: number;
+};
+
 type Sub2ApiAccountRow = {
   id: number | string;
   name: string | null;
@@ -944,6 +952,13 @@ type Sub2ApiTokenAccount = {
   concurrency: number | null;
   planType: string | null;
   groupNames: string[];
+};
+
+type Sub2ApiSourceGroupRow = {
+  id: number | string;
+  name: string;
+  platform: string | null;
+  account_count: number | string | null;
 };
 
 function credentialString(
@@ -1021,8 +1036,14 @@ function createSub2ApiPool(connectionString: string) {
 
 async function listSub2ApiCurrentAccessTokens(
   pool: Pool,
-  options: { limit: number }
+  options: { limit: number; sourceGroupId?: string | null }
 ) {
+  const sourceGroupId = options.sourceGroupId
+    ? Number(options.sourceGroupId)
+    : null;
+  if (options.sourceGroupId && !Number.isFinite(sourceGroupId)) {
+    throw new Error("Sub2API 来源分组无效");
+  }
   const result = await pool.query<Sub2ApiAccountRow>(
     `
       SELECT
@@ -1056,15 +1077,66 @@ async function listSub2ApiCurrentAccessTokens(
           OR a.credentials ? 'refresh_token'
           OR a.credentials ? 'refreshToken'
         )
+        AND ($2::bigint IS NULL OR EXISTS (
+          SELECT 1
+          FROM account_groups source_ag
+          WHERE source_ag.account_id = a.id
+            AND source_ag.group_id = $2::bigint
+        ))
       GROUP BY a.id
       ORDER BY a.priority ASC, a.last_used_at ASC NULLS FIRST, a.id ASC
       LIMIT $1
     `,
-    [options.limit]
+    [options.limit, sourceGroupId]
   );
   return result.rows
     .map(mapSub2ApiAccountRow)
     .filter((account): account is Sub2ApiTokenAccount => Boolean(account));
+}
+
+async function listSub2ApiSourceGroupsFromPool(pool: Pool) {
+  const result = await pool.query<Sub2ApiSourceGroupRow>(
+    `
+      SELECT
+        g.id,
+        g.name,
+        g.platform,
+        COUNT(a.id) FILTER (
+          WHERE
+            a.deleted_at IS NULL
+            AND a.platform = 'openai'
+            AND a.type = 'oauth'
+            AND a.status = 'active'
+            AND COALESCE(a.schedulable, true) = true
+        ) AS account_count
+      FROM groups g
+      LEFT JOIN account_groups ag ON ag.group_id = g.id
+      LEFT JOIN accounts a ON a.id = ag.account_id
+      WHERE
+        g.deleted_at IS NULL
+        AND g.status = 'active'
+        AND g.platform = 'openai'
+      GROUP BY g.id, g.name, g.platform, g.sort_order
+      ORDER BY g.sort_order ASC, g.name ASC, g.id ASC
+    `
+  );
+
+  return result.rows.map((row) => ({
+    id: String(row.id),
+    name: row.name,
+    platform: row.platform,
+    accountCount: Number(row.account_count || 0),
+  }));
+}
+
+export async function listSub2ApiSourceGroups() {
+  const connectionString = await getSub2ApiPostgresConnectionString();
+  const pool = createSub2ApiPool(connectionString);
+  try {
+    return await listSub2ApiSourceGroupsFromPool(pool);
+  } finally {
+    await pool.end();
+  }
 }
 
 type OpenAITokenRefreshResponse = {
@@ -1193,6 +1265,7 @@ async function resolveSub2ApiAccessTokenForMode(
 export async function syncImageBackendAccountsFromSub2Api(input: {
   webGroupId?: string | null;
   responsesGroupId?: string | null;
+  sourceGroupId?: string | null;
   syncMode: Sub2ApiTokenSyncMode;
   contentSafetyEnabled: boolean;
   limit?: number | null;
@@ -1215,50 +1288,64 @@ export async function syncImageBackendAccountsFromSub2Api(input: {
     web: 0,
     responses: 0,
   };
+  let failed = 0;
   let refreshTokenWriteBackCount = 0;
 
   const connectionString = await getSub2ApiPostgresConnectionString();
   const pool = createSub2ApiPool(connectionString);
   try {
-    const accounts = await listSub2ApiCurrentAccessTokens(pool, { limit });
+    const accounts = await listSub2ApiCurrentAccessTokens(pool, {
+      limit,
+      sourceGroupId: input.sourceGroupId,
+    });
     for (const account of accounts) {
       for (const mode of modes) {
-        const { accessToken, tokenSource, refreshTokenWrittenBack } =
-          await resolveSub2ApiAccessTokenForMode(pool, account, mode);
-        if (!accessToken) {
+        try {
+          const { accessToken, tokenSource, refreshTokenWrittenBack } =
+            await resolveSub2ApiAccessTokenForMode(pool, account, mode);
+          if (!accessToken) {
+            skipped[mode]++;
+            continue;
+          }
+          if (refreshTokenWrittenBack) refreshTokenWriteBackCount++;
+          const id = await upsertImageBackendAccount({
+            groupId:
+              mode === "responses" ? input.responsesGroupId : input.webGroupId,
+            name:
+              mode === "responses"
+                ? `${account.name} / Codex`
+                : `${account.name} / Web`,
+            email: account.email,
+            accessToken,
+            refreshToken: null,
+            implementationMode: mode,
+            model: null,
+            contentSafetyEnabled: input.contentSafetyEnabled,
+            isEnabled: true,
+            priority: account.priority ?? 50,
+            concurrency: Math.max(1, Math.min(100, account.concurrency ?? 1)),
+            status: "active",
+            metadata: {
+              source: "sub2api_postgres",
+              sourceAccountId: account.sourceId,
+              sourceGroups: account.groupNames,
+              planType: account.planType,
+              syncedAt: new Date().toISOString(),
+              tokenSource,
+              sub2apiClientId: account.clientId,
+              refreshTokenWrittenBack,
+            },
+          });
+          imported.push(id);
+        } catch (error) {
+          failed++;
           skipped[mode]++;
-          continue;
-        }
-        if (refreshTokenWrittenBack) refreshTokenWriteBackCount++;
-        const id = await upsertImageBackendAccount({
-          groupId:
-            mode === "responses" ? input.responsesGroupId : input.webGroupId,
-          name:
-            mode === "responses"
-              ? `${account.name} / Codex`
-              : `${account.name} / Web`,
-          email: account.email,
-          accessToken,
-          refreshToken: null,
-          implementationMode: mode,
-          model: null,
-          contentSafetyEnabled: input.contentSafetyEnabled,
-          isEnabled: true,
-          priority: account.priority ?? 50,
-          concurrency: Math.max(1, Math.min(100, account.concurrency ?? 1)),
-          status: "active",
-          metadata: {
-            source: "sub2api_postgres",
+          logWarn("Sub2API 账号 AT 同步失败，已跳过", {
             sourceAccountId: account.sourceId,
-            sourceGroups: account.groupNames,
-            planType: account.planType,
-            syncedAt: new Date().toISOString(),
-            tokenSource,
-            sub2apiClientId: account.clientId,
-            refreshTokenWrittenBack,
-          },
-        });
-        imported.push(id);
+            mode,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
 
@@ -1266,6 +1353,7 @@ export async function syncImageBackendAccountsFromSub2Api(input: {
       sourceCount: accounts.length,
       syncedCount: imported.length,
       skipped,
+      failed,
       refreshTokenWriteBackCount,
     };
   } finally {

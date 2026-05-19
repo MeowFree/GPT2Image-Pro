@@ -12,6 +12,7 @@ import {
   listAdminImageBackendPool,
   listImageBackendGroupOptions,
   listSelectableImageBackendGroups,
+  listSub2ApiSourceGroups,
   refreshImageBackendAccountInfo,
   setUserImageBackendPreference,
   syncImageBackendAccountsFromSub2Api,
@@ -59,6 +60,12 @@ export const getAdminImageBackendPoolAction =
   withImageBackendPoolAdminAction("list").action(async () => {
     const pool = await listAdminImageBackendPool();
     return pool;
+  });
+
+export const getSub2ApiSourceGroupsAction =
+  withImageBackendPoolAdminAction("sub2ApiSourceGroups").action(async () => {
+    const groups = await listSub2ApiSourceGroups();
+    return { groups };
   });
 
 export const saveImageBackendGroupAction = withImageBackendPoolAdminAction(
@@ -144,6 +151,7 @@ export const syncImageBackendAccountsFromSub2ApiAction =
       z.object({
         webGroupId: nullableGroupIdSchema,
         responsesGroupId: nullableGroupIdSchema,
+        sourceGroupId: nullableGroupIdSchema,
         syncMode: sub2ApiTokenSyncModeSchema.default("both"),
         contentSafetyEnabled: z.boolean().default(true),
         limit: z.coerce.number().int().min(1).max(500).optional(),
@@ -153,6 +161,7 @@ export const syncImageBackendAccountsFromSub2ApiAction =
       const result = await syncImageBackendAccountsFromSub2Api({
         webGroupId: parsedInput.webGroupId,
         responsesGroupId: parsedInput.responsesGroupId,
+        sourceGroupId: parsedInput.sourceGroupId,
         syncMode: parsedInput.syncMode,
         contentSafetyEnabled: parsedInput.contentSafetyEnabled,
         limit: parsedInput.limit,
