@@ -155,6 +155,7 @@ export const syncImageBackendAccountsFromSub2ApiAction =
         syncMode: sub2ApiTokenSyncModeSchema.default("both"),
         contentSafetyEnabled: z.boolean().default(true),
         limit: z.coerce.number().int().min(1).max(500).optional(),
+        offset: z.coerce.number().int().min(0).optional(),
       })
     )
     .action(async ({ parsedInput }) => {
@@ -165,6 +166,7 @@ export const syncImageBackendAccountsFromSub2ApiAction =
         syncMode: parsedInput.syncMode,
         contentSafetyEnabled: parsedInput.contentSafetyEnabled,
         limit: parsedInput.limit,
+        offset: parsedInput.offset,
       });
       return { success: true, ...result };
     });

@@ -1036,7 +1036,7 @@ function createSub2ApiPool(connectionString: string) {
 
 async function listSub2ApiCurrentAccessTokens(
   pool: Pool,
-  options: { limit: number; sourceGroupId?: string | null }
+  options: { limit: number; offset?: number; sourceGroupId?: string | null }
 ) {
   const sourceGroupId = options.sourceGroupId
     ? Number(options.sourceGroupId)
@@ -1044,6 +1044,7 @@ async function listSub2ApiCurrentAccessTokens(
   if (options.sourceGroupId && !Number.isFinite(sourceGroupId)) {
     throw new Error("Sub2API 来源分组无效");
   }
+  const offset = Math.max(0, Math.trunc(options.offset || 0));
   const result = await pool.query<Sub2ApiAccountRow>(
     `
       SELECT
@@ -1086,12 +1087,52 @@ async function listSub2ApiCurrentAccessTokens(
       GROUP BY a.id
       ORDER BY a.priority ASC, a.last_used_at ASC NULLS FIRST, a.id ASC
       LIMIT $1
+      OFFSET $3
     `,
-    [options.limit, sourceGroupId]
+    [options.limit, sourceGroupId, offset]
   );
   return result.rows
     .map(mapSub2ApiAccountRow)
     .filter((account): account is Sub2ApiTokenAccount => Boolean(account));
+}
+
+async function countSub2ApiCurrentAccessTokens(
+  pool: Pool,
+  options: { sourceGroupId?: string | null }
+) {
+  const sourceGroupId = options.sourceGroupId
+    ? Number(options.sourceGroupId)
+    : null;
+  if (options.sourceGroupId && !Number.isFinite(sourceGroupId)) {
+    throw new Error("Sub2API 来源分组无效");
+  }
+  const result = await pool.query<{ value: number | string }>(
+    `
+      SELECT COUNT(*) AS value
+      FROM accounts a
+      WHERE
+        a.deleted_at IS NULL
+        AND a.platform = 'openai'
+        AND a.type = 'oauth'
+        AND a.status = 'active'
+        AND COALESCE(a.schedulable, true) = true
+        AND (
+          a.credentials ? 'access_token'
+          OR a.credentials ? 'accessToken'
+          OR a.credentials ? 'token'
+          OR a.credentials ? 'refresh_token'
+          OR a.credentials ? 'refreshToken'
+        )
+        AND ($1::bigint IS NULL OR EXISTS (
+          SELECT 1
+          FROM account_groups source_ag
+          WHERE source_ag.account_id = a.id
+            AND source_ag.group_id = $1::bigint
+        ))
+    `,
+    [sourceGroupId]
+  );
+  return Number(result.rows[0]?.value || 0);
 }
 
 async function listSub2ApiSourceGroupsFromPool(pool: Pool) {
@@ -1269,6 +1310,7 @@ export async function syncImageBackendAccountsFromSub2Api(input: {
   syncMode: Sub2ApiTokenSyncMode;
   contentSafetyEnabled: boolean;
   limit?: number | null;
+  offset?: number | null;
 }) {
   const configuredLimit = await getRuntimeSettingNumber(
     "SUB2API_POSTGRES_SYNC_LIMIT",
@@ -1279,6 +1321,7 @@ export async function syncImageBackendAccountsFromSub2Api(input: {
     1,
     Math.min(500, Math.trunc(input.limit || configuredLimit))
   );
+  const offset = Math.max(0, Math.trunc(input.offset || 0));
   const modes =
     input.syncMode === "both"
       ? (["web", "responses"] as const)
@@ -1294,8 +1337,12 @@ export async function syncImageBackendAccountsFromSub2Api(input: {
   const connectionString = await getSub2ApiPostgresConnectionString();
   const pool = createSub2ApiPool(connectionString);
   try {
+    const totalSourceCount = await countSub2ApiCurrentAccessTokens(pool, {
+      sourceGroupId: input.sourceGroupId,
+    });
     const accounts = await listSub2ApiCurrentAccessTokens(pool, {
       limit,
+      offset,
       sourceGroupId: input.sourceGroupId,
     });
     for (const account of accounts) {
@@ -1351,6 +1398,10 @@ export async function syncImageBackendAccountsFromSub2Api(input: {
 
     return {
       sourceCount: accounts.length,
+      totalSourceCount,
+      offset,
+      nextOffset: offset + accounts.length,
+      hasMore: offset + accounts.length < totalSourceCount,
       syncedCount: imported.length,
       skipped,
       failed,

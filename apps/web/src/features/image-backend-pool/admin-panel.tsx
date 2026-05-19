@@ -386,36 +386,10 @@ export function ImageBackendPoolAdminPanel() {
     }
   );
 
-  const { execute: syncSub2ApiAccounts, isPending: isSyncingSub2Api } = useAction(
-    syncImageBackendAccountsFromSub2ApiAction,
-    {
-      onSuccess: ({ data }) => {
-        const sourceCount = data?.sourceCount || 0;
-        const syncedCount = data?.syncedCount || 0;
-        const skippedCount =
-          (data?.skipped?.web || 0) + (data?.skipped?.responses || 0);
-        const failedCount = data?.failed || 0;
-        setSyncProgress({
-          status: "success",
-          value: 100,
-          message: `完成：读取 ${sourceCount} 个，写入 ${syncedCount} 个，跳过 ${skippedCount} 个，失败 ${failedCount} 个`,
-        });
-        toast.success(
-          `已读取 ${sourceCount} 个 Sub2API 账号，同步 ${syncedCount} 个本地后端，回写 RT ${data?.refreshTokenWriteBackCount || 0} 个，跳过 ${skippedCount} 个`
-        );
-        reload();
-      },
-      onError: ({ error }) => {
-        const message = error.serverError || "从 Sub2API 获取 AT 失败";
-        setSyncProgress({
-          status: "error",
-          value: 100,
-          message,
-        });
-        toast.error(message);
-      },
-    }
+  const { executeAsync: syncSub2ApiAccountsBatch } = useAction(
+    syncImageBackendAccountsFromSub2ApiAction
   );
+  const [isSyncingSub2Api, setIsSyncingSub2Api] = useState(false);
 
   const { execute: deleteGroup, isPending: isDeletingGroup } = useAction(
     deleteImageBackendGroupAction,
@@ -451,6 +425,96 @@ export function ImageBackendPoolAdminPanel() {
       onError: ({ error }) =>
         toast.error(error.serverError || "刷新账号远端信息失败"),
     });
+
+  const runSub2ApiSync = async () => {
+    if (isSyncingSub2Api) return;
+    setIsSyncingSub2Api(true);
+
+    const batchSize = Math.max(
+      1,
+      Math.min(100, Math.trunc(importForm.limit || 100))
+    );
+    let offset = 0;
+    let totalSourceCount = 0;
+    let processedCount = 0;
+    let syncedCount = 0;
+    let refreshTokenWriteBackCount = 0;
+    let failedCount = 0;
+    const skipped = { web: 0, responses: 0 };
+
+    setSyncProgress({
+      status: "running",
+      value: 5,
+      message: "正在读取 Sub2API 账号",
+    });
+
+    try {
+      for (;;) {
+        const result = await syncSub2ApiAccountsBatch({
+          sourceGroupId: importForm.sourceGroupId,
+          webGroupId: importForm.webGroupId,
+          responsesGroupId: importForm.responsesGroupId,
+          syncMode: importForm.syncMode,
+          contentSafetyEnabled: importForm.contentSafetyEnabled,
+          limit: batchSize,
+          offset,
+        });
+
+        if (result?.serverError) {
+          throw new Error(result.serverError);
+        }
+        if (!result?.data?.success) {
+          throw new Error("从 Sub2API 获取 AT 失败");
+        }
+
+        const data = result.data;
+        totalSourceCount = data.totalSourceCount || totalSourceCount;
+        processedCount = data.nextOffset || processedCount + data.sourceCount;
+        syncedCount += data.syncedCount || 0;
+        refreshTokenWriteBackCount += data.refreshTokenWriteBackCount || 0;
+        failedCount += data.failed || 0;
+        skipped.web += data.skipped?.web || 0;
+        skipped.responses += data.skipped?.responses || 0;
+
+        const progressBase = totalSourceCount
+          ? Math.min(100, Math.round((processedCount / totalSourceCount) * 100))
+          : data.hasMore
+            ? 50
+            : 100;
+        const progressValue = Math.max(5, Math.min(99, progressBase));
+        setSyncProgress({
+          status: "running",
+          value: data.hasMore ? progressValue : 100,
+          message: `已处理 ${processedCount}/${totalSourceCount || "?"} 个，写入 ${syncedCount} 个，失败 ${failedCount} 个`,
+        });
+
+        if (!data.hasMore || data.sourceCount === 0) break;
+        offset = data.nextOffset || offset + data.sourceCount;
+      }
+
+      const skippedCount = skipped.web + skipped.responses;
+      setSyncProgress({
+        status: "success",
+        value: 100,
+        message: `完成：处理 ${processedCount} 个，写入 ${syncedCount} 个，跳过 ${skippedCount} 个，失败 ${failedCount} 个`,
+      });
+      toast.success(
+        `同步完成：写入 ${syncedCount} 个，回写 RT ${refreshTokenWriteBackCount} 个，跳过 ${skippedCount} 个`
+      );
+      reload();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "从 Sub2API 获取 AT 失败";
+      setSyncProgress({
+        status: "error",
+        value: 100,
+        message,
+      });
+      toast.error(message);
+    } finally {
+      setIsSyncingSub2Api(false);
+    }
+  };
 
   useEffect(() => {
     loadPool();
@@ -1143,21 +1207,7 @@ export function ImageBackendPoolAdminPanel() {
               />
               <div className="space-y-3">
                 <Button
-                  onClick={() => {
-                    setSyncProgress({
-                      status: "running",
-                      value: 35,
-                      message: "正在读取 Sub2API 账号并换取 AT",
-                    });
-                    syncSub2ApiAccounts({
-                      sourceGroupId: importForm.sourceGroupId,
-                      webGroupId: importForm.webGroupId,
-                      responsesGroupId: importForm.responsesGroupId,
-                      syncMode: importForm.syncMode,
-                      contentSafetyEnabled: importForm.contentSafetyEnabled,
-                      limit: importForm.limit,
-                    });
-                  }}
+                  onClick={runSub2ApiSync}
                   disabled={isSyncingSub2Api}
                 >
                   {isSyncingSub2Api && (
