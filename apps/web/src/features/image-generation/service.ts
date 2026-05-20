@@ -14,6 +14,7 @@ import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { eq } from "drizzle-orm";
 import {
   ImageBackendPoolUnavailableError,
+  isImageBackendRetryableError,
   reportImageBackendResult,
   resolveImageBackendPoolConfig,
 } from "@/features/image-backend-pool/service";
@@ -389,13 +390,62 @@ async function reportPoolBackendResult(
   }
 }
 
-async function withPoolBackendReport(
+function poolBackendMemberKey(config: ApiConfig) {
+  if (
+    config.backend?.type !== "pool-api" &&
+    config.backend?.type !== "pool-account"
+  ) {
+    return null;
+  }
+  if (!config.backend.id) return null;
+  return `${config.backend.type === "pool-api" ? "api" : "account"}:${
+    config.backend.id
+  }`;
+}
+
+async function retryPoolBackendResult(
   config: ApiConfig,
-  run: () => Promise<GenerateImageResult>
+  run: (candidate: ApiConfig) => Promise<GenerateImageResult>
 ) {
-  const result = await run();
-  await reportPoolBackendResult(config, result);
-  return result;
+  if (
+    !config.backend?.reportResult ||
+    (config.backend.type !== "pool-api" &&
+      config.backend.type !== "pool-account")
+  ) {
+    return run(config);
+  }
+
+  const requestKind = config.backend.requestKind;
+  const excluded = new Set<string>();
+  let candidate = config;
+  let lastResult: GenerateImageResult | null = null;
+  const maxAttempts = 4;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const result = await run(withoutPoolBackendReport(candidate));
+    await reportPoolBackendResult(candidate, result);
+    lastResult = result;
+
+    if (!result.error || !isImageBackendRetryableError(result.error)) {
+      return result;
+    }
+
+    const memberKey = poolBackendMemberKey(candidate);
+    if (memberKey) excluded.add(memberKey);
+    if (!requestKind || !config.backend.userId) break;
+
+    const next = await resolveImageBackendPoolConfig({
+      userId: config.backend.userId,
+      apiKeyId: config.backend.apiKeyId,
+      requestKind,
+      excludedMemberKeys: Array.from(excluded),
+    });
+    if (!next?.config?.backend) break;
+    if (poolBackendMemberKey(next.config) === memberKey) break;
+    candidate = next.config;
+  }
+
+  return lastResult || run(withoutPoolBackendReport(config));
 }
 
 function withoutPoolBackendReport(config: ApiConfig): ApiConfig {
@@ -1136,8 +1186,8 @@ export async function generateImage(
   callbacks?: ImageGenerationCallbacks
 ): Promise<GenerateImageResult> {
   if (config.backend?.reportResult) {
-    return withPoolBackendReport(config, () =>
-      generateImage(withoutPoolBackendReport(config), params, callbacks)
+    return retryPoolBackendResult(config, (candidate) =>
+      generateImage(candidate, params, callbacks)
     );
   }
 
@@ -1229,8 +1279,8 @@ export async function editImage(
   callbacks?: ImageGenerationCallbacks
 ): Promise<GenerateImageResult> {
   if (config.backend?.reportResult) {
-    return withPoolBackendReport(config, () =>
-      editImage(withoutPoolBackendReport(config), params, callbacks)
+    return retryPoolBackendResult(config, (candidate) =>
+      editImage(candidate, params, callbacks)
     );
   }
 
@@ -1329,8 +1379,8 @@ export async function generateChatImage(
   callbacks?: ImageGenerationCallbacks
 ): Promise<GenerateImageResult> {
   if (config.backend?.reportResult) {
-    return withPoolBackendReport(config, () =>
-      generateChatImage(withoutPoolBackendReport(config), params, callbacks)
+    return retryPoolBackendResult(config, (candidate) =>
+      generateChatImage(candidate, params, callbacks)
     );
   }
 

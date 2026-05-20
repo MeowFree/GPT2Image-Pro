@@ -108,6 +108,7 @@ const OPENAI_MOBILE_RT_CLIENT_ID = "app_LlGpXReQgckcGGUo2JrYvtJK";
 const OPENAI_REFRESH_SCOPES = "openid profile email";
 const RATE_LIMIT_COOLDOWN_MINUTES = 10;
 const TEMPORARY_ERROR_COOLDOWN_MINUTES = 2;
+const USAGE_LIMIT_COOLDOWN_HOURS = 6;
 
 function normalizeAccountBackend(value?: string | null): ImageBackendAccountBackend {
   return value === "responses" ? "responses" : "web";
@@ -145,6 +146,12 @@ function isRetryableBackendError(error?: string | null) {
     normalized.includes("429") ||
     normalized.includes("rate limit") ||
     normalized.includes("too many requests") ||
+    normalized.includes("usage limit") ||
+    normalized.includes("limit has been reached") ||
+    normalized.includes("no available image quota") ||
+    normalized.includes("quota exceeded") ||
+    normalized.includes("quota_exceeded") ||
+    normalized.includes("insufficient_quota") ||
     normalized.includes("timeout") ||
     normalized.includes("timed out") ||
     normalized.includes("econnreset") ||
@@ -154,6 +161,22 @@ function isRetryableBackendError(error?: string | null) {
     normalized.includes("504") ||
     normalized.includes("overloaded") ||
     normalized.includes("temporarily unavailable")
+  );
+}
+
+export function isImageBackendRetryableError(error?: string | null) {
+  return isRetryableBackendError(error);
+}
+
+function isUsageLimitBackendError(error?: string | null) {
+  const normalized = (error || "").toLowerCase();
+  return (
+    normalized.includes("usage limit") ||
+    normalized.includes("limit has been reached") ||
+    normalized.includes("no available image quota") ||
+    normalized.includes("insufficient_quota") ||
+    normalized.includes("quota exceeded") ||
+    normalized.includes("quota_exceeded")
   );
 }
 
@@ -169,6 +192,12 @@ function classifyFailure(error?: string | null): {
     normalized.includes("invalid access token")
   ) {
     return { status: "error", cooldownUntil: null };
+  }
+  if (isUsageLimitBackendError(error)) {
+    return {
+      status: "limited",
+      cooldownUntil: new Date(Date.now() + USAGE_LIMIT_COOLDOWN_HOURS * 60 * 60_000),
+    };
   }
   if (
     normalized.includes("429") ||
@@ -487,7 +516,8 @@ async function touchSelectedMember(member: PoolMember) {
 function toResolvedPoolConfig(
   groupId: string,
   groupContentSafetyEnabled: boolean | null,
-  member: PoolMember
+  member: PoolMember,
+  options: ResolveBackendOptions
 ): ResolvedImageBackendPoolConfig {
   const contentSafetyEnabled = effectiveContentSafety(
     groupContentSafetyEnabled,
@@ -506,6 +536,9 @@ function toResolvedPoolConfig(
           type: "pool-api",
           id: member.id,
           groupId,
+          userId: options.userId,
+          apiKeyId: options.apiKeyId,
+          requestKind: options.requestKind,
           reportResult: true,
         },
       },
@@ -543,6 +576,9 @@ function toResolvedPoolConfig(
         type: "pool-account",
         id: member.id,
         groupId,
+        userId: options.userId,
+        apiKeyId: options.apiKeyId,
+        requestKind: options.requestKind,
         accountBackend: implementationMode,
         reportResult: true,
       },
@@ -585,19 +621,20 @@ async function resolvePoolMember(
 }
 
 export async function resolveImageBackendPoolConfig(
-  options: ResolveBackendOptions
+  options: ResolveBackendOptions & { excludedMemberKeys?: string[] }
 ): Promise<ResolvedImageBackendPoolConfig | null> {
-  const resolved = await resolvePoolMember(options);
+  const resolved = await resolvePoolMember({
+    ...options,
+    excluded: new Set(options.excludedMemberKeys || []),
+  });
   if (!resolved) return null;
   await touchSelectedMember(resolved.member);
   const result = toResolvedPoolConfig(
     resolved.group.id,
     resolved.group.contentSafetyEnabled,
-    resolved.member
+    resolved.member,
+    options
   );
-  if (result.config.backend) {
-    result.config.backend.requestKind = options.requestKind;
-  }
   return result;
 }
 
@@ -621,7 +658,9 @@ export async function reportImageBackendResult(input: ImageBackendReportResultIn
             }
           : {
               failCount: sql`${imageBackendApi.failCount} + 1`,
-              ...(failure.status ? { status: failure.status } : {}),
+              ...(failure.status && failure.status !== "limited"
+                ? { status: failure.status }
+                : {}),
               ...(failure.cooldownUntil !== undefined
                 ? { cooldownUntil: failure.cooldownUntil }
                 : {}),
@@ -643,6 +682,10 @@ export async function reportImageBackendResult(input: ImageBackendReportResultIn
     .where(eq(imageBackendAccount.id, input.memberId))
     .limit(1);
   const backend = normalizeAccountBackend(account?.implementationMode);
+  const failureStatus =
+    failure.status === "limited" && backend !== "web"
+      ? "active"
+      : failure.status;
   const webSuccess =
     input.success && backend === "web"
       ? nextWebAccountMetadataAfterSuccess(account?.metadata)
@@ -665,7 +708,7 @@ export async function reportImageBackendResult(input: ImageBackendReportResultIn
           }
         : {
             failCount: sql`${imageBackendAccount.failCount} + 1`,
-            ...(failure.status ? { status: failure.status } : {}),
+            ...(failureStatus ? { status: failureStatus } : {}),
             ...(failure.cooldownUntil !== undefined
               ? { cooldownUntil: failure.cooldownUntil }
               : {}),

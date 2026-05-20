@@ -107,6 +107,8 @@ export interface ApiConfig {
     type: "platform" | "pool-api" | "pool-account" | "user-api";
     id?: string;
     groupId?: string | null;
+    userId?: string;
+    apiKeyId?: string;
     requestKind?: "image_generation" | "image_edit" | "chat" | "responses";
     accountBackend?: "web" | "responses";
     reportResult?: boolean;
