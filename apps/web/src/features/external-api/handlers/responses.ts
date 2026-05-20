@@ -24,6 +24,7 @@ import {
 } from "@/features/image-generation/resolution";
 import type {
   ChatHistoryMessage,
+  ImageInputFile,
   ImageModeration,
   ImageQuality,
   ThinkingLevel,
@@ -95,7 +96,11 @@ function getContentImages(
 
 function inputToChatParams(input: ResponseRequest["input"]) {
   if (typeof input === "string") {
-    return { prompt: input, history: [] as ChatHistoryMessage[] };
+    return {
+      prompt: input,
+      history: [] as ChatHistoryMessage[],
+      promptImageUrls: [] as string[],
+    };
   }
 
   const history: ChatHistoryMessage[] = [];
@@ -124,7 +129,51 @@ function inputToChatParams(input: ResponseRequest["input"]) {
   return {
     prompt: prompt.trim(),
     history,
+    promptImageUrls: promptImages,
   };
+}
+
+function parseDataImageUrl(url: string): ImageInputFile | null {
+  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s.exec(url);
+  if (!match) return null;
+  return {
+    data: Buffer.from(match[2] || "", "base64"),
+    name: "response-input-image.png",
+    type: match[1] || "image/png",
+    url,
+  };
+}
+
+async function imageUrlToInputFile(
+  imageUrl: string,
+  index: number
+): Promise<ImageInputFile | null> {
+  if (imageUrl.startsWith("data:image/")) {
+    return parseDataImageUrl(imageUrl);
+  }
+  if (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
+    return null;
+  }
+
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to load input image: ${response.status}`);
+  }
+  const type = response.headers.get("content-type") || "image/png";
+  if (!type.startsWith("image/")) return null;
+  return {
+    data: Buffer.from(await response.arrayBuffer()),
+    name: `response-input-image-${index + 1}`,
+    type,
+    url: imageUrl,
+  };
+}
+
+async function inputImageUrlsToFiles(imageUrls: string[]) {
+  const files = await Promise.all(
+    imageUrls.map((imageUrl, index) => imageUrlToInputFile(imageUrl, index))
+  );
+  return files.filter((file): file is ImageInputFile => Boolean(file));
 }
 
 function hasImageGenerationTool(tools: ResponseRequest["tools"]) {
@@ -244,9 +293,20 @@ export const postExternalResponses = withApiLogging(
       );
     }
 
-    const { prompt, history } = inputToChatParams(parsed.data.input);
+    const { prompt, history, promptImageUrls } = inputToChatParams(
+      parsed.data.input
+    );
     if (!prompt) {
       return openAIImageError("Responses input must include user text.");
+    }
+
+    let images: ImageInputFile[] = [];
+    try {
+      images = await inputImageUrlsToFiles(promptImageUrls);
+    } catch (error) {
+      return openAIImageError(
+        error instanceof Error ? error.message : "Failed to load input image"
+      );
     }
 
     const input = {
@@ -256,6 +316,7 @@ export const postExternalResponses = withApiLogging(
       backendRequestKind: "responses" as const,
       prompt,
       history,
+      images,
       moderationBlockRiskLevel: auth.moderationBlockRiskLevel,
       size: parsed.data.size || DEFAULT_IMAGE_SIZE,
       model: parsed.data.model,

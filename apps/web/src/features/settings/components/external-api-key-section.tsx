@@ -39,7 +39,6 @@ type ImageBackendGroupOption = {
   isUserSelectable: boolean;
   isEnabled: boolean;
   contentSafetyEnabled: boolean | null;
-  minPlan: SubscriptionPlan;
 };
 
 type ExternalApiKeySummary = {
@@ -62,14 +61,6 @@ function formatDate(value: Date | string | null, emptyLabel: string) {
   }).format(new Date(value));
 }
 
-const PLAN_LABELS: Record<SubscriptionPlan, string> = {
-  free: "免费",
-  starter: "入门版",
-  pro: "专业版",
-  ultra: "旗舰版",
-  enterprise: "企业版",
-};
-
 function groupOptionLabel(group: ImageBackendGroupOption) {
   const safety =
     group.contentSafetyEnabled === true
@@ -77,9 +68,7 @@ function groupOptionLabel(group: ImageBackendGroupOption) {
       : group.contentSafetyEnabled === false
         ? "内容审核关闭"
         : "内容审核按成员配置";
-  return `${group.name}${group.isDefault ? "（默认）" : ""} · ${safety} · ${
-    PLAN_LABELS[group.minPlan] || group.minPlan
-  }`;
+  return `${group.name}${group.isDefault ? "（默认）" : ""} · ${safety}`;
 }
 
 export function ExternalApiKeySection() {

@@ -153,7 +153,7 @@ type BulkAccountForm = {
 };
 
 const PLAN_OPTIONS: Array<{ value: SubscriptionPlan; label: string }> = [
-  { value: "free", label: "免费" },
+  { value: "free", label: "不限门槛" },
   { value: "starter", label: "入门版" },
   { value: "pro", label: "专业版" },
   { value: "ultra", label: "旗舰版" },

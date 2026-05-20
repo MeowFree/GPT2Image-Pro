@@ -1681,7 +1681,7 @@ export async function generateChatImage(
     allowGpt55: params.allowGpt55,
   });
   if (isPoolAccountBackend(config, "web")) {
-    return generateImageWithChatGptWeb(config, {
+    const webParams = {
       prompt: params.prompt,
       apiPrompt: params.apiPrompt,
       promptOptimization: params.promptOptimization,
@@ -1692,7 +1692,14 @@ export async function generateChatImage(
       quality: params.quality,
       n: params.n,
       moderation: params.moderation,
-    });
+    };
+    if (params.images?.length) {
+      return editImageWithChatGptWeb(config, {
+        ...webParams,
+        images: params.images,
+      });
+    }
+    return generateImageWithChatGptWeb(config, webParams);
   }
   try {
     const prompt = getEffectivePrompt(params);

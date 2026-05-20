@@ -710,7 +710,7 @@ async function selectPoolMember(
     .filter((row) => {
       const backend = normalizeAccountBackend(row.implementationMode);
       return (
-        (requestKind !== "responses" || backend === "responses") &&
+        (requestKind !== "chat" || backend === "responses") &&
         isWebAccountQuotaAvailable(backend, row.metadata, now)
       );
     })
