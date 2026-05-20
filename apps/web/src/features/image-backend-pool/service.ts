@@ -213,6 +213,7 @@ export function releaseImageBackendInflight(input: {
 function isRetryableBackendError(error?: string | null) {
   const normalized = (error || "").toLowerCase();
   return (
+    isInvalidBackendCredentialError(error) ||
     normalized.includes("429") ||
     normalized.includes("rate limit") ||
     normalized.includes("too many requests") ||
@@ -240,6 +241,30 @@ function isRetryableBackendError(error?: string | null) {
 
 export function isImageBackendRetryableError(error?: string | null) {
   return isRetryableBackendError(error);
+}
+
+function isInvalidBackendCredentialError(error?: string | null) {
+  const normalized = (error || "").toLowerCase();
+  return (
+    normalized.includes("401") ||
+    normalized.includes("unauthorized") ||
+    normalized.includes("forbidden") ||
+    normalized.includes("invalid api key") ||
+    normalized.includes("invalid_api_key") ||
+    normalized.includes("invalid access token") ||
+    normalized.includes("invalid_access_token") ||
+    normalized.includes("invalid auth") ||
+    normalized.includes("invalid authentication") ||
+    normalized.includes("authentication token has been invalidated") ||
+    normalized.includes("token has been invalidated") ||
+    normalized.includes("token expired") ||
+    normalized.includes("expired token") ||
+    normalized.includes("token is expired") ||
+    normalized.includes("access token expired") ||
+    normalized.includes("signing in again") ||
+    normalized.includes("please sign in again") ||
+    normalized.includes("please try signing in again")
+  );
 }
 
 function isUsageLimitBackendError(error?: string | null) {
@@ -346,12 +371,7 @@ function classifyFailure(
   cooldownUntil?: Date | null;
 } {
   const normalized = (error || "").toLowerCase();
-  if (
-    normalized.includes("401") ||
-    normalized.includes("unauthorized") ||
-    normalized.includes("invalid api key") ||
-    normalized.includes("invalid access token")
-  ) {
+  if (isInvalidBackendCredentialError(error)) {
     return { status: "error", cooldownUntil: null };
   }
   if (isUsageLimitBackendError(error)) {
