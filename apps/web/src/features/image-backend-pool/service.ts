@@ -1366,6 +1366,83 @@ export async function refreshImageBackendAccountInfo(accountId: string) {
   }
 }
 
+export async function refreshImageBackendAccountsInfo(accountIds: string[]) {
+  const ids = Array.from(
+    new Set(accountIds.map((id) => id.trim()).filter(Boolean))
+  );
+  if (!ids.length) throw new Error("请选择账号");
+
+  const rows = await db
+    .select({
+      id: imageBackendAccount.id,
+      implementationMode: imageBackendAccount.implementationMode,
+    })
+    .from(imageBackendAccount)
+    .where(inArray(imageBackendAccount.id, ids));
+
+  const knownIds = new Set(rows.map((row) => row.id));
+  const webIds = rows
+    .filter((row) => normalizeAccountBackend(row.implementationMode) === "web")
+    .map((row) => row.id);
+  const skippedCount =
+    ids.filter((id) => !knownIds.has(id)).length +
+    (rows.length - webIds.length);
+
+  let refreshedCount = 0;
+  let failedCount = 0;
+  const errors: Array<{ id: string; error: string }> = [];
+  const results: Array<{
+    id: string;
+    success: boolean;
+    quota?: number;
+    imageQuotaUnknown?: boolean;
+    error?: string;
+  }> = [];
+
+  const maxWorkers = Math.min(10, Math.max(1, webIds.length));
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: maxWorkers }, async () => {
+      for (;;) {
+        const index = cursor;
+        cursor += 1;
+        const id = webIds[index];
+        if (!id) break;
+        try {
+          const info = await refreshImageBackendAccountInfo(id);
+          refreshedCount++;
+          results.push({
+            id,
+            success: true,
+            quota: info.quota,
+            imageQuotaUnknown: info.imageQuotaUnknown,
+          });
+        } catch (error) {
+          failedCount++;
+          const message =
+            error instanceof Error ? error.message : "刷新账号远端信息失败";
+          errors.push({ id, error: message });
+          results.push({
+            id,
+            success: false,
+            error: message,
+          });
+        }
+      }
+    })
+  );
+
+  return {
+    requestedCount: ids.length,
+    processedCount: webIds.length,
+    refreshedCount,
+    failedCount,
+    skippedCount,
+    errors,
+    results,
+  };
+}
+
 export async function listImageBackendGroupOptions(options?: {
   userSelectableOnly?: boolean;
   plan?: SubscriptionPlan;

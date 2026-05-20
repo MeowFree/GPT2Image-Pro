@@ -22,6 +22,7 @@ import {
   listSelectableImageBackendGroups,
   listSub2ApiSourceGroups,
   refreshImageBackendAccountInfo,
+  refreshImageBackendAccountsInfo,
   setUserImageBackendPreference,
   syncImageBackendAccountsFromSub2Api,
   upsertImageBackendAccount,
@@ -374,6 +375,20 @@ export const refreshImageBackendAccountInfoAction =
     .action(async ({ parsedInput }) => {
       const info = await refreshImageBackendAccountInfo(parsedInput.id);
       return { success: true, info };
+    });
+
+export const refreshImageBackendAccountsInfoAction =
+  withImageBackendPoolAdminAction("refreshAccountsInfo")
+    .schema(
+      z.object({
+        accountIds: z.array(z.string().trim().min(1)).min(1).max(10000),
+      })
+    )
+    .action(async ({ parsedInput }) => {
+      const result = await refreshImageBackendAccountsInfo(
+        parsedInput.accountIds
+      );
+      return { success: true, ...result };
     });
 
 export const getImageBackendGroupOptionsAction = protectedAction
