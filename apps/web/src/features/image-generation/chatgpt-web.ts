@@ -634,15 +634,10 @@ async function uploadImage(
   } satisfies UploadedImage;
 }
 
-function imageModelSlug(model?: string) {
-  if (model === "gpt-image-2") return "gpt-5-3";
-  if (model === "gpt-image-1.5") return "gpt-5-2";
-  if (model === "gpt-image-1-mini") return "gpt-5-mini";
-  return model || "gpt-5-3";
-}
+const DEFAULT_WEB_GPT_MODEL_SLUG = "gpt-5-3";
 
-function webGptModelSlug(gptModel?: string, imageModel?: string) {
-  return gptModel?.trim() || imageModelSlug(imageModel);
+function webGptModelSlug(gptModel?: string) {
+  return gptModel?.trim() || DEFAULT_WEB_GPT_MODEL_SLUG;
 }
 
 function webThinkingValue(
@@ -684,7 +679,6 @@ async function prepareImageConversation(
   prompt: string,
   requirements: ChatRequirements,
   options: {
-    imageModel?: string;
     gptModel?: string;
     thinking?: ThinkingLevel;
     promptOptimization?: boolean;
@@ -698,7 +692,7 @@ async function prepareImageConversation(
       action: "next",
       fork_from_shared_post: false,
       parent_message_id: randomUUID(),
-      model: webGptModelSlug(options.gptModel, options.imageModel),
+      model: webGptModelSlug(options.gptModel),
       paragen_thinking_level: webThinkingValue(
         options.thinking,
         options.promptOptimization
@@ -769,7 +763,6 @@ async function startImageGeneration(
   requirements: ChatRequirements,
   conduitToken: string,
   options: {
-    imageModel?: string;
     gptModel?: string;
     thinking?: ThinkingLevel;
     promptOptimization?: boolean;
@@ -784,7 +777,7 @@ async function startImageGeneration(
       action: "next",
       messages: [buildMessage(prompt, references)],
       parent_message_id: randomUUID(),
-      model: webGptModelSlug(options.gptModel, options.imageModel),
+      model: webGptModelSlug(options.gptModel),
       client_prepare_state: "sent",
       timezone_offset_min: -480,
       timezone: "Asia/Shanghai",
@@ -1003,7 +996,6 @@ async function runWebImage(
       prompt,
       requirements,
       {
-        imageModel: params.model,
         gptModel: params.gptModel,
         thinking: params.thinking,
         promptOptimization: params.promptOptimization,
@@ -1015,7 +1007,6 @@ async function runWebImage(
       requirements,
       conduitToken,
       {
-        imageModel: params.model,
         gptModel: params.gptModel,
         thinking: params.thinking,
         promptOptimization: params.promptOptimization,

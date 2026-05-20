@@ -237,9 +237,6 @@ const TEXT_MODEL_OPTIONS = [
   { value: "gpt-image-1.5", label: "GPT Image 1.5" },
   { value: "gpt-image-1-mini", label: "GPT Image 1 Mini" },
 ] as const;
-const IMAGE_MODEL_OPTIONS = TEXT_MODEL_OPTIONS.filter(
-  (option) => option.value !== "default"
-);
 const EDIT_MODEL_OPTIONS = [
   { value: "default", label: "Default" },
   { value: "gpt-image-2", label: "GPT Image 2" },
@@ -660,12 +657,12 @@ export function CreatePageClient({
     </span>
   );
   const gptModelHelpText = copy(
-    "Web backend: main ChatGPT conversation model; image model is sent separately. Codex/Responses backend: top-level Responses model. External image API may ignore this field.",
-    "Web 后端：主 ChatGPT 对话模型，图片模型会单独传递；Codex/Responses 后端：顶层 Responses 模型；外接 image API 可能忽略此字段。"
+    "Web backend: main ChatGPT conversation model. Codex/Responses backend: top-level Responses model. External image API may ignore this field.",
+    "Web 后端：主 ChatGPT 对话模型；Codex/Responses 后端：顶层 Responses 模型；外接 image API 可能忽略此字段。"
   );
   const imageModelHelpText = copy(
-    "Image model for generations/edits. Web backend maps it to force_paragen_model_slug; Codex/Responses uses it as the image_generation tool model; external image API receives it as the image model.",
-    "生图/编辑图片模型。Web 后端会映射到 force_paragen_model_slug；Codex/Responses 会作为 image_generation 工具模型；外接 image API 会作为图片模型传递。"
+    "Image model for generations/edits. Web backend does not have a separate image model field and ignores this control; Codex/Responses uses it as the image_generation tool model; external image API receives it as the image model.",
+    "生图/编辑图片模型。Web 后端没有独立图片模型字段，会忽略该控制；Codex/Responses 会作为 image_generation 工具模型；外接 image API 会作为图片模型传递。"
   );
   const thinkingHelpText = copy(
     "Web backend uses this as paragen thinking level. If prompt optimization is off, Web thinking is forced to instant. Codex/Responses receives the selected effort when supported.",
@@ -727,7 +724,6 @@ export function CreatePageClient({
   );
   const [imageThinking, setImageThinking] =
     useState<ChatThinkingLevel>("low");
-  const [chatImageModel, setChatImageModel] = useState(DEFAULT_IMAGE_MODEL);
   const [chatFirstImageSize, setChatFirstImageSize] = useState<{
     width: number;
     height: number;
@@ -1166,7 +1162,6 @@ export function CreatePageClient({
     formData.append("quality", quality);
     formData.append("moderation", moderation);
     formData.append("model", chatModel);
-    formData.append("imageModel", chatImageModel);
     formData.append("thinking", chatThinking);
     formData.append("size", fallbackSize);
     formData.append("count", "1");
@@ -2073,22 +2068,6 @@ export function CreatePageClient({
             disabled: isChatGenerating,
             compact: true,
           })}
-          <Select
-            value={chatImageModel}
-            onValueChange={setChatImageModel}
-            disabled={isChatGenerating}
-          >
-            <SelectTrigger className="h-8 w-[138px]" title={imageModelHelpText}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {IMAGE_MODEL_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {copy("Image", "图片")} {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           {renderThinkingSelect({
             id: "chat-thinking",
             value: chatThinking,
@@ -4635,24 +4614,6 @@ export function CreatePageClient({
                       },
                       compact: true,
                     })}
-                    <Select
-                      value={chatImageModel}
-                      onValueChange={setChatImageModel}
-                    >
-                      <SelectTrigger
-                        className="h-8 w-[138px]"
-                        title={imageModelHelpText}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {IMAGE_MODEL_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {copy("Image", "图片")} {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
                     {renderThinkingSelect({
                       id: "batch-thinking",
                       value: chatThinking,

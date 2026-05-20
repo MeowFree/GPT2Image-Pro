@@ -146,10 +146,10 @@ const sections = {
     web: {
       title: "Web 账号",
       description:
-        "Web 后端走 ChatGPT 网页接口，支持主 GPT 模型和图片模型两个概念。",
+        "Web 后端走 ChatGPT 网页接口，主要可控的是主 GPT 对话模型和思考强度。",
       valid: [
         "GPT 模型会作为 Web 主对话模型传入。",
-        "图片模型会映射到 Web 的 force_paragen_model_slug。",
+        "Web 生图没有稳定的独立图片模型字段；本站不会把图片模型映射成 Web 生图模型。",
         "思考强度会作为 paragen_thinking_level 传入。",
         "关闭提示词优化时，会发送原始提示词，并把 Web 思考强度压到 instant。",
       ],
@@ -334,10 +334,10 @@ const sections = {
     web: {
       title: "Web Accounts",
       description:
-        "Web backends use the ChatGPT web interface and have separate main GPT model and image model concepts.",
+        "Web backends use the ChatGPT web interface; the controllable fields are mainly the main GPT conversation model and thinking level.",
       valid: [
         "GPT model is sent as the main Web conversation model.",
-        "Image model maps to force_paragen_model_slug.",
+        "Web image generation has no stable separate image model field; this service does not map image models into Web image model slugs.",
         "Thinking is sent as paragen_thinking_level.",
         "When prompt optimization is off, the original prompt is sent and Web thinking is forced to instant.",
       ],
