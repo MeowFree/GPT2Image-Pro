@@ -18,7 +18,17 @@ import {
 } from "@repo/shared/system-settings";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import { logWarn } from "@repo/shared/logger";
-import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { Pool } from "pg";
 
@@ -97,6 +107,13 @@ export type ImageBackendReportResultInput = {
   retryAfterSeconds?: number | null;
 };
 
+export type ImageBackendReportResultOutcome = {
+  success: boolean;
+  status?: string;
+  cooldownUntil?: Date | null;
+  retryable: boolean;
+};
+
 type WebAccountRuntimeMetadata = ChatGptWebAccountInfo & {
   refreshedAt?: string;
 };
@@ -111,8 +128,7 @@ type ImageBackendGroupMetadata = Record<string, unknown> & {
   minPlan?: unknown;
 };
 
-const CHATGPT_CODEX_RESPONSES_URL =
-  "https://chatgpt.com/backend-api/codex";
+const CHATGPT_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex";
 const CODEX_CLI_VERSION = "0.125.0";
 const CODEX_CLI_USER_AGENT = `codex_cli_rs/${CODEX_CLI_VERSION}`;
 const OPENAI_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
@@ -122,9 +138,27 @@ const OPENAI_MOBILE_RT_CLIENT_ID = "app_LlGpXReQgckcGGUo2JrYvtJK";
 const OPENAI_REFRESH_SCOPES = "openid profile email";
 const DEFAULT_BACKEND_COOLDOWN_MINUTES = 15;
 const MAX_PARSED_RESET_COOLDOWN_DAYS = 14;
+const DEFAULT_UNRECOVERABLE_BACKEND_ERROR_KEYWORDS = [
+  "refresh token",
+  "invalid refresh token",
+  "invalid_refresh_token",
+  "invalid_grant",
+  "authentication",
+  "authentication failed",
+  "token_invalidated",
+  "token_revoked",
+  "account deactivated",
+  "deactivated account",
+  "deactivated_workspace",
+  "workspace deactivated",
+  "organization has been disabled",
+  "identity verification is required",
+];
 const backendInflight = new Map<string, number>();
 
-function normalizeAccountBackend(value?: string | null): ImageBackendAccountBackend {
+function normalizeAccountBackend(
+  value?: string | null
+): ImageBackendAccountBackend {
   return value === "responses" ? "responses" : "web";
 }
 
@@ -188,7 +222,12 @@ function parseDurationMs(value: string) {
   if (/^\d+(?:\.\d+)?\s*h$/.test(trimmed)) {
     return Number.parseFloat(trimmed) * 60 * 60_000;
   }
-  const parts = [...trimmed.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m|h)/g)];
+  if (/^\d+(?:\.\d+)?\s*d(?:ay|ays)?$/.test(trimmed)) {
+    return Number.parseFloat(trimmed) * 24 * 60 * 60_000;
+  }
+  const parts = [
+    ...trimmed.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|day|days)/g),
+  ];
   if (!parts.length) return null;
   const total = parts.reduce((sum, match) => {
     const amount = Number.parseFloat(match[1] || "0");
@@ -197,6 +236,9 @@ function parseDurationMs(value: string) {
     if (unit === "s") return sum + amount * 1000;
     if (unit === "m") return sum + amount * 60_000;
     if (unit === "h") return sum + amount * 60 * 60_000;
+    if (unit === "d" || unit === "day" || unit === "days") {
+      return sum + amount * 24 * 60 * 60_000;
+    }
     return sum;
   }, 0);
   return total > 0 ? total : null;
@@ -212,6 +254,30 @@ function backendInflightCount(member: Pick<PoolMember, "type" | "id">) {
 
 function backendLoadRate(member: PoolMember) {
   return backendInflightCount(member) / Math.max(1, member.concurrency || 1);
+}
+
+function splitKeywordList(value?: string | null) {
+  return (value || "")
+    .split(/[\n,;，；]+/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+async function getUnrecoverableBackendErrorKeywords() {
+  const configured = await getRuntimeSettingString(
+    "IMAGE_BACKEND_UNRECOVERABLE_ERROR_KEYWORDS"
+  );
+  const keywords = splitKeywordList(configured);
+  return keywords.length
+    ? keywords
+    : DEFAULT_UNRECOVERABLE_BACKEND_ERROR_KEYWORDS;
+}
+
+async function isUnrecoverableBackendError(error?: string | null) {
+  const normalized = (error || "").toLowerCase();
+  if (!normalized) return false;
+  const keywords = await getUnrecoverableBackendErrorKeywords();
+  return keywords.some((keyword) => normalized.includes(keyword));
 }
 
 export function acquireImageBackendInflight(input: {
@@ -252,9 +318,23 @@ function isRetryableBackendError(error?: string | null) {
     normalized.includes("limit_reached") ||
     normalized.includes("rate_limit_exceeded") ||
     normalized.includes("no available image quota") ||
+    normalized.includes("quota exhausted") ||
+    normalized.includes("quota_exhausted") ||
+    normalized.includes("daily quota exceeded") ||
+    normalized.includes("account quota exceeded") ||
     normalized.includes("quota exceeded") ||
     normalized.includes("quota_exceeded") ||
     normalized.includes("insufficient_quota") ||
+    normalized.includes("insufficient credit") ||
+    normalized.includes("insufficient credits") ||
+    normalized.includes("not enough credit") ||
+    normalized.includes("not enough credits") ||
+    normalized.includes("credit exhausted") ||
+    normalized.includes("credits exhausted") ||
+    normalized.includes("resource has been exhausted") ||
+    normalized.includes("minimumcreditamountforusage") ||
+    normalized.includes("minimum credit amount for usage") ||
+    normalized.includes("minimum credit") ||
     normalized.includes("billing_hard_limit") ||
     normalized.includes("timeout") ||
     normalized.includes("timed out") ||
@@ -273,6 +353,15 @@ function isRetryableBackendError(error?: string | null) {
 
 export function isImageBackendRetryableError(error?: string | null) {
   return isRetryableBackendError(error);
+}
+
+function isClassifiedFailureRetryable(
+  error: string | null,
+  failure: { status?: string; cooldownUntil?: Date | null }
+) {
+  return Boolean(
+    error && (isRetryableBackendError(error) || failure.status === "error")
+  );
 }
 
 function isInvalidBackendCredentialError(error?: string | null) {
@@ -307,9 +396,23 @@ function isUsageLimitBackendError(error?: string | null) {
     normalized.includes("limit has been reached") ||
     normalized.includes("limit_reached") ||
     normalized.includes("no available image quota") ||
+    normalized.includes("quota exhausted") ||
+    normalized.includes("quota_exhausted") ||
+    normalized.includes("daily quota exceeded") ||
+    normalized.includes("account quota exceeded") ||
     normalized.includes("insufficient_quota") ||
     normalized.includes("quota exceeded") ||
     normalized.includes("quota_exceeded") ||
+    normalized.includes("insufficient credit") ||
+    normalized.includes("insufficient credits") ||
+    normalized.includes("not enough credit") ||
+    normalized.includes("not enough credits") ||
+    normalized.includes("credit exhausted") ||
+    normalized.includes("credits exhausted") ||
+    normalized.includes("resource has been exhausted") ||
+    normalized.includes("minimumcreditamountforusage") ||
+    normalized.includes("minimum credit amount for usage") ||
+    normalized.includes("minimum credit") ||
     normalized.includes("billing_hard_limit")
   );
 }
@@ -387,7 +490,7 @@ function parseResetDateFromError(error?: string | null) {
     return new Date(Date.now() + Number(retryAfter) * 1000);
   }
   const retryAfterSeconds = normalized.match(
-    /(?:retryAfterSeconds|retry_after_seconds|retry_after|retryAfter)["'\s:=]+([^"',}\]\s]+)/i
+    /(?:retryAfterSeconds|retry_after_seconds|retry_after|retryAfter|reset_after_seconds|resets_in_seconds|quotaResetDelay)["'\s:=]+([^"',}\]\s]+)/i
   )?.[1];
   if (retryAfterSeconds) {
     const numeric = Number(retryAfterSeconds);
@@ -398,8 +501,20 @@ function parseResetDateFromError(error?: string | null) {
     if (durationMs) return new Date(Date.now() + durationMs);
   }
 
+  const relativeResetMatch = normalized.match(
+    /(?:reset_after|resetAfter|restore_after|restoreAfter)["'\s:=]+([^"',}\]\s]+)/i
+  )?.[1];
+  if (relativeResetMatch) {
+    const numeric = Number(relativeResetMatch);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return new Date(Date.now() + numeric * 1000);
+    }
+    const durationMs = parseDurationMs(relativeResetMatch);
+    if (durationMs) return new Date(Date.now() + durationMs);
+  }
+
   const resetMatch = normalized.match(
-    /(?:x-ratelimit-reset(?:-[a-z0-9_-]+)?|upstreamResetAt|upstream_reset_at|reset_at|reset_after|resets_at|restore_at|restoreAt)["'\s:=]+([^"',}\]\s]+)/i
+    /(?:x-ratelimit-reset(?:-[a-z0-9_-]+)?|upstreamResetAt|upstream_reset_at|resetAt|reset_at|resetsAt|resets_at|restore_at|restoreAt)["'\s:=]+([^"',}\]\s]+)/i
   )?.[1];
   if (resetMatch) {
     const parsed = parseDateValue(resetMatch);
@@ -415,15 +530,24 @@ function parseResetDateFromError(error?: string | null) {
 function resolveCooldownDate(
   error: string | null,
   fallback: Date | null,
-  input?: Pick<ImageBackendReportResultInput, "upstreamResetAt" | "retryAfterSeconds">
+  input?: Pick<
+    ImageBackendReportResultInput,
+    "upstreamResetAt" | "retryAfterSeconds"
+  >
 ) {
   const now = new Date();
   const retryAfter = Number(input?.retryAfterSeconds);
   if (Number.isFinite(retryAfter) && retryAfter > 0) {
-    const parsed = clampResetDate(new Date(now.getTime() + retryAfter * 1000), now);
+    const parsed = clampResetDate(
+      new Date(now.getTime() + retryAfter * 1000),
+      now
+    );
     if (parsed) return parsed;
   }
-  const explicitReset = clampResetDate(parseDateValue(input?.upstreamResetAt), now);
+  const explicitReset = clampResetDate(
+    parseDateValue(input?.upstreamResetAt),
+    now
+  );
   if (explicitReset) return explicitReset;
   const bodyReset = clampResetDate(parseResetDateFromError(error), now);
   if (bodyReset) return bodyReset;
@@ -451,22 +575,24 @@ async function getBackendCooldownMinutes(
   if (key === "IMAGE_BACKEND_DEFAULT_COOLDOWN_MINUTES") {
     return defaultMinutes;
   }
-  return await getRuntimeSettingNumber(
-    key,
-    defaultMinutes,
-    { positive: true }
-  );
+  return await getRuntimeSettingNumber(key, defaultMinutes, { positive: true });
 }
 
 async function classifyFailure(
   error?: string | null,
-  input?: Pick<ImageBackendReportResultInput, "upstreamResetAt" | "retryAfterSeconds">
+  input?: Pick<
+    ImageBackendReportResultInput,
+    "upstreamResetAt" | "retryAfterSeconds"
+  >
 ): Promise<{
   status?: string;
   cooldownUntil?: Date | null;
 }> {
   const normalized = (error || "").toLowerCase();
-  if (isInvalidBackendCredentialError(error)) {
+  if (
+    (await isUnrecoverableBackendError(error)) ||
+    isInvalidBackendCredentialError(error)
+  ) {
     return { status: "error", cooldownUntil: null };
   }
   if (isUsageLimitBackendError(error)) {
@@ -548,7 +674,9 @@ async function classifyFailure(
 }
 
 function isBackendAvailableStatus(
-  statusColumn: typeof imageBackendAccount.status | typeof imageBackendApi.status,
+  statusColumn:
+    | typeof imageBackendAccount.status
+    | typeof imageBackendApi.status,
   cooldownColumn:
     | typeof imageBackendAccount.cooldownUntil
     | typeof imageBackendApi.cooldownUntil,
@@ -598,9 +726,7 @@ function normalizeWebAccountMetadata(
     type,
     quota: Number.isFinite(quota) ? Math.max(0, Math.trunc(quota)) : 0,
     imageQuotaUnknown: Boolean(raw.imageQuotaUnknown),
-    limitsProgress: Array.isArray(raw.limitsProgress)
-      ? raw.limitsProgress
-      : [],
+    limitsProgress: Array.isArray(raw.limitsProgress) ? raw.limitsProgress : [],
     defaultModelSlug:
       typeof raw.defaultModelSlug === "string" ? raw.defaultModelSlug : null,
     restoreAt: typeof raw.restoreAt === "string" ? raw.restoreAt : null,
@@ -677,7 +803,10 @@ async function getDefaultGroupId() {
     .select({ id: imageBackendGroup.id })
     .from(imageBackendGroup)
     .where(
-      and(eq(imageBackendGroup.isEnabled, true), eq(imageBackendGroup.isDefault, true))
+      and(
+        eq(imageBackendGroup.isEnabled, true),
+        eq(imageBackendGroup.isDefault, true)
+      )
     )
     .orderBy(asc(imageBackendGroup.priority), asc(imageBackendGroup.createdAt))
     .limit(1);
@@ -727,7 +856,12 @@ async function ensureGroupUsable(
   const [group] = await db
     .select()
     .from(imageBackendGroup)
-    .where(and(eq(imageBackendGroup.id, groupId), eq(imageBackendGroup.isEnabled, true)))
+    .where(
+      and(
+        eq(imageBackendGroup.id, groupId),
+        eq(imageBackendGroup.isEnabled, true)
+      )
+    )
     .limit(1);
   if (group && !canUseBackendGroupForPlan(group.metadata, plan)) {
     return null;
@@ -740,7 +874,9 @@ async function selectPoolMember(
   requestKind: ImageBackendRequestKind,
   excluded?: Set<string>
 ): Promise<PoolMember | null> {
-  const apiGroupFilter = groupId ? eq(imageBackendApi.groupId, groupId) : sql`true`;
+  const apiGroupFilter = groupId
+    ? eq(imageBackendApi.groupId, groupId)
+    : sql`true`;
   const accountGroupFilter = groupId
     ? eq(imageBackendAccount.groupId, groupId)
     : sql`true`;
@@ -837,20 +973,25 @@ async function selectPoolMember(
       metadata: row.metadata,
     }));
 
-  return [...apiMembers, ...accountMembers]
-    .filter((member) => !excluded?.has(backendKey(member)))
-    .sort((left, right) => {
-      const priorityDiff = left.priority - right.priority;
-      if (priorityDiff !== 0) return priorityDiff;
-      const loadDiff = backendLoadRate(left) - backendLoadRate(right);
-      if (loadDiff !== 0) return loadDiff;
-      const inflightDiff = backendInflightCount(left) - backendInflightCount(right);
-      if (inflightDiff !== 0) return inflightDiff;
-      const lastUsedDiff =
-        memberTimestamp(left.lastUsedAt) - memberTimestamp(right.lastUsedAt);
-      if (lastUsedDiff !== 0) return lastUsedDiff;
-      return memberTimestamp(left.createdAt) - memberTimestamp(right.createdAt);
-    })[0] ?? null;
+  return (
+    [...apiMembers, ...accountMembers]
+      .filter((member) => !excluded?.has(backendKey(member)))
+      .sort((left, right) => {
+        const priorityDiff = left.priority - right.priority;
+        if (priorityDiff !== 0) return priorityDiff;
+        const loadDiff = backendLoadRate(left) - backendLoadRate(right);
+        if (loadDiff !== 0) return loadDiff;
+        const inflightDiff =
+          backendInflightCount(left) - backendInflightCount(right);
+        if (inflightDiff !== 0) return inflightDiff;
+        const lastUsedDiff =
+          memberTimestamp(left.lastUsedAt) - memberTimestamp(right.lastUsedAt);
+        if (lastUsedDiff !== 0) return lastUsedDiff;
+        return (
+          memberTimestamp(left.createdAt) - memberTimestamp(right.createdAt)
+        );
+      })[0] ?? null
+  );
 }
 
 async function touchSelectedMember(member: PoolMember) {
@@ -1009,11 +1150,21 @@ export async function resolveImageBackendPoolConfig(
   return result;
 }
 
-export async function reportImageBackendResult(input: ImageBackendReportResultInput) {
-  if (!input.memberId || !input.memberType) return;
+export async function reportImageBackendResult(
+  input: ImageBackendReportResultInput
+): Promise<ImageBackendReportResultOutcome> {
+  if (!input.memberId || !input.memberType) {
+    return { success: input.success, retryable: false };
+  }
   const now = new Date();
   const error = truncateError(input.error);
   const failure = input.success ? {} : await classifyFailure(error, input);
+  const outcome = {
+    success: input.success,
+    status: failure.status,
+    cooldownUntil: failure.cooldownUntil,
+    retryable: !input.success && isClassifiedFailureRetryable(error, failure),
+  };
 
   if (input.memberType === "api") {
     await db
@@ -1047,11 +1198,11 @@ export async function reportImageBackendResult(input: ImageBackendReportResultIn
         cooldownUntil: failure.cooldownUntil
           ? failure.cooldownUntil.toISOString()
           : null,
-        retryable: isRetryableBackendError(error),
+        retryable: outcome.retryable,
         error,
       });
     }
-    return;
+    return outcome;
   }
 
   const [account] = await db
@@ -1104,10 +1255,11 @@ export async function reportImageBackendResult(input: ImageBackendReportResultIn
       cooldownUntil: failure.cooldownUntil
         ? failure.cooldownUntil.toISOString()
         : null,
-      retryable: isRetryableBackendError(error),
+      retryable: outcome.retryable,
       error,
     });
   }
+  return outcome;
 }
 
 export async function refreshImageBackendAccountInfo(accountId: string) {
@@ -1218,7 +1370,9 @@ export async function listImageBackendGroupOptions(options?: {
     }));
 }
 
-export async function listSelectableImageBackendGroups(plan?: SubscriptionPlan) {
+export async function listSelectableImageBackendGroups(
+  plan?: SubscriptionPlan
+) {
   return await listImageBackendGroupOptions({ userSelectableOnly: true, plan });
 }
 
@@ -1238,7 +1392,10 @@ export async function setUserImageBackendPreference(
 ) {
   if (groupId) {
     const [group] = await db
-      .select({ id: imageBackendGroup.id, metadata: imageBackendGroup.metadata })
+      .select({
+        id: imageBackendGroup.id,
+        metadata: imageBackendGroup.metadata,
+      })
       .from(imageBackendGroup)
       .where(
         and(
@@ -1336,9 +1493,7 @@ export async function upsertImageBackendGroup(input: UpsertGroupInput) {
 }
 
 export async function deleteImageBackendGroup(groupId: string) {
-  await db
-    .delete(imageBackendGroup)
-    .where(eq(imageBackendGroup.id, groupId));
+  await db.delete(imageBackendGroup).where(eq(imageBackendGroup.id, groupId));
 }
 
 type UpsertAccountInput = {
@@ -1507,7 +1662,10 @@ export async function bulkUpdateImageBackendAccounts(
     ? normalizeAccountBackend(input.implementationMode)
     : null;
   if (input.groupId !== undefined) baseUpdate.groupId = input.groupId || null;
-  if (input.contentSafetyEnabled !== undefined && input.contentSafetyEnabled !== null) {
+  if (
+    input.contentSafetyEnabled !== undefined &&
+    input.contentSafetyEnabled !== null
+  ) {
     baseUpdate.contentSafetyEnabled = input.contentSafetyEnabled;
   }
   if (input.isEnabled !== undefined && input.isEnabled !== null) {
@@ -1537,7 +1695,9 @@ export async function bulkUpdateImageBackendAccounts(
           .where(eq(imageBackendAccount.id, accountId))
           .limit(1);
         if (!account) throw new Error("账号不存在");
-        if (normalizeAccountBackend(account.implementationMode) !== targetMode) {
+        if (
+          normalizeAccountBackend(account.implementationMode) !== targetMode
+        ) {
           if (isSub2ApiBackedMetadata(account.metadata)) {
             throw new Error("Sub2API 同步账号不能在本站切换接口模式");
           }
@@ -1574,15 +1734,69 @@ export async function bulkUpdateImageBackendAccounts(
   return { updatedCount, failedCount };
 }
 
+function collectRefreshTokensFromJson(value: unknown, tokens: Set<string>) {
+  if (!value) return;
+  if (typeof value === "string") {
+    for (const match of value.matchAll(/\brt_[A-Za-z0-9._~+/=-]+/g)) {
+      tokens.add(match[0]);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectRefreshTokensFromJson(item, tokens);
+    return;
+  }
+  if (typeof value !== "object") return;
+
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    const normalizedKey = key.toLowerCase().replace(/[-_\s]/g, "");
+    if (
+      typeof item === "string" &&
+      ["refreshtoken", "rt", "refresh"].includes(normalizedKey)
+    ) {
+      const trimmed = item.trim();
+      if (trimmed) tokens.add(trimmed);
+      continue;
+    }
+    collectRefreshTokensFromJson(item, tokens);
+  }
+}
+
 function parseRefreshTokensText(value: string) {
-  return Array.from(
-    new Set(
+  const tokens = new Set<string>();
+  let parsedJson = false;
+
+  try {
+    collectRefreshTokensFromJson(JSON.parse(value), tokens);
+    parsedJson = true;
+  } catch {
+    // Plain RT lists and copied pages are handled by the text parser below.
+  }
+
+  for (const match of value.matchAll(/\brt_[A-Za-z0-9._~+/=-]+/g)) {
+    tokens.add(match[0]);
+  }
+
+  for (const match of value.matchAll(
+    /["']?(?:refresh[_-]?token|refreshToken|rt)["']?\s*[:=]\s*["']?([^"',}\]\s;]+)["']?/gi
+  )) {
+    const token = match[1]?.trim();
+    if (token) tokens.add(token);
+  }
+
+  const looksStructured =
+    parsedJson ||
+    /(?:^|[\s{,])["']?(?:access[_-]?token|accessToken|refresh[_-]?token|refreshToken)["']?\s*[:=]/i.test(
       value
-        .split(/[\s,;]+/g)
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  );
+    );
+  if (!tokens.size && !looksStructured) {
+    for (const item of value.split(/[\s,;]+/g)) {
+      const token = item.trim();
+      if (token) tokens.add(token);
+    }
+  }
+
+  return Array.from(tokens);
 }
 
 export async function importImageBackendAccountsFromRefreshTokens(input: {
@@ -1601,7 +1815,11 @@ export async function importImageBackendAccountsFromRefreshTokens(input: {
     0,
     200
   );
-  if (!refreshTokens.length) throw new Error("请粘贴 Refresh Token");
+  if (!refreshTokens.length) {
+    throw new Error(
+      "请粘贴 Refresh Token，或粘贴包含 refresh_token/refreshToken 的 auth session 内容"
+    );
+  }
 
   const effectiveSyncMode = input.useMobileRt ? input.syncMode : "responses";
   const modes =
@@ -1842,7 +2060,9 @@ function isSub2ApiOpenAIOAuthRow(row: Sub2ApiAccountRow) {
   );
 }
 
-function mapSub2ApiAccountRow(row: Sub2ApiAccountRow): Sub2ApiTokenAccount | null {
+function mapSub2ApiAccountRow(
+  row: Sub2ApiAccountRow
+): Sub2ApiTokenAccount | null {
   if (!isSub2ApiOpenAIOAuthRow(row)) return null;
 
   const credentials = row.credentials || {};
@@ -1873,7 +2093,11 @@ function mapSub2ApiAccountRow(row: Sub2ApiAccountRow): Sub2ApiTokenAccount | nul
     "auth_type",
     "authType",
   ]);
-  const email = credentialString(credentials, ["email", "account_email", "username"]);
+  const email = credentialString(credentials, [
+    "email",
+    "account_email",
+    "username",
+  ]);
   const chatgptAccountId = credentialString(credentials, [
     "chatgpt_account_id",
     "chatgptAccountId",
@@ -1900,11 +2124,7 @@ function mapSub2ApiAccountRow(row: Sub2ApiAccountRow): Sub2ApiTokenAccount | nul
 }
 
 function isSub2ApiMobileRtAccount(account: Sub2ApiTokenAccount) {
-  const markers = [
-    account.clientId,
-    account.oauthFamily,
-    account.oauthType,
-  ]
+  const markers = [account.clientId, account.oauthFamily, account.oauthType]
     .filter((value): value is string => Boolean(value))
     .map((value) => value.trim().toLowerCase());
   return (
@@ -2280,7 +2500,9 @@ export async function syncImageBackendAccountsFromSub2Api(input: {
               sub2apiClientId: account.clientId,
               sub2apiOauthFamily: account.oauthFamily,
               sub2apiOauthType: account.oauthType,
-              mobileRtImport: Boolean(input.allowMobileRtImport && mode === "web"),
+              mobileRtImport: Boolean(
+                input.allowMobileRtImport && mode === "web"
+              ),
               oauthClientId:
                 mode === "web"
                   ? OPENAI_MOBILE_RT_CLIENT_ID
@@ -2349,7 +2571,10 @@ export async function refreshStaleWebBackendAccounts(options?: {
         )
       )
     )
-    .orderBy(asc(imageBackendAccount.lastErrorAt), asc(imageBackendAccount.lastUsedAt))
+    .orderBy(
+      asc(imageBackendAccount.lastErrorAt),
+      asc(imageBackendAccount.lastUsedAt)
+    )
     .limit(limit * 3);
 
   const selected = candidates
@@ -2523,7 +2748,10 @@ export async function listAdminImageBackendPool() {
       createdAt: imageBackendAccount.createdAt,
     })
     .from(imageBackendAccount)
-    .orderBy(asc(imageBackendAccount.priority), desc(imageBackendAccount.createdAt));
+    .orderBy(
+      asc(imageBackendAccount.priority),
+      desc(imageBackendAccount.createdAt)
+    );
 
   const apis = await db
     .select({

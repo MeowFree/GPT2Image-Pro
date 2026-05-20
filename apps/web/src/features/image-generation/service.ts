@@ -298,6 +298,13 @@ function getHeaderValue(headers: Headers, names: string[]) {
   return null;
 }
 
+function parseHeaderNumber(headers: Headers, name: string) {
+  const value = headers.get(name);
+  if (!value?.trim()) return undefined;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
+}
+
 function parseRetryAfterHeader(value: string | null) {
   if (!value) return undefined;
   const numeric = Number(value);
@@ -324,7 +331,12 @@ function parseDurationMs(value: string) {
   if (/^\d+(?:\.\d+)?\s*h$/.test(trimmed)) {
     return Number.parseFloat(trimmed) * 60 * 60_000;
   }
-  const parts = [...trimmed.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m|h)/g)];
+  if (/^\d+(?:\.\d+)?\s*d(?:ay|ays)?$/.test(trimmed)) {
+    return Number.parseFloat(trimmed) * 24 * 60 * 60_000;
+  }
+  const parts = [
+    ...trimmed.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|day|days)/g),
+  ];
   if (!parts.length) return null;
   const total = parts.reduce((sum, match) => {
     const amount = Number.parseFloat(match[1] || "0");
@@ -333,9 +345,58 @@ function parseDurationMs(value: string) {
     if (unit === "s") return sum + amount * 1000;
     if (unit === "m") return sum + amount * 60_000;
     if (unit === "h") return sum + amount * 60 * 60_000;
+    if (unit === "d" || unit === "day" || unit === "days") {
+      return sum + amount * 24 * 60 * 60_000;
+    }
     return sum;
   }, 0);
   return total > 0 ? total : null;
+}
+
+function getCodexRetryAfterSeconds(headers: Headers) {
+  // Codex reports two windows, currently commonly 5h (300m) and 7d (10080m).
+  // When a window is exhausted, use that window's reset-after seconds.
+  const windows = [
+    {
+      usedPercent: parseHeaderNumber(headers, "x-codex-primary-used-percent"),
+      resetAfterSeconds: parseHeaderNumber(
+        headers,
+        "x-codex-primary-reset-after-seconds"
+      ),
+      windowMinutes: parseHeaderNumber(
+        headers,
+        "x-codex-primary-window-minutes"
+      ),
+    },
+    {
+      usedPercent: parseHeaderNumber(headers, "x-codex-secondary-used-percent"),
+      resetAfterSeconds: parseHeaderNumber(
+        headers,
+        "x-codex-secondary-reset-after-seconds"
+      ),
+      windowMinutes: parseHeaderNumber(
+        headers,
+        "x-codex-secondary-window-minutes"
+      ),
+    },
+  ].filter(
+    (item) =>
+      item.resetAfterSeconds &&
+      item.resetAfterSeconds > 0 &&
+      item.windowMinutes &&
+      item.windowMinutes > 0
+  );
+
+  if (!windows.length) return undefined;
+
+  const exhausted = windows.filter(
+    (item) => item.usedPercent !== undefined && item.usedPercent >= 100
+  );
+  if (exhausted.length) {
+    return Math.max(...exhausted.map((item) => item.resetAfterSeconds || 0));
+  }
+
+  return Math.max(...windows.map((item) => item.resetAfterSeconds || 0));
 }
 
 function getResponseRetryMetadata(response: Response) {
@@ -351,13 +412,28 @@ function getResponseRetryMetadata(response: Response) {
     "x-ratelimit-reset-input-tokens",
     "x-ratelimit-reset-output-tokens",
   ]);
-  return { upstreamResetAt: upstreamResetAt || undefined, retryAfterSeconds };
+  const codexResetAfterSeconds = getCodexRetryAfterSeconds(response.headers);
+  return {
+    upstreamResetAt: upstreamResetAt || undefined,
+    retryAfterSeconds:
+      Math.max(retryAfterSeconds || 0, codexResetAfterSeconds || 0) ||
+      undefined,
+  };
 }
 
 function extractPayloadRetryMetadata(payload: unknown): {
   upstreamResetAt?: string;
   retryAfterSeconds?: number;
 } {
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const metadata = extractPayloadRetryMetadata(item);
+      if (metadata.upstreamResetAt || metadata.retryAfterSeconds) {
+        return metadata;
+      }
+    }
+    return {};
+  }
   if (!payload || typeof payload !== "object") return {};
   const record = payload as Record<string, unknown>;
   const nested = [
@@ -369,11 +445,20 @@ function extractPayloadRetryMetadata(payload: unknown): {
     record.data,
   ];
   const keys = [
+    "resetAt",
     "reset_at",
+    "resetAfter",
     "reset_after",
+    "reset_after_seconds",
+    "resetsAt",
     "resets_at",
+    "resetsInSeconds",
+    "resets_in_seconds",
     "restore_at",
     "restoreAt",
+    "restoreAfter",
+    "restore_after",
+    "quotaResetDelay",
     "retry_at",
     "upstreamResetAt",
     "upstream_reset_at",
@@ -381,9 +466,24 @@ function extractPayloadRetryMetadata(payload: unknown): {
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "string" && value.trim()) {
+      if (
+        /after$/i.test(key) ||
+        /seconds$/i.test(key) ||
+        key === "quotaResetDelay"
+      ) {
+        const parsed = parseRetryAfterHeader(value.trim());
+        if (parsed) return { retryAfterSeconds: parsed };
+      }
       return { upstreamResetAt: value.trim() };
     }
     if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      if (
+        /after$/i.test(key) ||
+        /seconds$/i.test(key) ||
+        key === "quotaResetDelay"
+      ) {
+        return { retryAfterSeconds: value };
+      }
       return { upstreamResetAt: String(value) };
     }
   }
@@ -463,7 +563,8 @@ function getNonJsonErrorMessage(
   if (trimmedBody.startsWith("<")) {
     return `API returned an HTML page instead of a ${apiName} response. Check that the API base URL points to an OpenAI-compatible /v1 endpoint.`;
   }
-  if (!trimmedBody) return `API returned an empty non-JSON ${apiName} response.`;
+  if (!trimmedBody)
+    return `API returned an empty non-JSON ${apiName} response.`;
   return `API returned a non-JSON ${apiName} response: ${trimmedBody}`;
 }
 
@@ -554,16 +655,16 @@ function isResponsesBackend(config: ApiConfig) {
 async function reportPoolBackendResult(
   config: ApiConfig,
   result: GenerateImageResult
-) {
-  if (!config.backend?.reportResult) return;
+): Promise<boolean> {
+  if (!config.backend?.reportResult) return false;
   if (
     config.backend.type !== "pool-api" &&
     config.backend.type !== "pool-account"
   ) {
-    return;
+    return false;
   }
   try {
-    await reportImageBackendResult({
+    const outcome = await reportImageBackendResult({
       memberType: config.backend.type === "pool-api" ? "api" : "account",
       memberId: config.backend.id,
       success: !result.error,
@@ -571,6 +672,7 @@ async function reportPoolBackendResult(
       upstreamResetAt: result.upstreamResetAt,
       retryAfterSeconds: result.retryAfterSeconds,
     });
+    return outcome.retryable;
   } catch (error) {
     logError(error, {
       source: "image-backend-pool",
@@ -579,6 +681,7 @@ async function reportPoolBackendResult(
       backendId: config.backend.id,
     });
   }
+  return false;
 }
 
 function poolBackendMemberKey(config: ApiConfig) {
@@ -638,10 +741,13 @@ async function retryPoolBackendResult(
         });
       }
     }
-    await reportPoolBackendResult(candidate, result);
+    const shouldRetry = await reportPoolBackendResult(candidate, result);
     lastResult = result;
 
-    if (!result.error || !isImageBackendRetryableError(result.error)) {
+    if (
+      !result.error ||
+      !(shouldRetry || isImageBackendRetryableError(result.error))
+    ) {
       return result;
     }
 
@@ -1768,7 +1874,8 @@ export async function generateChatImage(
               typeof (params.rawResponsesBody as Record<string, unknown>)
                 .instructions === "string" &&
               (params.rawResponsesBody as Record<string, unknown>).instructions
-                ? (params.rawResponsesBody as Record<string, unknown>).instructions
+                ? (params.rawResponsesBody as Record<string, unknown>)
+                    .instructions
                 : instructions,
             ...(params.stream || config.useStream ? { stream: true } : {}),
           }

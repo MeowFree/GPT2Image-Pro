@@ -106,6 +106,7 @@ export type SettingKey =
   | "IMAGE_BACKEND_USAGE_LIMIT_COOLDOWN_MINUTES"
   | "IMAGE_BACKEND_UNSUPPORTED_MODEL_COOLDOWN_MINUTES"
   | "IMAGE_BACKEND_TEMPORARY_ERROR_COOLDOWN_MINUTES"
+  | "IMAGE_BACKEND_UNRECOVERABLE_ERROR_KEYWORDS"
   | "SUB2API_POSTGRES_URL"
   | "SUB2API_POSTGRES_SYNC_LIMIT"
   | "OPENAI_API_KEY"
@@ -823,7 +824,8 @@ export const SYSTEM_SETTING_DEFINITIONS = [
   {
     key: "CHATGPT_WEB_PROXY_URL",
     label: "ChatGPT Web TLS 代理地址",
-    description: "可选。配置后 Web 账号请求会经 Go tls-client sidecar 转发，例如 http://chatgpt-web-proxy:3021。",
+    description:
+      "可选。配置后 Web 账号请求会经 Go tls-client sidecar 转发，例如 http://chatgpt-web-proxy:3021。",
     category: "models",
     valueType: "string",
   },
@@ -854,55 +856,72 @@ export const SYSTEM_SETTING_DEFINITIONS = [
   {
     key: "IMAGE_BACKEND_DEFAULT_COOLDOWN_MINUTES",
     label: "后端默认恢复分钟",
-    description: "生图后端错误没有命中更具体规则时的默认冷却时间。未配置时为 15 分钟。",
+    description:
+      "生图后端错误没有命中更具体规则时的默认冷却时间。未配置时为 15 分钟。",
     category: "models",
     valueType: "number",
     defaultValue: 15,
   },
   {
     key: "IMAGE_BACKEND_RATE_LIMIT_COOLDOWN_MINUTES",
-    label: "后端 429 恢复分钟",
-    description: "账号/API 返回 429、rate limit、too many requests 且无法解析上游 reset 时间时的冷却时间。",
+    label: "后端 429 兜底恢复分钟",
+    description:
+      "账号/API 返回 429、rate limit、too many requests 时的兜底冷却时间；如上游返回 Retry-After 或 reset 时间，会优先按上游时间恢复。",
     category: "models",
     valueType: "number",
     defaultValue: 15,
   },
   {
     key: "IMAGE_BACKEND_OVERLOAD_COOLDOWN_MINUTES",
-    label: "后端 529/过载恢复分钟",
-    description: "账号/API 返回 529、overloaded、temporarily unavailable、server overloaded 时的冷却时间。",
+    label: "后端 529/过载兜底恢复分钟",
+    description:
+      "账号/API 返回 529、overloaded、temporarily unavailable、server overloaded 时的兜底冷却时间；如上游返回恢复时间，会优先按上游时间恢复。",
     category: "models",
     valueType: "number",
     defaultValue: 15,
   },
   {
     key: "IMAGE_BACKEND_USAGE_LIMIT_COOLDOWN_MINUTES",
-    label: "后端额度限制恢复分钟",
-    description: "账号/API 返回 usage limit、quota exceeded、insufficient quota、billing hard limit 时的冷却时间。",
+    label: "后端额度限制兜底恢复分钟",
+    description:
+      "账号/API 返回 usage limit、quota exceeded、insufficient quota、billing hard limit 时的兜底冷却时间；如上游返回 Retry-After、resetAt、reset_at、reset_after、restoreAt 等恢复时间，会优先按上游时间恢复。",
     category: "models",
     valueType: "number",
     defaultValue: 15,
   },
   {
     key: "IMAGE_BACKEND_UNSUPPORTED_MODEL_COOLDOWN_MINUTES",
-    label: "后端模型不支持恢复分钟",
-    description: "账号额度未用完但返回不支持该模型、model not supported、unsupported model 时的冷却时间。",
+    label: "后端模型不支持兜底恢复分钟",
+    description:
+      "账号额度未用完但返回不支持该模型、model not supported、unsupported model 时的兜底冷却时间；如上游返回恢复时间，会优先按上游时间恢复。",
     category: "models",
     valueType: "number",
     defaultValue: 15,
   },
   {
     key: "IMAGE_BACKEND_TEMPORARY_ERROR_COOLDOWN_MINUTES",
-    label: "后端临时错误恢复分钟",
-    description: "超时、连接失败、502/503/504 等临时错误无法解析上游恢复时间时的冷却时间。",
+    label: "后端临时错误兜底恢复分钟",
+    description:
+      "超时、连接失败、502/503/504 等临时错误的兜底冷却时间；如上游返回恢复时间，会优先按上游时间恢复。",
     category: "models",
     valueType: "number",
     defaultValue: 15,
   },
   {
+    key: "IMAGE_BACKEND_UNRECOVERABLE_ERROR_KEYWORDS",
+    label: "后端不可恢复错误关键词",
+    description:
+      "命中这些关键词时，账号/API 会直接标记为错误并跳过后续调度。支持用逗号、换行或分号分隔。",
+    category: "models",
+    valueType: "string",
+    defaultValue:
+      "refresh token, invalid refresh token, invalid_grant, authentication, account deactivated, deactivated account",
+  },
+  {
     key: "SUB2API_POSTGRES_URL",
     label: "Sub2API Postgres 地址",
-    description: "连接 Sub2API 数据库，用于读取当前 AT/RT，并在 Web AT 刷新后回写最新 refresh_token。需要 accounts.credentials 更新权限。",
+    description:
+      "连接 Sub2API 数据库，用于读取当前 AT/RT，并在 Web AT 刷新后回写最新 refresh_token。需要 accounts.credentials 更新权限。",
     category: "models",
     valueType: "string",
     secret: true,

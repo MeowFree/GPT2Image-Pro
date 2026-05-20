@@ -2,7 +2,12 @@
 
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@repo/ui/components/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@repo/ui/components/card";
 import { Checkbox } from "@repo/ui/components/checkbox";
 import {
   Dialog,
@@ -21,10 +26,16 @@ import {
   SelectValue,
 } from "@repo/ui/components/select";
 import { Switch } from "@repo/ui/components/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui/components/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@repo/ui/components/tabs";
 import { Textarea } from "@repo/ui/components/textarea";
 import {
   Database,
+  ExternalLink,
   Loader2,
   Pencil,
   Plug,
@@ -191,6 +202,26 @@ function isCoolingDown(value: Date | string | null) {
   return value ? new Date(value).getTime() > Date.now() : false;
 }
 
+function formatCooldown(value: Date | string | null) {
+  if (!value) return "无";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "无";
+
+  const remainingMs = date.getTime() - Date.now();
+  if (remainingMs <= 0) return `${formatDate(value)} · 已到期`;
+
+  const totalMinutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  const parts = [];
+  if (days) parts.push(`${days}天`);
+  if (hours) parts.push(`${hours}小时`);
+  if (minutes || !parts.length) parts.push(`${minutes}分钟`);
+
+  return `${formatDate(value)} · 剩余 ${parts.slice(0, 2).join("")}`;
+}
+
 function getWebAccountInfo(account: Account) {
   return account.implementationMode === "web"
     ? account.metadata?.webAccount
@@ -343,7 +374,8 @@ export function ImageBackendPoolAdminPanel() {
   const selectedSub2ApiAccountCount = selectedAccounts.filter((account) =>
     isSub2ApiAccount(account)
   ).length;
-  const selectedManualAccountCount = selectedAccounts.length - selectedSub2ApiAccountCount;
+  const selectedManualAccountCount =
+    selectedAccounts.length - selectedSub2ApiAccountCount;
   const selectedAccountCount = selectedAccountIds.length;
   const allAccountsSelected =
     accounts.length > 0 && selectedAccountIds.length === accounts.length;
@@ -363,6 +395,7 @@ export function ImageBackendPoolAdminPanel() {
   const effectiveManualImportSyncMode = manualImportForm.useMobileRt
     ? manualImportForm.syncMode
     : ("responses" as TokenSyncMode);
+  const authSessionUrl = "https://chatgpt.com/api/auth/session";
 
   const resetGroupForm = () =>
     setGroupForm({
@@ -502,11 +535,14 @@ export function ImageBackendPoolAdminPanel() {
         setAccounts((data?.accounts || []) as Account[]);
         setApis((data?.apis || []) as Api[]);
         setSelectedAccountIds((current) => {
-          const availableIds = new Set((data?.accounts || []).map((account) => account.id));
+          const availableIds = new Set(
+            (data?.accounts || []).map((account) => account.id)
+          );
           return current.filter((id) => availableIds.has(id));
         });
       },
-      onError: ({ error }) => toast.error(error.serverError || "加载生图后端池失败"),
+      onError: ({ error }) =>
+        toast.error(error.serverError || "加载生图后端池失败"),
     }
   );
 
@@ -577,7 +613,7 @@ export function ImageBackendPoolAdminPanel() {
   } = useAction(importImageBackendAccountsFromRefreshTokensAction, {
     onSuccess: ({ data }) => {
       toast.success(
-        `导入完成：来源 RT ${data?.sourceCount || 0} 个，写入 ${
+        `导入完成：提取 RT ${data?.sourceCount || 0} 个，写入 ${
           data?.syncedCount || 0
         } 个，失败 ${data?.failed || 0} 个`
       );
@@ -597,7 +633,8 @@ export function ImageBackendPoolAdminPanel() {
         resetApiForm();
         reload();
       },
-      onError: ({ error }) => toast.error(error.serverError || "保存 API 后端失败"),
+      onError: ({ error }) =>
+        toast.error(error.serverError || "保存 API 后端失败"),
     }
   );
 
@@ -726,11 +763,14 @@ export function ImageBackendPoolAdminPanel() {
       setSyncProgress({
         status: "success",
         value: 100,
-        message: `完成：来源账号 ${processedCount} 个；${formatModeStats("Codex", {
-          synced: synced.responses,
-          skipped: skipped.responses,
-          failed: failed.responses,
-        })}；${formatModeStats("Web", {
+        message: `完成：来源账号 ${processedCount} 个；${formatModeStats(
+          "Codex",
+          {
+            synced: synced.responses,
+            skipped: skipped.responses,
+            failed: failed.responses,
+          }
+        )}；${formatModeStats("Web", {
           synced: synced.web,
           skipped: skipped.web,
           failed: failed.web,
@@ -771,10 +811,7 @@ export function ImageBackendPoolAdminPanel() {
     ) {
       return;
     }
-    if (
-      bulkAccountForm.setMode &&
-      selectedSub2ApiAccountCount > 0
-    ) {
+    if (bulkAccountForm.setMode && selectedSub2ApiAccountCount > 0) {
       toast.error("Sub2API 同步账号不能在本站批量切换 Web/Responses");
       return;
     }
@@ -809,7 +846,9 @@ export function ImageBackendPoolAdminPanel() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">生图后端池</h2>
           <p className="text-sm text-muted-foreground">
-            管理自有账号池和系统后端 API。API 直连不转协议；Web 账号仅支持图片生成/编辑；Responses 账号支持 /responses，并可承接 images 到 responses 的转换。
+            管理自有账号池和系统后端 API。API 直连不转协议；Web
+            账号仅支持图片生成/编辑；Responses 账号支持 /responses，并可承接
+            images 到 responses 的转换。
           </p>
         </div>
         <Button variant="outline" onClick={reload} disabled={isLoading}>
@@ -830,7 +869,10 @@ export function ImageBackendPoolAdminPanel() {
           <TabsTrigger value="import">获取 AT</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="groups" className="mt-6 grid gap-4 lg:grid-cols-[360px_1fr]">
+        <TabsContent
+          value="groups"
+          className="mt-6 grid gap-4 lg:grid-cols-[360px_1fr]"
+        >
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
@@ -842,7 +884,10 @@ export function ImageBackendPoolAdminPanel() {
                 placeholder="分组名称"
                 value={groupForm.name}
                 onChange={(event) =>
-                  setGroupForm((current) => ({ ...current, name: event.target.value }))
+                  setGroupForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
                 }
               />
               <Textarea
@@ -937,7 +982,8 @@ export function ImageBackendPoolAdminPanel() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  用户套餐低于该档位时不可选择此后端分组，外接 API Key 也不能绑定。
+                  用户套餐低于该档位时不可选择此后端分组，外接 API Key
+                  也不能绑定。
                 </p>
               </div>
               <Input
@@ -955,11 +1001,17 @@ export function ImageBackendPoolAdminPanel() {
                 onClick={() => saveGroup(groupForm)}
                 disabled={isSavingGroup || !groupForm.name}
               >
-                {isSavingGroup && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSavingGroup && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 保存分组
               </Button>
               {groupForm.id && (
-                <Button variant="outline" className="w-full" onClick={resetGroupForm}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={resetGroupForm}
+                >
                   取消编辑
                 </Button>
               )}
@@ -974,7 +1026,9 @@ export function ImageBackendPoolAdminPanel() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{group.name}</span>
                       {group.isDefault && <Badge>默认</Badge>}
-                      {!group.isEnabled && <Badge variant="secondary">停用</Badge>}
+                      {!group.isEnabled && (
+                        <Badge variant="secondary">停用</Badge>
+                      )}
                       {group.isUserSelectable && (
                         <Badge variant="outline">用户可选</Badge>
                       )}
@@ -992,11 +1046,16 @@ export function ImageBackendPoolAdminPanel() {
                       </Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {group.description || "无说明"} · 优先级 {group.priority} · 账号 {group.accountCount} · API {group.apiCount}
+                      {group.description || "无说明"} · 优先级 {group.priority}{" "}
+                      · 账号 {group.accountCount} · API {group.apiCount}
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => editGroup(group)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => editGroup(group)}
+                    >
                       <Pencil className="mr-2 h-4 w-4" />
                       编辑
                     </Button>
@@ -1016,7 +1075,10 @@ export function ImageBackendPoolAdminPanel() {
           </div>
         </TabsContent>
 
-        <TabsContent value="accounts" className="mt-6 grid gap-4 lg:grid-cols-[360px_1fr]">
+        <TabsContent
+          value="accounts"
+          className="mt-6 grid gap-4 lg:grid-cols-[360px_1fr]"
+        >
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
@@ -1028,14 +1090,20 @@ export function ImageBackendPoolAdminPanel() {
                 placeholder="名称"
                 value={accountForm.name}
                 onChange={(event) =>
-                  setAccountForm((current) => ({ ...current, name: event.target.value }))
+                  setAccountForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
                 }
               />
               <Input
                 placeholder="邮箱"
                 value={accountForm.email}
                 onChange={(event) =>
-                  setAccountForm((current) => ({ ...current, email: event.target.value }))
+                  setAccountForm((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
                 }
               />
               <Textarea
@@ -1103,14 +1171,19 @@ export function ImageBackendPoolAdminPanel() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="web">Web 账号</SelectItem>
-                  <SelectItem value="responses">Codex/Responses 账号</SelectItem>
+                  <SelectItem value="responses">
+                    Codex/Responses 账号
+                  </SelectItem>
                 </SelectContent>
               </Select>
               <Input
                 placeholder="模型，可选"
                 value={accountForm.model}
                 onChange={(event) =>
-                  setAccountForm((current) => ({ ...current, model: event.target.value }))
+                  setAccountForm((current) => ({
+                    ...current,
+                    model: event.target.value,
+                  }))
                 }
               />
               <div className="grid grid-cols-2 gap-3">
@@ -1158,7 +1231,9 @@ export function ImageBackendPoolAdminPanel() {
                     !accountForm.refreshToken)
                 }
               >
-                {isSavingAccount && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSavingAccount && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 保存账号
               </Button>
               {accountForm.id && (
@@ -1310,7 +1385,8 @@ export function ImageBackendPoolAdminPanel() {
                         onValueChange={(value) =>
                           setBulkAccountForm((current) => ({
                             ...current,
-                            implementationMode: value as AccountBackendFormValue,
+                            implementationMode:
+                              value as AccountBackendFormValue,
                           }))
                         }
                       >
@@ -1338,7 +1414,9 @@ export function ImageBackendPoolAdminPanel() {
                       />
                       启停
                       <Select
-                        value={bulkAccountForm.isEnabled ? "enabled" : "disabled"}
+                        value={
+                          bulkAccountForm.isEnabled ? "enabled" : "disabled"
+                        }
                         disabled={!bulkAccountForm.setEnabled}
                         onValueChange={(value) =>
                           setBulkAccountForm((current) => ({
@@ -1421,7 +1499,9 @@ export function ImageBackendPoolAdminPanel() {
                       isBulkUpdatingAccounts ||
                       isBulkDeletingAccounts
                     }
-                    variant={bulkAccountForm.deleteSelected ? "destructive" : "default"}
+                    variant={
+                      bulkAccountForm.deleteSelected ? "destructive" : "default"
+                    }
                   >
                     {(isBulkUpdatingAccounts || isBulkDeletingAccounts) && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1429,12 +1509,13 @@ export function ImageBackendPoolAdminPanel() {
                     执行
                   </Button>
                 </div>
-                {bulkAccountForm.setMode &&
-                  selectedSub2ApiAccountCount > 0 && (
-                    <p className="text-xs text-destructive">
-                      Sub2API 来源账号不能在本站批量切换 Web/Responses；手工导入账号会使用保存的 RT 重新换取目标模式 AT。
-                    </p>
-                  )}
+                {bulkAccountForm.setMode && selectedSub2ApiAccountCount > 0 && (
+                  <p className="text-xs text-destructive">
+                    Sub2API 来源账号不能在本站批量切换
+                    Web/Responses；手工导入账号会使用保存的 RT 重新换取目标模式
+                    AT。
+                  </p>
+                )}
               </CardContent>
             </Card>
             {accounts.map((account) => (
@@ -1455,7 +1536,9 @@ export function ImageBackendPoolAdminPanel() {
                           ? "Codex/Responses"
                           : "Web"}
                       </Badge>
-                      <Badge variant="secondary">{accountSourceLabel(account)}</Badge>
+                      <Badge variant="secondary">
+                        {accountSourceLabel(account)}
+                      </Badge>
                       <Badge variant="secondary">{account.status}</Badge>
                       {formatWebStatus(account) && (
                         <Badge variant="secondary">
@@ -1465,11 +1548,15 @@ export function ImageBackendPoolAdminPanel() {
                       {isCoolingDown(account.cooldownUntil) && (
                         <Badge variant="secondary">冷却中</Badge>
                       )}
-                      {!account.isEnabled && <Badge variant="secondary">停用</Badge>}
+                      {!account.isEnabled && (
+                        <Badge variant="secondary">停用</Badge>
+                      )}
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {account.email || getWebAccountInfo(account)?.email || "无邮箱"} ·{" "}
-                      {groupName(groups, account.groupId)} · 优先级{" "}
+                      {account.email ||
+                        getWebAccountInfo(account)?.email ||
+                        "无邮箱"}{" "}
+                      · {groupName(groups, account.groupId)} · 优先级{" "}
                       {account.priority} · {formatDate(account.lastUsedAt)}
                     </p>
                     {account.metadata?.sourceAccountId && (
@@ -1479,13 +1566,13 @@ export function ImageBackendPoolAdminPanel() {
                       </p>
                     )}
                     <p className="mt-1 text-xs text-muted-foreground">
-                      成功 {account.successCount} · 失败 {account.failCount} · 冷却至{" "}
-                      {formatOptionalDate(account.cooldownUntil)}
+                      成功 {account.successCount} · 失败 {account.failCount} ·
+                      冷却至 {formatCooldown(account.cooldownUntil)}
                     </p>
                     {account.implementationMode === "web" && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Web 套餐 {getWebAccountInfo(account)?.type || "未刷新"} ·
-                        图片额度 {formatWebQuota(account)} · 恢复{" "}
+                        Web 套餐 {getWebAccountInfo(account)?.type || "未刷新"}{" "}
+                        · 图片额度 {formatWebQuota(account)} · 恢复{" "}
                         {formatOptionalDate(
                           getWebAccountInfo(account)?.restoreAt || null
                         )}{" "}
@@ -1497,7 +1584,8 @@ export function ImageBackendPoolAdminPanel() {
                     )}
                     {account.lastError && (
                       <p className="mt-1 line-clamp-2 text-xs text-destructive">
-                        {formatOptionalDate(account.lastErrorAt)} · {account.lastError}
+                        {formatOptionalDate(account.lastErrorAt)} ·{" "}
+                        {account.lastError}
                       </p>
                     )}
                   </div>
@@ -1543,7 +1631,10 @@ export function ImageBackendPoolAdminPanel() {
           </div>
         </TabsContent>
 
-        <TabsContent value="apis" className="mt-6 grid gap-4 lg:grid-cols-[360px_1fr]">
+        <TabsContent
+          value="apis"
+          className="mt-6 grid gap-4 lg:grid-cols-[360px_1fr]"
+        >
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
@@ -1555,14 +1646,20 @@ export function ImageBackendPoolAdminPanel() {
                 placeholder="名称"
                 value={apiForm.name}
                 onChange={(event) =>
-                  setApiForm((current) => ({ ...current, name: event.target.value }))
+                  setApiForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
                 }
               />
               <Input
                 placeholder="https://api.openai.com/v1"
                 value={apiForm.baseUrl}
                 onChange={(event) =>
-                  setApiForm((current) => ({ ...current, baseUrl: event.target.value }))
+                  setApiForm((current) => ({
+                    ...current,
+                    baseUrl: event.target.value,
+                  }))
                 }
               />
               <Input
@@ -1570,7 +1667,10 @@ export function ImageBackendPoolAdminPanel() {
                 placeholder={apiForm.id ? "API Key，留空不修改" : "API Key"}
                 value={apiForm.apiKey}
                 onChange={(event) =>
-                  setApiForm((current) => ({ ...current, apiKey: event.target.value }))
+                  setApiForm((current) => ({
+                    ...current,
+                    apiKey: event.target.value,
+                  }))
                 }
               />
               <Select
@@ -1594,7 +1694,10 @@ export function ImageBackendPoolAdminPanel() {
                 placeholder="默认模型，可选"
                 value={apiForm.model}
                 onChange={(event) =>
-                  setApiForm((current) => ({ ...current, model: event.target.value }))
+                  setApiForm((current) => ({
+                    ...current,
+                    model: event.target.value,
+                  }))
                 }
               />
               <Input
@@ -1612,7 +1715,10 @@ export function ImageBackendPoolAdminPanel() {
                 <Switch
                   checked={apiForm.useStream}
                   onCheckedChange={(checked) =>
-                    setApiForm((current) => ({ ...current, useStream: checked }))
+                    setApiForm((current) => ({
+                      ...current,
+                      useStream: checked,
+                    }))
                   }
                 />
               </div>
@@ -1626,11 +1732,17 @@ export function ImageBackendPoolAdminPanel() {
                   (!apiForm.id && !apiForm.apiKey)
                 }
               >
-                {isSavingApi && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSavingApi && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 保存 API 后端
               </Button>
               {apiForm.id && (
-                <Button variant="outline" className="w-full" onClick={resetApiForm}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={resetApiForm}
+                >
                   取消编辑
                 </Button>
               )}
@@ -1650,7 +1762,9 @@ export function ImageBackendPoolAdminPanel() {
                       {isCoolingDown(api.cooldownUntil) && (
                         <Badge variant="secondary">冷却中</Badge>
                       )}
-                      {!api.isEnabled && <Badge variant="secondary">停用</Badge>}
+                      {!api.isEnabled && (
+                        <Badge variant="secondary">停用</Badge>
+                      )}
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {api.baseUrl} · {groupName(groups, api.groupId)} · 优先级{" "}
@@ -1658,7 +1772,7 @@ export function ImageBackendPoolAdminPanel() {
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       成功 {api.successCount} · 失败 {api.failCount} · 冷却至{" "}
-                      {formatOptionalDate(api.cooldownUntil)}
+                      {formatCooldown(api.cooldownUntil)}
                     </p>
                     {api.lastError && (
                       <p className="mt-1 line-clamp-2 text-xs text-destructive">
@@ -1667,7 +1781,11 @@ export function ImageBackendPoolAdminPanel() {
                     )}
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => editApi(api)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => editApi(api)}
+                    >
                       <Pencil className="mr-2 h-4 w-4" />
                       编辑
                     </Button>
@@ -1691,13 +1809,15 @@ export function ImageBackendPoolAdminPanel() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Database className="h-4 w-4" />
-                从 Sub2API 获取 AT
+                <Database className="h-4 w-4" />从 Sub2API 获取 AT
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                连接 Sub2API Postgres，只读取 OpenAI OAuth 账号。默认只同步 Codex/Responses，并复用 Sub2API 当前 access_token；勾选 Mobile RT 后才会把 Sub 中 mobile client 的当前 AT 同步为 Web/同时账号，不刷新也不回写 Sub2API 的 RT。
+                连接 Sub2API Postgres，只读取 OpenAI OAuth 账号。默认只同步
+                Codex/Responses，并复用 Sub2API 当前 access_token；勾选 Mobile
+                RT 后才会把 Sub 中 mobile client 的当前 AT 同步为
+                Web/同时账号，不刷新也不回写 Sub2API 的 RT。
               </p>
               <div className="grid gap-3 md:grid-cols-[1fr_auto]">
                 <Select
@@ -1713,7 +1833,9 @@ export function ImageBackendPoolAdminPanel() {
                     <SelectValue placeholder="Sub2API 来源分组" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default">全部 Sub2API OpenAI 账号</SelectItem>
+                    <SelectItem value="default">
+                      全部 Sub2API OpenAI 账号
+                    </SelectItem>
                     {sub2ApiSourceGroups.map((group) => (
                       <SelectItem key={group.id} value={group.id}>
                         {group.name} · {group.accountCount} 个账号
@@ -1739,7 +1861,9 @@ export function ImageBackendPoolAdminPanel() {
                 <div>
                   <Label>Mobile RT 导入</Label>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    仅用于 Sub 中由 Mobile RT client 导入的账号。关闭时强制只同步 Codex/Responses，避免误用普通 Codex RT。
+                    仅用于 Sub 中由 Mobile RT client
+                    导入的账号。关闭时强制只同步 Codex/Responses，避免误用普通
+                    Codex RT。
                   </p>
                 </div>
                 <Switch
@@ -1768,7 +1892,9 @@ export function ImageBackendPoolAdminPanel() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="both">同时同步 Web 和 Codex AT</SelectItem>
+                    <SelectItem value="both">
+                      同时同步 Web 和 Codex AT
+                    </SelectItem>
                     <SelectItem value="web">只同步 Web AT</SelectItem>
                     <SelectItem value="responses">
                       只同步 Codex/Responses AT
@@ -1845,10 +1971,7 @@ export function ImageBackendPoolAdminPanel() {
                 }
               />
               <div className="space-y-3">
-                <Button
-                  onClick={runSub2ApiSync}
-                  disabled={isSyncingSub2Api}
-                >
+                <Button onClick={runSub2ApiSync} disabled={isSyncingSub2Api}>
                   {isSyncingSub2Api && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   )}
@@ -1876,15 +1999,30 @@ export function ImageBackendPoolAdminPanel() {
       <Dialog open={isManualImportOpen} onOpenChange={setIsManualImportOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>批量导入 Refresh Token</DialogTitle>
+            <DialogTitle>批量导入 RT</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              每行一个 RT。默认按 Codex CLI RT 导入；勾选 Mobile RT 后按 Sub2API 的 mobile client 路线换取 AT，并保存刷新后的 RT。这里导入的账号可在本站继续更新 RT。
+              支持两种方式导入 RT：一是直接粘贴 RT 列表，每行一个；二是打开{" "}
+              <a
+                className="inline-flex items-center gap-1 text-foreground underline underline-offset-4"
+                href={authSessionUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Auth Session 接口
+                <ExternalLink className="h-3 w-3" />
+              </a>{" "}
+              并粘贴页面返回的整段内容，系统只会提取其中的
+              refresh_token/refreshToken 作为 RT；如果只有
+              accessToken，则不会导入。默认按 Codex CLI RT 导入；勾选 Mobile RT
+              后由本站使用 mobile client_id 换取 AT，并保存刷新后的
+              RT。这里导入的账号可在本站继续更新 RT，不会写入 Sub2API。
             </p>
             <Textarea
               className="min-h-44 font-mono text-xs"
-              placeholder="rt_..."
+              placeholder={`rt_...
+或粘贴 https://chatgpt.com/api/auth/session 返回的完整 JSON，例如包含 "refresh_token" / "refreshToken" 的对象`}
               value={manualImportForm.refreshTokensText}
               onChange={(event) =>
                 setManualImportForm((current) => ({
@@ -1897,7 +2035,8 @@ export function ImageBackendPoolAdminPanel() {
               <div>
                 <Label>Mobile RT 导入</Label>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  使用 mobile client_id 获取 AT。关闭时强制只导入 Codex/Responses，避免普通 Codex RT 被误用于 Web。
+                  使用 mobile client_id 获取 AT。关闭时强制只导入
+                  Codex/Responses，避免普通 Codex RT 被误用于 Web。
                 </p>
               </div>
               <Switch
@@ -1926,7 +2065,9 @@ export function ImageBackendPoolAdminPanel() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="responses">只导入 Codex/Responses</SelectItem>
+                  <SelectItem value="responses">
+                    只导入 Codex/Responses
+                  </SelectItem>
                   <SelectItem value="web">只导入 Web</SelectItem>
                   <SelectItem value="both">同时导入 Web 和 Codex</SelectItem>
                 </SelectContent>
