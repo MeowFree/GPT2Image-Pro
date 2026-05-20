@@ -1742,6 +1742,7 @@ export async function generateChatImage(
       params.rawResponsesBody && typeof params.rawResponsesBody === "object"
         ? {
             ...(params.rawResponsesBody as Record<string, unknown>),
+            store: false,
             instructions:
               typeof (params.rawResponsesBody as Record<string, unknown>)
                 .instructions === "string" &&
@@ -1755,6 +1756,7 @@ export async function generateChatImage(
             input,
             tools: [tool],
             instructions,
+            store: false,
             ...(reasoning ? { reasoning } : {}),
             ...(params.stream || config.useStream ? { stream: true } : {}),
           };
