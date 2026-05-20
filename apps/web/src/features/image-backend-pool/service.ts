@@ -344,6 +344,14 @@ function isRecoverableBackendError(error?: string | null) {
     normalized.includes("empty response") ||
     normalized.includes("non-json responses api response") ||
     normalized.includes("non-json images api response") ||
+    normalized.includes("http 500") ||
+    normalized.includes("status_code=500") ||
+    normalized.includes("status code 500") ||
+    normalized.includes('"status":500') ||
+    normalized.includes("internal server error") ||
+    normalized.includes("server_error") ||
+    normalized.includes("something seems to have gone wrong") ||
+    normalized.includes("an error occurred while processing your request") ||
     normalized.includes("502") ||
     normalized.includes("503") ||
     normalized.includes("504") ||
@@ -448,6 +456,14 @@ function isOverloadBackendError(error?: string | null) {
     normalized.includes("529") ||
     normalized.includes("overloaded") ||
     normalized.includes("server overloaded") ||
+    normalized.includes("http 500") ||
+    normalized.includes("status_code=500") ||
+    normalized.includes("status code 500") ||
+    normalized.includes('"status":500') ||
+    normalized.includes("internal server error") ||
+    normalized.includes("server_error") ||
+    normalized.includes("something seems to have gone wrong") ||
+    normalized.includes("an error occurred while processing your request") ||
     normalized.includes("empty non-json") ||
     normalized.includes("empty response") ||
     normalized.includes("temporarily unavailable") ||
