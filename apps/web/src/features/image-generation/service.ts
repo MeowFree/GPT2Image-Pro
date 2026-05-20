@@ -576,9 +576,10 @@ async function retryPoolBackendResult(
   const excluded = new Set<string>();
   let candidate = config;
   let lastResult: GenerateImageResult | null = null;
-  const maxAttempts = 8;
+  let attempt = 0;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  while (true) {
+    attempt += 1;
     let result: GenerateImageResult;
     const currentBackend = candidate.backend;
     if (
@@ -621,23 +622,8 @@ async function retryPoolBackendResult(
       break;
     }
 
-    if (attempt + 1 >= maxAttempts) {
-      logWarn("生图后端重试次数已用尽", {
-        attempts: attempt + 1,
-        maxAttempts,
-        requestKind,
-        backendType: backend.type,
-        backendId: backend.id,
-        groupId: backend.groupId,
-        excludedCount: excluded.size,
-        lastError: result.error,
-      });
-      break;
-    }
-
     logWarn("生图后端可重试错误，准备切换账号池成员", {
-      attempt: attempt + 1,
-      maxAttempts,
+      attempt,
       requestKind,
       backendType: backend.type,
       backendId: backend.id,
@@ -656,7 +642,7 @@ async function retryPoolBackendResult(
     } catch (error) {
       if (error instanceof ImageBackendPoolUnavailableError) {
         logWarn("生图后端没有可切换的账号池成员", {
-          attempt: attempt + 1,
+          attempt,
           requestKind,
           excludedCount: excluded.size,
           lastError: result.error,
@@ -675,7 +661,7 @@ async function retryPoolBackendResult(
       break;
     }
     logWarn("生图后端已切换账号池成员重试", {
-      attempt: attempt + 2,
+      nextAttempt: attempt + 1,
       requestKind,
       previousMemberKey: memberKey,
       nextBackendType: next.config.backend.type,
