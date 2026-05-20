@@ -295,6 +295,8 @@ const CHAT_SUGGESTIONS_ZH = [
 ] as const;
 const CHAT_STORAGE_KEY = "gpt2image_chat_messages_v1";
 const CHAT_CONVERSATIONS_STORAGE_KEY = "gpt2image_chat_conversations_v1";
+const CHAT_ACTIVE_CONVERSATION_STORAGE_KEY =
+  "gpt2image_active_chat_conversation_v1";
 const CHAT_CONTEXT_MESSAGE_LIMIT = 8;
 const CHAT_CONVERSATION_LIMIT = 30;
 
@@ -425,6 +427,47 @@ function sanitizeChatConversations(value: unknown): ChatConversation[] {
       },
     ];
   });
+}
+
+function getChatMessageSignature(message: ChatMessage) {
+  return `${message.role}\u0000${message.id}\u0000${message.text}`;
+}
+
+function isConversationSnapshotOf(
+  candidate: ChatConversation,
+  target: ChatConversation
+) {
+  if (candidate.id === target.id) return true;
+  if (candidate.messages.length > target.messages.length) return false;
+  return candidate.messages.every(
+    (message, index) =>
+      getChatMessageSignature(message) ===
+      getChatMessageSignature(target.messages[index] as ChatMessage)
+  );
+}
+
+function compactChatConversations(conversations: ChatConversation[]) {
+  const byCompleteness = [...conversations].sort((a, b) => {
+    const messageCountDelta = b.messages.length - a.messages.length;
+    if (messageCountDelta !== 0) return messageCountDelta;
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  });
+  const compacted: ChatConversation[] = [];
+
+  for (const conversation of byCompleteness) {
+    if (
+      compacted.some((existing) =>
+        isConversationSnapshotOf(conversation, existing)
+      )
+    ) {
+      continue;
+    }
+    compacted.push(conversation);
+  }
+
+  return compacted.sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
 }
 
 function getChatConversationTitle(messages: ChatMessage[], fallback: string) {
@@ -929,7 +972,9 @@ export function CreatePageClient({
   const handleNewChat = () => {
     if (isChatGenerating) return;
     resetChatConversation();
-    setChatConversationId(createLocalId());
+    const nextId = createLocalId();
+    setChatConversationId(nextId);
+    window.localStorage.setItem(CHAT_ACTIVE_CONVERSATION_STORAGE_KEY, nextId);
     setChatPrompt("");
     clearChatAttachments();
     toast.success(copy("New chat started", "已新建对话"));
@@ -947,7 +992,9 @@ export function CreatePageClient({
       JSON.stringify(nextConversations)
     );
     resetChatConversation();
-    setChatConversationId(createLocalId());
+    const nextId = createLocalId();
+    setChatConversationId(nextId);
+    window.localStorage.setItem(CHAT_ACTIVE_CONVERSATION_STORAGE_KEY, nextId);
     setChatPrompt("");
     toast.success(copy("Chat history cleared", "对话记录已清理"));
   };
@@ -955,6 +1002,10 @@ export function CreatePageClient({
   const handleOpenChatConversation = (conversation: ChatConversation) => {
     if (isChatGenerating) return;
     setChatConversationId(conversation.id);
+    window.localStorage.setItem(
+      CHAT_ACTIVE_CONVERSATION_STORAGE_KEY,
+      conversation.id
+    );
     setChatMessages(conversation.messages);
     setChatStream(null);
     setRetryingChatMessageId(null);
@@ -1259,8 +1310,10 @@ export function CreatePageClient({
       const conversationRaw = window.localStorage.getItem(
         CHAT_CONVERSATIONS_STORAGE_KEY
       );
-      const conversations = sanitizeChatConversations(
-        conversationRaw ? JSON.parse(conversationRaw) : []
+      const conversations = compactChatConversations(
+        sanitizeChatConversations(
+          conversationRaw ? JSON.parse(conversationRaw) : []
+        )
       );
 
       const legacyRaw = window.localStorage.getItem(CHAT_STORAGE_KEY);
@@ -1274,18 +1327,20 @@ export function CreatePageClient({
             JSON.stringify(conversation.messages) ===
             JSON.stringify(legacyMessages)
         );
-      const nextConversations = hasLegacyConversation
-        ? [
-            createChatConversation(
-              legacyMessages,
-              getChatConversationTitle(
+      const nextConversations = compactChatConversations(
+        hasLegacyConversation
+          ? [
+              createChatConversation(
                 legacyMessages,
-                isZh ? "历史对话" : "Previous chat"
-              )
-            ),
-            ...conversations,
-          ]
-        : conversations;
+                getChatConversationTitle(
+                  legacyMessages,
+                  isZh ? "历史对话" : "Previous chat"
+                )
+              ),
+              ...conversations,
+            ]
+          : conversations
+      );
 
       if (nextConversations.length > 0) {
         const sortedConversations = nextConversations
@@ -1294,14 +1349,33 @@ export function CreatePageClient({
               new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
           )
           .slice(0, CHAT_CONVERSATION_LIMIT);
+        const activeConversationId = window.localStorage.getItem(
+          CHAT_ACTIVE_CONVERSATION_STORAGE_KEY
+        );
+        const activeConversation =
+          sortedConversations.find(
+            (conversation) => conversation.id === activeConversationId
+          ) || sortedConversations[0];
         chatConversationsRef.current = sortedConversations;
         setChatConversations(sortedConversations);
-        setChatConversationId(sortedConversations[0]?.id || createLocalId());
-        setChatMessages(sortedConversations[0]?.messages || []);
+        setChatConversationId(activeConversation?.id || createLocalId());
+        setChatMessages(activeConversation?.messages || []);
+        if (activeConversation) {
+          window.localStorage.setItem(
+            CHAT_ACTIVE_CONVERSATION_STORAGE_KEY,
+            activeConversation.id
+          );
+        }
       }
+      window.localStorage.setItem(
+        CHAT_CONVERSATIONS_STORAGE_KEY,
+        JSON.stringify(nextConversations.slice(0, CHAT_CONVERSATION_LIMIT))
+      );
+      window.localStorage.removeItem(CHAT_STORAGE_KEY);
     } catch {
       window.localStorage.removeItem(CHAT_STORAGE_KEY);
       window.localStorage.removeItem(CHAT_CONVERSATIONS_STORAGE_KEY);
+      window.localStorage.removeItem(CHAT_ACTIVE_CONVERSATION_STORAGE_KEY);
     } finally {
       didLoadChatRef.current = true;
     }
@@ -1320,35 +1394,34 @@ export function CreatePageClient({
         isZh ? "未命名对话" : "Untitled chat"
       );
       const now = new Date().toISOString();
-      let nextConversations: ChatConversation[] = [];
-      setChatConversations((prev) => {
-        const existing = prev.find(
-          (conversation) => conversation.id === chatConversationId
-        );
-        const current: ChatConversation = {
-          id: chatConversationId,
-          title,
-          messages: persistedMessages,
-          createdAt: existing?.createdAt || now,
-          updatedAt: now,
-        };
-        nextConversations = [
-          current,
-          ...prev.filter(
-            (conversation) => conversation.id !== chatConversationId
-          ),
-        ].slice(0, CHAT_CONVERSATION_LIMIT);
-        chatConversationsRef.current = nextConversations;
-        return nextConversations;
-      });
-      window.localStorage.setItem(
-        CHAT_STORAGE_KEY,
-        JSON.stringify(persistedMessages)
+      const previousConversations = chatConversationsRef.current;
+      const existing = previousConversations.find(
+        (conversation) => conversation.id === chatConversationId
       );
+      const current: ChatConversation = {
+        id: chatConversationId,
+        title,
+        messages: persistedMessages,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+      };
+      const nextConversations = compactChatConversations([
+        current,
+        ...previousConversations.filter(
+          (conversation) => conversation.id !== chatConversationId
+        ),
+      ]).slice(0, CHAT_CONVERSATION_LIMIT);
+      chatConversationsRef.current = nextConversations;
+      setChatConversations(nextConversations);
       window.localStorage.setItem(
         CHAT_CONVERSATIONS_STORAGE_KEY,
-        JSON.stringify(chatConversationsRef.current)
+        JSON.stringify(nextConversations)
       );
+      window.localStorage.setItem(
+        CHAT_ACTIVE_CONVERSATION_STORAGE_KEY,
+        chatConversationId
+      );
+      window.localStorage.removeItem(CHAT_STORAGE_KEY);
     } catch {
       /* ignore local storage quota errors */
     }
