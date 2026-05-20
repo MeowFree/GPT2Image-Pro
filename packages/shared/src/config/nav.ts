@@ -1,5 +1,6 @@
 import {
   Bot,
+  BookOpen,
   Clock,
   Coins,
   GalleryHorizontalEnd,
@@ -166,6 +167,11 @@ export const dashboardNav: NavGroup[] = [
         title: "History",
         href: "/dashboard/history",
         icon: Clock,
+      },
+      {
+        title: "Backend Help",
+        href: "/dashboard/backend-help",
+        icon: BookOpen,
       },
       {
         title: "Settings",

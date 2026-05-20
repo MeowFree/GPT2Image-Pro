@@ -8,7 +8,7 @@ import {
   GPT54_CHAT_MODEL,
   GPT54_MINI_CHAT_MODEL,
   GPT55_CHAT_MODEL,
-  RESPONSES_IMAGE_MODELS,
+  type RESPONSES_IMAGE_MODELS,
   type SubscriptionPlan,
 } from "@repo/shared/config/subscription-plan";
 import { formatCredits } from "@repo/shared/credits/format";
@@ -32,6 +32,7 @@ import { Textarea } from "@repo/ui/components/textarea";
 import {
   Brush,
   Check,
+  CircleHelp,
   Coins,
   ChevronDown,
   Download,
@@ -556,6 +557,39 @@ export function CreatePageClient({
         xhigh: "极高",
       }[value]
     );
+  const helpMarker = (label: string, title: string) => (
+    <span
+      aria-label={title}
+      className="inline-flex cursor-help items-center text-muted-foreground"
+      role="img"
+      title={title}
+    >
+      <CircleHelp className="h-3.5 w-3.5" />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+  const labelWithHelp = (label: string, title: string) => (
+    <span className="inline-flex items-center gap-1.5">
+      <span>{label}</span>
+      {helpMarker(label, title)}
+    </span>
+  );
+  const gptModelHelpText = copy(
+    "Web backend: main ChatGPT conversation model; image model is sent separately. Codex/Responses backend: top-level Responses model. External image API may ignore this field.",
+    "Web 后端：主 ChatGPT 对话模型，图片模型会单独传递；Codex/Responses 后端：顶层 Responses 模型；外接 image API 可能忽略此字段。"
+  );
+  const imageModelHelpText = copy(
+    "Image model for generations/edits. Web backend maps it to force_paragen_model_slug; Codex/Responses uses it as the image_generation tool model; external image API receives it as the image model.",
+    "生图/编辑图片模型。Web 后端会映射到 force_paragen_model_slug；Codex/Responses 会作为 image_generation 工具模型；外接 image API 会作为图片模型传递。"
+  );
+  const thinkingHelpText = copy(
+    "Web backend uses this as paragen thinking level. If prompt optimization is off, Web thinking is forced to instant. Codex/Responses receives the selected effort when supported.",
+    "Web 后端会作为 paragen 思考强度；关闭提示词优化时，Web 思考强度会强制为 instant；Codex/Responses 在支持时接收所选强度。"
+  );
+  const promptOptimizationHelpText = copy(
+    "Turning this off is best effort: the platform sends the original prompt and uses instant on Web, but an upstream backend may still internally revise or interpret the prompt.",
+    "关闭后是尽量少改动：平台会发送原始提示词，并让 Web 使用 instant；但上游后端仍可能在内部改写或理解提示词。"
+  );
   const validationMessage = (message?: string) => {
     if (!message || !isZh) return message;
     if (message === "Use WIDTHxHEIGHT format.") {
@@ -780,7 +814,10 @@ export function CreatePageClient({
         className="mt-0.5"
       />
       <span>
-        {copy("Prompt optimization", "提示词优化")}
+        {labelWithHelp(
+          copy("Prompt optimization", "提示词优化"),
+          promptOptimizationHelpText
+        )}
         <span className="mt-1 block text-xs font-normal text-muted-foreground">
           {promptOptimizationAllowed
             ? copy(
@@ -803,39 +840,52 @@ export function CreatePageClient({
     disabled?: boolean;
     compact?: boolean;
     allowDefault?: boolean;
-  }) => (
-    <Select
-      value={params.value}
-      onValueChange={(value) => params.onChange(value as ChatModel | "default")}
-      disabled={params.disabled}
-    >
-      <SelectTrigger
-        id={params.id}
-        className={params.compact ? "h-8 w-[136px]" : "w-full"}
+  }) => {
+    const control = (
+      <Select
+        value={params.value}
+        onValueChange={(value) =>
+          params.onChange(value as ChatModel | "default")
+        }
+        disabled={params.disabled}
       >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {params.allowDefault && (
-          <SelectItem value="default">
-            {copy("Backend default", "后端默认")}
-          </SelectItem>
-        )}
-        {CHAT_MODEL_OPTIONS.map((option) => (
-          <SelectItem
-            key={option.value}
-            value={option.value}
-            disabled={option.ultraOnly && !gpt55ChatAllowed}
-          >
-            {option.label}
-            {option.ultraOnly && !gpt55ChatAllowed
-              ? ` · ${copy("Ultra", "Ultra")}`
-              : ""}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
+        <SelectTrigger
+          id={params.id}
+          className={params.compact ? "h-8 w-[136px]" : "w-full"}
+          title={gptModelHelpText}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {params.allowDefault && (
+            <SelectItem value="default">
+              {copy("Backend default", "后端默认")}
+            </SelectItem>
+          )}
+          {CHAT_MODEL_OPTIONS.map((option) => (
+            <SelectItem
+              key={option.value}
+              value={option.value}
+              disabled={option.ultraOnly && !gpt55ChatAllowed}
+            >
+              {option.label}
+              {option.ultraOnly && !gpt55ChatAllowed
+                ? ` · ${copy("Ultra", "Ultra")}`
+                : ""}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+
+    if (!params.compact) return control;
+    return (
+      <span className="inline-flex items-center gap-1">
+        {control}
+        {helpMarker(copy("GPT model", "GPT 模型"), gptModelHelpText)}
+      </span>
+    );
+  };
 
   const renderThinkingSelect = (params: {
     id: string;
@@ -843,27 +893,38 @@ export function CreatePageClient({
     onChange: (value: ChatThinkingLevel) => void;
     disabled?: boolean;
     compact?: boolean;
-  }) => (
-    <Select
-      value={params.value}
-      onValueChange={(value) => params.onChange(value as ChatThinkingLevel)}
-      disabled={params.disabled}
-    >
-      <SelectTrigger
-        id={params.id}
-        className={params.compact ? "h-8 w-[138px]" : "w-full"}
+  }) => {
+    const control = (
+      <Select
+        value={params.value}
+        onValueChange={(value) => params.onChange(value as ChatThinkingLevel)}
+        disabled={params.disabled}
       >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {CHAT_THINKING_OPTIONS.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {copy("Thinking", "思考")} {thinkingLabel(option.value)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
+        <SelectTrigger
+          id={params.id}
+          className={params.compact ? "h-8 w-[138px]" : "w-full"}
+          title={thinkingHelpText}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {CHAT_THINKING_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {copy("Thinking", "思考")} {thinkingLabel(option.value)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+
+    if (!params.compact) return control;
+    return (
+      <span className="inline-flex items-center gap-1">
+        {control}
+        {helpMarker(copy("Thinking", "思考强度"), thinkingHelpText)}
+      </span>
+    );
+  };
 
   const clearStreamingPreview = () => {
     setStreamingPreviewUrl(null);
@@ -1914,7 +1975,7 @@ export function CreatePageClient({
             onValueChange={setChatImageModel}
             disabled={isChatGenerating}
           >
-            <SelectTrigger className="h-8 w-[138px]">
+            <SelectTrigger className="h-8 w-[138px]" title={imageModelHelpText}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -1925,6 +1986,7 @@ export function CreatePageClient({
               ))}
             </SelectContent>
           </Select>
+          {helpMarker(copy("Image model", "图片模型"), imageModelHelpText)}
           {renderThinkingSelect({
             id: "chat-thinking",
             value: chatThinking,
@@ -3172,10 +3234,18 @@ export function CreatePageClient({
                 htmlFor={`text-model-${mode}`}
                 className="text-xs font-medium text-muted-foreground"
               >
-                {copy("Model", "模型")}
+                {labelWithHelp(copy("Image model", "图片模型"), imageModelHelpText)}
               </label>
-              <Select value={textModel} onValueChange={setTextModel} disabled={busy}>
-                <SelectTrigger id={`text-model-${mode}`} className="w-full">
+              <Select
+                value={textModel}
+                onValueChange={setTextModel}
+                disabled={busy}
+              >
+                <SelectTrigger
+                  id={`text-model-${mode}`}
+                  className="w-full"
+                  title={imageModelHelpText}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -3193,7 +3263,7 @@ export function CreatePageClient({
                 htmlFor={`text-gpt-model-${mode}`}
                 className="text-xs font-medium text-muted-foreground"
               >
-                {copy("GPT model", "GPT 模型")}
+                {labelWithHelp(copy("GPT model", "GPT 模型"), gptModelHelpText)}
               </label>
               {renderGptModelSelect({
                 id: `text-gpt-model-${mode}`,
@@ -3215,7 +3285,7 @@ export function CreatePageClient({
                 htmlFor={`text-thinking-${mode}`}
                 className="text-xs font-medium text-muted-foreground"
               >
-                {copy("Thinking", "思考强度")}
+                {labelWithHelp(copy("Thinking", "思考强度"), thinkingHelpText)}
               </label>
               {renderThinkingSelect({
                 id: `text-thinking-${mode}`,
@@ -3826,14 +3896,18 @@ export function CreatePageClient({
                     htmlFor="edit-model"
                     className="text-sm font-medium text-foreground"
                   >
-                    {copy("Model", "模型")}
+                    {labelWithHelp(copy("Image model", "图片模型"), imageModelHelpText)}
                   </label>
                   <Select
                     value={editModel}
                     onValueChange={setEditModel}
                     disabled={isEditing}
                   >
-                    <SelectTrigger id="edit-model" className="w-full">
+                    <SelectTrigger
+                      id="edit-model"
+                      className="w-full"
+                      title={imageModelHelpText}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -3851,7 +3925,7 @@ export function CreatePageClient({
                     htmlFor="edit-gpt-model"
                     className="text-sm font-medium text-foreground"
                   >
-                    {copy("GPT model", "GPT 模型")}
+                    {labelWithHelp(copy("GPT model", "GPT 模型"), gptModelHelpText)}
                   </label>
                   {renderGptModelSelect({
                     id: "edit-gpt-model",
@@ -3873,7 +3947,7 @@ export function CreatePageClient({
                     htmlFor="edit-thinking"
                     className="text-sm font-medium text-foreground"
                   >
-                    {copy("Thinking", "思考强度")}
+                    {labelWithHelp(copy("Thinking", "思考强度"), thinkingHelpText)}
                   </label>
                   {renderThinkingSelect({
                     id: "edit-thinking",
@@ -4463,7 +4537,10 @@ export function CreatePageClient({
                       value={chatImageModel}
                       onValueChange={setChatImageModel}
                     >
-                      <SelectTrigger className="h-8 w-[138px]">
+                      <SelectTrigger
+                        className="h-8 w-[138px]"
+                        title={imageModelHelpText}
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -4474,6 +4551,7 @@ export function CreatePageClient({
                         ))}
                       </SelectContent>
                     </Select>
+                    {helpMarker(copy("Image model", "图片模型"), imageModelHelpText)}
                     {renderThinkingSelect({
                       id: "batch-thinking",
                       value: chatThinking,

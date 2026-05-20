@@ -77,6 +77,7 @@ export function DashboardSidebar() {
       Dashboard: t("nav.dashboard"),
       Gallery: t("nav.gallery"),
       History: t("nav.history"),
+      "Backend Help": t("nav.backendHelp"),
       Settings: t("nav.settings"),
       "System Settings": t("nav.systemSettings"),
       Support: t("nav.support"),
