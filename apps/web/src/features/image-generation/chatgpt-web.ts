@@ -699,7 +699,6 @@ async function prepareImageConversation(
       fork_from_shared_post: false,
       parent_message_id: randomUUID(),
       model: webGptModelSlug(options.gptModel, options.imageModel),
-      force_paragen_model_slug: imageModelSlug(options.imageModel),
       paragen_thinking_level: webThinkingValue(
         options.thinking,
         options.promptOptimization
@@ -786,7 +785,6 @@ async function startImageGeneration(
       messages: [buildMessage(prompt, references)],
       parent_message_id: randomUUID(),
       model: webGptModelSlug(options.gptModel, options.imageModel),
-      force_paragen_model_slug: imageModelSlug(options.imageModel),
       client_prepare_state: "sent",
       timezone_offset_min: -480,
       timezone: "Asia/Shanghai",
@@ -853,7 +851,8 @@ function extractWebStreamError(text: string) {
     for (const line of block.split("\n")) {
       if (!line || line.startsWith(":")) continue;
       const separatorIndex = line.indexOf(":");
-      const field = separatorIndex === -1 ? line : line.slice(0, separatorIndex);
+      const field =
+        separatorIndex === -1 ? line : line.slice(0, separatorIndex);
       const rawValue =
         separatorIndex === -1 ? "" : line.slice(separatorIndex + 1);
       const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
@@ -876,7 +875,8 @@ function extractWebStreamError(text: string) {
           : payload?.error &&
               typeof payload.error === "object" &&
               "message" in payload.error &&
-              typeof (payload.error as { message?: unknown }).message === "string"
+              typeof (payload.error as { message?: unknown }).message ===
+                "string"
             ? (payload.error as { message: string }).message
             : "";
     const code =
@@ -890,7 +890,9 @@ function extractWebStreamError(text: string) {
           : "";
     if (
       eventName.toLowerCase().includes("error") ||
-      String(payload?.type || "").toLowerCase().includes("error") ||
+      String(payload?.type || "")
+        .toLowerCase()
+        .includes("error") ||
       /usage limit|usage_limit|rate limit|rate_limit|too many requests|quota|limit has been reached|limit_reached|billing_hard_limit/i.test(
         `${message} ${code} ${data}`
       )
