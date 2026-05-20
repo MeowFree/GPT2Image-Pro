@@ -357,6 +357,48 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
+function responseTextSnippet(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= 240) return normalized;
+  return `${normalized.slice(0, 240)}...`;
+}
+
+function responseStatusLabel(response: Response) {
+  return `${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
+}
+
+function nonJsonResponseError(response: Response, text: string) {
+  const snippet = responseTextSnippet(text);
+  const status = responseStatusLabel(response);
+  if (!snippet) {
+    return response.ok
+      ? "API returned an empty response"
+      : `API returned ${status} with an empty response`;
+  }
+  return response.ok
+    ? `API returned a non-JSON response: ${snippet}`
+    : `API returned ${status}: ${snippet}`;
+}
+
+async function readImageApiJsonResponse(
+  response: Response
+): Promise<ImageApiResult> {
+  const text = await response.text();
+  if (!text.trim()) {
+    return { error: nonJsonResponseError(response, text) };
+  }
+
+  try {
+    const data = JSON.parse(text) as unknown;
+    if (data && typeof data === "object") {
+      return data as ImageApiResult;
+    }
+    return { error: `API returned invalid JSON: ${responseTextSnippet(text)}` };
+  } catch {
+    return { error: nonJsonResponseError(response, text) };
+  }
+}
+
 function sanitizeChatMessages(value: unknown): ChatMessage[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((message) => {
@@ -1027,7 +1069,7 @@ export function CreatePageClient({
   const readImageStreamResponse = async (response: Response) => {
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("text/event-stream")) {
-      return (await response.json()) as ImageApiResult;
+      return readImageApiJsonResponse(response);
     }
 
     const reader = response.body?.getReader();
@@ -1154,7 +1196,7 @@ export function CreatePageClient({
 
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("text/event-stream")) {
-      const data = (await response.json()) as ImageApiResult;
+      const data = await readImageApiJsonResponse(response);
       if (!response.ok || data.error) {
         throw createRequestError(
           data.error || `API error: ${response.status}`,
@@ -2699,7 +2741,7 @@ export function CreatePageClient({
 
     const data = params.stream
       ? await readImageStreamResponse(response)
-      : ((await response.json()) as ImageApiResult);
+      : await readImageApiJsonResponse(response);
 
     if (!response.ok || data.error) {
       const error = new Error(data.error || `API error: ${response.status}`);

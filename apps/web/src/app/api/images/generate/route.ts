@@ -40,6 +40,12 @@ function wantsStreamResponse(request: NextRequest, stream?: boolean) {
   return request.headers.get("accept")?.includes("text/event-stream") ?? false;
 }
 
+function generationErrorResponse(error: unknown) {
+  return errorResponse(
+    error instanceof Error ? error.message : "Failed to generate image."
+  );
+}
+
 export const POST = withApiLogging(async (request: NextRequest) => {
   const session = await auth.api.getSession({
     headers: request.headers,
@@ -76,55 +82,60 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     moderation: parsed.data.moderation || "auto",
   };
   const count = parsed.data.count || 1;
-  const useStreamResponse =
-    wantsStreamResponse(request, parsed.data.stream) &&
-    Boolean((await getUserApiConfig(session.user.id))?.useStream);
 
-  if (useStreamResponse) {
-    return createImageStreamResponse(async (emit) => {
-      for (let index = 0; index < count; index++) {
-        const result = await runImageGenerationForUser(input, {
-          onPartialImage: async (image) => {
-            await emit({
-              type: "partial_image",
-              index,
-              partial_image_index: image.partialImageIndex,
-              b64_json: image.imageBase64,
-              url: image.imageUrl,
-            });
-          },
-        });
+  try {
+    const useStreamResponse =
+      wantsStreamResponse(request, parsed.data.stream) &&
+      Boolean((await getUserApiConfig(session.user.id))?.useStream);
 
-        if (result.error) {
-          await emit({
-            type: "error",
-            error: result.error,
-            generationId: result.generationId,
-            creditsConsumed: result.creditsConsumed,
+    if (useStreamResponse) {
+      return createImageStreamResponse(async (emit) => {
+        for (let index = 0; index < count; index++) {
+          const result = await runImageGenerationForUser(input, {
+            onPartialImage: async (image) => {
+              await emit({
+                type: "partial_image",
+                index,
+                partial_image_index: image.partialImageIndex,
+                b64_json: image.imageBase64,
+                url: image.imageUrl,
+              });
+            },
           });
-          return null;
+
+          if (result.error) {
+            await emit({
+              type: "error",
+              error: result.error,
+              generationId: result.generationId,
+              creditsConsumed: result.creditsConsumed,
+            });
+            return null;
+          }
+
+          await emit({ type: "completed", ...result });
         }
 
-        await emit({ type: "completed", ...result });
-      }
+        return null;
+      });
+    }
 
-      return null;
+    if (count === 1) {
+      return NextResponse.json(await runImageGenerationForUser(input));
+    }
+
+    const results = [];
+    for (let index = 0; index < count; index++) {
+      const result = await runImageGenerationForUser(input);
+      results.push(result);
+      if (result.error) break;
+    }
+
+    return NextResponse.json({
+      results,
+      error: results.find((result) => result.error)?.error,
     });
+  } catch (error) {
+    return generationErrorResponse(error);
   }
-
-  if (count === 1) {
-    return NextResponse.json(await runImageGenerationForUser(input));
-  }
-
-  const results = [];
-  for (let index = 0; index < count; index++) {
-    const result = await runImageGenerationForUser(input);
-    results.push(result);
-    if (result.error) break;
-  }
-
-  return NextResponse.json({
-    results,
-    error: results.find((result) => result.error)?.error,
-  });
 });
