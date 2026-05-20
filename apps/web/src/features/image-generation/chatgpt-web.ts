@@ -803,6 +803,66 @@ function extractImageIds(text: string) {
   return { fileIds: [...fileIds], sedimentIds: [...sedimentIds] };
 }
 
+function extractWebStreamError(text: string) {
+  const normalized = text.replace(/\r\n/g, "\n");
+  for (const block of normalized.split("\n\n")) {
+    if (!block.trim()) continue;
+    let eventName = "";
+    const dataLines: string[] = [];
+    for (const line of block.split("\n")) {
+      if (!line || line.startsWith(":")) continue;
+      const separatorIndex = line.indexOf(":");
+      const field = separatorIndex === -1 ? line : line.slice(0, separatorIndex);
+      const rawValue =
+        separatorIndex === -1 ? "" : line.slice(separatorIndex + 1);
+      const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
+      if (field === "event") eventName = value;
+      if (field === "data") dataLines.push(value);
+    }
+    const data = dataLines.join("\n").trim();
+    if (!data || data === "[DONE]") continue;
+    let payload: Record<string, unknown> | null = null;
+    try {
+      payload = JSON.parse(data) as Record<string, unknown>;
+    } catch {
+      payload = null;
+    }
+    const message =
+      typeof payload?.message === "string"
+        ? payload.message
+        : typeof payload?.error === "string"
+          ? payload.error
+          : payload?.error &&
+              typeof payload.error === "object" &&
+              "message" in payload.error &&
+              typeof (payload.error as { message?: unknown }).message === "string"
+            ? (payload.error as { message: string }).message
+            : "";
+    const code =
+      typeof payload?.code === "string"
+        ? payload.code
+        : payload?.error &&
+            typeof payload.error === "object" &&
+            "code" in payload.error &&
+            typeof (payload.error as { code?: unknown }).code === "string"
+          ? (payload.error as { code: string }).code
+          : "";
+    if (
+      eventName.toLowerCase().includes("error") ||
+      String(payload?.type || "").toLowerCase().includes("error") ||
+      /usage limit|usage_limit|rate limit|rate_limit|too many requests|quota|limit has been reached|limit_reached|billing_hard_limit/i.test(
+        `${message} ${code} ${data}`
+      )
+    ) {
+      return message || code || data.replace(/\s+/g, " ").slice(0, 500);
+    }
+  }
+  const match = text.match(
+    /(usage limit[^"\n]*|usage_limit[^"\n]*|limit has been reached[^"\n]*|limit_reached[^"\n]*|rate limit[^"\n]*|rate_limit[^"\n]*|too many requests[^"\n]*|quota exceeded[^"\n]*|billing_hard_limit[^"\n]*)/i
+  );
+  return match?.[1] || "";
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -910,6 +970,10 @@ async function runWebImage(
       references
     );
     const text = await readSseText(response);
+    const streamError = extractWebStreamError(text);
+    if (streamError) {
+      return { error: streamError };
+    }
     const conversationId = extractConversationId(text);
     const ids = extractImageIds(text);
     const urls = await resolveImageUrls(config, conversationId, ids);

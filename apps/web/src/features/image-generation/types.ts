@@ -20,6 +20,8 @@ export interface GenerateImageResult {
   responseText?: string;
   responseThinking?: string;
   error?: string;
+  upstreamResetAt?: string;
+  retryAfterSeconds?: number;
 }
 
 export interface PartialImageResult {

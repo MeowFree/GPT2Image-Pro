@@ -47,6 +47,7 @@ type PoolMember =
       useStream: boolean;
       contentSafetyEnabled: boolean;
       priority: number;
+      concurrency: number;
       lastUsedAt: Date | null;
       createdAt: Date;
     }
@@ -60,6 +61,7 @@ type PoolMember =
       implementationMode: string;
       contentSafetyEnabled: boolean;
       priority: number;
+      concurrency: number;
       lastUsedAt: Date | null;
       createdAt: Date;
       metadata: Record<string, unknown> | null;
@@ -85,6 +87,8 @@ export type ImageBackendReportResultInput = {
   memberId?: string;
   success: boolean;
   error?: string | null;
+  upstreamResetAt?: string | Date | null;
+  retryAfterSeconds?: number | null;
 };
 
 type WebAccountRuntimeMetadata = ChatGptWebAccountInfo & {
@@ -109,6 +113,8 @@ const OPENAI_REFRESH_SCOPES = "openid profile email";
 const RATE_LIMIT_COOLDOWN_MINUTES = 10;
 const TEMPORARY_ERROR_COOLDOWN_MINUTES = 2;
 const USAGE_LIMIT_COOLDOWN_HOURS = 6;
+const MAX_PARSED_RESET_COOLDOWN_DAYS = 14;
+const backendInflight = new Map<string, number>();
 
 function normalizeAccountBackend(value?: string | null): ImageBackendAccountBackend {
   return value === "responses" ? "responses" : "web";
@@ -140,6 +146,70 @@ function memberTimestamp(value: Date | string | null | undefined) {
   return new Date(value).getTime();
 }
 
+function parseDurationMs(value: string) {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return null;
+  if (/^\d+(?:\.\d+)?\s*ms$/.test(trimmed)) {
+    return Number.parseFloat(trimmed) || null;
+  }
+  if (/^\d+(?:\.\d+)?\s*s$/.test(trimmed)) {
+    return Number.parseFloat(trimmed) * 1000;
+  }
+  if (/^\d+(?:\.\d+)?\s*m$/.test(trimmed)) {
+    return Number.parseFloat(trimmed) * 60_000;
+  }
+  if (/^\d+(?:\.\d+)?\s*h$/.test(trimmed)) {
+    return Number.parseFloat(trimmed) * 60 * 60_000;
+  }
+  const parts = [...trimmed.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m|h)/g)];
+  if (!parts.length) return null;
+  const total = parts.reduce((sum, match) => {
+    const amount = Number.parseFloat(match[1] || "0");
+    const unit = match[2];
+    if (unit === "ms") return sum + amount;
+    if (unit === "s") return sum + amount * 1000;
+    if (unit === "m") return sum + amount * 60_000;
+    if (unit === "h") return sum + amount * 60 * 60_000;
+    return sum;
+  }, 0);
+  return total > 0 ? total : null;
+}
+
+function backendKey(member: Pick<PoolMember, "type" | "id">) {
+  return `${member.type}:${member.id}`;
+}
+
+function backendInflightCount(member: Pick<PoolMember, "type" | "id">) {
+  return backendInflight.get(backendKey(member)) || 0;
+}
+
+function backendLoadRate(member: PoolMember) {
+  return backendInflightCount(member) / Math.max(1, member.concurrency || 1);
+}
+
+export function acquireImageBackendInflight(input: {
+  memberType?: "api" | "account";
+  memberId?: string;
+}) {
+  if (!input.memberType || !input.memberId) return;
+  const key = `${input.memberType}:${input.memberId}`;
+  backendInflight.set(key, (backendInflight.get(key) || 0) + 1);
+}
+
+export function releaseImageBackendInflight(input: {
+  memberType?: "api" | "account";
+  memberId?: string;
+}) {
+  if (!input.memberType || !input.memberId) return;
+  const key = `${input.memberType}:${input.memberId}`;
+  const current = backendInflight.get(key) || 0;
+  if (current <= 1) {
+    backendInflight.delete(key);
+    return;
+  }
+  backendInflight.set(key, current - 1);
+}
+
 function isRetryableBackendError(error?: string | null) {
   const normalized = (error || "").toLowerCase();
   return (
@@ -147,11 +217,15 @@ function isRetryableBackendError(error?: string | null) {
     normalized.includes("rate limit") ||
     normalized.includes("too many requests") ||
     normalized.includes("usage limit") ||
+    normalized.includes("usage_limit") ||
     normalized.includes("limit has been reached") ||
+    normalized.includes("limit_reached") ||
+    normalized.includes("rate_limit_exceeded") ||
     normalized.includes("no available image quota") ||
     normalized.includes("quota exceeded") ||
     normalized.includes("quota_exceeded") ||
     normalized.includes("insufficient_quota") ||
+    normalized.includes("billing_hard_limit") ||
     normalized.includes("timeout") ||
     normalized.includes("timed out") ||
     normalized.includes("econnreset") ||
@@ -172,15 +246,102 @@ function isUsageLimitBackendError(error?: string | null) {
   const normalized = (error || "").toLowerCase();
   return (
     normalized.includes("usage limit") ||
+    normalized.includes("usage_limit") ||
     normalized.includes("limit has been reached") ||
+    normalized.includes("limit_reached") ||
     normalized.includes("no available image quota") ||
     normalized.includes("insufficient_quota") ||
     normalized.includes("quota exceeded") ||
-    normalized.includes("quota_exceeded")
+    normalized.includes("quota_exceeded") ||
+    normalized.includes("billing_hard_limit")
   );
 }
 
-function classifyFailure(error?: string | null): {
+function parseDateValue(value: string | Date | null | undefined) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    const milliseconds = numeric > 10_000_000_000 ? numeric : numeric * 1000;
+    const date = new Date(milliseconds);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const durationMs = parseDurationMs(trimmed);
+  if (durationMs) {
+    return new Date(Date.now() + durationMs);
+  }
+
+  const date = new Date(trimmed);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function clampResetDate(date: Date | null, now: Date) {
+  if (!date || date.getTime() <= now.getTime()) return null;
+  const max = now.getTime() + MAX_PARSED_RESET_COOLDOWN_DAYS * 24 * 60 * 60_000;
+  return new Date(Math.min(date.getTime(), max));
+}
+
+function parseResetDateFromError(error?: string | null) {
+  if (!error) return null;
+  const normalized = error.replace(/\\"/g, '"');
+  const retryAfter = normalized.match(/retry-after["'\s:=]+(\d{1,8})/i)?.[1];
+  if (retryAfter) {
+    return new Date(Date.now() + Number(retryAfter) * 1000);
+  }
+  const retryAfterSeconds = normalized.match(
+    /(?:retryAfterSeconds|retry_after_seconds|retry_after|retryAfter)["'\s:=]+([^"',}\]\s]+)/i
+  )?.[1];
+  if (retryAfterSeconds) {
+    const numeric = Number(retryAfterSeconds);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return new Date(Date.now() + numeric * 1000);
+    }
+    const durationMs = parseDurationMs(retryAfterSeconds);
+    if (durationMs) return new Date(Date.now() + durationMs);
+  }
+
+  const resetMatch = normalized.match(
+    /(?:x-ratelimit-reset(?:-[a-z0-9_-]+)?|upstreamResetAt|upstream_reset_at|reset_at|reset_after|resets_at|restore_at|restoreAt)["'\s:=]+([^"',}\]\s]+)/i
+  )?.[1];
+  if (resetMatch) {
+    const parsed = parseDateValue(resetMatch);
+    if (parsed) return parsed;
+  }
+
+  const proseMatch = normalized.match(
+    /(?:reset|resets|restore|available again|try again)(?:\s+\w+){0,4}\s+(?:at|after|on|in)[:\s]+([^"',}\]\n]+)/i
+  )?.[1];
+  return parseDateValue(proseMatch);
+}
+
+function resolveCooldownDate(
+  error: string | null,
+  fallback: Date | null,
+  input?: Pick<ImageBackendReportResultInput, "upstreamResetAt" | "retryAfterSeconds">
+) {
+  const now = new Date();
+  const retryAfter = Number(input?.retryAfterSeconds);
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    const parsed = clampResetDate(new Date(now.getTime() + retryAfter * 1000), now);
+    if (parsed) return parsed;
+  }
+  const explicitReset = clampResetDate(parseDateValue(input?.upstreamResetAt), now);
+  if (explicitReset) return explicitReset;
+  const bodyReset = clampResetDate(parseResetDateFromError(error), now);
+  if (bodyReset) return bodyReset;
+  return fallback;
+}
+
+function classifyFailure(
+  error?: string | null,
+  input?: Pick<ImageBackendReportResultInput, "upstreamResetAt" | "retryAfterSeconds">
+): {
   status?: string;
   cooldownUntil?: Date | null;
 } {
@@ -196,7 +357,11 @@ function classifyFailure(error?: string | null): {
   if (isUsageLimitBackendError(error)) {
     return {
       status: "limited",
-      cooldownUntil: new Date(Date.now() + USAGE_LIMIT_COOLDOWN_HOURS * 60 * 60_000),
+      cooldownUntil: resolveCooldownDate(
+        error || null,
+        new Date(Date.now() + USAGE_LIMIT_COOLDOWN_HOURS * 60 * 60_000),
+        input
+      ),
     };
   }
   if (
@@ -206,14 +371,20 @@ function classifyFailure(error?: string | null): {
   ) {
     return {
       status: "active",
-      cooldownUntil: new Date(Date.now() + RATE_LIMIT_COOLDOWN_MINUTES * 60_000),
+      cooldownUntil: resolveCooldownDate(
+        error || null,
+        new Date(Date.now() + RATE_LIMIT_COOLDOWN_MINUTES * 60_000),
+        input
+      ),
     };
   }
   if (isRetryableBackendError(error)) {
     return {
       status: "active",
-      cooldownUntil: new Date(
-        Date.now() + TEMPORARY_ERROR_COOLDOWN_MINUTES * 60_000
+      cooldownUntil: resolveCooldownDate(
+        error || null,
+        new Date(Date.now() + TEMPORARY_ERROR_COOLDOWN_MINUTES * 60_000),
+        input
       ),
     };
   }
@@ -343,10 +514,6 @@ function nextWebAccountMetadataAfterSuccess(
     status: "active",
     cooldownUntil: nextMetadataStatus === "limited" ? restoreAt : null,
   };
-}
-
-function backendKey(member: Pick<PoolMember, "type" | "id">) {
-  return `${member.type}:${member.id}`;
 }
 
 async function getDefaultGroupId() {
@@ -479,6 +646,7 @@ async function selectPoolMember(
     useStream: row.useStream,
     contentSafetyEnabled: row.contentSafetyEnabled,
     priority: row.priority,
+    concurrency: 1,
     lastUsedAt: row.lastUsedAt,
     createdAt: row.createdAt,
   }));
@@ -501,6 +669,7 @@ async function selectPoolMember(
       implementationMode: row.implementationMode,
       contentSafetyEnabled: row.contentSafetyEnabled,
       priority: row.priority,
+      concurrency: row.concurrency,
       lastUsedAt: row.lastUsedAt,
       createdAt: row.createdAt,
       metadata: row.metadata,
@@ -511,6 +680,10 @@ async function selectPoolMember(
     .sort((left, right) => {
       const priorityDiff = left.priority - right.priority;
       if (priorityDiff !== 0) return priorityDiff;
+      const loadDiff = backendLoadRate(left) - backendLoadRate(right);
+      if (loadDiff !== 0) return loadDiff;
+      const inflightDiff = backendInflightCount(left) - backendInflightCount(right);
+      if (inflightDiff !== 0) return inflightDiff;
       const lastUsedDiff =
         memberTimestamp(left.lastUsedAt) - memberTimestamp(right.lastUsedAt);
       if (lastUsedDiff !== 0) return lastUsedDiff;
@@ -675,7 +848,7 @@ export async function reportImageBackendResult(input: ImageBackendReportResultIn
   if (!input.memberId || !input.memberType) return;
   const now = new Date();
   const error = truncateError(input.error);
-  const failure = input.success ? {} : classifyFailure(error);
+  const failure = input.success ? {} : classifyFailure(error, input);
 
   if (input.memberType === "api") {
     await db

@@ -13,9 +13,11 @@ import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { eq } from "drizzle-orm";
 import {
+  acquireImageBackendInflight,
   ImageBackendPoolUnavailableError,
   isImageBackendRetryableError,
   reportImageBackendResult,
+  releaseImageBackendInflight,
   resolveImageBackendPoolConfig,
 } from "@/features/image-backend-pool/service";
 import type { ImageBackendRequestKind } from "@/features/image-backend-pool/types";
@@ -256,6 +258,143 @@ function getApiError(errorData: unknown, fallback: string) {
   return getApiErrorMessage(errorData) || fallback;
 }
 
+function getHeaderValue(headers: Headers, names: string[]) {
+  for (const name of names) {
+    const value = headers.get(name);
+    if (value?.trim()) return value.trim();
+  }
+  return null;
+}
+
+function parseRetryAfterHeader(value: string | null) {
+  if (!value) return undefined;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  const durationMs = parseDurationMs(value);
+  if (durationMs) return Math.max(1, Math.ceil(durationMs / 1000));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return Math.max(1, Math.ceil((date.getTime() - Date.now()) / 1000));
+}
+
+function parseDurationMs(value: string) {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return null;
+  if (/^\d+(?:\.\d+)?\s*ms$/.test(trimmed)) {
+    return Number.parseFloat(trimmed) || null;
+  }
+  if (/^\d+(?:\.\d+)?\s*s$/.test(trimmed)) {
+    return Number.parseFloat(trimmed) * 1000;
+  }
+  if (/^\d+(?:\.\d+)?\s*m$/.test(trimmed)) {
+    return Number.parseFloat(trimmed) * 60_000;
+  }
+  if (/^\d+(?:\.\d+)?\s*h$/.test(trimmed)) {
+    return Number.parseFloat(trimmed) * 60 * 60_000;
+  }
+  const parts = [...trimmed.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m|h)/g)];
+  if (!parts.length) return null;
+  const total = parts.reduce((sum, match) => {
+    const amount = Number.parseFloat(match[1] || "0");
+    const unit = match[2];
+    if (unit === "ms") return sum + amount;
+    if (unit === "s") return sum + amount * 1000;
+    if (unit === "m") return sum + amount * 60_000;
+    if (unit === "h") return sum + amount * 60 * 60_000;
+    return sum;
+  }, 0);
+  return total > 0 ? total : null;
+}
+
+function getResponseRetryMetadata(response: Response) {
+  const retryAfterSeconds = parseRetryAfterHeader(
+    getHeaderValue(response.headers, ["retry-after"])
+  );
+  const upstreamResetAt = getHeaderValue(response.headers, [
+    "x-ratelimit-reset",
+    "x-ratelimit-reset-requests",
+    "x-ratelimit-reset-tokens",
+    "x-ratelimit-reset-images",
+    "x-ratelimit-reset-image-requests",
+    "x-ratelimit-reset-input-tokens",
+    "x-ratelimit-reset-output-tokens",
+  ]);
+  return { upstreamResetAt: upstreamResetAt || undefined, retryAfterSeconds };
+}
+
+function extractPayloadRetryMetadata(payload: unknown): {
+  upstreamResetAt?: string;
+  retryAfterSeconds?: number;
+} {
+  if (!payload || typeof payload !== "object") return {};
+  const record = payload as Record<string, unknown>;
+  const nested = [
+    record.error,
+    record.response,
+    record.details,
+    record.metadata,
+    record.payload,
+    record.data,
+  ];
+  const keys = [
+    "reset_at",
+    "reset_after",
+    "resets_at",
+    "restore_at",
+    "restoreAt",
+    "retry_at",
+    "upstreamResetAt",
+    "upstream_reset_at",
+  ];
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return { upstreamResetAt: value.trim() };
+    }
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return { upstreamResetAt: String(value) };
+    }
+  }
+  const retryAfter = record.retry_after ?? record.retryAfter;
+  if (
+    typeof retryAfter === "number" &&
+    Number.isFinite(retryAfter) &&
+    retryAfter > 0
+  ) {
+    return { retryAfterSeconds: retryAfter };
+  }
+  if (typeof retryAfter === "string" && retryAfter.trim()) {
+    const parsed = parseRetryAfterHeader(retryAfter.trim());
+    if (parsed) return { retryAfterSeconds: parsed };
+  }
+  for (const value of nested) {
+    const metadata = extractPayloadRetryMetadata(value);
+    if (metadata.upstreamResetAt || metadata.retryAfterSeconds) return metadata;
+  }
+  return {};
+}
+
+function withRetryMetadata(
+  result: GenerateImageResult,
+  metadata: { upstreamResetAt?: string; retryAfterSeconds?: number }
+): GenerateImageResult {
+  if (!metadata.upstreamResetAt && !metadata.retryAfterSeconds) return result;
+  return {
+    ...result,
+    upstreamResetAt: result.upstreamResetAt || metadata.upstreamResetAt,
+    retryAfterSeconds: result.retryAfterSeconds ?? metadata.retryAfterSeconds,
+  };
+}
+
+function safeParseJson(value: string) {
+  if (!value.trim()) return null;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 function truncateResponseBody(value: string) {
   return value.replace(/\s+/g, " ").trim().slice(0, 500);
 }
@@ -395,6 +534,8 @@ async function reportPoolBackendResult(
       memberId: config.backend.id,
       success: !result.error,
       error: result.error,
+      upstreamResetAt: result.upstreamResetAt,
+      retryAfterSeconds: result.retryAfterSeconds,
     });
   } catch (error) {
     logError(error, {
@@ -438,7 +579,30 @@ async function retryPoolBackendResult(
   const maxAttempts = 8;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const result = await run(withoutPoolBackendReport(candidate));
+    let result: GenerateImageResult;
+    const currentBackend = candidate.backend;
+    if (
+      currentBackend?.type === "pool-api" ||
+      currentBackend?.type === "pool-account"
+    ) {
+      acquireImageBackendInflight({
+        memberType: currentBackend.type === "pool-api" ? "api" : "account",
+        memberId: currentBackend.id,
+      });
+    }
+    try {
+      result = await run(withoutPoolBackendReport(candidate));
+    } finally {
+      if (
+        currentBackend?.type === "pool-api" ||
+        currentBackend?.type === "pool-account"
+      ) {
+        releaseImageBackendInflight({
+          memberType: currentBackend.type === "pool-api" ? "api" : "account",
+          memberId: currentBackend.id,
+        });
+      }
+    }
     await reportPoolBackendResult(candidate, result);
     lastResult = result;
 
@@ -810,7 +974,12 @@ async function processResponsesEventPayload(
     payload.type === "response.failed" ||
     payload.type === "error"
   ) {
-    return getApiError(payload, "Responses API stream failed");
+    const retryMetadata = extractPayloadRetryMetadata(payload);
+    const message = getApiError(payload, "Responses API stream failed");
+    if (!retryMetadata.upstreamResetAt && !retryMetadata.retryAfterSeconds) {
+      return message;
+    }
+    return `${message} ${JSON.stringify(retryMetadata)}`;
   }
 
   if (eventName === "response.output_item.done") {
@@ -962,33 +1131,44 @@ async function parseResponsesResponse(
   response: Response,
   callbacks?: ImageGenerationCallbacks
 ): Promise<GenerateImageResult> {
+  const responseRetryMetadata = getResponseRetryMetadata(response);
   if (!response.ok) {
     const rawBody = await response.text().catch(() => "");
     return {
       error: getHttpErrorMessage(response, rawBody, "Responses API"),
+      ...responseRetryMetadata,
+      ...extractPayloadRetryMetadata(safeParseJson(rawBody)),
     };
   }
 
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("text/event-stream")) {
-    return parseResponsesEventStreamResponse(response, callbacks);
+    return withRetryMetadata(
+      await parseResponsesEventStreamResponse(response, callbacks),
+      responseRetryMetadata
+    );
   }
 
   if (!contentType.includes("application/json")) {
     const text = await response.text().catch(() => "");
     if (looksLikeEventStreamText(text)) {
-      return parseResponsesEventStreamText(text, callbacks);
+      return withRetryMetadata(
+        await parseResponsesEventStreamText(text, callbacks),
+        responseRetryMetadata
+      );
     }
     return {
       error: getNonJsonErrorMessage(text, "Responses API"),
+      ...responseRetryMetadata,
     };
   }
 
   const data = (await response.json()) as ResponsesPayload;
   const result = parseResponsesOutput(data.output);
 
-  return (
-    result || { error: getPayloadError(data) || "API returned no image data" }
+  return withRetryMetadata(
+    result || { error: getPayloadError(data) || "API returned no image data" },
+    { ...responseRetryMetadata, ...extractPayloadRetryMetadata(data) }
   );
 }
 
@@ -1145,22 +1325,29 @@ async function parseImageResponse(
   response: Response,
   callbacks?: ImageGenerationCallbacks
 ): Promise<GenerateImageResult> {
+  const responseRetryMetadata = getResponseRetryMetadata(response);
   if (!response.ok) {
     const rawBody = await response.text().catch(() => "");
     return {
       error: getHttpErrorMessage(response, rawBody, "Images API"),
+      ...responseRetryMetadata,
+      ...extractPayloadRetryMetadata(safeParseJson(rawBody)),
     };
   }
 
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("text/event-stream")) {
-    return parseEventStreamResponse(response, callbacks);
+    return withRetryMetadata(
+      await parseEventStreamResponse(response, callbacks),
+      responseRetryMetadata
+    );
   }
 
   if (!contentType.includes("application/json")) {
     const text = await response.text().catch(() => "");
     return {
       error: getNonJsonErrorMessage(text, "Images API"),
+      ...responseRetryMetadata,
     };
   }
 
@@ -1168,10 +1355,13 @@ async function parseImageResponse(
   const result = extractImageFromPayload(data);
 
   if (!result) {
-    return { error: getPayloadError(data) || "API returned no image data" };
+    return withRetryMetadata(
+      { error: getPayloadError(data) || "API returned no image data" },
+      { ...responseRetryMetadata, ...extractPayloadRetryMetadata(data) }
+    );
   }
 
-  return result;
+  return withRetryMetadata(result, responseRetryMetadata);
 }
 
 async function getPlatformConfig(): Promise<ApiConfig> {
