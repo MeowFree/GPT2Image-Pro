@@ -2,6 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { logError } from "@repo/shared/logger";
 import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { parseImageSize } from "./resolution";
+import {
+  downloadWebHistoryImageReference,
+  getLatestWebHistoryImageReference,
+} from "./web-history-references";
 import type {
   ApiConfig,
   ChatGptWebConversationState,
@@ -129,56 +133,6 @@ function applyImageSizePrompt(prompt: string, size?: string) {
   const hint = buildImageSizePrompt(size);
   if (!hint) return prompt;
   return `${prompt.trim()}\n\n${hint}`;
-}
-
-function webHistoryVariantText(message: ChatHistoryMessage) {
-  const variants = message.variants || [];
-  const variant = variants[message.activeVariant || 0] || variants[0];
-  const imageNote = variant?.imageUrl
-    ? `\nGenerated image: ${variant.imageUrl}`
-    : "";
-  return `${variant?.text || message.text || ""}${imageNote}`;
-}
-
-function usableHistoryImageUrl(url: string) {
-  return url.startsWith("http://") || url.startsWith("https://");
-}
-
-function buildWebHistoryPrompt(
-  prompt: string,
-  history: ChatHistoryMessage[] | undefined
-) {
-  const lines: string[] = [];
-
-  for (const message of history || []) {
-    if (message.error) continue;
-    const role = message.role === "user" ? "User" : "Assistant";
-    const text =
-      message.role === "user"
-        ? message.text || ""
-        : webHistoryVariantText(message);
-    const imageUrls =
-      message.role === "user"
-        ? (message.imageUrls || []).filter(usableHistoryImageUrl)
-        : [];
-    const imageNote = imageUrls.length
-      ? `\nAttached image URLs: ${imageUrls.join(", ")}`
-      : "";
-    const content = `${text}${imageNote}`.trim();
-    if (content) lines.push(`${role}: ${content}`);
-  }
-
-  if (!lines.length) return prompt;
-
-  return [
-    "Use the previous conversation below as context for the current image request. Keep the current request as the task to satisfy.",
-    "",
-    "Previous conversation:",
-    lines.join("\n\n"),
-    "",
-    "Current user request:",
-    prompt,
-  ].join("\n");
 }
 
 function lastWebConversationState(
@@ -1398,15 +1352,27 @@ async function runWebImage(
       params.history,
       config.backend?.id
     );
-    const promptBase = continuation?.useNativeContinuation
-      ? getPrompt(params)
-      : buildWebHistoryPrompt(getPrompt(params), params.history);
-    const prompt = applyImageSizePrompt(promptBase, params.size);
-    const references = await Promise.all(
-      images.map((image, index) =>
-        uploadImage(configWithSignal, image, index + 1)
-      )
-    );
+    const historyReference =
+      continuation?.useNativeContinuation
+        ? null
+        : getLatestWebHistoryImageReference(params.history);
+    const prompt = applyImageSizePrompt(getPrompt(params), params.size);
+    const historyImage = historyReference
+      ? await downloadWebHistoryImageReference(
+          historyReference,
+          { signal: abortController.signal }
+        )
+      : null;
+    const references = [
+      ...(await Promise.all(
+        images.map((image, index) =>
+          uploadImage(configWithSignal, image, index + 1)
+        )
+      )),
+      ...(historyImage
+        ? [await uploadImage(configWithSignal, historyImage, images.length + 1)]
+        : []),
+    ];
     const requirements = await getChatRequirements(configWithSignal);
     const conduitToken = await prepareImageConversation(
       configWithSignal,
