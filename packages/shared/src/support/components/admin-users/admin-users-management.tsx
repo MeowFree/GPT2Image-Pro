@@ -1011,24 +1011,23 @@ export function AdminUsersManagement() {
       </Card>
 
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-        <SheetContent className="w-full sm:max-w-4xl xl:max-w-5xl">
-          <div className="flex h-full min-h-0 flex-col">
-            <SheetHeader className="shrink-0">
-              <SheetTitle>用户详情</SheetTitle>
-              <SheetDescription>
-                {selectedUser
-                  ? `${selectedUser.name} · ${selectedUser.email}`
-                  : "查看用户账户、积分、生图和 API Key。"}
-              </SheetDescription>
-            </SheetHeader>
+        <SheetContent className="flex h-dvh max-h-dvh w-full flex-col overflow-hidden p-0 sm:max-w-4xl xl:max-w-5xl">
+          <SheetHeader className="shrink-0 border-b px-6 py-5 pr-12">
+            <SheetTitle>用户详情</SheetTitle>
+            <SheetDescription>
+              {selectedUser
+                ? `${selectedUser.name} · ${selectedUser.email}`
+                : "查看用户账户、积分、生图和 API Key。"}
+            </SheetDescription>
+          </SheetHeader>
 
-            {isDetailLoading || !detail ? (
-              <div className="flex flex-1 items-center justify-center py-16">
-                <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <div className="mt-6 min-h-0 flex-1 space-y-5 overflow-y-auto pr-1 pb-6">
-                <div className="grid gap-3 md:grid-cols-4">
+          {isDetailLoading || !detail ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
+              <div className="grid gap-3 md:grid-cols-4">
                 <Card>
                   <CardContent className="p-4">
                     <div className="text-xs text-muted-foreground">套餐</div>
@@ -1186,7 +1185,7 @@ export function AdminUsersManagement() {
                     {detail.generations.length === 0 ? (
                       <EmptyText>暂无生图记录</EmptyText>
                     ) : (
-                      <div className="max-h-[62vh] space-y-3 overflow-y-auto pr-1">
+                      <div className="space-y-3">
                         {detail.generations.map((item) => (
                           <div
                             key={item.id}
@@ -1325,8 +1324,7 @@ export function AdminUsersManagement() {
                 </TabsContent>
                 </Tabs>
               </div>
-            )}
-          </div>
+          )}
         </SheetContent>
       </Sheet>
 
