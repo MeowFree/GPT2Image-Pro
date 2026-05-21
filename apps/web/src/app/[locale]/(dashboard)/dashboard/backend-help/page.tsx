@@ -332,18 +332,11 @@ const sections = {
               description: "true 时返回 text/event-stream。",
             },
             {
-              name: "apiPrompt / api_prompt",
-              requirement: "可选",
-              custom: true,
-              description:
-                "平台侧已优化或外部传入的实际提示词。传入后会参与提示词优化控制和审核链路。",
-            },
-            {
               name: "promptOptimization / prompt_optimization",
               requirement: "可选",
               custom: true,
               description:
-                "控制是否使用 apiPrompt 或平台提示词优化。false 时尽量发送原始 prompt。",
+                "控制平台是否继续优化 prompt。若 prompt 已是优化后的最终提示词，建议传 false。",
             },
             {
               name: "gptModel / gpt_model",
@@ -357,7 +350,7 @@ const sections = {
               requirement: "可选",
               custom: true,
               description:
-                "minimal、none、low、medium、high、xhigh。用于支持思考强度的后端。",
+                "minimal、none、low、medium、high、xhigh。仅针对 Codex/Responses 后端；Web 或普通 Images API 后端可能忽略。",
             },
           ],
           responses: [
@@ -477,7 +470,7 @@ const sections = {
               requirement: "JSON 或表单可选",
               custom: true,
               description:
-                "本站便捷写法：直接传单个或多个公网图片 URL，不必包成 images 数组。",
+                "兼容快捷字段。推荐使用 images；若同时传入，本站会合并到同一参考图列表并按 URL 去重。",
             },
             {
               name: "mask_url / mask_image_url",
@@ -486,29 +479,11 @@ const sections = {
               description: "本站便捷写法：直接传 mask 图片 URL。",
             },
             {
-              name: "count",
-              requirement: "可选",
-              custom: true,
-              description: "n 的别名。",
-            },
-            {
-              name: "display_size / displaySize",
-              requirement: "可选",
-              custom: true,
-              description:
-                "编辑接口专用的输出尺寸覆盖值；传入后会作为本次编辑运行参数 size 使用。",
-            },
-            {
-              name: "apiPrompt / api_prompt",
-              requirement: "可选",
-              custom: true,
-              description: "同文生图接口。",
-            },
-            {
               name: "promptOptimization / prompt_optimization",
               requirement: "可选",
               custom: true,
-              description: "同文生图接口。",
+              description:
+                "控制平台是否继续优化 prompt。若 prompt 已是优化后的最终提示词，建议传 false。",
             },
             {
               name: "gptModel / gpt_model",
@@ -520,7 +495,8 @@ const sections = {
               name: "thinking",
               requirement: "可选",
               custom: true,
-              description: "同文生图接口。",
+              description:
+                "minimal、none、low、medium、high、xhigh。仅针对 Codex/Responses 后端；Web 或普通 Images API 后端可能忽略。",
             },
           ],
           responses: [
@@ -1069,18 +1045,11 @@ const sections = {
               description: "true returns text/event-stream.",
             },
             {
-              name: "apiPrompt / api_prompt",
-              requirement: "Optional",
-              custom: true,
-              description:
-                "The effective prompt supplied by the caller or platform prompt optimizer. It participates in prompt optimization control and moderation.",
-            },
-            {
               name: "promptOptimization / prompt_optimization",
               requirement: "Optional",
               custom: true,
               description:
-                "Controls whether apiPrompt/platform prompt optimization is used. false tries to send the original prompt.",
+                "Controls whether GPT2IMAGE may further optimize prompt. If prompt is already the final optimized prompt, pass false.",
             },
             {
               name: "gptModel / gpt_model",
@@ -1094,7 +1063,7 @@ const sections = {
               requirement: "Optional",
               custom: true,
               description:
-                "minimal, none, low, medium, high, or xhigh. Used only by backends that support thinking effort.",
+                "minimal, none, low, medium, high, or xhigh. Only applies to Codex/Responses backends; Web or plain Images API backends may ignore it.",
             },
           ],
           responses: [
@@ -1215,7 +1184,7 @@ const sections = {
               requirement: "Optional JSON or form field",
               custom: true,
               description:
-                "Convenience fields for one or more public image URLs, without wrapping them in images.",
+                "Compatibility shortcut fields. Prefer images; when both are provided, GPT2IMAGE merges them into one reference list and deduplicates by URL.",
             },
             {
               name: "mask_url / mask_image_url",
@@ -1224,29 +1193,11 @@ const sections = {
               description: "Convenience fields for a mask image URL.",
             },
             {
-              name: "count",
-              requirement: "Optional",
-              custom: true,
-              description: "Alias for n.",
-            },
-            {
-              name: "display_size / displaySize",
-              requirement: "Optional",
-              custom: true,
-              description:
-                "Edit-specific output size override. When provided, it is used as the run-time size for this edit request.",
-            },
-            {
-              name: "apiPrompt / api_prompt",
-              requirement: "Optional",
-              custom: true,
-              description: "Same as Create image.",
-            },
-            {
               name: "promptOptimization / prompt_optimization",
               requirement: "Optional",
               custom: true,
-              description: "Same as Create image.",
+              description:
+                "Controls whether GPT2IMAGE may further optimize prompt. If prompt is already the final optimized prompt, pass false.",
             },
             {
               name: "gptModel / gpt_model",
@@ -1258,7 +1209,8 @@ const sections = {
               name: "thinking",
               requirement: "Optional",
               custom: true,
-              description: "Same as Create image.",
+              description:
+                "minimal, none, low, medium, high, or xhigh. Only applies to Codex/Responses backends; Web or plain Images API backends may ignore it.",
             },
           ],
           responses: [

@@ -21,7 +21,6 @@ import { runBatchImageGeneration } from "@/features/image-generation/batch-runne
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
   getImageModel,
-  parseImageSize,
   validateImageSize,
 } from "@/features/image-generation/resolution";
 import {
@@ -60,17 +59,12 @@ const VALID_THINKING = new Set<ThinkingLevel>([
 
 const JSON_SCALAR_FIELDS = [
   "prompt",
-  "apiPrompt",
-  "api_prompt",
   "promptOptimization",
   "prompt_optimization",
   "size",
-  "display_size",
-  "displaySize",
   "quality",
   "moderation",
   "n",
-  "count",
   "response_format",
   "model",
   "gptModel",
@@ -154,7 +148,7 @@ function getText(formData: FormData, key: string) {
 }
 
 function getCount(formData: FormData) {
-  const value = getText(formData, "n") || getText(formData, "count");
+  const value = getText(formData, "n");
   if (!value) return 1;
   if (!/^\d+$/.test(value)) {
     throw new Error("n must be an integer.");
@@ -226,8 +220,20 @@ function splitUrlList(value: string) {
     .filter(Boolean);
 }
 
+function addUrlReference(
+  references: ImageReference[],
+  seenUrls: Set<string>,
+  value: string
+) {
+  const url = value.trim();
+  if (!url || seenUrls.has(url)) return;
+  seenUrls.add(url);
+  references.push({ type: "url", url });
+}
+
 function getFormImageReferences(formData: FormData) {
   const images: ImageReference[] = [];
+  const seenUrls = new Set<string>();
 
   for (const [key, value] of formData.entries()) {
     if (
@@ -247,7 +253,7 @@ function getFormImageReferences(formData: FormData) {
         key === "image_urls")
     ) {
       for (const url of splitUrlList(value)) {
-        images.push({ type: "url", url });
+        addUrlReference(images, seenUrls, url);
       }
     }
   }
@@ -275,29 +281,30 @@ function jsonReferenceToUrl(value: unknown): string | null {
 
 function getJsonImageReferences(body: JsonRecord) {
   const references: ImageReference[] = [];
+  const seenUrls = new Set<string>();
   const images = body.images;
   if (Array.isArray(images)) {
     for (const item of images) {
       const url = jsonReferenceToUrl(item);
-      if (url) references.push({ type: "url", url });
+      if (url) addUrlReference(references, seenUrls, url);
     }
   } else {
     const url = jsonReferenceToUrl(images);
-    if (url) references.push({ type: "url", url });
+    if (url) addUrlReference(references, seenUrls, url);
   }
 
   const imageUrl = jsonReferenceToUrl(body.image_url ?? body.image);
-  if (imageUrl) references.push({ type: "url", url: imageUrl });
+  if (imageUrl) addUrlReference(references, seenUrls, imageUrl);
 
   const imageUrls = body.image_urls;
   if (Array.isArray(imageUrls)) {
     for (const item of imageUrls) {
       const url = jsonReferenceToUrl(item);
-      if (url) references.push({ type: "url", url });
+      if (url) addUrlReference(references, seenUrls, url);
     }
   } else if (typeof imageUrls === "string") {
     for (const url of splitUrlList(imageUrls)) {
-      references.push({ type: "url", url });
+      addUrlReference(references, seenUrls, url);
     }
   }
 
@@ -514,15 +521,6 @@ export const postExternalImageEdits = withApiLogging(
     if (prompt.length > 4000) {
       return openAIImageError("Prompt exceeds the 4000 character limit.");
     }
-    const apiPrompt =
-      getText(formData, "apiPrompt") ||
-      getText(formData, "api_prompt") ||
-      undefined;
-    if (apiPrompt && apiPrompt.length > 8000) {
-      return openAIImageError(
-        "Context prompt exceeds the 8000 character limit."
-      );
-    }
     const promptOptimization = getOptionalBoolean(
       formData,
       "promptOptimization",
@@ -535,12 +533,6 @@ export const postExternalImageEdits = withApiLogging(
       if (!sizeCheck.valid) {
         return openAIImageError(sizeCheck.message);
       }
-    }
-
-    const displaySize =
-      getText(formData, "display_size") || getText(formData, "displaySize");
-    if (displaySize && !parseImageSize(displaySize)) {
-      return openAIImageError("Invalid display size.");
     }
 
     const qualityValue = getText(formData, "quality") || "auto";
@@ -633,10 +625,9 @@ export const postExternalImageEdits = withApiLogging(
             apiKeyId: auth.apiKeyId,
             backendRequestKind: "image_edit" as const,
             prompt,
-            apiPrompt,
             promptOptimization,
             moderationBlockRiskLevel: auth.moderationBlockRiskLevel,
-            size: displaySize || size,
+            size,
             model,
             gptModel,
             thinking,

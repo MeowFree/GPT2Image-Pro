@@ -24,8 +24,6 @@ import type { PartialImageResult } from "@/features/image-generation/types";
 
 const externalImageGenerationSchema = z.object({
   prompt: z.string().min(1).max(4000),
-  apiPrompt: z.string().min(1).max(8000).optional(),
-  api_prompt: z.string().min(1).max(8000).optional(),
   promptOptimization: z.boolean().optional(),
   prompt_optimization: z.boolean().optional(),
   model: z.string().optional(),
@@ -127,7 +125,6 @@ export const postExternalImageGenerations = withApiLogging(
       apiKeyId: auth.apiKeyId,
       backendRequestKind: "image_generation" as const,
       prompt: parsed.data.prompt,
-      apiPrompt: parsed.data.apiPrompt || parsed.data.api_prompt,
       promptOptimization:
         parsed.data.promptOptimization ?? parsed.data.prompt_optimization,
       moderationBlockRiskLevel: auth.moderationBlockRiskLevel,
