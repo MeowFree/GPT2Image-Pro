@@ -79,6 +79,9 @@ const CHAT_TEXT_ONLY_CREDITS = 1;
 const MAX_CHAT_CONTEXT_CHARS = 30_000;
 const TEXT_MODERATION_ONLY_CREDITS =
   getImageCreditCostBreakdown(DEFAULT_IMAGE_SIZE).moderationOnlyCredits;
+const FULL_REFUND_GENERATION_ERROR_PATTERNS = [
+  "ChatGPT Web backend returned no image output",
+];
 
 export type ImageGenerationOperationResult = {
   error?: string;
@@ -119,6 +122,13 @@ async function toImageBuffer(result: {
 
 function isPendingGeneration(generationId: string) {
   return and(eq(generation.id, generationId), eq(generation.status, "pending"));
+}
+
+function shouldFullyRefundGenerationError(error?: string) {
+  if (!error) return false;
+  return FULL_REFUND_GENERATION_ERROR_PATTERNS.some((pattern) =>
+    error.toLowerCase().includes(pattern.toLowerCase())
+  );
 }
 
 function readUInt24LE(buffer: Buffer, offset: number) {
@@ -954,15 +964,20 @@ async function runQueuedImageGenerationForUser({
   }
 
   if (result.error) {
+    const failureTargetCredits = shouldFullyRefundGenerationError(result.error)
+      ? 0
+      : moderationFailureCredits;
     try {
       await settleChargedCredits(
-        moderationFailureCredits,
+        failureTargetCredits,
         "content-moderation",
         `${generationId}:generation-error`,
         `Settle failed generation: ${input.prompt.substring(0, 50)}`,
         {
           generationId,
           creditCost,
+          fullRefund: failureTargetCredits === 0,
+          error: result.error,
         }
       );
     } catch {
