@@ -203,6 +203,7 @@ export const bulkUpdateImageBackendAccountsAction =
         contentSafetyEnabled: z.boolean().optional(),
         isEnabled: z.boolean().optional(),
         status: z.string().trim().max(80).optional(),
+        resetAvailability: z.boolean().optional(),
       })
     )
     .action(async ({ parsedInput }) => {
@@ -217,6 +218,10 @@ export const bulkUpdateImageBackendAccountsAction =
         isEnabled:
           parsedInput.isEnabled === undefined ? null : parsedInput.isEnabled,
         status: parsedInput.status === undefined ? null : parsedInput.status,
+        resetAvailability:
+          parsedInput.resetAvailability === undefined
+            ? null
+            : parsedInput.resetAvailability,
       });
       return { success: true, ...result };
     });

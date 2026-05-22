@@ -1850,6 +1850,7 @@ type BulkUpdateAccountsInput = {
   contentSafetyEnabled?: boolean | null;
   isEnabled?: boolean | null;
   status?: string | null;
+  resetAvailability?: boolean | null;
 };
 
 export async function bulkUpdateImageBackendAccounts(
@@ -1876,6 +1877,13 @@ export async function bulkUpdateImageBackendAccounts(
   }
   if (input.status !== undefined && input.status !== null) {
     baseUpdate.status = input.status || "active";
+  }
+  if (input.resetAvailability) {
+    baseUpdate.status = "active";
+    baseUpdate.isEnabled = true;
+    baseUpdate.cooldownUntil = null;
+    baseUpdate.lastError = null;
+    baseUpdate.lastErrorAt = null;
   }
 
   if (Object.keys(baseUpdate).length <= 1 && !targetMode) {

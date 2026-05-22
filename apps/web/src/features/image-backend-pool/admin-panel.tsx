@@ -1183,6 +1183,17 @@ export function ImageBackendPoolAdminPanel() {
     });
   };
 
+  const runResetSelectedAccounts = () => {
+    if (!selectedAccountIds.length) {
+      toast.error("请先选择账号");
+      return;
+    }
+    bulkUpdateAccounts({
+      accountIds: selectedAccountIds,
+      resetAvailability: true,
+    });
+  };
+
   const runBulkRefreshAccountInfo = (
     accountIds: string[],
     emptyMessage: string
@@ -1688,7 +1699,7 @@ export function ImageBackendPoolAdminPanel() {
           </Card>
 
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
               {ACCOUNT_METRIC_CARDS.map((item) => {
                 const Icon = item.icon;
                 const value = accountSummary[item.key];
@@ -1917,6 +1928,22 @@ export function ImageBackendPoolAdminPanel() {
                         <Trash2 className="mr-1 h-4 w-4" />
                       )}
                       移除错误账号
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={runResetSelectedAccounts}
+                      disabled={
+                        selectedAccountCount === 0 || isBulkUpdatingAccounts
+                      }
+                    >
+                      {isBulkUpdatingAccounts ? (
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="mr-1 h-4 w-4" />
+                      )}
+                      重置为可用
                     </Button>
                     <Button
                       type="button"
