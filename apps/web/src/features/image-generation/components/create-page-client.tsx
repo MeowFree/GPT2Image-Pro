@@ -52,6 +52,7 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -645,6 +646,7 @@ export function CreatePageClient({
   customApiActive,
 }: CreatePageClientProps) {
   const locale = useLocale();
+  const searchParams = useSearchParams();
   const isZh = locale === "zh";
   const copy = (en: string, zh: string) => (isZh ? zh : en);
   const selectedBackendGroup =
@@ -816,6 +818,104 @@ export function CreatePageClient({
     setLineBatchRepeatCount((value) => Math.min(value, maxBatchCount));
     setEditBatchCount((value) => Math.min(value, maxBatchCount));
   }, [maxBatchCount]);
+
+  useEffect(() => {
+    if (didApplyReferenceParamRef.current) return;
+
+    const referenceUrl = searchParams.get("ref");
+    if (!referenceUrl) return;
+
+    didApplyReferenceParamRef.current = true;
+    const requestedMode = searchParams.get("mode") === "chat" ? "chat" : "image";
+    const sourceId = searchParams.get("sourceId") || referenceUrl;
+    const sourceName = searchParams.get("sourceName") || "reference";
+    let cancelled = false;
+
+    const attachReference = async () => {
+      try {
+        const item = await urlToEditImageFile(referenceUrl, sourceName, sourceId);
+        if (cancelled) {
+          revokePreview(item.previewUrl);
+          return;
+        }
+
+        if (requestedMode === "chat") {
+          if (!chatAllowed) {
+            revokePreview(item.previewUrl);
+            setActiveMode("image");
+            toast.error(
+              copy(
+                "Chat requires Pro plan or higher.",
+                "对话功能需要专业版或更高套餐。"
+              )
+            );
+            return;
+          }
+
+          setChatAttachments((prev) => {
+            if (prev.some((attachment) => attachment.sourceId === sourceId)) {
+              revokePreview(item.previewUrl);
+              return prev;
+            }
+            if (prev.length >= maxChatImages) {
+              revokePreview(item.previewUrl);
+              toast.error(
+                copy(
+                  `Attach up to ${maxChatImages} reference images`,
+                  `最多可添加 ${maxChatImages} 张参考图片`
+                )
+              );
+              return prev;
+            }
+            return [...prev, item];
+          });
+          setActiveMode("chat");
+          toast.success(copy("Reference image attached to chat", "参考图片已添加到对话"));
+          return;
+        }
+
+        setEditImages((prev) => {
+          if (prev.some((image) => image.sourceId === sourceId)) {
+            revokePreview(item.previewUrl);
+            return prev;
+          }
+          if (prev.length >= maxEditImages) {
+            revokePreview(item.previewUrl);
+            toast.error(
+              copy(
+                `Upload up to ${maxEditImages} source images`,
+                `最多可上传 ${maxEditImages} 张源图片`
+              )
+            );
+            return prev;
+          }
+          return [...prev, item];
+        });
+        setActiveMode("image");
+        toast.success(copy("Reference image selected", "参考图片已选择"));
+      } catch (error) {
+        toast.error(copy("Failed to load reference image", "参考图片加载失败"), {
+          description:
+            error instanceof Error
+              ? error.message
+              : copy("Could not load image.", "无法加载图片。"),
+        });
+      }
+    };
+
+    void attachReference();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    chatAllowed,
+    copy,
+    maxChatImages,
+    maxEditImages,
+    searchParams,
+  ]);
+
   const [textModel, setTextModel] = useState("default");
   const [editModel, setEditModel] = useState("default");
   const [useEditFirstImageSize, setUseEditFirstImageSize] = useState(true);
@@ -849,6 +949,7 @@ export function CreatePageClient({
   const chatMessagesRef = useRef<HTMLDivElement | null>(null);
   const chatConversationsRef = useRef<ChatConversation[]>([]);
   const didLoadChatRef = useRef(false);
+  const didApplyReferenceParamRef = useRef(false);
   const batchLoadTriggerRef = useRef<HTMLDivElement | null>(null);
   const batchScrollRef = useRef<HTMLDivElement | null>(null);
   const batchActiveRequestsRef = useRef(0);

@@ -10,9 +10,12 @@ import {
   GripVertical,
   ImageIcon,
   Loader2,
+  MessageSquare,
+  Send,
   Trash2,
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useLocale } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
 import { type PointerEvent, useRef, useState } from "react";
@@ -81,6 +84,16 @@ export function ImageLightbox({
     containerWidth: number;
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const createReferenceHref = (mode: "image" | "chat") => {
+    if (!imageUrl) return `/${locale}/dashboard/create`;
+    const params = new URLSearchParams({
+      mode,
+      ref: imageUrl,
+      sourceId: generation.id,
+      sourceName: `gpt2image-${generation.id}`,
+    });
+    return `/${locale}/dashboard/create?${params.toString()}`;
+  };
 
   const { execute: executeDelete, isExecuting: isDeleting } = useAction(
     deleteGenerationAction,
@@ -290,21 +303,39 @@ export function ImageLightbox({
 
             <div className="flex flex-col gap-2 border-t border-border bg-background p-6">
               {imageUrl && generation.status === "completed" && (
-                <Button
-                  asChild
-                  variant="outline"
-                  className="w-full justify-center"
-                >
-                  <a
-                    href={imageUrl}
-                    download={`gpt2image-${generation.id}.png`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                <>
+                  <Button asChild className="w-full justify-center">
+                    <Link href={createReferenceHref("image")}>
+                      <Send className="mr-2 h-4 w-4" />
+                      {copy("Send to image edit", "发送到图生图")}
+                    </Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full justify-center"
                   >
-                    <Download className="mr-2 h-4 w-4" />
-                    {copy("Download", "下载")}
-                  </a>
-                </Button>
+                    <Link href={createReferenceHref("chat")}>
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      {copy("Send to chat", "发送到 Chat")}
+                    </Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full justify-center"
+                  >
+                    <a
+                      href={imageUrl}
+                      download={`gpt2image-${generation.id}.png`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      {copy("Download", "下载")}
+                    </a>
+                  </Button>
+                </>
               )}
               <Button
                 variant={confirmDelete ? "destructive" : "ghost"}
