@@ -29,7 +29,9 @@ const externalImageGenerationSchema = z.object({
   model: z.string().optional(),
   gptModel: z.string().optional(),
   gpt_model: z.string().optional(),
-  thinking: z.enum(["none", "low", "medium", "high", "xhigh"]).optional(),
+  thinking: z
+    .enum(["minimal", "none", "low", "medium", "high", "xhigh"])
+    .optional(),
   n: z.number().int().min(1).max(10).optional(),
   size: z
     .string()
@@ -209,6 +211,7 @@ export const postExternalImageGenerations = withApiLogging(
       return {
         created,
         data,
+        usage: null,
       };
     });
   }

@@ -269,23 +269,69 @@ const sections = {
           contentType: "application/json",
           description:
             "兼容 OpenAI Images generation。请求会转换成 image_generation 调度类型，进入统一生成链路。",
-          example: `curl https://gpt2image.superapi.buzz/v1/images/generations \\
+          example: `# 1. 官方 Images 风格，默认返回 b64_json
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "A cute baby sea otter",
+    "n": 1,
+    "size": "1024x1024",
+    "quality": "medium",
+    "moderation": "auto"
+  }'
+
+# 2. 返回 URL，并关闭本站提示词优化
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "gpt-image-1.5",
     "prompt": "一张赛博朋克城市夜景，雨后霓虹反光",
+    "n": 2,
     "size": "1024x1024",
-    "quality": "medium",
-    "response_format": "url"
+    "quality": "high",
+    "moderation": "low",
+    "response_format": "url",
+    "prompt_optimization": false
+  }'
+
+# 3. Codex/Responses 后端专用参数；普通 Images API 后端可能忽略
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "生成一张 16:9 产品海报",
+    "size": "1536x864",
+    "response_format": "url",
+    "gptModel": "gpt-5.4",
+    "thinking": "high",
+    "promptOptimization": false
+  }'
+
+# 4. 流式返回；也可用 Accept: text/event-stream 触发
+curl -N https://gpt2image.superapi.buzz/v1/images/generations \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Accept: text/event-stream" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "一张透明玻璃材质的未来感咖啡杯",
+    "size": "1024x1024",
+    "response_format": "url",
+    "stream": true
   }'`,
           responseExample: `{
   "created": 1713833628,
   "data": [
     {
-      "url": "https://gpt2image.superapi.buzz/api/storage/generations/..."
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
+      "revised_prompt": "..."
     }
-  ]
+  ],
+  "usage": null
 }`,
           fields: [
             {
@@ -368,20 +414,20 @@ const sections = {
             },
             {
               name: "SSE image_generation.partial_image",
-              description: "流式局部图片事件，包含 partial_image_index 和 b64_json/url。",
+              description:
+                "仅 stream=true 或 Accept: text/event-stream 时返回；表示一张局部图片。",
             },
             {
               name: "SSE image_generation.completed",
               description:
-                "流式完成事件；本站额外带 generation_id、generationId、credits_consumed、model、size。",
-              custom: true,
+                "仅流式模式返回；表示单张图片已完成，事件 data 会带 generation_id、credits_consumed、model、size 和最终图片。",
             },
           ],
           notes: [
             "该接口不会调用页面 /api/images/generate，而是直接进入共享 service 层。",
             "如果命中 Responses 账号池，内部会把图片请求转换成 Responses image_generation tool 请求。",
             "如果实际生成尺寸与请求尺寸不一致，本站会按检测到的实际尺寸修正记录和计费。",
-            "官方 Images API 可能返回 usage；本站当前非流式 JSON 响应暂不返回 usage，流式完成和错误事件会带 credits_consumed。",
+            "官方 Images API 可能返回 usage；本站当前非流式 JSON 响应通常返回 usage: null，流式完成和错误事件会带 credits_consumed。",
           ],
         },
         {
@@ -391,13 +437,68 @@ const sections = {
           contentType: "multipart/form-data 或 application/json",
           description:
             "兼容 OpenAI Images edit。multipart 可上传图片；JSON 可使用公网图片 URL。",
-          example: `curl https://gpt2image.superapi.buzz/v1/images/edits \\
+          example: `# 1. multipart 上传参考图
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -F model="gpt-image-2" \\
   -F prompt="把参考图改成电影海报风格" \\
+  -F n="1" \\
+  -F size="1024x1024" \\
+  -F quality="high" \\
+  -F moderation="auto" \\
+  -F response_format="url" \\
+  -F 'image[]=@/path/to/reference.png'
+
+# 2. multipart 多参考图 + mask + Codex/Responses 参数
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -F model="gpt-image-2" \\
+  -F prompt="只重绘 mask 区域，保持人物脸部不变" \\
+  -F size="1536x1024" \\
+  -F quality="medium" \\
+  -F response_format="b64_json" \\
+  -F promptOptimization="false" \\
+  -F gpt_model="gpt-5.4" \\
+  -F thinking="medium" \\
+  -F 'image[]=@/path/to/person.png' \\
+  -F 'image_2=@/path/to/style.png' \\
+  -F mask="@/path/to/mask.png"
+
+# 3. JSON 图片 URL；推荐 images，image_url/image_urls 只是兼容快捷字段
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "把参考图改成干净的电商主图",
+    "images": [
+      "https://example.com/reference.png",
+      { "image_url": "https://example.com/detail.webp" }
+    ],
+    "image_url": "https://example.com/single-reference.png",
+    "image_urls": ["https://example.com/extra.jpg"],
+    "mask_url": "https://example.com/mask.png",
+    "mask_image_url": "https://example.com/mask-alt.png",
+    "n": 1,
+    "size": "1024x1024",
+    "quality": "auto",
+    "moderation": "low",
+    "response_format": "url",
+    "prompt_optimization": false,
+    "gptModel": "gpt-5.4-mini",
+    "thinking": "low"
+  }'
+
+# 4. 流式图生图
+curl -N https://gpt2image.superapi.buzz/v1/images/edits \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Accept: text/event-stream" \\
+  -F model="gpt-image-2" \\
+  -F prompt="保留构图，改成水彩插画风格" \\
   -F size="1024x1024" \\
   -F response_format="url" \\
-  -F image[]="@/path/to/reference.png"`,
+  -F stream="true" \\
+  -F 'image=@/path/to/reference.png'`,
           responseExample: `{
   "created": 1713833628,
   "data": [
@@ -405,7 +506,8 @@ const sections = {
       "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "revised_prompt": "..."
     }
-  ]
+  ],
+  "usage": null
 }`,
           fields: [
             {
@@ -506,13 +608,13 @@ const sections = {
             },
             {
               name: "SSE image_edit.partial_image",
-              description: "流式局部编辑图片事件。",
+              description:
+                "仅 stream=true 或 Accept: text/event-stream 时返回；表示一张局部编辑图片。",
             },
             {
               name: "SSE image_edit.completed",
               description:
-                "流式完成事件；本站额外带 generation_id、generationId、credits_consumed、model、size。",
-              custom: true,
+                "仅流式模式返回；表示单张编辑图片已完成，事件 data 会带 generation_id、credits_consumed、model、size 和最终图片。",
             },
           ],
           notes: [
@@ -528,13 +630,65 @@ const sections = {
           contentType: "application/json",
           description:
             "基于 OpenAI Responses API 的生图适配入口。它会按 responses 调度类型选择 Codex/Responses 账号池或外接 /responses API 后端。",
-          example: `curl https://gpt2image.superapi.buzz/v1/responses \\
+          example: `# 1. 最小 Responses 生图请求；需要 Pro 套餐
+curl https://gpt2image.superapi.buzz/v1/responses \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "gpt-5.4",
     "input": "生成一张 1:1 的未来感产品渲染图",
-    "tools": [{ "type": "image_generation", "size": "1024x1024" }]
+    "size": "1024x1024",
+    "quality": "high",
+    "moderation": "auto"
+  }'
+
+# 2. 显式 image_generation tool，并指定图片模型
+curl https://gpt2image.superapi.buzz/v1/responses \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-5.4",
+    "input": "生成一张横版科技产品 KV",
+    "tools": [{ "type": "image_generation", "model": "gpt-image-2" }],
+    "tool_choice": { "type": "image_generation" },
+    "size": "1536x864",
+    "quality": "medium",
+    "reasoning": { "effort": "low" },
+    "store": true
+  }'
+
+# 3. 带参考图的 Responses 输入
+curl https://gpt2image.superapi.buzz/v1/responses \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-5.4-mini",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          { "type": "input_text", "text": "参考这张图，换成冬季海报风格" },
+          { "type": "input_image", "image_url": "https://example.com/reference.png" }
+        ]
+      }
+    ],
+    "tools": [{ "type": "image_generation", "model": "gpt-image-2" }],
+    "size": "1024x1024",
+    "moderation": "low"
+  }'
+
+# 4. 续接上一轮，并使用流式返回
+curl -N https://gpt2image.superapi.buzz/v1/responses \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-5.4",
+    "previous_response_id": "resp_previous_id",
+    "input": "在上一张图基础上加一个月亮",
+    "tools": [{ "type": "image_generation", "model": "gpt-image-2" }],
+    "size": "1024x1024",
+    "reasoning": { "effort": "minimal" },
+    "stream": true
   }'`,
           responseExample: `{
   "id": "resp_...",
@@ -580,7 +734,7 @@ const sections = {
               name: "tools",
               requirement: "可选",
               description:
-                "若显式传入，必须包含 { type: \"image_generation\" }；未传时本站会自动补 image_generation。",
+                "若显式传入，必须包含 { type: \"image_generation\" }；未传时本站会自动补 image_generation。图片模型请放在 image_generation tool 的 model 字段。",
             },
             {
               name: "tool_choice",
@@ -602,7 +756,8 @@ const sections = {
             {
               name: "reasoning.effort",
               requirement: "可选",
-              description: "low、medium、high 等思考强度。",
+              description:
+                "支持 minimal、none、low、medium、high、xhigh；最终是否生效取决于命中的后端。",
             },
             {
               name: "size",
@@ -624,19 +779,6 @@ const sections = {
               custom: true,
               description:
                 "本站便捷字段：作为本次生图 moderation 运行参数使用。",
-            },
-            {
-              name: "tools[].model",
-              requirement: "可选",
-              custom: true,
-              description:
-                "当 image_generation tool 中提供 model 时，本站将其作为图片模型。",
-            },
-            {
-              name: "reasoning.effort",
-              requirement: "可选",
-              description:
-                "支持 minimal、none、low、medium、high、xhigh；最终是否生效取决于命中的后端。",
             },
           ],
           responses: [
@@ -678,47 +820,46 @@ const sections = {
     web: {
       title: "Web 账号",
       description:
-        "Web 后端走 ChatGPT 网页接口，可用于页面文生图、图生图和对话生图，主要可控的是主 GPT 对话模型和思考强度。",
+        "走 ChatGPT 网页生图能力，适合复用 Web 账号额度，但不是严格参数化的 Images/Responses API。",
       valid: [
-        "GPT 模型会作为 Web 主对话模型传入。",
-        "Web 生图没有稳定的独立图片模型字段；本站不会把图片模型映射成 Web 生图模型。",
-        "思考强度会作为 paragen_thinking_level 传入。",
-        "关闭提示词优化时，会发送原始提示词，并把 Web 思考强度压到 instant。",
+        "分辨率不可严格控制；size 只能作为提示/记录参考，不能保证按请求尺寸输出。",
+        "不能保证 4K 输出；是否出高分辨率取决于 ChatGPT Web 当前能力和账号状态。",
+        "可控制主 GPT 对话模型和 Web 思考强度；图片模型字段不会映射成独立 Web 生图模型。",
+        "关闭提示词优化时会发送原始 prompt，并把 Web 思考强度压到 instant，尽量减少平台侧改写。",
       ],
       invalid: [
-        "Web 账号不提供原生 Responses API 能力。",
-        "上游 Web 不一定接受所有 Responses 模型名；不可用时由后端调度和错误标记处理。",
-        "外部 /v1/responses 按 responses 类型调度，不会选择 Web 账号。",
-        "关闭提示词优化不能保证上游完全不理解或改写提示词，只能尽量减少平台侧改动。",
+        "不用于外部 /v1/responses；该接口只调度 Codex/Responses 或外接 Responses API 后端。",
+        "不保证支持所有 Responses 模型名。",
+        "不保证完全不改写提示词；ChatGPT Web 上游仍可能理解、补全或改写。",
       ],
     },
     codex: {
       title: "Codex / Responses 账号",
       description:
-        "Codex 后端走 Responses 语义，既能接 Responses 请求，也能把 image 请求转换成 Responses 请求。",
+        "走 Responses 语义，是本站可参数化程度最高的系统账号后端。",
       valid: [
-        "GPT 模型作为 Responses 顶层 model。",
-        "图片模型作为 image_generation 工具的 model。",
-        "image generation 和 edit 请求都会按当前图片、尺寸、质量、审核强度组装。",
-        "当账号返回限流、额度不足、无效凭据时，调度器会尝试轮换并标记异常账号。",
+        "GPT 模型传给 Responses 顶层 model。",
+        "图片模型传给 image_generation 工具 model。",
+        "size、quality、moderation、参考图、mask 会组装进 Responses 工具请求。",
+        "支持外部 /v1/responses；也可承接 /v1/images/generations 和 /v1/images/edits 的内部转换。",
       ],
       invalid: [
-        "Codex 账号不是 ChatGPT Web 账号，不能使用 Web 专属字段。",
-        "如果分组没有可用账号，应被视为不可调度；成功请求通常说明命中了其他可用后端或外接 API。",
+        "不是 ChatGPT Web，不支持 Web 专属能力或 Web 额度语义。",
+        "账号限流、额度不足、凭据失效时，调度器会冷却/标错并尝试轮换。",
       ],
     },
     api: {
       title: "外接 API 后端",
       description:
-        "外接 API 用于兼容 OpenAI 风格接口，平台尽量透传用户请求。",
+        "走管理员配置的 OpenAI 兼容 Base URL/API Key，最终能力由对方服务决定。",
       valid: [
-        "image generation / edit 使用图片模型字段。",
-        "Responses 请求按 Responses API 请求体透传。",
-        "API Key、Base URL、模型支持情况由外接服务决定。",
+        "Images generation/edit 调用对方 Images API。",
+        "Responses 请求调用对方 /responses。",
+        "模型、尺寸、质量、流式事件、usage 字段是否支持，以对方接口为准。",
       ],
       invalid: [
-        "普通 image API 不一定识别平台的 GPT 模型或 Web 思考强度字段。",
-        "外接服务如果自行优化提示词，平台侧关闭提示词优化无法覆盖它。",
+        "不使用本站 Web 或 Codex 账号池额度。",
+        "对方如果自行改写提示词或限制分辨率，本站无法覆盖。",
       ],
     },
     prompt: {
@@ -982,23 +1123,69 @@ const sections = {
           contentType: "application/json",
           description:
             "Compatible with OpenAI Images generation. Requests become image_generation jobs in the shared generation path.",
-          example: `curl https://gpt2image.superapi.buzz/v1/images/generations \\
+          example: `# 1. Official Images-style request. b64_json is the default.
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "A cute baby sea otter",
+    "n": 1,
+    "size": "1024x1024",
+    "quality": "medium",
+    "moderation": "auto"
+  }'
+
+# 2. Return a URL and disable GPT2IMAGE prompt optimization.
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "gpt-image-1.5",
     "prompt": "A cyberpunk city at night after rain, neon reflections",
+    "n": 2,
     "size": "1024x1024",
-    "quality": "medium",
-    "response_format": "url"
+    "quality": "high",
+    "moderation": "low",
+    "response_format": "url",
+    "prompt_optimization": false
+  }'
+
+# 3. Codex/Responses backend-only parameters. Plain Images API backends may ignore them.
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "Create a 16:9 product campaign poster",
+    "size": "1536x864",
+    "response_format": "url",
+    "gptModel": "gpt-5.4",
+    "thinking": "high",
+    "promptOptimization": false
+  }'
+
+# 4. Streaming response. Accept: text/event-stream also enables streaming.
+curl -N https://gpt2image.superapi.buzz/v1/images/generations \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Accept: text/event-stream" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "A transparent glass futuristic coffee cup",
+    "size": "1024x1024",
+    "response_format": "url",
+    "stream": true
   }'`,
           responseExample: `{
   "created": 1713833628,
   "data": [
     {
-      "url": "https://gpt2image.superapi.buzz/api/storage/generations/..."
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
+      "revised_prompt": "..."
     }
-  ]
+  ],
+  "usage": null
 }`,
           fields: [
             {
@@ -1082,20 +1269,19 @@ const sections = {
             {
               name: "SSE image_generation.partial_image",
               description:
-                "Streaming partial image event with partial_image_index and b64_json/url.",
+                "Only returned with stream=true or Accept: text/event-stream. Represents one partial image.",
             },
             {
               name: "SSE image_generation.completed",
               description:
-                "Streaming completion event. GPT2IMAGE also includes generation_id, generationId, credits_consumed, model, and size.",
-              custom: true,
+                "Only returned in streaming mode. Indicates one image is complete; event data includes generation_id, credits_consumed, model, size, and the final image.",
             },
           ],
           notes: [
             "This endpoint does not call page /api/images/generate; it directly enters the shared service layer.",
             "When routed to a Responses account, the image request is converted into a Responses image_generation tool request.",
             "If the actual generated dimensions differ from the requested size, GPT2IMAGE records and bills using the detected actual size.",
-            "The official Images API may return usage. GPT2IMAGE does not currently include usage in non-stream JSON responses; streaming completion and error events include credits_consumed.",
+            "The official Images API may return usage. GPT2IMAGE usually returns usage: null in non-stream JSON responses; streaming completion and error events include credits_consumed.",
           ],
         },
         {
@@ -1105,13 +1291,68 @@ const sections = {
           contentType: "multipart/form-data or application/json",
           description:
             "Compatible with OpenAI Images edit. multipart uploads files; JSON can reference public image URLs.",
-          example: `curl https://gpt2image.superapi.buzz/v1/images/edits \\
+          example: `# 1. multipart upload reference image.
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -F model="gpt-image-2" \\
   -F prompt="Turn the reference image into a cinematic poster" \\
+  -F n="1" \\
+  -F size="1024x1024" \\
+  -F quality="high" \\
+  -F moderation="auto" \\
+  -F response_format="url" \\
+  -F 'image[]=@/path/to/reference.png'
+
+# 2. multipart multiple references + mask + Codex/Responses fields.
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -F model="gpt-image-2" \\
+  -F prompt="Only redraw the masked area and keep the face unchanged" \\
+  -F size="1536x1024" \\
+  -F quality="medium" \\
+  -F response_format="b64_json" \\
+  -F promptOptimization="false" \\
+  -F gpt_model="gpt-5.4" \\
+  -F thinking="medium" \\
+  -F 'image[]=@/path/to/person.png' \\
+  -F 'image_2=@/path/to/style.png' \\
+  -F mask="@/path/to/mask.png"
+
+# 3. JSON image URLs. Prefer images; image_url/image_urls are shortcuts.
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "Turn the reference into a clean ecommerce hero image",
+    "images": [
+      "https://example.com/reference.png",
+      { "image_url": "https://example.com/detail.webp" }
+    ],
+    "image_url": "https://example.com/single-reference.png",
+    "image_urls": ["https://example.com/extra.jpg"],
+    "mask_url": "https://example.com/mask.png",
+    "mask_image_url": "https://example.com/mask-alt.png",
+    "n": 1,
+    "size": "1024x1024",
+    "quality": "auto",
+    "moderation": "low",
+    "response_format": "url",
+    "prompt_optimization": false,
+    "gptModel": "gpt-5.4-mini",
+    "thinking": "low"
+  }'
+
+# 4. Streaming image edit.
+curl -N https://gpt2image.superapi.buzz/v1/images/edits \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Accept: text/event-stream" \\
+  -F model="gpt-image-2" \\
+  -F prompt="Keep the composition and convert it to watercolor illustration" \\
   -F size="1024x1024" \\
   -F response_format="url" \\
-  -F image[]="@/path/to/reference.png"`,
+  -F stream="true" \\
+  -F 'image=@/path/to/reference.png'`,
           responseExample: `{
   "created": 1713833628,
   "data": [
@@ -1119,7 +1360,8 @@ const sections = {
       "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "revised_prompt": "..."
     }
-  ]
+  ],
+  "usage": null
 }`,
           fields: [
             {
@@ -1220,13 +1462,13 @@ const sections = {
             },
             {
               name: "SSE image_edit.partial_image",
-              description: "Streaming partial edited image event.",
+              description:
+                "Only returned with stream=true or Accept: text/event-stream. Represents one partial edited image.",
             },
             {
               name: "SSE image_edit.completed",
               description:
-                "Streaming completion event. GPT2IMAGE also includes generation_id, generationId, credits_consumed, model, and size.",
-              custom: true,
+                "Only returned in streaming mode. Indicates one edited image is complete; event data includes generation_id, credits_consumed, model, size, and the final image.",
             },
           ],
           notes: [
@@ -1242,13 +1484,65 @@ const sections = {
           contentType: "application/json",
           description:
             "A GPT2IMAGE image-generation adapter based on the OpenAI Responses API. It routes as responses and selects Codex/Responses groups or external /responses API backends.",
-          example: `curl https://gpt2image.superapi.buzz/v1/responses \\
+          example: `# 1. Minimal Responses image request. Requires Pro plan.
+curl https://gpt2image.superapi.buzz/v1/responses \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "gpt-5.4",
     "input": "Generate a 1:1 futuristic product render",
-    "tools": [{ "type": "image_generation", "size": "1024x1024" }]
+    "size": "1024x1024",
+    "quality": "high",
+    "moderation": "auto"
+  }'
+
+# 2. Explicit image_generation tool with image model.
+curl https://gpt2image.superapi.buzz/v1/responses \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-5.4",
+    "input": "Generate a landscape technology product key visual",
+    "tools": [{ "type": "image_generation", "model": "gpt-image-2" }],
+    "tool_choice": { "type": "image_generation" },
+    "size": "1536x864",
+    "quality": "medium",
+    "reasoning": { "effort": "low" },
+    "store": true
+  }'
+
+# 3. Responses input with a reference image.
+curl https://gpt2image.superapi.buzz/v1/responses \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-5.4-mini",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          { "type": "input_text", "text": "Use this image as reference and make a winter poster" },
+          { "type": "input_image", "image_url": "https://example.com/reference.png" }
+        ]
+      }
+    ],
+    "tools": [{ "type": "image_generation", "model": "gpt-image-2" }],
+    "size": "1024x1024",
+    "moderation": "low"
+  }'
+
+# 4. Continue a previous response and stream the result.
+curl -N https://gpt2image.superapi.buzz/v1/responses \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-5.4",
+    "previous_response_id": "resp_previous_id",
+    "input": "Add a moon based on the previous image",
+    "tools": [{ "type": "image_generation", "model": "gpt-image-2" }],
+    "size": "1024x1024",
+    "reasoning": { "effort": "minimal" },
+    "stream": true
   }'`,
           responseExample: `{
   "id": "resp_...",
@@ -1294,7 +1588,7 @@ const sections = {
               name: "tools",
               requirement: "Optional",
               description:
-                "If provided, must include { type: \"image_generation\" }. If omitted, GPT2IMAGE adds image_generation automatically.",
+                "If provided, must include { type: \"image_generation\" }. If omitted, GPT2IMAGE adds image_generation automatically. Put the image model in the image_generation tool's model field.",
             },
             {
               name: "tool_choice",
@@ -1316,7 +1610,8 @@ const sections = {
             {
               name: "reasoning.effort",
               requirement: "Optional",
-              description: "low, medium, high, etc.",
+              description:
+                "Supports minimal, none, low, medium, high, and xhigh. Actual support depends on the selected backend.",
             },
             {
               name: "size",
@@ -1338,19 +1633,6 @@ const sections = {
               custom: true,
               description:
                 "Convenience field used as the run-time image moderation setting.",
-            },
-            {
-              name: "tools[].model",
-              requirement: "Optional",
-              custom: true,
-              description:
-                "When provided on the image_generation tool, GPT2IMAGE treats it as the image model.",
-            },
-            {
-              name: "reasoning.effort",
-              requirement: "Optional",
-              description:
-                "Supports minimal, none, low, medium, high, and xhigh. Actual support depends on the selected backend.",
             },
           ],
           responses: [
@@ -1392,47 +1674,46 @@ const sections = {
     web: {
       title: "Web Accounts",
       description:
-        "Web backends use the ChatGPT web interface for page generation, edit, and image chat. The controllable fields are mainly the main GPT conversation model and thinking level.",
+        "Uses ChatGPT Web image generation. It can reuse Web account quota, but it is not a strictly parameterized Images/Responses API.",
       valid: [
-        "GPT model is sent as the main Web conversation model.",
-        "Web image generation has no stable separate image model field; this service does not map image models into Web image model slugs.",
-        "Thinking is sent as paragen_thinking_level.",
-        "When prompt optimization is off, the original prompt is sent and Web thinking is forced to instant.",
+        "Resolution is not strictly controllable; size is only a hint/record value and output may differ.",
+        "4K output is not guaranteed; high-resolution output depends on current ChatGPT Web capability and account state.",
+        "The main GPT conversation model and Web thinking level can be controlled; image model is not mapped to a separate Web image model.",
+        "When prompt optimization is off, GPT2IMAGE sends the original prompt and forces Web thinking to instant to reduce platform-side rewriting.",
       ],
       invalid: [
-        "Web accounts do not provide native Responses API capability.",
-        "The upstream Web endpoint may not accept every Responses model name; backend routing and error marking handle unavailable accounts.",
-        "External /v1/responses uses responses routing and does not select Web accounts.",
-        "Disabling prompt optimization cannot guarantee the upstream never interprets or revises the prompt.",
+        "Not used for external /v1/responses; that endpoint selects Codex/Responses or external Responses API backends.",
+        "Does not guarantee support for every Responses model name.",
+        "Cannot guarantee prompt text is never interpreted, expanded, or revised by ChatGPT Web upstream.",
       ],
     },
     codex: {
       title: "Codex / Responses Accounts",
       description:
-        "Codex backends use Responses semantics and can receive Responses requests or converted image requests.",
+        "Uses Responses semantics and is the most parameterized system-account backend.",
       valid: [
-        "GPT model is the top-level Responses model.",
-        "Image model is the image_generation tool model.",
-        "Generation and edit requests include current images, size, quality, and moderation strength.",
-        "On limits, invalid credentials, or quota errors, the scheduler retries other accounts and marks bad ones.",
+        "GPT model is sent as the top-level Responses model.",
+        "Image model is sent as the image_generation tool model.",
+        "size, quality, moderation, reference images, and mask are assembled into the Responses tool request.",
+        "Supports external /v1/responses and can also handle converted /v1/images/generations and /v1/images/edits requests.",
       ],
       invalid: [
-        "Codex accounts are not ChatGPT Web accounts and cannot use Web-only fields.",
-        "If a group has no usable accounts it should not be schedulable; a successful request usually means another backend or external API was used.",
+        "Not ChatGPT Web, so Web-only capability or quota semantics do not apply.",
+        "On rate limits, quota errors, or invalid credentials, the scheduler cools down/marks the account and tries another one.",
       ],
     },
     api: {
       title: "External API Backends",
       description:
-        "External APIs are OpenAI-compatible targets; the platform passes requests through as much as possible.",
+        "Uses an admin-configured OpenAI-compatible Base URL/API Key. Final capability depends on that service.",
       valid: [
-        "Image generation / edit uses the image model field.",
-        "Responses requests follow the Responses API body.",
-        "API Key, Base URL, and model support depend on the external service.",
+        "Images generation/edit call the external Images API.",
+        "Responses requests call the external /responses endpoint.",
+        "Model, size, quality, streaming events, and usage fields depend on the external API implementation.",
       ],
       invalid: [
-        "Plain image APIs may ignore GPT model or Web thinking fields.",
-        "If the external service optimizes prompts internally, this platform cannot override it.",
+        "Does not consume GPT2IMAGE Web or Codex account pool quota.",
+        "If the external service rewrites prompts or limits resolution, GPT2IMAGE cannot override it.",
       ],
     },
     prompt: {

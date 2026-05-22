@@ -717,6 +717,7 @@ export const postExternalImageEdits = withApiLogging(
           return {
             created,
             data,
+            usage: null,
           };
         } finally {
           await deleteModerationImages(moderationImages);
