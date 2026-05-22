@@ -57,6 +57,8 @@
     "./components/og-image-template": "./src/components/components/og-image-template.tsx"
   },
   "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "test:matrix": "vitest run --config vitest.config.ts src/subscription/services/plan-capabilities.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -99,6 +101,7 @@
     "@types/nodemailer": "^8.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "4.0.18"
   }
 }

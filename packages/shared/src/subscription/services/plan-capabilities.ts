@@ -434,7 +434,9 @@ async function applyLegacyPlanSettings(matrix: PlanCapabilityMatrix) {
   return legacy;
 }
 
-function normalizeMatrix(value: unknown): PlanCapabilityMatrix {
+export function normalizePlanCapabilityMatrix(
+  value: unknown
+): PlanCapabilityMatrix {
   const raw = isRecord(value) ? value : {};
   return {
     version: 1,
@@ -449,7 +451,7 @@ export async function getPlanCapabilityMatrix(): Promise<PlanCapabilityMatrix> {
     PLAN_CAPABILITY_MATRIX_SETTING_KEY
   );
   if (configured !== undefined) {
-    return normalizeMatrix(configured);
+    return normalizePlanCapabilityMatrix(configured);
   }
 
   return applyLegacyPlanSettings(DEFAULT_PLAN_CAPABILITY_MATRIX);

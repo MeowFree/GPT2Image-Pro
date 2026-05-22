@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
+    "test": "turbo test",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
     "dev:web": "turbo dev --filter=@repo/web",
