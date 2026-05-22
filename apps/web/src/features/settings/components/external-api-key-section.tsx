@@ -111,6 +111,8 @@ export function ExternalApiKeySection() {
     capabilities?.moderation.allowedBlockRiskLevels ||
     getAllowedModerationBlockRiskLevels(userPlan);
   const moderationOptionSet = new Set(moderationOptions);
+  const moderationBlockingEnabled =
+    capabilities?.features["moderation.blocking"] ?? true;
 
   const { execute: loadKeys, isPending: isRefreshing } = useAction(
     getExternalApiKeys,
@@ -233,6 +235,11 @@ export function ExternalApiKeySection() {
           <p className="text-xs text-muted-foreground">
             {t("responsesRequiresPro")}
           </p>
+          {!moderationBlockingEnabled && (
+            <p className="text-xs text-muted-foreground">
+              {t("moderation.disabledByPlan")}
+            </p>
+          )}
           {!externalApiAllowed && (
             <p className="text-xs text-muted-foreground">
               {t("requiresStarter")}
@@ -300,7 +307,7 @@ export function ExternalApiKeySection() {
           onValueChange={(value) =>
             setNewKeyModerationLevel(value as ModerationBlockRiskLevel)
           }
-          disabled={!externalApiAllowed}
+          disabled={!externalApiAllowed || !moderationBlockingEnabled}
         >
           <SelectTrigger className="sm:w-48">
             <SelectValue placeholder={t("moderation.label")} />
@@ -392,7 +399,11 @@ export function ExternalApiKeySection() {
                           value as ModerationBlockRiskLevel,
                       })
                     }
-                    disabled={!externalApiAllowed || isUpdatingModeration}
+                    disabled={
+                      !externalApiAllowed ||
+                      !moderationBlockingEnabled ||
+                      isUpdatingModeration
+                    }
                   >
                     <SelectTrigger
                       id={`external-key-moderation-${key.id}`}

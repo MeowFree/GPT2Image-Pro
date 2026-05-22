@@ -103,9 +103,12 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
   const moderationOptions =
     capabilities?.moderation.allowedBlockRiskLevels ||
     getAllowedModerationBlockRiskLevels(userPlan);
+  const moderationBlockingEnabled =
+    capabilities?.features["moderation.blocking"] ?? true;
   const moderationControlAllowed =
-    capabilities?.features["moderation.riskLevelControl"] ??
-    canUseModerationRiskLevelControl(userPlan);
+    moderationBlockingEnabled &&
+    (capabilities?.features["moderation.riskLevelControl"] ??
+      canUseModerationRiskLevelControl(userPlan));
   const avatarMaxFileSizeBytes =
     capabilities?.limits.maxFileSizeBytes ?? MAX_FILE_SIZE;
   const normalizeTab = useCallback((value: string | null) => {
@@ -482,7 +485,9 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
                       <FormDescription>
                         {moderationControlAllowed
                           ? t("moderation.description")
-                          : t("moderation.upgradeHint")}
+                          : moderationBlockingEnabled
+                            ? t("moderation.upgradeHint")
+                            : t("moderation.disabledByPlan")}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>

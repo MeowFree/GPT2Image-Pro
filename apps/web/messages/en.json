@@ -641,6 +641,7 @@
       "title": "Moderation block level",
       "description": "This setting applies to web generation. External API keys can use their own level.",
       "upgradeHint": "Ultra can allow low-risk results. Enterprise can also allow medium-risk results.",
+      "disabledByPlan": "Moderation blocking is not enabled for your current plan, so this setting has no effect.",
       "options": {
         "low": {
           "label": "Block low and above",
@@ -676,6 +677,7 @@
       "revoke": "Revoke",
       "moderation": {
         "label": "Moderation level",
+        "disabledByPlan": "Moderation blocking is not enabled for your current plan, so API key moderation levels have no effect.",
         "options": {
           "low": "Block low and above",
           "medium": "Allow low",

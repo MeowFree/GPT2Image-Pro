@@ -179,6 +179,7 @@ const PLAN_CAPABILITY_MATRIX_EXAMPLE = {
     "externalApi.images.edit": "starter",
     "externalApi.responses": "pro",
     "externalApi.streaming": "starter",
+    "moderation.blocking": "free",
     "moderation.riskLevelControl": "ultra",
     "moderation.onlyFailureSettlement": "ultra",
   },
@@ -404,7 +405,7 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     key: "PLAN_CAPABILITY_MATRIX",
     label: "套餐能力矩阵",
     description:
-      "JSON 配置。统一控制套餐功能门槛、积分配额、上传限制、批量数量、并发、队列优先级和审核等级。留空时使用代码默认矩阵，并兼容旧上传/月积分配置。",
+      "JSON 配置。统一控制套餐功能门槛、积分配额、上传限制、批量数量、并发、队列优先级和审核能力。features 中 promptOptimization.control 控制是否可关闭提示词优化，moderation.blocking 控制本站审核拦截是否对该套餐生效，moderation.riskLevelControl 控制是否可调整审核拦截级别，moderation.onlyFailureSettlement 控制审核拦截后是否只结算审核积分。留空时使用代码默认矩阵，并兼容旧上传/月积分配置。",
     category: "plans",
     valueType: "json",
     exampleValue: PLAN_CAPABILITY_MATRIX_EXAMPLE,

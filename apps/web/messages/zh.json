@@ -641,6 +641,7 @@
       "title": "审核拦截级别",
       "description": "该设置会应用到网页端生成；外接 API Key 可单独设置。",
       "upgradeHint": "旗舰版可放开 low 级拦截，企业版可继续放开 medium 级拦截。",
+      "disabledByPlan": "当前套餐未启用本站审核拦截，该设置不会生效。",
       "options": {
         "low": {
           "label": "拦截 low 及以上",
@@ -676,6 +677,7 @@
       "revoke": "撤销",
       "moderation": {
         "label": "审核级别",
+        "disabledByPlan": "当前套餐未启用本站审核拦截，API Key 审核级别不会生效。",
         "options": {
           "low": "拦截 low 及以上",
           "medium": "放开 low",

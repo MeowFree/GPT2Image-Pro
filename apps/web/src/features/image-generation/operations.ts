@@ -425,6 +425,8 @@ export async function runImageGenerationForUser(
       ? Math.min(TEXT_MODERATION_ONLY_CREDITS, CHAT_TEXT_ONLY_CREDITS)
       : creditCost.moderationOnlyCredits
     : initialCreditCharge;
+  const moderationBlockingEnabled =
+    planCapabilities.features["moderation.blocking"];
   const promptOptimizationAllowed =
     planCapabilities.features["promptOptimization.control"];
   const explicitPromptOptimization =
@@ -616,6 +618,7 @@ export async function runImageGenerationForUser(
           gptModel,
           recordModel,
           allowGpt55: planCapabilities.features["models.gpt55"],
+          moderationBlockingEnabled,
         })
     );
   } catch (error) {
@@ -652,6 +655,7 @@ async function runQueuedImageGenerationForUser({
   gptModel,
   recordModel,
   allowGpt55,
+  moderationBlockingEnabled,
 }: {
   input: RunImageGenerationInput;
   callbacks?: ImageGenerationCallbacks;
@@ -675,6 +679,7 @@ async function runQueuedImageGenerationForUser({
   gptModel?: string;
   recordModel: string;
   allowGpt55: boolean;
+  moderationBlockingEnabled: boolean;
 }): Promise<ImageGenerationOperationResult> {
   const startedAt = Date.now();
   const promptOptimizationMetadata = buildPromptOptimizationMetadata({
@@ -710,6 +715,7 @@ async function runQueuedImageGenerationForUser({
             quality: input.quality || "auto",
             batchCount: input.n || 1,
             creditCost,
+            moderationBlockingEnabled,
             moderationFailureCredits,
           }
         : input.mode === "chat"
@@ -724,6 +730,7 @@ async function runQueuedImageGenerationForUser({
               moderation: input.moderation || "auto",
               batchCount: input.n || 1,
               creditCost,
+              moderationBlockingEnabled,
               moderationFailureCredits,
             }
           : {
@@ -735,6 +742,7 @@ async function runQueuedImageGenerationForUser({
               moderation: input.moderation || "auto",
               batchCount: input.n || 1,
               creditCost,
+              moderationBlockingEnabled,
               moderationFailureCredits,
             },
   });
@@ -890,7 +898,7 @@ async function runQueuedImageGenerationForUser({
     };
 
   const moderation =
-    config.contentSafetyEnabled === false
+    config.contentSafetyEnabled === false || !moderationBlockingEnabled
       ? ({ decision: "skipped" } as const)
       : await moderateContent({
           prompt: moderationPrompt,
