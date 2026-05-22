@@ -13,6 +13,8 @@ export interface GenerateImageParams {
   n?: number;
   quality?: ImageQuality;
   moderation?: ImageModeration;
+  outputFormat?: ImageOutputFormat;
+  outputCompression?: number;
 }
 
 export interface GenerateImageResult {
@@ -43,6 +45,7 @@ export interface ImageGenerationCallbacks {
 
 export type ImageQuality = "auto" | "low" | "medium" | "high";
 export type ImageModeration = "auto" | "low";
+export type ImageOutputFormat = "png" | "jpeg" | "webp";
 export type ModerationBlockRiskLevel = "low" | "medium" | "high";
 
 export interface ImageInputFile {
@@ -75,6 +78,8 @@ export interface EditImageParams {
   quality?: ImageQuality;
   n?: number;
   moderation?: ImageModeration;
+  outputFormat?: ImageOutputFormat;
+  outputCompression?: number;
 }
 
 export interface ChatImageParams {
@@ -92,6 +97,8 @@ export interface ChatImageParams {
   quality?: ImageQuality;
   n?: number;
   moderation?: ImageModeration;
+  outputFormat?: ImageOutputFormat;
+  outputCompression?: number;
   stream?: boolean;
   thinking?: ThinkingLevel;
   rawResponsesBody?: unknown;

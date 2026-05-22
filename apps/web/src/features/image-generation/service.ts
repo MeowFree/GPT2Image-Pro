@@ -26,6 +26,10 @@ import {
   generateImageWithChatGptWeb,
 } from "./chatgpt-web";
 import {
+  normalizeOutputCompression,
+  normalizeOutputFormat,
+} from "./output-format";
+import {
   AUTO_IMAGE_SIZE,
   DEFAULT_IMAGE_MODEL,
   DEFAULT_IMAGE_SIZE,
@@ -49,6 +53,7 @@ import type {
   ImageGenerationCallbacks,
   ImageInputFile,
   ImageModeration,
+  ImageOutputFormat,
   ImageQuality,
   PartialImageResult,
   ThinkingLevel,
@@ -662,6 +667,8 @@ function normalizeResponsesImageRequestBody(
   delete body.size;
   delete body.quality;
   delete body.moderation;
+  delete body.output_format;
+  delete body.output_compression;
 
   return body;
 }
@@ -978,6 +985,8 @@ function appendImageParams(
     quality?: ImageQuality;
     moderation?: ImageModeration;
     promptOptimization?: boolean;
+    outputFormat?: ImageOutputFormat;
+    outputCompression?: number;
   }
 ) {
   formData.append("model", getModel(config, params.model));
@@ -1002,6 +1011,18 @@ function appendImageParams(
   const moderation = normalizeModeration(params.moderation);
   if (moderation) {
     formData.append("moderation", moderation);
+  }
+
+  const outputFormat = normalizeOutputFormat(params.outputFormat);
+  if (outputFormat) {
+    formData.append("output_format", outputFormat);
+  }
+
+  const outputCompression = normalizeOutputCompression(
+    params.outputCompression
+  );
+  if (outputCompression !== undefined) {
+    formData.append("output_compression", String(outputCompression));
   }
 
   if (config.useStream) {
@@ -1689,6 +1710,16 @@ export async function generateImage(
         ...(normalizeModeration(params.moderation)
           ? { moderation: normalizeModeration(params.moderation) }
           : {}),
+        ...(normalizeOutputFormat(params.outputFormat)
+          ? { output_format: normalizeOutputFormat(params.outputFormat) }
+          : {}),
+        ...(normalizeOutputCompression(params.outputCompression) !== undefined
+          ? {
+              output_compression: normalizeOutputCompression(
+                params.outputCompression
+              ),
+            }
+          : {}),
         ...(config.useStream ? { stream: true, partial_images: 2 } : {}),
         response_format: "b64_json",
       }),
@@ -1782,6 +1813,8 @@ export async function editImage(
       size: params.size,
       quality: params.quality,
       moderation: params.moderation,
+      outputFormat: params.outputFormat,
+      outputCompression: params.outputCompression,
       promptOptimization: params.promptOptimization,
     });
 
@@ -1852,6 +1885,8 @@ export async function generateChatImage(
       quality: params.quality,
       n: params.n,
       moderation: params.moderation,
+      outputFormat: params.outputFormat,
+      outputCompression: params.outputCompression,
     };
     if (params.images?.length) {
       return editImageWithChatGptWeb(config, {
@@ -1876,6 +1911,8 @@ export async function generateChatImage(
       size?: string;
       quality?: ImageQuality;
       moderation?: ImageModeration;
+      output_format?: ImageOutputFormat;
+      output_compression?: number;
     } = {
       type: "image_generation",
       action: "auto",
@@ -1892,6 +1929,14 @@ export async function generateChatImage(
     if (quality) tool.quality = quality;
     const moderation = normalizeModeration(params.moderation);
     if (moderation) tool.moderation = moderation;
+    const outputFormat = normalizeOutputFormat(params.outputFormat);
+    if (outputFormat) tool.output_format = outputFormat;
+    const outputCompression = normalizeOutputCompression(
+      params.outputCompression
+    );
+    if (outputCompression !== undefined) {
+      tool.output_compression = outputCompression;
+    }
 
     const thinking = normalizeThinking(params.thinking);
     const reasoning: ReasoningConfig | undefined = thinking

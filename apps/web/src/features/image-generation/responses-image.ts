@@ -1,4 +1,8 @@
 import {
+  normalizeOutputCompression,
+  normalizeOutputFormat,
+} from "./output-format";
+import {
   AUTO_IMAGE_SIZE,
   DEFAULT_IMAGE_MODEL,
   DEFAULT_IMAGE_SIZE,
@@ -10,6 +14,7 @@ import type {
   GenerateImageParams,
   ImageInputFile,
   ImageModeration,
+  ImageOutputFormat,
   ImageQuality,
   ThinkingLevel,
 } from "./types";
@@ -31,6 +36,8 @@ type ResponsesImageRequest = {
     size?: string;
     quality?: ImageQuality;
     moderation?: ImageModeration;
+    output_format?: ImageOutputFormat;
+    output_compression?: number;
     input_image_mask?: { image_url: string };
   }>;
   tool_choice: { type: "image_generation" };
@@ -134,6 +141,12 @@ export function buildResponsesImageGenerationRequest(
   if (quality) tool.quality = quality;
   const moderation = normalizeModeration(params.moderation);
   if (moderation) tool.moderation = moderation;
+  const outputFormat = normalizeOutputFormat(params.outputFormat);
+  if (outputFormat) tool.output_format = outputFormat;
+  const outputCompression = normalizeOutputCompression(params.outputCompression);
+  if (outputCompression !== undefined) {
+    tool.output_compression = outputCompression;
+  }
 
   const instructions = getInstructions(params) || RESPONSES_IMAGE_INSTRUCTIONS;
 
@@ -176,6 +189,12 @@ export function buildResponsesImageEditRequest(
   if (quality) tool.quality = quality;
   const moderation = normalizeModeration(params.moderation);
   if (moderation) tool.moderation = moderation;
+  const outputFormat = normalizeOutputFormat(params.outputFormat);
+  if (outputFormat) tool.output_format = outputFormat;
+  const outputCompression = normalizeOutputCompression(params.outputCompression);
+  if (outputCompression !== undefined) {
+    tool.output_compression = outputCompression;
+  }
   if (params.mask) {
     tool.input_image_mask = { image_url: getDataUrl(params.mask) };
   }

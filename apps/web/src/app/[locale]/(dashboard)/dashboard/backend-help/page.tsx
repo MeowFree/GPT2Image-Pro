@@ -190,6 +190,7 @@ const sections = {
         "所有外接接口都需要 Authorization: Bearer <本站 API Key>。",
         "图片生成和图片编辑接口需要入门版及以上；Responses 接口需要专业版及以上。",
         "/api/v1/* 与 /v1/* 使用同一套 handler，只是路径别名。",
+        "response_format 控制返回 URL 或 base64；output_format 才控制图片文件格式，二者不是同一个字段。",
         "错误响应采用 OpenAI 风格 error 对象；本站可能额外返回 generation_id、generationId、credits_consumed 方便排查和对账。",
         "外接 API Key 绑定的后端分组优先；未绑定时使用用户默认分组，再回退默认启用分组。",
       ],
@@ -294,6 +295,8 @@ curl https://gpt2image.superapi.buzz/v1/images/generations \\
     "quality": "high",
     "moderation": "low",
     "response_format": "url",
+    "output_format": "webp",
+    "output_compression": 85,
     "prompt_optimization": false
   }'
 
@@ -306,6 +309,8 @@ curl https://gpt2image.superapi.buzz/v1/images/generations \\
     "prompt": "生成一张 16:9 产品海报",
     "size": "1536x864",
     "response_format": "url",
+    "output_format": "jpeg",
+    "output_compression": 90,
     "gptModel": "gpt-5.4",
     "thinking": "high",
     "promptOptimization": false
@@ -381,6 +386,18 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
                 "url 或 b64_json。默认 b64_json；url 会返回本站存储 URL。",
             },
             {
+              name: "output_format",
+              requirement: "可选",
+              description:
+                "png、jpeg、webp。控制实际输出图片格式；不同上游支持情况可能不同。",
+            },
+            {
+              name: "output_compression",
+              requirement: "可选",
+              description:
+                "0 到 100，仅对 jpeg/webp 有意义；数值越高质量越高。",
+            },
+            {
               name: "stream",
               requirement: "可选",
               description: "true 时返回 text/event-stream。",
@@ -434,6 +451,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
           notes: [
             "该接口不会调用页面 /api/images/generate，而是直接进入共享 service 层。",
             "如果命中 Responses 账号池，内部会把图片请求转换成 Responses image_generation tool 请求。",
+            "Web 后端无法严格控制输出格式；本站保存时会按实际图片头识别扩展名和 MIME。",
             "如果实际生成尺寸与请求尺寸不一致，本站会按检测到的实际尺寸修正记录和计费。",
             "官方 Images API 可能返回 usage；本站当前非流式 JSON 响应通常返回 usage: null，流式完成和错误事件会带 credits_consumed。",
           ],
@@ -455,6 +473,8 @@ curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -F quality="high" \\
   -F moderation="auto" \\
   -F response_format="url" \\
+  -F output_format="jpeg" \\
+  -F output_compression="90" \\
   -F 'image[]=@/path/to/reference.png'
 
 # 2. multipart 多参考图 + mask + Codex/Responses 参数
@@ -492,6 +512,8 @@ curl https://gpt2image.superapi.buzz/v1/images/edits \\
     "quality": "auto",
     "moderation": "low",
     "response_format": "url",
+    "output_format": "webp",
+    "output_compression": 80,
     "prompt_optimization": false,
     "gptModel": "gpt-5.4-mini",
     "thinking": "low"
@@ -577,6 +599,18 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               name: "response_format",
               requirement: "可选",
               description: "url 或 b64_json。默认 b64_json。",
+            },
+            {
+              name: "output_format",
+              requirement: "可选",
+              description:
+                "png、jpeg、webp。控制实际输出图片格式；不同上游支持情况可能不同。",
+            },
+            {
+              name: "output_compression",
+              requirement: "可选",
+              description:
+                "0 到 100，仅对 jpeg/webp 有意义；数值越高质量越高。",
             },
             {
               name: "stream",
@@ -690,6 +724,8 @@ curl https://gpt2image.superapi.buzz/v1/responses \\
     ],
     "tools": [{ "type": "image_generation", "model": "gpt-image-2" }],
     "size": "1024x1024",
+    "output_format": "webp",
+    "output_compression": 85,
     "moderation": "low"
   }'
 
@@ -803,6 +839,20 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
               custom: true,
               description:
                 "本站便捷字段：作为本次生图 moderation 运行参数使用。",
+            },
+            {
+              name: "output_format",
+              requirement: "可选",
+              custom: true,
+              description:
+                "本站便捷字段：未在 image_generation tool 内指定输出格式时，作为本次 output_format 使用。也可直接写在 image_generation tool 里。",
+            },
+            {
+              name: "output_compression",
+              requirement: "可选",
+              custom: true,
+              description:
+                "本站便捷字段：未在 image_generation tool 内指定压缩率时，作为本次 output_compression 使用。",
             },
           ],
           responses: [
@@ -1069,6 +1119,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         "All external endpoints require Authorization: Bearer <GPT2IMAGE API key>.",
         "Image generation and image edits require Starter or higher; Responses requires Pro or higher.",
         "/api/v1/* and /v1/* use the same handlers; they are path aliases.",
+        "response_format controls URL vs base64; output_format controls the image file format. They are different fields.",
         "Error responses use an OpenAI-style error object. GPT2IMAGE may also return generation_id, generationId, and credits_consumed for debugging and reconciliation.",
         "A backend group bound to the external API key wins first. Otherwise the user's default group is used, then the enabled platform default group.",
       ],
@@ -1173,6 +1224,8 @@ curl https://gpt2image.superapi.buzz/v1/images/generations \\
     "quality": "high",
     "moderation": "low",
     "response_format": "url",
+    "output_format": "webp",
+    "output_compression": 85,
     "prompt_optimization": false
   }'
 
@@ -1185,6 +1238,8 @@ curl https://gpt2image.superapi.buzz/v1/images/generations \\
     "prompt": "Create a 16:9 product campaign poster",
     "size": "1536x864",
     "response_format": "url",
+    "output_format": "jpeg",
+    "output_compression": 90,
     "gptModel": "gpt-5.4",
     "thinking": "high",
     "promptOptimization": false
@@ -1260,6 +1315,18 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
                 "url or b64_json. Defaults to b64_json. url returns a GPT2IMAGE storage URL.",
             },
             {
+              name: "output_format",
+              requirement: "Optional",
+              description:
+                "png, jpeg, or webp. Controls the actual output image format; upstream support may vary.",
+            },
+            {
+              name: "output_compression",
+              requirement: "Optional",
+              description:
+                "0 to 100, only meaningful for jpeg/webp. Higher values mean higher quality.",
+            },
+            {
               name: "stream",
               requirement: "Optional",
               description: "true returns text/event-stream.",
@@ -1313,6 +1380,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
           notes: [
             "This endpoint does not call page /api/images/generate; it directly enters the shared service layer.",
             "When routed to a Responses account, the image request is converted into a Responses image_generation tool request.",
+            "Web backends cannot strictly control output format. GPT2IMAGE labels stored files by the detected image header and MIME.",
             "If the actual generated dimensions differ from the requested size, GPT2IMAGE records and bills using the detected actual size.",
             "The official Images API may return usage. GPT2IMAGE usually returns usage: null in non-stream JSON responses; streaming completion and error events include credits_consumed.",
           ],
@@ -1334,6 +1402,8 @@ curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -F quality="high" \\
   -F moderation="auto" \\
   -F response_format="url" \\
+  -F output_format="jpeg" \\
+  -F output_compression="90" \\
   -F 'image[]=@/path/to/reference.png'
 
 # 2. multipart multiple references + mask + Codex/Responses fields.
@@ -1371,6 +1441,8 @@ curl https://gpt2image.superapi.buzz/v1/images/edits \\
     "quality": "auto",
     "moderation": "low",
     "response_format": "url",
+    "output_format": "webp",
+    "output_compression": 80,
     "prompt_optimization": false,
     "gptModel": "gpt-5.4-mini",
     "thinking": "low"
@@ -1456,6 +1528,18 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               name: "response_format",
               requirement: "Optional",
               description: "url or b64_json. Defaults to b64_json.",
+            },
+            {
+              name: "output_format",
+              requirement: "Optional",
+              description:
+                "png, jpeg, or webp. Controls the actual output image format; upstream support may vary.",
+            },
+            {
+              name: "output_compression",
+              requirement: "Optional",
+              description:
+                "0 to 100, only meaningful for jpeg/webp. Higher values mean higher quality.",
             },
             {
               name: "stream",
@@ -1569,6 +1653,8 @@ curl https://gpt2image.superapi.buzz/v1/responses \\
     ],
     "tools": [{ "type": "image_generation", "model": "gpt-image-2" }],
     "size": "1024x1024",
+    "output_format": "webp",
+    "output_compression": 85,
     "moderation": "low"
   }'
 
@@ -1682,6 +1768,20 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
               custom: true,
               description:
                 "Convenience field used as the run-time image moderation setting.",
+            },
+            {
+              name: "output_format",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "Convenience field used as the run-time output_format when the image_generation tool does not provide one. You may also put it directly in the image_generation tool.",
+            },
+            {
+              name: "output_compression",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "Convenience field used as the run-time output_compression when the image_generation tool does not provide one.",
             },
           ],
           responses: [

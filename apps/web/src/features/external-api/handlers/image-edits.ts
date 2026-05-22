@@ -24,6 +24,11 @@ import {
 import { runBatchImageGeneration } from "@/features/image-generation/batch-runner";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
+  normalizeOutputCompression,
+  normalizeOutputFormat,
+  VALID_OUTPUT_FORMATS,
+} from "@/features/image-generation/output-format";
+import {
   getImageModel,
   validateImageSize,
 } from "@/features/image-generation/resolution";
@@ -38,6 +43,7 @@ import {
 } from "@/features/image-generation/request-utils";
 import type {
   ImageModeration,
+  ImageOutputFormat,
   ImageQuality,
   PartialImageResult,
   ThinkingLevel,
@@ -66,6 +72,8 @@ const JSON_SCALAR_FIELDS = [
   "size",
   "quality",
   "moderation",
+  "output_format",
+  "output_compression",
   "n",
   "response_format",
   "model",
@@ -555,6 +563,17 @@ export const postExternalImageEdits = withApiLogging(
       return openAIImageError("Invalid moderation.");
     }
     const moderation = moderationValue as ImageModeration;
+    const outputFormatValue = getText(formData, "output_format");
+    const outputFormat = normalizeOutputFormat(outputFormatValue);
+    if (
+      outputFormatValue &&
+      !VALID_OUTPUT_FORMATS.has(outputFormat as ImageOutputFormat)
+    ) {
+      return openAIImageError("Invalid output_format.");
+    }
+    const outputCompression = normalizeOutputCompression(
+      getText(formData, "output_compression")
+    );
 
     let count = 1;
     try {
@@ -658,6 +677,8 @@ export const postExternalImageEdits = withApiLogging(
             thinking,
             quality,
             moderation,
+            outputFormat,
+            outputCompression,
             n: 1,
             images: await buildImages(),
             mask: await buildMask(),

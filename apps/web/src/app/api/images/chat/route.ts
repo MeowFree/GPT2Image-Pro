@@ -27,9 +27,15 @@ import {
   validateImageFile,
 } from "@/features/image-generation/request-utils";
 import { createImageStreamResponse } from "@/features/image-generation/streaming";
+import {
+  normalizeOutputCompression,
+  normalizeOutputFormat,
+  VALID_OUTPUT_FORMATS,
+} from "@/features/image-generation/output-format";
 import type {
   ChatHistoryMessage,
   ImageModeration,
+  ImageOutputFormat,
   ImageQuality,
   ThinkingLevel,
 } from "@/features/image-generation/types";
@@ -396,6 +402,19 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     return errorResponse("Invalid moderation.");
   }
   const moderation = moderationValue as ImageModeration;
+  const outputFormatValue =
+    getText(formData, "output_format") || getText(formData, "outputFormat");
+  const outputFormat = normalizeOutputFormat(outputFormatValue);
+  if (
+    outputFormatValue &&
+    !VALID_OUTPUT_FORMATS.has(outputFormat as ImageOutputFormat)
+  ) {
+    return errorResponse("Invalid output_format.");
+  }
+  const outputCompression = normalizeOutputCompression(
+    getText(formData, "output_compression") ||
+      getText(formData, "outputCompression")
+  );
 
   const thinkingValue = getText(formData, "thinking") || "low";
   if (!VALID_THINKING.has(thinkingValue as ThinkingLevel)) {
@@ -472,6 +491,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           quality,
           n: 1,
           moderation,
+          outputFormat,
+          outputCompression,
           stream: useStreamResponse,
           thinking,
         },

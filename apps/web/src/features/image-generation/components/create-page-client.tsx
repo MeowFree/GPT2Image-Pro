@@ -225,6 +225,7 @@ type MaskPoint = {
 
 type ImageQuality = "auto" | "low" | "medium" | "high";
 type ImageModeration = "auto" | "low";
+type ImageOutputFormat = "png" | "jpeg" | "webp";
 
 type ActiveMode = "text" | "image" | "chat";
 
@@ -269,6 +270,14 @@ const QUALITY_OPTIONS: Array<{ value: ImageQuality; label: string }> = [
 const MODERATION_OPTIONS: Array<{ value: ImageModeration; label: string }> = [
   { value: "auto", label: "Auto" },
   { value: "low", label: "Low" },
+];
+const OUTPUT_FORMAT_OPTIONS: Array<{
+  value: ImageOutputFormat;
+  label: string;
+}> = [
+  { value: "png", label: "PNG" },
+  { value: "jpeg", label: "JPEG" },
+  { value: "webp", label: "WebP" },
 ];
 const DEFAULT_BATCH_OPTIONS = [1, 2, 4, 6, 8, 10] as const;
 const WATERFALL_LOAD_SIZE = 5;
@@ -693,6 +702,17 @@ export function CreatePageClient({
         low: "低",
       }[moderationValue]
     );
+  const outputFormatLabel = (format: ImageOutputFormat) =>
+    OUTPUT_FORMAT_OPTIONS.find((option) => option.value === format)?.label ||
+    format.toUpperCase();
+  const outputFormatHelpText = copy(
+    "Controls the requested output file format for Codex/Responses and compatible API backends. Web backends may ignore it; stored files are still labeled by the actual detected format.",
+    "指定 Codex/Responses 和兼容 API 后端的输出文件格式。Web 后端可能忽略；本站保存时仍会按实际识别到的格式标记。"
+  );
+  const outputCompressionHelpText = copy(
+    "Only applies to JPEG/WebP. 0 is smallest file, 100 is highest quality.",
+    "仅对 JPEG/WebP 生效。0 体积最小，100 质量最高。"
+  );
   const thinkingLabel = (value: ChatThinkingLevel) =>
     copy(
       CHAT_THINKING_OPTIONS.find((option) => option.value === value)?.label ||
@@ -813,6 +833,9 @@ export function CreatePageClient({
   const [height, setHeight] = useState(defaultDimensions.height);
   const [quality, setQuality] = useState<ImageQuality>("auto");
   const [moderation, setModeration] = useState<ImageModeration>("auto");
+  const [outputFormat, setOutputFormat] =
+    useState<ImageOutputFormat>("png");
+  const [outputCompression, setOutputCompression] = useState(100);
   const [batchCount, setBatchCount] = useState(1);
   const [lineBatchRepeatCount, setLineBatchRepeatCount] = useState(1);
   const [editBatchCount, setEditBatchCount] = useState(1);
@@ -1383,6 +1406,10 @@ export function CreatePageClient({
     formData.append("history", JSON.stringify(toChatHistory(historyMessages)));
     formData.append("quality", quality);
     formData.append("moderation", moderation);
+    formData.append("output_format", outputFormat);
+    if (outputFormat !== "png") {
+      formData.append("output_compression", String(outputCompression));
+    }
     formData.append("model", chatModel);
     if (showWebOnlyControls) {
       formData.append("thinking", chatThinking);
@@ -2894,6 +2921,10 @@ export function CreatePageClient({
         count: params.count || 1,
         quality,
         moderation,
+        output_format: outputFormat,
+        ...(outputFormat !== "png"
+          ? { output_compression: outputCompression }
+          : {}),
         ...(showImageModelControls && textModel !== "default"
           ? { model: textModel }
           : {}),
@@ -3025,6 +3056,10 @@ export function CreatePageClient({
     formData.append("prompt", editPrompt.trim());
     formData.append("quality", quality);
     formData.append("moderation", moderation);
+    formData.append("output_format", outputFormat);
+    if (outputFormat !== "png") {
+      formData.append("output_compression", String(outputCompression));
+    }
     if (showImageModelControls && editModel !== "default") {
       formData.append("model", editModel);
     }
@@ -3720,59 +3755,126 @@ export function CreatePageClient({
 
           {showResponsesOnlyControls && (
             <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <label
-                htmlFor={`image-quality-${mode}`}
-                className="text-xs font-medium text-muted-foreground"
-              >
-                {copy("Quality", "质量")}
-              </label>
-              <Select
-                value={quality}
-                onValueChange={(value) => setQuality(value as ImageQuality)}
-                disabled={busy}
-              >
-                <SelectTrigger id={`image-quality-${mode}`} className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {QUALITY_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {qualityLabel(option.value)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label
-                htmlFor={`image-oai-moderation-${mode}`}
-                className="text-xs font-medium text-muted-foreground"
-              >
-                {copy("OAI moderation strength", "OAI 自身审核强度")}
-              </label>
-              <Select
-                value={moderation}
-                onValueChange={(value) =>
-                  setModeration(value as ImageModeration)
-                }
-                disabled={busy}
-              >
-                <SelectTrigger
-                  id={`image-oai-moderation-${mode}`}
-                  className="w-full"
+              <div className="space-y-1.5">
+                <label
+                  htmlFor={`image-quality-${mode}`}
+                  className="text-xs font-medium text-muted-foreground"
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MODERATION_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {moderationLabel(option.value)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                  {copy("Quality", "质量")}
+                </label>
+                <Select
+                  value={quality}
+                  onValueChange={(value) => setQuality(value as ImageQuality)}
+                  disabled={busy}
+                >
+                  <SelectTrigger
+                    id={`image-quality-${mode}`}
+                    className="w-full"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {QUALITY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {qualityLabel(option.value)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  htmlFor={`image-output-format-${mode}`}
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  {labelWithHelp(
+                    copy("Output format", "输出格式"),
+                    outputFormatHelpText
+                  )}
+                </label>
+                <Select
+                  value={outputFormat}
+                  onValueChange={(value) =>
+                    setOutputFormat(value as ImageOutputFormat)
+                  }
+                  disabled={busy}
+                >
+                  <SelectTrigger
+                    id={`image-output-format-${mode}`}
+                    className="w-full"
+                    title={outputFormatHelpText}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OUTPUT_FORMAT_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {outputFormatLabel(option.value)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {outputFormat !== "png" && (
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor={`image-output-compression-${mode}`}
+                    className="text-xs font-medium text-muted-foreground"
+                  >
+                    {labelWithHelp(
+                      copy("Compression", "压缩率"),
+                      outputCompressionHelpText
+                    )}
+                  </label>
+                  <Input
+                    id={`image-output-compression-${mode}`}
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={outputCompression}
+                    onChange={(event) =>
+                      setOutputCompression(
+                        Math.min(
+                          100,
+                          Math.max(0, Number(event.target.value) || 0)
+                        )
+                      )
+                    }
+                    disabled={busy}
+                    title={outputCompressionHelpText}
+                  />
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <label
+                  htmlFor={`image-oai-moderation-${mode}`}
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  {copy("OAI moderation strength", "OAI 自身审核强度")}
+                </label>
+                <Select
+                  value={moderation}
+                  onValueChange={(value) =>
+                    setModeration(value as ImageModeration)
+                  }
+                  disabled={busy}
+                >
+                  <SelectTrigger
+                    id={`image-oai-moderation-${mode}`}
+                    className="w-full"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MODERATION_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {moderationLabel(option.value)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
         </div>
@@ -4284,59 +4386,130 @@ export function CreatePageClient({
                 )}
 
                 {showResponsesOnlyControls && (
-                <>
-                <div className="space-y-2">
-                  <label
-                    htmlFor="edit-quality"
-                    className="text-sm font-medium text-foreground"
-                  >
-                    {copy("Quality", "质量")}
-                  </label>
-                  <Select
-                    value={quality}
-                    onValueChange={(value) => setQuality(value as ImageQuality)}
-                    disabled={isEditing}
-                  >
-                    <SelectTrigger id="edit-quality" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {QUALITY_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {qualityLabel(option.value)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                  <>
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="edit-quality"
+                        className="text-sm font-medium text-foreground"
+                      >
+                        {copy("Quality", "质量")}
+                      </label>
+                      <Select
+                        value={quality}
+                        onValueChange={(value) =>
+                          setQuality(value as ImageQuality)
+                        }
+                        disabled={isEditing}
+                      >
+                        <SelectTrigger id="edit-quality" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {QUALITY_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {qualityLabel(option.value)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                <div className="space-y-2">
-                  <label
-                    htmlFor="edit-oai-moderation"
-                    className="text-sm font-medium text-foreground"
-                  >
-                    {copy("OAI moderation strength", "OAI 自身审核强度")}
-                  </label>
-                  <Select
-                    value={moderation}
-                    onValueChange={(value) =>
-                      setModeration(value as ImageModeration)
-                    }
-                    disabled={isEditing}
-                  >
-                    <SelectTrigger id="edit-oai-moderation" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MODERATION_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {moderationLabel(option.value)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                </>
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="edit-output-format"
+                        className="text-sm font-medium text-foreground"
+                      >
+                        {labelWithHelp(
+                          copy("Output format", "输出格式"),
+                          outputFormatHelpText
+                        )}
+                      </label>
+                      <Select
+                        value={outputFormat}
+                        onValueChange={(value) =>
+                          setOutputFormat(value as ImageOutputFormat)
+                        }
+                        disabled={isEditing}
+                      >
+                        <SelectTrigger
+                          id="edit-output-format"
+                          className="w-full"
+                          title={outputFormatHelpText}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {OUTPUT_FORMAT_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {outputFormatLabel(option.value)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {outputFormat !== "png" && (
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="edit-output-compression"
+                          className="text-sm font-medium text-foreground"
+                        >
+                          {labelWithHelp(
+                            copy("Compression", "压缩率"),
+                            outputCompressionHelpText
+                          )}
+                        </label>
+                        <Input
+                          id="edit-output-compression"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={outputCompression}
+                          onChange={(event) =>
+                            setOutputCompression(
+                              Math.min(
+                                100,
+                                Math.max(0, Number(event.target.value) || 0)
+                              )
+                            )
+                          }
+                          disabled={isEditing}
+                          title={outputCompressionHelpText}
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="edit-oai-moderation"
+                        className="text-sm font-medium text-foreground"
+                      >
+                        {copy("OAI moderation strength", "OAI 自身审核强度")}
+                      </label>
+                      <Select
+                        value={moderation}
+                        onValueChange={(value) =>
+                          setModeration(value as ImageModeration)
+                        }
+                        disabled={isEditing}
+                      >
+                        <SelectTrigger
+                          id="edit-oai-moderation"
+                          className="w-full"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MODERATION_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {moderationLabel(option.value)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
                 )}
 
                 <div className="space-y-2">

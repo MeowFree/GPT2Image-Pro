@@ -19,6 +19,12 @@ import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { and, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { ImageBackendRequestKind } from "@/features/image-backend-pool/types";
+import {
+  detectImageOutputFormatFromBuffer,
+  getOutputFormatContentType,
+  getOutputFormatExtension,
+  normalizeOutputFormat,
+} from "./output-format";
 import { withImageGenerationQueue } from "./queue";
 import {
   DEFAULT_IMAGE_SIZE,
@@ -113,6 +119,21 @@ async function toImageBuffer(result: {
   }
 
   return Buffer.from(await response.arrayBuffer());
+}
+
+function resolveStoredImageFormat(
+  buffer: Buffer,
+  requestedFormat?: string
+) {
+  const detectedFormat = detectImageOutputFormatFromBuffer(buffer);
+  const fallbackFormat = normalizeOutputFormat(requestedFormat) || "png";
+  const format = detectedFormat || fallbackFormat;
+  return {
+    format,
+    contentType: getOutputFormatContentType(format),
+    extension: getOutputFormatExtension(format),
+    detected: Boolean(detectedFormat),
+  };
 }
 
 function isPendingGeneration(generationId: string) {
@@ -704,6 +725,8 @@ async function runQueuedImageGenerationForUser({
             imageCount: input.images.length,
             hasMask: Boolean(input.mask),
             quality: input.quality || "auto",
+            outputFormat: input.outputFormat || null,
+            outputCompression: input.outputCompression ?? null,
             batchCount: input.n || 1,
             creditCost,
             moderationBlockingEnabled,
@@ -719,6 +742,8 @@ async function runQueuedImageGenerationForUser({
               imageCount: input.images?.length || 0,
               quality: input.quality || "auto",
               moderation: input.moderation || "auto",
+              outputFormat: input.outputFormat || null,
+              outputCompression: input.outputCompression ?? null,
               batchCount: input.n || 1,
               creditCost,
               moderationBlockingEnabled,
@@ -731,6 +756,8 @@ async function runQueuedImageGenerationForUser({
               ...promptOptimizationMetadata,
               quality: input.quality || "auto",
               moderation: input.moderation || "auto",
+              outputFormat: input.outputFormat || null,
+              outputCompression: input.outputCompression ?? null,
               batchCount: input.n || 1,
               creditCost,
               moderationBlockingEnabled,
@@ -976,6 +1003,8 @@ async function runQueuedImageGenerationForUser({
               quality: input.quality,
               n: input.n,
               moderation: input.moderation,
+              outputFormat: input.outputFormat,
+              outputCompression: input.outputCompression,
             },
             callbacks
           )
@@ -996,6 +1025,8 @@ async function runQueuedImageGenerationForUser({
                 quality: input.quality,
                 n: input.n,
                 moderation: input.moderation,
+                outputFormat: input.outputFormat,
+                outputCompression: input.outputCompression,
                 stream: input.stream,
                 thinking: input.thinking,
                 rawResponsesBody: input.rawResponsesBody,
@@ -1016,6 +1047,8 @@ async function runQueuedImageGenerationForUser({
                 n: input.n,
                 quality: input.quality,
                 moderation: input.moderation,
+                outputFormat: input.outputFormat,
+                outputCompression: input.outputCompression,
               },
               callbacks
             );
@@ -1170,9 +1203,17 @@ async function runQueuedImageGenerationForUser({
   let fileSize = 0;
   let actualSize = size;
   let actualSizeDetected = false;
+  let actualOutputFormat: string | null = null;
+  let actualOutputFormatDetected = false;
   try {
     const imageBuffer = await toImageBuffer(result);
-    storageKey = `${input.userId}/${nanoid(32)}.png`;
+    const storedFormat = resolveStoredImageFormat(
+      imageBuffer,
+      input.outputFormat
+    );
+    actualOutputFormat = storedFormat.format;
+    actualOutputFormatDetected = storedFormat.detected;
+    storageKey = `${input.userId}/${nanoid(32)}.${storedFormat.extension}`;
     fileSize = imageBuffer.length;
     const actualDimensions = getImageDimensionsFromBuffer(imageBuffer);
     if (actualDimensions) {
@@ -1183,7 +1224,12 @@ async function runQueuedImageGenerationForUser({
       );
     }
     const storage = await getStorageProvider();
-    await storage.putObject(storageKey, bucket, imageBuffer, "image/png");
+    await storage.putObject(
+      storageKey,
+      bucket,
+      imageBuffer,
+      storedFormat.contentType
+    );
   } catch (storageError: unknown) {
     const message =
       storageError instanceof Error
@@ -1302,6 +1348,10 @@ async function runQueuedImageGenerationForUser({
             actualSize,
             actualSizeDetected,
             actualSizeMatchesRequested: actualSize === size,
+            requestedFormat: input.outputFormat || null,
+            requestedCompression: input.outputCompression ?? null,
+            actualFormat: actualOutputFormat,
+            actualFormatDetected: actualOutputFormatDetected,
             requestedCreditCost: creditCost,
             actualCreditCost,
           },

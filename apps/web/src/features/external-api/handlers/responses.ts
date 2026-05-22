@@ -25,6 +25,10 @@ import {
 import { isExternalResponsesImageModelAllowed } from "@/features/external-api/models";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
+  normalizeOutputCompression,
+  normalizeOutputFormat,
+} from "@/features/image-generation/output-format";
+import {
   DEFAULT_IMAGE_SIZE,
   getImageModel,
   validateImageSize,
@@ -34,6 +38,7 @@ import type {
   ChatHistoryMessage,
   ImageInputFile,
   ImageModeration,
+  ImageOutputFormat,
   ImageQuality,
   ThinkingLevel,
 } from "@/features/image-generation/types";
@@ -84,6 +89,8 @@ const responseSchema = z.object({
     }),
   quality: z.enum(["auto", "low", "medium", "high"]).optional(),
   moderation: z.enum(["auto", "low"]).optional(),
+  output_format: z.enum(["png", "jpeg", "webp"]).optional(),
+  output_compression: z.number().int().min(0).max(100).optional(),
   reasoning: z
     .object({
       effort: z
@@ -488,6 +495,26 @@ function getRequestedToolImageModel(tools: ResponseRequest["tools"]) {
   return getImageModel(imageTool.model) || undefined;
 }
 
+function getRequestedToolOutputFormat(tools: ResponseRequest["tools"]) {
+  const imageTool = tools?.find((tool) => tool.type === "image_generation");
+  if (!imageTool || typeof imageTool.output_format !== "string") {
+    return undefined;
+  }
+  return normalizeOutputFormat(imageTool.output_format);
+}
+
+function getRequestedToolOutputCompression(tools: ResponseRequest["tools"]) {
+  const imageTool = tools?.find((tool) => tool.type === "image_generation");
+  if (
+    !imageTool ||
+    (typeof imageTool.output_compression !== "number" &&
+      typeof imageTool.output_compression !== "string")
+  ) {
+    return undefined;
+  }
+  return normalizeOutputCompression(imageTool.output_compression);
+}
+
 async function loadPreviousContinuation(params: {
   userId: string;
   apiKeyId: string;
@@ -685,6 +712,13 @@ export const postExternalResponses = withApiLogging(
       imageModel: getRequestedToolImageModel(parsed.data.tools),
       quality: parsed.data.quality as ImageQuality | undefined,
       moderation: (parsed.data.moderation || "auto") as ImageModeration,
+      outputFormat: (normalizeOutputFormat(parsed.data.output_format) ||
+        getRequestedToolOutputFormat(
+          parsed.data.tools
+        )) as ImageOutputFormat | undefined,
+      outputCompression:
+        normalizeOutputCompression(parsed.data.output_compression) ??
+        getRequestedToolOutputCompression(parsed.data.tools),
       thinking: normalizeThinking(parsed.data.reasoning?.effort),
       stream: wantsImageStreamResponse(request, parsed.data.stream),
       rawResponsesBody: parsed.data,

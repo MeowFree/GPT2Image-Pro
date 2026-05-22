@@ -15,6 +15,10 @@ import {
   validateImageSize,
 } from "@/features/image-generation/resolution";
 import { createImageStreamResponse } from "@/features/image-generation/streaming";
+import {
+  normalizeOutputCompression,
+  normalizeOutputFormat,
+} from "@/features/image-generation/output-format";
 
 const generateImageSchema = z.object({
   prompt: z.string().min(1).max(4000),
@@ -34,6 +38,10 @@ const generateImageSchema = z.object({
   count: z.number().int().min(1).max(100).optional(),
   quality: z.enum(["auto", "low", "medium", "high"]).optional(),
   moderation: z.enum(["auto", "low"]).optional(),
+  output_format: z.enum(["png", "jpeg", "webp"]).optional(),
+  outputFormat: z.enum(["png", "jpeg", "webp"]).optional(),
+  output_compression: z.number().int().min(0).max(100).optional(),
+  outputCompression: z.number().int().min(0).max(100).optional(),
 });
 
 function errorResponse(message: string, status = 400) {
@@ -94,6 +102,12 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     thinking: parsed.data.thinking,
     quality: parsed.data.quality || "auto",
     moderation: parsed.data.moderation || "auto",
+    outputFormat: normalizeOutputFormat(
+      parsed.data.output_format || parsed.data.outputFormat
+    ),
+    outputCompression: normalizeOutputCompression(
+      parsed.data.output_compression ?? parsed.data.outputCompression
+    ),
   };
 
   try {

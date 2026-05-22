@@ -21,6 +21,10 @@ import {
 import { runBatchImageGeneration } from "@/features/image-generation/batch-runner";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
+  normalizeOutputCompression,
+  normalizeOutputFormat,
+} from "@/features/image-generation/output-format";
+import {
   DEFAULT_IMAGE_SIZE,
   getImageModel,
   validateImageSize,
@@ -47,6 +51,8 @@ const externalImageGenerationSchema = z.object({
   quality: z.enum(["auto", "low", "medium", "high"]).optional(),
   moderation: z.enum(["auto", "low"]).optional(),
   response_format: z.enum(["url", "b64_json"]).optional(),
+  output_format: z.enum(["png", "jpeg", "webp"]).optional(),
+  output_compression: z.number().int().min(0).max(100).optional(),
   stream: z.boolean().optional(),
 });
 
@@ -169,6 +175,10 @@ export const postExternalImageGenerations = withApiLogging(
       thinking: parsed.data.thinking,
       quality: parsed.data.quality,
       moderation: parsed.data.moderation || "auto",
+      outputFormat: normalizeOutputFormat(parsed.data.output_format),
+      outputCompression: normalizeOutputCompression(
+        parsed.data.output_compression
+      ),
     };
     const responseFormat = parsed.data.response_format || "b64_json";
 
