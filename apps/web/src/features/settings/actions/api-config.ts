@@ -146,6 +146,7 @@ export const saveApiConfig = withApiConfigAction("save")
           apiKey: parsedInput.apiKey,
           model: parsedInput.model || null,
           useStream: parsedInput.useStream ?? false,
+          isActive: true,
           updatedAt: new Date(),
         })
         .where(eq(userApiConfig.userId, ctx.userId));
@@ -157,6 +158,7 @@ export const saveApiConfig = withApiConfigAction("save")
         apiKey: parsedInput.apiKey,
         model: parsedInput.model || null,
         useStream: parsedInput.useStream ?? false,
+        isActive: true,
       });
     }
 

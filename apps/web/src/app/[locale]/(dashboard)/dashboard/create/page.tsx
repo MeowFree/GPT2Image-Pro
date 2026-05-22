@@ -7,6 +7,7 @@ import { getLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { CreatePageClient } from "@/features/image-generation/components/create-page-client";
 import { getUserRecentGenerations } from "@/features/image-generation/queries";
+import { getUserApiConfig } from "@/features/image-generation/service";
 import {
   getUserImageBackendPreference,
   listSelectableImageBackendGroups,
@@ -17,11 +18,13 @@ export default async function CreatePage() {
   const locale = await getLocale();
   if (!user) redirect(`/${locale}/sign-in`);
 
-  const [creditsData, recentGenerations, plan] = await Promise.all([
-    getCreditsBalance(user.id),
-    getUserRecentGenerations(user.id, 6),
-    getUserPlan(user.id),
-  ]);
+  const [creditsData, recentGenerations, plan, userApiConfig] =
+    await Promise.all([
+      getCreditsBalance(user.id),
+      getUserRecentGenerations(user.id, 6),
+      getUserPlan(user.id),
+      getUserApiConfig(user.id),
+    ]);
   const [uploadLimits, backendGroups, selectedBackendGroupId] =
     await Promise.all([
       getPlanUploadLimits(plan.plan),
@@ -58,6 +61,7 @@ export default async function CreatePage() {
         backendType: group.backendType,
       }))}
       selectedBackendGroupId={selectedBackendGroupId}
+      customApiActive={Boolean(userApiConfig)}
     />
   );
 }

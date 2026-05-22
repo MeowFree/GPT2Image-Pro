@@ -332,7 +332,15 @@ curl -N https://gpt2image.superapi.buzz/v1/images/generations \\
     }
   ],
   "usage": null
-}`,
+}
+
+# stream=true 时的 SSE 片段
+event: image_generation.partial_image
+data: {"type":"image_generation.partial_image","index":0,"partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
+
+event: image_generation.completed
+data: {"type":"image_generation.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","data":[{"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","revised_prompt":"..."}]}
+`,
           fields: [
             {
               name: "prompt",
@@ -508,7 +516,15 @@ curl -N https://gpt2image.superapi.buzz/v1/images/edits \\
     }
   ],
   "usage": null
-}`,
+}
+
+# stream=true 时的 SSE 片段
+event: image_edit.partial_image
+data: {"type":"image_edit.partial_image","index":0,"partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
+
+event: image_edit.completed
+data: {"type":"image_edit.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","data":[{"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","revised_prompt":"..."}]}
+`,
           fields: [
             {
               name: "prompt",
@@ -710,7 +726,15 @@ curl -N https://gpt2image.superapi.buzz/v1/responses \\
     "credits_consumed": 1.31,
     "size": "1024x1024"
   }
-}`,
+}
+
+# stream=true 时的 SSE 片段
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"ig_...","type":"image_generation_call","status":"completed","result":"..."}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_...","object":"response","created_at":1713833628,"status":"completed","model":"gpt-5.4","output":[{"id":"ig_...","type":"image_generation_call","status":"completed","result":"..."}],"usage":null,"metadata":{"generation_id":"...","credits_consumed":1.31,"size":"1024x1024"}}}
+`,
           fields: [
             {
               name: "model",
@@ -1186,7 +1210,15 @@ curl -N https://gpt2image.superapi.buzz/v1/images/generations \\
     }
   ],
   "usage": null
-}`,
+}
+
+# SSE when stream=true
+event: image_generation.partial_image
+data: {"type":"image_generation.partial_image","index":0,"partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
+
+event: image_generation.completed
+data: {"type":"image_generation.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","data":[{"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","revised_prompt":"..."}]}
+`,
           fields: [
             {
               name: "prompt",
@@ -1362,7 +1394,15 @@ curl -N https://gpt2image.superapi.buzz/v1/images/edits \\
     }
   ],
   "usage": null
-}`,
+}
+
+# SSE when stream=true
+event: image_edit.partial_image
+data: {"type":"image_edit.partial_image","index":0,"partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
+
+event: image_edit.completed
+data: {"type":"image_edit.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","data":[{"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","revised_prompt":"..."}]}
+`,
           fields: [
             {
               name: "prompt",
@@ -1564,7 +1604,15 @@ curl -N https://gpt2image.superapi.buzz/v1/responses \\
     "credits_consumed": 1.31,
     "size": "1024x1024"
   }
-}`,
+}
+
+# SSE when stream=true
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"ig_...","type":"image_generation_call","status":"completed","result":"..."}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_...","object":"response","created_at":1713833628,"status":"completed","model":"gpt-5.4","output":[{"id":"ig_...","type":"image_generation_call","status":"completed","result":"..."}],"usage":null,"metadata":{"generation_id":"...","credits_consumed":1.31,"size":"1024x1024"}}}
+`,
           fields: [
             {
               name: "model",

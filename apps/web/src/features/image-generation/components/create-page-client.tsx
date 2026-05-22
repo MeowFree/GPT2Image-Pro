@@ -334,6 +334,7 @@ interface CreatePageClientProps {
   };
   backendGroups: BackendGroupOption[];
   selectedBackendGroupId: string | null;
+  customApiActive: boolean;
 }
 
 function isImageFile(file: File) {
@@ -643,6 +644,7 @@ export function CreatePageClient({
   uploadLimits,
   backendGroups,
   selectedBackendGroupId,
+  customApiActive,
 }: CreatePageClientProps) {
   const locale = useLocale();
   const isZh = locale === "zh";
@@ -923,6 +925,10 @@ export function CreatePageClient({
   const formattedBatchSingleCreditCost = formatCredits(batchSingleCreditCost);
   const formattedWaterfallCreditsConsumed = formatCredits(
     waterfallCreditsConsumed
+  );
+  const customApiBillingLabel = copy(
+    "Custom API active, no site credits",
+    "自填 API 已启用，不消耗本站积分"
   );
   const sizeCheck = useMemo(() => validateImageSize(size), [size]);
   const customEditSizeCheck = useMemo(
@@ -2178,10 +2184,18 @@ export function CreatePageClient({
             </span>
           )}
           <span className="ml-auto text-xs text-muted-foreground">
-            {copy("Cost", "费用")}{" "}
-            <span className="font-medium text-foreground">
-              {formattedChatSingleCreditCost}
-            </span>
+            {customApiActive ? (
+              <span className="font-medium text-foreground">
+                {customApiBillingLabel}
+              </span>
+            ) : (
+              <>
+                {copy("Cost", "费用")}{" "}
+                <span className="font-medium text-foreground">
+                  {formattedChatSingleCreditCost}
+                </span>
+              </>
+            )}
           </span>
         </div>
         <div className="mb-2">
@@ -2364,7 +2378,7 @@ export function CreatePageClient({
     });
     const pendingCredits = batchActiveRequestsRef.current * creditsPerRequest;
     const requiredCredits = creditsPerRequest * loadSize + pendingCredits;
-    if (balance < requiredCredits) {
+    if (!customApiActive && balance < requiredCredits) {
       showGenerationError("Insufficient credits");
       return;
     }
@@ -2546,7 +2560,7 @@ export function CreatePageClient({
     const cost = isEditRequest ? chatEditImageCreditCost : CHAT_TEXT_ONLY_CREDITS;
     const outputSizeCheck = isEditRequest ? chatCustomEditSizeCheck : sizeCheck;
 
-    if (balance < cost) {
+    if (!customApiActive && balance < cost) {
       showGenerationError("Insufficient credits");
       return;
     }
@@ -2684,7 +2698,7 @@ export function CreatePageClient({
       toast.error(copy("Please enter a prompt", "请输入提示词"));
       return;
     }
-    if (balance < textBatchCreditCost) {
+    if (!customApiActive && balance < textBatchCreditCost) {
       showGenerationError("Insufficient credits");
       return;
     }
@@ -2778,7 +2792,7 @@ export function CreatePageClient({
       toast.error(copy("Enter at least one prompt line", "请至少输入一行提示词"));
       return;
     }
-    if (balance < lineBatchCreditCost) {
+    if (!customApiActive && balance < lineBatchCreditCost) {
       showGenerationError("Insufficient credits");
       return;
     }
@@ -2860,7 +2874,7 @@ export function CreatePageClient({
       });
       return;
     }
-    if (balance < editBatchCreditCost) {
+    if (!customApiActive && balance < editBatchCreditCost) {
       showGenerationError("Insufficient credits");
       return;
     }
@@ -3604,17 +3618,23 @@ export function CreatePageClient({
 
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground lg:justify-end">
           <Coins className="h-3.5 w-3.5" />
-          <span>
-            {copy("Balance", "余额")}:{" "}
+          {customApiActive ? (
             <span className="font-medium text-foreground">
-              {formattedBalance}
-            </span>{" "}
-            · {copy("Cost", "费用")}:{" "}
-            <span className="font-medium text-foreground">
-              {formattedCost}
+              {customApiBillingLabel}
             </span>
-            {costSuffix}
-          </span>
+          ) : (
+            <span>
+              {copy("Balance", "余额")}:{" "}
+              <span className="font-medium text-foreground">
+                {formattedBalance}
+              </span>{" "}
+              · {copy("Cost", "费用")}:{" "}
+              <span className="font-medium text-foreground">
+                {formattedCost}
+              </span>
+              {costSuffix}
+            </span>
+          )}
         </div>
       </div>
       {!sizeCheck.valid && (
@@ -4301,11 +4321,19 @@ export function CreatePageClient({
                     <p className="mt-1">{editReferenceSizeNote}</p>
                   )}
                   <p className="mt-1">
-                    {copy("Cost", "费用")}:{" "}
-                    <span className="font-medium text-foreground">
-                      {formattedEditBatchCreditCost}
-                    </span>
-                    {batchCostSuffix(editBatchCount)}
+                    {customApiActive ? (
+                      <span className="font-medium text-foreground">
+                        {customApiBillingLabel}
+                      </span>
+                    ) : (
+                      <>
+                        {copy("Cost", "费用")}:{" "}
+                        <span className="font-medium text-foreground">
+                          {formattedEditBatchCreditCost}
+                        </span>
+                        {batchCostSuffix(editBatchCount)}
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
@@ -4702,26 +4730,34 @@ export function CreatePageClient({
                       isBatchActive
                     )}
                     <div className="text-xs text-muted-foreground">
-                      {copy("Per image", "单张预计")}{" "}
-                      <span className="font-medium text-foreground">
-                        {formattedBatchSingleCreditCost}
-                      </span>
-                      {isBatchActive && (
+                      {customApiActive ? (
+                        <span className="font-medium text-foreground">
+                          {customApiBillingLabel}
+                        </span>
+                      ) : (
                         <>
+                          {copy("Per image", "单张预计")}{" "}
+                          <span className="font-medium text-foreground">
+                            {formattedBatchSingleCreditCost}
+                          </span>
+                          {isBatchActive && (
+                            <>
+                              {" "}
+                              <span className="text-muted-foreground">/</span>{" "}
+                              {copy("Used", "已用")}{" "}
+                              <span className="font-medium text-foreground">
+                                {formattedWaterfallCreditsConsumed}
+                              </span>
+                            </>
+                          )}
                           {" "}
                           <span className="text-muted-foreground">/</span>{" "}
-                          {copy("Used", "已用")}{" "}
+                          {copy("Balance", "余额")}{" "}
                           <span className="font-medium text-foreground">
-                            {formattedWaterfallCreditsConsumed}
-                          </span>
+                            {formattedBalance}
+                          </span>{" "}
                         </>
                       )}
-                      {" "}
-                      <span className="text-muted-foreground">/</span>{" "}
-                      {copy("Balance", "余额")}{" "}
-                      <span className="font-medium text-foreground">
-                        {formattedBalance}
-                      </span>{" "}
                     </div>
                   </div>
                 </div>

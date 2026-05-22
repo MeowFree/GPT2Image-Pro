@@ -68,6 +68,7 @@ export function ApiConfigForm() {
       onSuccess: () => {
         toast.success(t("apiConfig.saved"));
         setHasConfig(true);
+        setIsActive(true);
       },
       onError: (err) => {
         toast.error(getActionErrorMessage(err.error, t("apiConfig.saveFailed")));
