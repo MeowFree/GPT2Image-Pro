@@ -1,12 +1,13 @@
 import { getStorageProvider } from "@repo/shared/storage/providers";
 import { getRuntimeSettingString } from "@repo/shared/system-settings";
+import { logWarn } from "@repo/shared/logger";
 import type { ImageInputFile } from "./types";
 
 export const DEFAULT_MAX_IMAGE_BYTES = 25 * 1024 * 1024;
-export const MODERATION_UPLOAD_URL_EXPIRES = 600;
+export const TEMP_IMAGE_UPLOAD_URL_EXPIRES = 15 * 60;
 export const VALID_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
-export type ModerationUploadedImage = {
+export type TemporaryUploadedImage = {
   bucket: string;
   key: string;
   url: string;
@@ -70,60 +71,73 @@ export async function toImageInput(
   };
 }
 
-export async function uploadModerationImages(
+export async function uploadTemporaryImageUrls(
   userId: string,
   generationId: string,
-  files: File[]
-): Promise<ModerationUploadedImage[] | undefined> {
+  files: File[],
+  options?: { scope?: string }
+): Promise<TemporaryUploadedImage[] | undefined> {
   if (files.length === 0) return undefined;
 
-  const publicBaseUrl =
-    (await getRuntimeSettingString("ALIYUN_MODERATION_PUBLIC_BASE_URL")) ||
-    (await getRuntimeSettingString("CONTENT_MODERATION_PUBLIC_BASE_URL")) ||
-    (await getRuntimeSettingString("NEXT_PUBLIC_APP_URL")) ||
-    (await getRuntimeSettingString("BETTER_AUTH_URL"));
-  if (!(await getRuntimeSettingString("STORAGE_ENDPOINT")) && !publicBaseUrl) {
+  try {
+    const publicBaseUrl =
+      (await getRuntimeSettingString("ALIYUN_MODERATION_PUBLIC_BASE_URL")) ||
+      (await getRuntimeSettingString("CONTENT_MODERATION_PUBLIC_BASE_URL")) ||
+      (await getRuntimeSettingString("NEXT_PUBLIC_APP_URL")) ||
+      (await getRuntimeSettingString("BETTER_AUTH_URL"));
+    if (!(await getRuntimeSettingString("STORAGE_ENDPOINT")) && !publicBaseUrl) {
+      return undefined;
+    }
+
+    const storage = await getStorageProvider();
+    const bucket =
+      (await getRuntimeSettingString("NEXT_PUBLIC_GENERATIONS_BUCKET_NAME")) ||
+      "generations";
+
+    return await Promise.all(
+      files.map(async (file, index) => {
+        const extension =
+          file.type === "image/jpeg"
+            ? "jpg"
+            : file.type === "image/webp"
+              ? "webp"
+              : "png";
+        const scope = options?.scope || "requests";
+        const key = `${userId}/${scope}/${generationId}-${index}.${extension}`;
+        await storage.putObject(
+          key,
+          bucket,
+          Buffer.from(await file.arrayBuffer()),
+          file.type || "image/png"
+        );
+        const url = await storage.getSignedUrl(
+          key,
+          bucket,
+          TEMP_IMAGE_UPLOAD_URL_EXPIRES
+        );
+        return {
+          bucket,
+          key,
+          url: url.startsWith("http")
+            ? url
+            : `${publicBaseUrl?.replace(/\/$/, "")}${url}`,
+        };
+      })
+    );
+  } catch (error) {
+    logWarn("临时图片 URL 上传失败，回退到 base64 输入", {
+      generationId,
+      fileCount: files.length,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return undefined;
   }
-
-  const storage = await getStorageProvider();
-  const bucket =
-    (await getRuntimeSettingString("NEXT_PUBLIC_GENERATIONS_BUCKET_NAME")) ||
-    "generations";
-
-  return Promise.all(
-    files.map(async (file, index) => {
-      const extension =
-        file.type === "image/jpeg"
-          ? "jpg"
-          : file.type === "image/webp"
-            ? "webp"
-            : "png";
-      const key = `${userId}/moderation/${generationId}-${index}.${extension}`;
-      await storage.putObject(
-        key,
-        bucket,
-        Buffer.from(await file.arrayBuffer()),
-        file.type || "image/png"
-      );
-      const url = await storage.getSignedUrl(
-        key,
-        bucket,
-        MODERATION_UPLOAD_URL_EXPIRES
-      );
-      return {
-        bucket,
-        key,
-        url: url.startsWith("http")
-          ? url
-          : `${publicBaseUrl?.replace(/\/$/, "")}${url}`,
-      };
-    })
-  );
 }
 
-export async function deleteModerationImages(
-  images: ModerationUploadedImage[] | undefined
+export const uploadModerationImages = uploadTemporaryImageUrls;
+
+export async function deleteTemporaryImages(
+  images: TemporaryUploadedImage[] | undefined
 ) {
   if (!images?.length) return;
 
@@ -133,13 +147,15 @@ export async function deleteModerationImages(
   );
 }
 
+export const deleteModerationImages = deleteTemporaryImages;
+
 export async function filesToImageInputs(
   files: File[],
-  moderationImages?: ModerationUploadedImage[]
+  uploadedImages?: TemporaryUploadedImage[]
 ) {
   return await Promise.all(
     files.map((file, index) =>
-      toImageInput(file, { publicUrl: moderationImages?.[index]?.url })
+      toImageInput(file, { publicUrl: uploadedImages?.[index]?.url })
     )
   );
 }

@@ -26,6 +26,7 @@ import {
 } from "@/features/image-backend-pool/service";
 import type {
   ImageBackendAccountBackend,
+  ImageBackendPreferenceMode,
   ImageBackendRequestKind,
 } from "@/features/image-backend-pool/types";
 import {
@@ -58,14 +59,17 @@ import {
   buildAgentContinuationInput,
   buildContinueGenerationFunctionCallItems,
   buildCurrentResponsesContent,
+  buildGeneratedImageReferenceInstruction,
   buildResponsesInput,
   buildPreviousResponseFallbackRequestBody,
   getContinueGenerationFunctionCalls,
+  getNextAssistantImageRoundIndex,
   isPreviousResponseStateError,
   resolveResponsesNativeState,
   resolvePromptImageReferences,
   shouldEnableResponsesPreviousResponse,
   type ResponsesRequestInputItem,
+  withResponsesImageReferenceInstructions,
 } from "./responses-native-state";
 import type {
   ApiConfig,
@@ -867,7 +871,11 @@ async function fetchResponsesWithPreviousResponseFallback(
 async function retryPoolBackendResult(
   config: ApiConfig,
   run: (candidate: ApiConfig) => Promise<GenerateImageResult>,
-  options?: { mixWebFirst?: boolean }
+  options?: {
+    mixWebFirst?: boolean;
+    accountBackendPreference?: ImageBackendAccountBackend;
+    accountBackendPreferenceMode?: ImageBackendPreferenceMode;
+  }
 ) {
   if (
     !config.backend?.reportResult ||
@@ -880,7 +888,8 @@ async function retryPoolBackendResult(
   const requestKind = config.backend.requestKind;
   const excluded = new Set<string>();
   let accountBackendPreference: ImageBackendAccountBackend | undefined =
-    options?.mixWebFirst ? "web" : undefined;
+    options?.accountBackendPreference ||
+    (options?.mixWebFirst ? "web" : undefined);
   let candidate = config;
   let lastResult: GenerateImageResult | null = null;
   let attempt = 0;
@@ -949,10 +958,14 @@ async function retryPoolBackendResult(
         requestKind,
         excludedMemberKeys: Array.from(excluded),
         accountBackendPreference,
+        accountBackendPreferenceMode: options?.accountBackendPreferenceMode,
       });
     } catch (error) {
       if (error instanceof ImageBackendPoolUnavailableError) {
-        if (accountBackendPreference === "web") {
+        if (
+          accountBackendPreference === "web" &&
+          !options?.accountBackendPreference
+        ) {
           logWarn("混合分组 1K Web 优先阶段已无可用账号，切换 Codex", {
             attempt,
             requestKind,
@@ -967,6 +980,7 @@ async function retryPoolBackendResult(
               requestKind,
               excludedMemberKeys: Array.from(excluded),
               accountBackendPreference,
+              accountBackendPreferenceMode: options?.accountBackendPreferenceMode,
             });
           } catch (fallbackError) {
             if (fallbackError instanceof ImageBackendPoolUnavailableError) {
@@ -2452,12 +2466,14 @@ export async function getEffectiveConfig(
     requestKind?: ImageBackendRequestKind;
     preferredMemberId?: string;
     accountBackendPreference?: ImageBackendAccountBackend;
+    accountBackendPreferenceMode?: ImageBackendPreferenceMode;
+    ignoreUserConfig?: boolean;
   }
 ): Promise<{
   config: ApiConfig;
   useCredits: boolean;
 }> {
-  if (userConfig) {
+  if (userConfig && !options?.ignoreUserConfig) {
     return { config: userConfig, useCredits: false };
   }
   if (options?.userId && options.requestKind) {
@@ -2469,6 +2485,7 @@ export async function getEffectiveConfig(
         requestKind: options.requestKind,
         preferredMemberId: options.preferredMemberId,
         accountBackendPreference: options.accountBackendPreference,
+        accountBackendPreferenceMode: options.accountBackendPreferenceMode,
       });
     } catch (error) {
       if (error instanceof ImageBackendPoolUnavailableError) {
@@ -2494,7 +2511,17 @@ export async function generateImage(
     return retryPoolBackendResult(
       config,
       (candidate) => generateImage(candidate, params, callbacks),
-      { mixWebFirst: params.mixWebFirst }
+      {
+        mixWebFirst: params.mixWebFirst,
+        accountBackendPreference: params.requiresResponsesBackend
+          ? "responses"
+          : params.forceWebBackend
+            ? "web"
+            : undefined,
+        accountBackendPreferenceMode: params.forceWebBackend
+          ? "mixed-only"
+          : undefined,
+      }
     );
   }
 
@@ -2604,7 +2631,17 @@ export async function editImage(
     return retryPoolBackendResult(
       config,
       (candidate) => editImage(candidate, params, callbacks),
-      { mixWebFirst: params.mixWebFirst }
+      {
+        mixWebFirst: params.mixWebFirst,
+        accountBackendPreference: params.requiresResponsesBackend
+          ? "responses"
+          : params.forceWebBackend
+            ? "web"
+            : undefined,
+        accountBackendPreferenceMode: params.forceWebBackend
+          ? "mixed-only"
+          : undefined,
+      }
     );
   }
 
@@ -2726,7 +2763,12 @@ export async function generateChatImage(
     return retryPoolBackendResult(
       config,
       (candidate) => generateChatImage(candidate, params, callbacks),
-      { mixWebFirst: params.mixWebFirst }
+      {
+        mixWebFirst: params.mixWebFirst,
+        accountBackendPreference: params.requiresResponsesBackend
+          ? "responses"
+          : undefined,
+      }
     );
   }
 
@@ -2766,14 +2808,15 @@ export async function generateChatImage(
     return generateImageWithChatGptWeb(config, webParams);
   }
   try {
+    const currentBackendMember = getStickyBackendMember(config);
     const promptRefs = resolvePromptImageReferences({
       prompt: getEffectivePrompt(params),
       images: params.images,
       history: params.history,
+      currentBackendMember,
     });
     const prompt = promptRefs.prompt;
     const size = params.size || DEFAULT_IMAGE_SIZE;
-    const currentBackendMember = getStickyBackendMember(config);
     const responsesPreviousResponseEnabled =
       shouldEnableResponsesPreviousResponse({
         settingEnabled: await getRuntimeSettingBoolean(
@@ -2791,6 +2834,13 @@ export async function generateChatImage(
       currentBackendMember,
       history: params.history,
     });
+    const responseImageRoundIndex = getNextAssistantImageRoundIndex(
+      params.history
+    );
+    const generatedImageReferenceInstruction =
+      buildGeneratedImageReferenceInstruction({
+        roundIndex: responseImageRoundIndex,
+      });
     const manualHistoryInput = buildResponsesInput(
       prompt,
       params.images,
@@ -2798,6 +2848,8 @@ export async function generateChatImage(
       params.history,
       {
         extraCurrentImageReferences: promptRefs.historyImageReferences,
+        generatedImageReferenceInstruction,
+        currentBackendMember,
       }
     );
     const input = canUsePreviousResponseId
@@ -2810,12 +2862,14 @@ export async function generateChatImage(
               params.files,
               {
                 extraImageReferences: promptRefs.historyImageReferences,
+                includeExtraImageEntities: false,
+                generatedImageReferenceInstruction,
               }
             ),
           },
         ]
       : manualHistoryInput;
-    const instructions =
+    const baseInstructions =
       params.promptOptimization === false
         ? params.agentMode
           ? ORIGINAL_PROMPT_RESPONSES_IMAGE_INSTRUCTIONS
@@ -2823,6 +2877,7 @@ export async function generateChatImage(
         : params.agentMode
           ? DEFAULT_RESPONSES_IMAGE_INSTRUCTIONS
           : DEFAULT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS;
+    const instructions = withResponsesImageReferenceInstructions(baseInstructions);
     const tool: {
       type: "image_generation";
       action: "auto";
@@ -3031,6 +3086,7 @@ export async function generateChatImage(
             currentRound: round,
             maxRounds,
             outputFormat,
+            historyRoundIndex: responseImageRoundIndex,
             includeImageEntities: !agentPreviousResponseEnabled,
             functionCallItems: continueFunctionCallItems,
           });
@@ -3060,6 +3116,7 @@ export async function generateChatImage(
           currentRound: round,
           maxRounds,
           outputFormat,
+          historyRoundIndex: responseImageRoundIndex,
           includeImageEntities: !agentPreviousResponseEnabled,
           functionCallItems: continueFunctionCallItems,
         });

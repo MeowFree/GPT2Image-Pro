@@ -16,6 +16,8 @@ export interface GenerateImageParams {
   outputFormat?: ImageOutputFormat;
   outputCompression?: number;
   mixWebFirst?: boolean;
+  forceWebBackend?: boolean;
+  requiresResponsesBackend?: boolean;
 }
 
 export interface GenerateImageResult {
@@ -41,6 +43,7 @@ export interface GenerateImageResult {
 export interface GeneratedImageOutput {
   imageBase64?: string;
   imageUrl?: string;
+  imageFileId?: string;
   generationId?: string;
   size?: string;
   revisedPrompt?: string;
@@ -141,6 +144,8 @@ export interface EditImageParams {
   outputFormat?: ImageOutputFormat;
   outputCompression?: number;
   mixWebFirst?: boolean;
+  forceWebBackend?: boolean;
+  requiresResponsesBackend?: boolean;
 }
 
 export interface ChatImageParams {
@@ -168,6 +173,7 @@ export interface ChatImageParams {
   waterfallMode?: boolean;
   rawResponsesBody?: unknown;
   mixWebFirst?: boolean;
+  requiresResponsesBackend?: boolean;
 }
 
 export interface ChatGptWebConversationState {

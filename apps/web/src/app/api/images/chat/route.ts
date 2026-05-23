@@ -19,11 +19,11 @@ import {
   validateImageSize,
 } from "@/features/image-generation/resolution";
 import {
-  deleteModerationImages,
+  deleteTemporaryImages,
   filesToImageInputs,
   formatMegabytes,
   getTotalUploadSize,
-  uploadModerationImages,
+  uploadTemporaryImageUrls,
   validateImageFile,
 } from "@/features/image-generation/request-utils";
 import { createImageStreamResponse } from "@/features/image-generation/streaming";
@@ -56,6 +56,7 @@ const VALID_THINKING = new Set<ThinkingLevel>([
   "xhigh",
 ]);
 const MAX_CHAT_FILE_CONTEXT_CHARS = 24_000;
+const PROMPT_IMAGE_REFERENCE_PATTERN = /@(?:第)?\d+轮图\d+|@图\d+/;
 const PDF_MIME_TYPES = new Set(["application/pdf"]);
 const CHAT_FILE_ACCEPT_EXTENSIONS = new Set([
   ".txt",
@@ -152,6 +153,10 @@ function getOptionalBoolean(formData: FormData, ...keys: string[]) {
     if (value === "false" || value === "0") return false;
   }
   return undefined;
+}
+
+function hasPromptImageReference(text: string | undefined) {
+  return Boolean(text && PROMPT_IMAGE_REFERENCE_PATTERN.test(text));
 }
 
 function wantsStreamResponse(request: NextRequest, formData: FormData) {
@@ -591,6 +596,14 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     "mixWebFirst",
     "mix_web_first"
   );
+  const requiresResponsesBackend =
+    getOptionalBoolean(
+      formData,
+      "requiresResponsesBackend",
+      "requires_responses_backend"
+    ) === true ||
+    hasPromptImageReference(prompt) ||
+    hasPromptImageReference(apiPrompt);
   const agentMode =
     getOptionalBoolean(formData, "agentMode", "agent_mode") === true;
   const waterfallMode =
@@ -753,15 +766,16 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     }
 
     const batchId = randomUUID();
-    const moderationImages = await uploadModerationImages(
+    const sourceImageUrls = await uploadTemporaryImageUrls(
       session.user.id,
       batchId,
-      sourceFiles
+      sourceFiles,
+      { scope: "requests" }
     );
     const useStreamResponse = wantsStreamResponse(request, formData);
 
     const buildImages = async () =>
-      await filesToImageInputs(sourceFiles, moderationImages);
+      await filesToImageInputs(sourceFiles, sourceImageUrls);
 
     const runChat = async (
       generationId: string,
@@ -793,7 +807,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           thinking,
           agentMode,
           waterfallMode,
-          mixWebFirst,
+          mixWebFirst: requiresResponsesBackend ? false : mixWebFirst,
+          requiresResponsesBackend,
         },
         onPartialImage
       );
@@ -846,7 +861,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
 
             return null;
           } finally {
-            await deleteModerationImages(moderationImages);
+            await deleteTemporaryImages(sourceImageUrls);
           }
         });
       }
@@ -867,7 +882,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       });
     } finally {
       if (!useStreamResponse) {
-        await deleteModerationImages(moderationImages);
+        await deleteTemporaryImages(sourceImageUrls);
       }
     }
   } catch (error) {

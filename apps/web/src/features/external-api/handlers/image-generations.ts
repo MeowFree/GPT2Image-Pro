@@ -53,6 +53,8 @@ const externalImageGenerationSchema = z.object({
   response_format: z.enum(["url", "b64_json"]).optional(),
   output_format: z.enum(["png", "jpeg", "webp"]).optional(),
   output_compression: z.number().int().min(0).max(100).optional(),
+  force_web: z.boolean().optional(),
+  forceWeb: z.boolean().optional(),
   stream: z.boolean().optional(),
 });
 
@@ -185,6 +187,7 @@ export const postExternalImageGenerations = withApiLogging(
       outputCompression: normalizeOutputCompression(
         parsed.data.output_compression
       ),
+      forceWebBackend: parsed.data.force_web ?? parsed.data.forceWeb,
     };
     const responseFormat = parsed.data.response_format || "b64_json";
 

@@ -48,6 +48,7 @@ import type {
   ImageBackendAccountBackend,
   ImageBackendGroupBackendType,
   ImageBackendGroupSummary,
+  ImageBackendPreferenceMode,
   ImageBackendRequestKind,
 } from "./types";
 
@@ -57,6 +58,7 @@ type ResolveBackendOptions = {
   requestKind: ImageBackendRequestKind;
   preferredMemberId?: string;
   accountBackendPreference?: ImageBackendAccountBackend;
+  accountBackendPreferenceMode?: ImageBackendPreferenceMode;
 };
 
 type PoolMember =
@@ -263,6 +265,18 @@ function groupBackendAllowsAccount(
 ) {
   const backendType = getGroupBackendType(metadata);
   return backendType === "mixed" || backendType === backend;
+}
+
+function resolveEffectiveAccountBackendPreference(
+  metadata: Record<string, unknown> | null | undefined,
+  preference?: ImageBackendAccountBackend,
+  mode?: ImageBackendPreferenceMode
+) {
+  if (!preference) return undefined;
+  if (mode === "mixed-only" && getGroupBackendType(metadata) !== "mixed") {
+    return undefined;
+  }
+  return preference;
 }
 
 function accountBackendAllowsRequest(
@@ -1088,7 +1102,8 @@ async function selectPoolMember(
   requestKind?: ImageBackendRequestKind,
   excluded?: Set<string>,
   preferredMemberId?: string,
-  accountBackendPreference?: ImageBackendAccountBackend
+  accountBackendPreference?: ImageBackendAccountBackend,
+  accountBackendPreferenceMode?: ImageBackendPreferenceMode
 ): Promise<PoolMember | null> {
   const contexts =
     groupContexts && groupContexts.length
@@ -1104,6 +1119,26 @@ async function selectPoolMember(
         : [];
   const contextMap = new Map(contexts.map((context) => [context.id, context]));
   const groupIds = contexts.map((context) => context.id);
+  const effectiveContextPreferences = new Map(
+    contexts.map((context) => [
+      context.id,
+      resolveEffectiveAccountBackendPreference(
+        context.metadata,
+        accountBackendPreference,
+        accountBackendPreferenceMode
+      ),
+    ])
+  );
+  const primaryContext = groupId ? contextMap.get(groupId) : undefined;
+  const effectiveAccountBackendPreference = groupId
+    ? resolveEffectiveAccountBackendPreference(
+        primaryContext?.metadata ?? groupMetadata ?? null,
+        accountBackendPreference,
+        accountBackendPreferenceMode
+      )
+    : accountBackendPreferenceMode === "mixed-only"
+      ? undefined
+      : accountBackendPreference;
   const apiGroupFilter = groupIds.length
     ? inArray(imageBackendApi.groupId, groupIds)
     : groupId
@@ -1115,7 +1150,7 @@ async function selectPoolMember(
       ? eq(imageBackendAccount.groupId, groupId)
       : sql`true`;
   const requiredAccountBackend =
-    requestKind === "responses" ? "responses" : accountBackendPreference;
+    requestKind === "responses" ? "responses" : effectiveAccountBackendPreference;
   const accountBackendFilter = requiredAccountBackend
     ? eq(imageBackendAccount.implementationMode, requiredAccountBackend)
     : sql`true`;
@@ -1173,7 +1208,7 @@ async function selectPoolMember(
       .limit(50),
   ]);
 
-  const apiMembers: PoolMember[] = accountBackendPreference
+  const apiMembers: PoolMember[] = effectiveAccountBackendPreference
     ? []
     : apiRows
         .filter((row) => {
@@ -1213,8 +1248,11 @@ async function selectPoolMember(
       const backend = normalizeAccountBackend(row.implementationMode);
       const context = row.groupId ? contextMap.get(row.groupId) : null;
       const metadata = context?.metadata ?? groupMetadata;
+      const rowPreference = row.groupId
+        ? effectiveContextPreferences.get(row.groupId)
+        : effectiveAccountBackendPreference;
       return (
-        (!accountBackendPreference || accountBackendPreference === backend) &&
+        (!rowPreference || rowPreference === backend) &&
         groupBackendAllowsAccount(metadata, backend) &&
         accountBackendAllowsRequest(
           backend,
@@ -1416,7 +1454,8 @@ async function resolvePoolMember(
     options.requestKind,
     options.excluded,
     options.preferredMemberId,
-    options.accountBackendPreference
+    options.accountBackendPreference,
+    options.accountBackendPreferenceMode
   );
   if (!member) {
     if (requestedGroup.explicit) {

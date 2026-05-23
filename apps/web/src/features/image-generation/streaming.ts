@@ -33,6 +33,7 @@ export type ImageStreamEvent =
       type: "completed";
       generationId?: string;
       imageUrl?: string;
+      imageFileId?: string;
       model?: string;
       size?: string;
       revisedPrompt?: string;
@@ -66,6 +67,7 @@ export type ImageStreamEvent =
       imageOutputs?: Array<{
         generationId?: string;
         imageUrl?: string;
+        imageFileId?: string;
         size?: string;
         revisedPrompt?: string;
         upstreamRevisedPrompt?: string;

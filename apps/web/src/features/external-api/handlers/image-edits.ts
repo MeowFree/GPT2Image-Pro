@@ -80,6 +80,8 @@ const JSON_SCALAR_FIELDS = [
   "gptModel",
   "gpt_model",
   "thinking",
+  "force_web",
+  "forceWeb",
   "stream",
 ] as const;
 
@@ -610,6 +612,11 @@ export const postExternalImageEdits = withApiLogging(
       return openAIImageError("Invalid thinking level.");
     }
     const thinking = thinkingValue as ThinkingLevel | undefined;
+    const forceWebBackend = getOptionalBoolean(
+      formData,
+      "force_web",
+      "forceWeb"
+    );
     if (imageReferences.length === 0) {
       return openAIImageError("At least one source image is required.");
     }
@@ -686,6 +693,7 @@ export const postExternalImageEdits = withApiLogging(
             outputFormat,
             outputCompression,
             n: 1,
+            forceWebBackend,
             images: await buildImages(),
             mask: await buildMask(),
           },

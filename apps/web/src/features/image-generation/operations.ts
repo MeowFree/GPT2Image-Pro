@@ -7,6 +7,7 @@ import {
   refundGenerationCredits,
 } from "@repo/shared/generation-maintenance";
 import { getFailedGenerationTargetCredits } from "@repo/shared/generation-settlement";
+import { logWarn } from "@repo/shared/logger";
 import {
   isContentModerationEnabled,
   moderateContent,
@@ -67,6 +68,8 @@ type RunImageGenerationInput =
       backendRequestKind?: ImageBackendRequestKind;
       preferredBackendMemberId?: string;
       mixWebFirst?: boolean;
+      forceWebBackend?: boolean;
+      requiresResponsesBackend?: boolean;
     } & GenerateImageParams)
   | ({
       mode: "edit";
@@ -76,6 +79,8 @@ type RunImageGenerationInput =
       backendRequestKind?: ImageBackendRequestKind;
       preferredBackendMemberId?: string;
       mixWebFirst?: boolean;
+      forceWebBackend?: boolean;
+      requiresResponsesBackend?: boolean;
     } & EditImageParams)
   | ({
       mode: "chat";
@@ -86,6 +91,8 @@ type RunImageGenerationInput =
       preferredBackendMemberId?: string;
       maxChatContextChars?: number;
       mixWebFirst?: boolean;
+      forceWebBackend?: boolean;
+      requiresResponsesBackend?: boolean;
     } & ChatImageParams);
 
 const CHAT_TEXT_ONLY_CREDITS = 1;
@@ -115,6 +122,7 @@ export type ImageGenerationOperationResult = {
   error?: string;
   generationId?: string;
   imageUrl?: string;
+  imageFileId?: string;
   imageOutputs?: GenerateImageResult["imageOutputs"];
   model?: string;
   size?: string;
@@ -154,9 +162,111 @@ async function toImageBuffer(result: {
   return Buffer.from(await response.arrayBuffer());
 }
 
+function stripTrailingSlash(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function getImageFileName(params: { generationId: string; contentType: string }) {
+  const extension =
+    params.contentType === "image/jpeg"
+      ? "jpg"
+      : params.contentType === "image/webp"
+        ? "webp"
+        : "png";
+  return `${params.generationId}.${extension}`;
+}
+
+function toBlobPart(buffer: Buffer): BlobPart {
+  return buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength
+  ) as ArrayBuffer;
+}
+
+function getOutputFileCacheBackend(config: ApiConfig) {
+  const backend = config.backend;
+  if (
+    !backend ||
+    backend.type !== "pool-account" ||
+    backend.accountBackend !== "responses"
+  ) {
+    return null;
+  }
+  if (process.env.IMAGE_CODEX_FILES_API_ENABLED !== "true") {
+    return null;
+  }
+  return backend;
+}
+
+function getMultipartHeaders(config: ApiConfig) {
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(config.headers || {})) {
+    if (key.toLowerCase() === "content-type") continue;
+    headers[key] = value;
+  }
+  headers.Authorization = `Bearer ${config.apiKey}`;
+  return headers;
+}
+
+async function uploadResponsesImageFile(params: {
+  config: ApiConfig;
+  buffer: Buffer;
+  contentType: string;
+  generationId: string;
+}): Promise<ResponsesUploadedImageFile | undefined> {
+  if (!getOutputFileCacheBackend(params.config)) return undefined;
+
+  const formData = new FormData();
+  const fileName = getImageFileName({
+    generationId: params.generationId,
+    contentType: params.contentType,
+  });
+  formData.append(
+    "file",
+    new Blob([toBlobPart(params.buffer)], { type: params.contentType }),
+    fileName
+  );
+  formData.append("purpose", "vision");
+
+  try {
+    const response = await fetch(`${stripTrailingSlash(params.config.baseUrl)}/files`, {
+      method: "POST",
+      headers: getMultipartHeaders(params.config),
+      body: formData,
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      logWarn("Responses 输出图片上传 Files 失败", {
+        status: response.status,
+        generationId: params.generationId,
+        body: body.slice(0, 500),
+      });
+      return undefined;
+    }
+    const payload = (await response.json().catch(() => null)) as
+      | { id?: unknown }
+      | null;
+    const fileId = typeof payload?.id === "string" ? payload.id : undefined;
+    if (!fileId) {
+      logWarn("Responses 输出图片上传 Files 未返回 file id", {
+        generationId: params.generationId,
+      });
+      return undefined;
+    }
+    return { fileId, source: "files_api" };
+  } catch (error) {
+    logWarn("Responses 输出图片上传 Files 异常", {
+      generationId: params.generationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
 type StoredGeneratedImageOutput = {
   generationId: string;
   imageUrl: string;
+  imageFileId?: string;
   storageKey: string;
   fileSize: number;
   size: string;
@@ -166,6 +276,11 @@ type StoredGeneratedImageOutput = {
   actualOutputFormat: string | null;
   actualOutputFormatDetected: boolean;
   outputRole?: "final" | "agent_draft";
+};
+
+type ResponsesUploadedImageFile = {
+  fileId: string;
+  source: "files_api";
 };
 
 function resolveStoredImageFormat(buffer: Buffer, requestedFormat?: string) {
@@ -407,10 +522,12 @@ async function storeGeneratedImageOutput(params: {
   output: {
     imageBase64?: string;
     imageUrl?: string;
+    imageFileId?: string;
     revisedPrompt?: string;
     upstreamRevisedPrompt?: string;
     outputRole?: "final" | "agent_draft";
   };
+  config: ApiConfig;
   userId: string;
   generationId: string;
   bucket: string;
@@ -440,10 +557,21 @@ async function storeGeneratedImageOutput(params: {
     imageBuffer,
     storedFormat.contentType
   );
+  const uploadedImageFile =
+    params.output.imageFileId ||
+    (
+      await uploadResponsesImageFile({
+        config: params.config,
+        buffer: imageBuffer,
+        contentType: storedFormat.contentType,
+        generationId: params.generationId,
+      })
+    )?.fileId;
 
   return {
     generationId: params.generationId,
     imageUrl: await getStoredImageUrl(params.bucket, storageKey),
+    imageFileId: uploadedImageFile,
     storageKey,
     fileSize: imageBuffer.length,
     size: actualSize,
@@ -539,7 +667,18 @@ export async function runImageGenerationForUser(
 ): Promise<ImageGenerationOperationResult> {
   const generationId = input.generationId || nanoid();
   const size = input.size || DEFAULT_IMAGE_SIZE;
-  const mixWebFirst = Boolean(input.mixWebFirst && isOneKImageSize(size));
+  const requiresResponsesBackend = Boolean(
+    input.requiresResponsesBackend || (input.mode === "chat" && input.agentMode)
+  );
+  const forceWebBackend = Boolean(
+    input.forceWebBackend && !requiresResponsesBackend
+  );
+  const mixWebFirst = Boolean(
+    input.mixWebFirst &&
+      isOneKImageSize(size) &&
+      !requiresResponsesBackend &&
+      !forceWebBackend
+  );
   const inputImages = getInputImages(input);
   const isChatInput = input.mode === "chat";
   const bucket =
@@ -658,6 +797,16 @@ export async function runImageGenerationForUser(
       generationId,
     };
   }
+  if (
+    requiresResponsesBackend &&
+    input.mode !== "chat" &&
+    input.backendRequestKind !== "image_edit"
+  ) {
+    return {
+      error: "Exact image references require image edit or Chat/Agent mode.",
+      generationId,
+    };
+  }
 
   const userConfig = await getUserApiConfig(input.userId);
   const backendRequestKind =
@@ -675,13 +824,18 @@ export async function runImageGenerationForUser(
         apiKeyId: input.apiKeyId,
         requestKind: backendRequestKind,
         preferredMemberId: input.preferredBackendMemberId,
-        accountBackendPreference: mixWebFirst ? "web" : undefined,
+        accountBackendPreference: requiresResponsesBackend
+          ? "responses"
+          : forceWebBackend || mixWebFirst
+            ? "web"
+            : undefined,
+        accountBackendPreferenceMode: forceWebBackend
+          ? "mixed-only"
+          : undefined,
+        ignoreUserConfig: requiresResponsesBackend,
       });
     } catch (error) {
-      if (
-        !mixWebFirst ||
-        !(error instanceof ImageBackendPoolUnavailableError)
-      ) {
+      if (!mixWebFirst || !(error instanceof ImageBackendPoolUnavailableError)) {
         throw error;
       }
       effectiveConfig = await getEffectiveConfig(userConfig, {
@@ -690,6 +844,7 @@ export async function runImageGenerationForUser(
         requestKind: backendRequestKind,
         preferredMemberId: input.preferredBackendMemberId,
         accountBackendPreference: "responses",
+        ignoreUserConfig: requiresResponsesBackend,
       });
     }
   } catch (error) {
@@ -877,7 +1032,10 @@ async function runQueuedImageGenerationForUser({
     gptModel,
     recordModel,
   });
-  const mixWebFirst = Boolean(input.mixWebFirst && isOneKImageSize(size));
+  const forceWebBackend = Boolean(input.forceWebBackend);
+  const mixWebFirst = Boolean(
+    input.mixWebFirst && isOneKImageSize(size) && !forceWebBackend
+  );
 
   await db.insert(generation).values({
     id: generationId,
@@ -901,6 +1059,7 @@ async function runQueuedImageGenerationForUser({
             outputFormat: input.outputFormat || null,
             outputCompression: input.outputCompression ?? null,
             batchCount: input.n || 1,
+            forceWebBackend,
             creditCost,
             moderationBlockingEnabled: moderationEnabled,
             moderationFailureCredits,
@@ -923,6 +1082,7 @@ async function runQueuedImageGenerationForUser({
               outputFormat: input.outputFormat || null,
               outputCompression: input.outputCompression ?? null,
               batchCount: input.n || 1,
+              forceWebBackend,
               creditCost,
               moderationBlockingEnabled: moderationEnabled,
               moderationFailureCredits,
@@ -937,6 +1097,7 @@ async function runQueuedImageGenerationForUser({
               outputFormat: input.outputFormat || null,
               outputCompression: input.outputCompression ?? null,
               batchCount: input.n || 1,
+              forceWebBackend,
               creditCost,
               moderationBlockingEnabled: moderationEnabled,
               moderationFailureCredits,
@@ -1185,6 +1346,8 @@ async function runQueuedImageGenerationForUser({
               outputFormat: input.outputFormat,
               outputCompression: input.outputCompression,
               mixWebFirst,
+              forceWebBackend,
+              requiresResponsesBackend: input.requiresResponsesBackend,
             },
             callbacks
           )
@@ -1216,6 +1379,7 @@ async function runQueuedImageGenerationForUser({
                 agentMode: input.agentMode,
                 rawResponsesBody: input.rawResponsesBody,
                 mixWebFirst,
+                requiresResponsesBackend: input.requiresResponsesBackend,
               },
               callbacks
             )
@@ -1238,6 +1402,8 @@ async function runQueuedImageGenerationForUser({
                 outputFormat: input.outputFormat,
                 outputCompression: input.outputCompression,
                 mixWebFirst,
+                forceWebBackend,
+                requiresResponsesBackend: input.requiresResponsesBackend,
               },
               callbacks
             );
@@ -1415,6 +1581,7 @@ async function runQueuedImageGenerationForUser({
       storedOutputs.push(
         await storeGeneratedImageOutput({
           output,
+          config,
           userId: input.userId,
           generationId: resolveOutputGenerationId(
             generationId,
@@ -1607,6 +1774,7 @@ async function runQueuedImageGenerationForUser({
             imageOutputs: storedOutputs.map((output, index) => ({
               generationId: output.generationId,
               imageUrl: output.imageUrl,
+              imageFileId: output.imageFileId,
               storageKey: output.storageKey,
               size: output.size,
               revisedPrompt: output.revisedPrompt,
@@ -1633,9 +1801,11 @@ async function runQueuedImageGenerationForUser({
   return {
     generationId,
     imageUrl: primaryOutput.imageUrl,
+    imageFileId: primaryOutput.imageFileId,
     imageOutputs: storedOutputs.map((output, index) => ({
       generationId: output.generationId,
       imageUrl: output.imageUrl,
+      imageFileId: output.imageFileId,
       size: output.size,
       revisedPrompt: output.revisedPrompt,
       upstreamRevisedPrompt: output.upstreamRevisedPrompt,

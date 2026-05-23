@@ -191,6 +191,7 @@ const sections = {
         "response_format 控制返回 URL 或 base64；output_format 才控制图片文件格式，二者不是同一个字段。",
         "错误响应采用 OpenAI 风格 error 对象；本站可能额外返回 generation_id、generationId、credits_consumed 方便排查和对账。",
         "外接 API Key 绑定的后端分组优先；未绑定时使用用户默认分组，再回退默认启用分组。",
+        "用户已启用“接入其他站 API”时仍优先使用用户自接 API；image 接口的 force_web / forceWeb 不会覆盖用户自接 API。",
       ],
       officialRefsTitle: "官方参考",
       officialRefs: [
@@ -314,7 +315,19 @@ curl https://gpt2image.superapi.buzz/v1/images/generations \\
     "promptOptimization": false
   }'
 
-# 4. 流式返回；也可用 Accept: text/event-stream 触发
+# 4. mixed 分组强制调度 Web 账号；非 mixed 分组会忽略 force_web
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "一张 1:1 头像海报",
+    "size": "1024x1024",
+    "response_format": "url",
+    "force_web": true
+  }'
+
+# 5. 流式返回；也可用 Accept: text/event-stream 触发
 curl -N https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
@@ -421,6 +434,13 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
               description:
                 "minimal、none、low、medium、high、xhigh。仅针对 Codex/Responses 后端；Web 或普通 Images API 后端可能忽略。",
             },
+            {
+              name: "force_web / forceWeb",
+              requirement: "可选",
+              custom: true,
+              description:
+                "仅 image 接口支持。用户自接 API 优先时忽略；进入平台账号池且命中的后端分组为 mixed 时，只调度 Web 账号。非 mixed 分组忽略该字段。Web 后端不能严格保证分辨率或 4K。",
+            },
           ],
           responses: [
             {
@@ -449,7 +469,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
           notes: [
             "该接口不会调用页面 /api/images/generate，而是直接进入共享 service 层。",
             "如果命中 Responses 账号池，内部会把图片请求转换成 Responses image_generation tool 请求。",
-            "Web 后端无法严格控制输出格式；本站保存时会按实际图片头识别扩展名和 MIME。",
+            "Web 后端无法严格控制输出尺寸和输出格式；本站保存时会按实际图片头识别扩展名和 MIME。",
             "如果实际生成尺寸与请求尺寸不一致，本站会按检测到的实际尺寸修正记录和计费。",
             "官方 Images API 可能返回 usage；本站当前非流式 JSON 响应通常返回 usage: null，流式完成和错误事件会带 credits_consumed。",
           ],
@@ -517,7 +537,20 @@ curl https://gpt2image.superapi.buzz/v1/images/edits \\
     "thinking": "low"
   }'
 
-# 4. 流式图生图
+# 4. mixed 分组强制调度 Web 账号；非 mixed 分组会忽略 force_web
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "保留人物，改成电影剧照质感",
+    "images": ["https://example.com/reference.png"],
+    "size": "1024x1024",
+    "response_format": "url",
+    "force_web": true
+  }'
+
+# 5. 流式图生图
 curl -N https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
@@ -646,6 +679,13 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               custom: true,
               description:
                 "minimal、none、low、medium、high、xhigh。仅针对 Codex/Responses 后端；Web 或普通 Images API 后端可能忽略。",
+            },
+            {
+              name: "force_web / forceWeb",
+              requirement: "可选",
+              custom: true,
+              description:
+                "仅 image 接口支持。用户自接 API 优先时忽略；进入平台账号池且命中的后端分组为 mixed 时，只调度 Web 账号。非 mixed 分组忽略该字段。Web 后端不能严格保证分辨率或 4K。",
             },
           ],
           responses: [
@@ -1141,6 +1181,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         "response_format controls URL vs base64; output_format controls the image file format. They are different fields.",
         "Error responses use an OpenAI-style error object. GPT2IMAGE may also return generation_id, generationId, and credits_consumed for debugging and reconciliation.",
         "A backend group bound to the external API key wins first. Otherwise the user's default group is used, then the enabled platform default group.",
+        "If the user has enabled a custom upstream API, GPT2IMAGE still uses that custom API first; image endpoint force_web / forceWeb does not override it.",
       ],
       officialRefsTitle: "Official References",
       officialRefs: [
@@ -1264,7 +1305,19 @@ curl https://gpt2image.superapi.buzz/v1/images/generations \\
     "promptOptimization": false
   }'
 
-# 4. Streaming response. Accept: text/event-stream also enables streaming.
+# 4. Force Web account scheduling for mixed groups. Non-mixed groups ignore force_web.
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "A 1:1 avatar poster",
+    "size": "1024x1024",
+    "response_format": "url",
+    "force_web": true
+  }'
+
+# 5. Streaming response. Accept: text/event-stream also enables streaming.
 curl -N https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
@@ -1371,6 +1424,13 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
               description:
                 "minimal, none, low, medium, high, or xhigh. Only applies to Codex/Responses backends; Web or plain Images API backends may ignore it.",
             },
+            {
+              name: "force_web / forceWeb",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "Only supported by image endpoints. Ignored when a user custom upstream API takes priority; after routing enters the platform pool, mixed backend groups schedule Web accounts only. Non-mixed groups ignore this field. Web backends cannot strictly guarantee resolution or 4K output.",
+            },
           ],
           responses: [
             {
@@ -1400,7 +1460,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
           notes: [
             "This endpoint does not call page /api/images/generate; it directly enters the shared service layer.",
             "When routed to a Responses account, the image request is converted into a Responses image_generation tool request.",
-            "Web backends cannot strictly control output format. GPT2IMAGE labels stored files by the detected image header and MIME.",
+            "Web backends cannot strictly control output dimensions or output format. GPT2IMAGE labels stored files by the detected image header and MIME.",
             "If the actual generated dimensions differ from the requested size, GPT2IMAGE records and bills using the detected actual size.",
             "The official Images API may return usage. GPT2IMAGE usually returns usage: null in non-stream JSON responses; streaming completion and error events include credits_consumed.",
           ],
@@ -1468,7 +1528,20 @@ curl https://gpt2image.superapi.buzz/v1/images/edits \\
     "thinking": "low"
   }'
 
-# 4. Streaming image edit.
+# 4. Force Web account scheduling for mixed groups. Non-mixed groups ignore force_web.
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "Keep the person and make it look like a cinematic still",
+    "images": ["https://example.com/reference.png"],
+    "size": "1024x1024",
+    "response_format": "url",
+    "force_web": true
+  }'
+
+# 5. Streaming image edit.
 curl -N https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
@@ -1599,6 +1672,13 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               custom: true,
               description:
                 "minimal, none, low, medium, high, or xhigh. Only applies to Codex/Responses backends; Web or plain Images API backends may ignore it.",
+            },
+            {
+              name: "force_web / forceWeb",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "Only supported by image endpoints. Ignored when a user custom upstream API takes priority; after routing enters the platform pool, mixed backend groups schedule Web accounts only. Non-mixed groups ignore this field. Web backends cannot strictly guarantee resolution or 4K output.",
             },
           ],
           responses: [

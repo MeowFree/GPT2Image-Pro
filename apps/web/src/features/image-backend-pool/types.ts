@@ -7,6 +7,7 @@ export type ImageBackendRequestKind =
   | "responses";
 export type ImageBackendAccountBackend = "web" | "responses";
 export type ImageBackendGroupBackendType = "mixed" | "web" | "responses";
+export type ImageBackendPreferenceMode = "always" | "mixed-only";
 export type ImageBackendMemberType = "api" | "account";
 export type ContentSafetyOverride = "inherit" | "enabled" | "disabled";
 

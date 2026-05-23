@@ -182,9 +182,12 @@ curl https://your-domain.com/v1/images/generations \
     "prompt": "A cute baby sea otter",
     "n": 1,
     "size": "1024x1024",
-    "response_format": "url"
+    "response_format": "url",
+    "force_web": true
   }'
 ```
+
+`force_web`/`forceWeb` 是本站扩展字段，仅对 `/v1/images/generations` 和 `/v1/images/edits` 生效。用户已启用“接入其他站 API”时仍优先使用用户自接 API，并忽略该字段；进入平台账号池后，只有命中的后端分组为 `mixed` 时才会强制本次 image 请求只调度 Web 账号。非 mixed 分组也会忽略该字段并按原分组规则调度。Web 后端仍不能严格保证输出分辨率或 4K。
 
 流式文生图示例：
 
@@ -261,6 +264,8 @@ Agent 最大自动轮数由系统设置 `IMAGE_AGENT_MAX_ROUNDS` 控制，默认
 
 TODO：
 
+- Agent 批量生图工具：参考 `generate_image_batch` 模式，让模型规划多张独立图片后由后端并发执行，并把每张图作为独立任务卡展示。
+- 原子化 `@` 图片引用：将 `@图1`、`@第N轮图M` 做成不可半删的输入标签，支持弹窗选择、图片重排后自动重映射，以及缺失引用提示。
 - Agent 分支对话/轮次树：编辑或重生成历史某一轮时，不覆盖后续记录，而是从该轮派生新分支；支持在旧分支和新分支之间切换，并重映射 `@第N轮图M` / `<ref id="...">` 图片引用，避免引用错位。
 
 ## 部署

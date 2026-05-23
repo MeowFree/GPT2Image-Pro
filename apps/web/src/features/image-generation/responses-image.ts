@@ -8,7 +8,10 @@ import {
   DEFAULT_IMAGE_SIZE,
   getImageModel,
 } from "./resolution";
-import { resolvePromptImageReferences } from "./responses-native-state";
+import {
+  resolvePromptImageReferences,
+  withResponsesImageReferenceInstructions,
+} from "./responses-native-state";
 import type {
   ApiConfig,
   EditImageParams,
@@ -87,14 +90,27 @@ function referenceTag(refId: string, prompt?: string) {
     : `<ref id="${refId}" />`;
 }
 
+function getEditReferenceLabel(refId: string, imageNumber: number, prompt?: string) {
+  return `@图${imageNumber} / ${referenceTag(refId, prompt)}`;
+}
+
 function getEditImageContent(images: ImageInputFile[]) {
-  return images.flatMap((image, index) => [
-    getInputImageContent(image),
-    {
-      type: "input_text" as const,
-      text: referenceTag(`edit-reference-${index + 1}`, image.name),
-    },
-  ]);
+  return images.flatMap((image, index) => {
+    const imageNumber = index + 1;
+    const refId = `edit-reference-${imageNumber}`;
+    const label = getEditReferenceLabel(refId, imageNumber, image.name);
+    return [
+      {
+        type: "input_text" as const,
+        text: `The next source image is labeled ${label}. Use this label when the user refers to this exact source image.`,
+      },
+      getInputImageContent(image),
+      {
+        type: "input_text" as const,
+        text: `The source image above is ${label}.`,
+      },
+    ];
+  });
 }
 
 function getResponsesModel(config: ApiConfig, model?: string) {
@@ -236,7 +252,9 @@ export function buildResponsesImageEditRequest(
     tool.input_image_mask = { image_url: getDataUrl(params.mask) };
   }
 
-  const instructions = getInstructions(params) || RESPONSES_IMAGE_INSTRUCTIONS;
+  const instructions = withResponsesImageReferenceInstructions(
+    getInstructions(params) || RESPONSES_IMAGE_INSTRUCTIONS
+  );
 
   return {
     model: getResponsesModel(config, params.gptModel),
@@ -245,8 +263,8 @@ export function buildResponsesImageEditRequest(
         type: "message",
         role: "user",
         content: [
-          { type: "input_text", text: prompt },
           ...getEditImageContent(params.images),
+          { type: "input_text", text: `User edit request: ${prompt}` },
         ],
       },
     ],

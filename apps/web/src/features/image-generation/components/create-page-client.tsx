@@ -48,6 +48,7 @@ import {
   Plus,
   RefreshCcw,
   Save,
+  Search,
   Send,
   Trash2,
   Upload,
@@ -102,9 +103,11 @@ type ImageApiResult = {
   error?: string;
   generationId?: string;
   imageUrl?: string;
+  imageFileId?: string;
   imageOutputs?: Array<{
     generationId?: string;
     imageUrl?: string;
+    imageFileId?: string;
     size?: string;
     revisedPrompt?: string;
     upstreamRevisedPrompt?: string;
@@ -229,6 +232,7 @@ type ChatResultInput = Pick<
   ImageApiResult,
   | "generationId"
   | "imageUrl"
+  | "imageFileId"
   | "model"
   | "size"
   | "revisedPrompt"
@@ -283,6 +287,44 @@ type ChatConversation = {
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;
+};
+
+type ImageReferenceMentionOption = {
+  token: string;
+  label: string;
+  detail: string;
+  previewUrl?: string;
+};
+
+type MentionState = {
+  open: boolean;
+  start: number;
+  end: number;
+  query: string;
+};
+
+type AgentTaskCard = {
+  key: string;
+  kind: AgentRunEvent["kind"];
+  title: string;
+  detail?: string;
+  status?: AgentRunEvent["status"];
+  startedAt?: string;
+  updatedAt?: string;
+  toolType?: string;
+  imageUrl?: string;
+  events: AgentRunEvent[];
+};
+
+type AgentRoundCard = {
+  key: string;
+  title: string;
+  detail?: string;
+  status?: AgentRunEvent["status"];
+  startedAt?: string;
+  updatedAt?: string;
+  tasks: AgentTaskCard[];
+  notes: AgentRunEvent[];
 };
 
 type ImageSizeDialogValue = {
@@ -912,6 +954,7 @@ const CHAT_ACTIVE_CONVERSATION_STORAGE_KEY =
   "gpt2image_active_chat_conversation_v1";
 const CHAT_CONTEXT_MESSAGE_LIMIT = 8;
 const CHAT_CONVERSATION_LIMIT = 30;
+const PROMPT_IMAGE_REFERENCE_PATTERN = /@(?:第)?\d+轮图\d+|@图\d+/;
 
 interface CreatePageClientProps {
   balance: number;
@@ -1009,7 +1052,133 @@ function appendAgentRunEvent(
 
   return events.map((event, index) =>
     index === matchIndex ? { ...event, ...nextEvent } : event
+      );
+}
+
+function getAgentTaskKey(event: AgentRunEvent, index: number) {
+  if (event.id) return `id:${event.id}`;
+  if (event.kind === "image_partial") {
+    return [
+      "image_partial",
+      event.index ?? "",
+      event.partialImageIndex ?? "",
+      event.toolType || "",
+    ].join(":");
+  }
+  return [
+    event.kind,
+    event.toolType || "",
+    event.title,
+    event.timestamp || index,
+  ].join(":");
+}
+
+function isAgentRoundStartEvent(event: AgentRunEvent) {
+  return event.kind === "message" && /Agent 第\s*\d+\s*轮开始/.test(event.title);
+}
+
+function isAgentRoundEndEvent(event: AgentRunEvent) {
+  return (
+    event.kind === "message" &&
+    /Agent 第\s*\d+\s*轮(?:完成|停止)/.test(event.title)
   );
+}
+
+function isAgentTaskEvent(event: AgentRunEvent) {
+  return (
+    event.kind === "web_search" ||
+    event.kind === "code_interpreter" ||
+    event.kind === "image_generation" ||
+    event.kind === "image_partial" ||
+    event.kind === "tool"
+  );
+}
+
+function buildAgentRoundCards(events: AgentRunEvent[] | undefined) {
+  const normalizedEvents = (events || []).reduce<AgentRunEvent[]>(
+    (items, event) => appendAgentRunEvent(items, event),
+    []
+  );
+  const rounds: AgentRoundCard[] = [];
+  let currentRound: AgentRoundCard | undefined;
+
+  const ensureRound = () => {
+    if (currentRound) return currentRound;
+    currentRound = {
+      key: "round-implicit",
+      title: "Agent run",
+      tasks: [],
+      notes: [],
+    };
+    rounds.push(currentRound);
+    return currentRound;
+  };
+
+  for (const [index, event] of normalizedEvents.entries()) {
+    if (isAgentRoundStartEvent(event)) {
+      currentRound = {
+        key: event.id || `round-${rounds.length + 1}`,
+        title: event.title,
+        detail: event.detail,
+        status: event.status || "running",
+        startedAt: event.timestamp,
+        updatedAt: event.timestamp,
+        tasks: [],
+        notes: [],
+      };
+      rounds.push(currentRound);
+      continue;
+    }
+
+    const round = ensureRound();
+    round.updatedAt = event.timestamp || round.updatedAt;
+
+    if (isAgentRoundEndEvent(event)) {
+      round.status = event.status || "completed";
+      round.detail = event.detail || round.detail;
+      round.updatedAt = event.timestamp || round.updatedAt;
+      round.notes.push(event);
+      continue;
+    }
+
+    if (!isAgentTaskEvent(event)) {
+      round.notes.push(event);
+      continue;
+    }
+
+    const key = getAgentTaskKey(event, index);
+    const existingIndex = round.tasks.findIndex((task) => task.key === key);
+    const imageUrl = agentEventToImageUrl(event);
+    if (existingIndex >= 0) {
+      const task = round.tasks[existingIndex]!;
+      round.tasks[existingIndex] = {
+        ...task,
+        title: event.title || task.title,
+        detail: event.detail || task.detail,
+        status: event.status || task.status,
+        updatedAt: event.timestamp || task.updatedAt,
+        toolType: event.toolType || task.toolType,
+        imageUrl: imageUrl || task.imageUrl,
+        events: appendAgentRunEvent(task.events, event),
+      };
+      continue;
+    }
+
+    round.tasks.push({
+      key,
+      kind: event.kind,
+      title: event.title,
+      detail: event.detail,
+      status: event.status,
+      startedAt: event.timestamp,
+      updatedAt: event.timestamp,
+      toolType: event.toolType,
+      imageUrl,
+      events: [normalizeAgentEvent(event)],
+    });
+  }
+
+  return rounds;
 }
 
 function sanitizeAgentEventsForStorage(events: AgentRunEvent[] | undefined) {
@@ -1028,6 +1197,48 @@ function createLocalId() {
 
 function cloneFile(file: File) {
   return new File([file], file.name, { type: file.type });
+}
+
+function hasPromptImageReference(text: string) {
+  return PROMPT_IMAGE_REFERENCE_PATTERN.test(text);
+}
+
+function getMentionTrigger(text: string, cursor: number): MentionState | null {
+  const beforeCursor = text.slice(0, cursor);
+  const match = beforeCursor.match(/(^|\s)@([^\s@]*)$/);
+  if (!match) return null;
+  const token = match[0].trimStart();
+  return {
+    open: true,
+    start: cursor - token.length,
+    end: cursor,
+    query: match[2] || "",
+  };
+}
+
+function filterMentionOptions(
+  options: ImageReferenceMentionOption[],
+  query: string
+) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return options;
+  return options.filter((option) =>
+    `${option.token} ${option.label} ${option.detail}`
+      .toLowerCase()
+      .includes(normalized)
+  );
+}
+
+function insertMentionToken(
+  text: string,
+  mention: MentionState,
+  token: string
+) {
+  return `${text.slice(0, mention.start)}${token} ${text.slice(mention.end)}`;
+}
+
+function getCursorAfterInsertedMention(mention: MentionState, token: string) {
+  return mention.start + token.length + 1;
 }
 
 function readFileAsDataUrl(file: File) {
@@ -1562,6 +1773,8 @@ export function CreatePageClient({
   const [editPrompt, setEditPrompt] = useState("");
   const [promptOptimization, setPromptOptimization] = useState(true);
   const [chatPrompt, setChatPrompt] = useState("");
+  const [editMention, setEditMention] = useState<MentionState | null>(null);
+  const [chatMention, setChatMention] = useState<MentionState | null>(null);
   const [chatConversationId, setChatConversationId] = useState(() =>
     createLocalId()
   );
@@ -1765,6 +1978,8 @@ export function CreatePageClient({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const chatImageInputRef = useRef<HTMLInputElement | null>(null);
   const batchImageInputRef = useRef<HTMLInputElement | null>(null);
+  const editPromptRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatPromptRef = useRef<HTMLTextAreaElement | null>(null);
   const chatMessagesRef = useRef<HTMLDivElement | null>(null);
   const chatConversationsRef = useRef<ChatConversation[]>([]);
   const didLoadChatRef = useRef(false);
@@ -1926,6 +2141,18 @@ export function CreatePageClient({
     canUseMixWebFirstRouting &&
     chatMixWebFirst &&
     isOneKImageSize(hasChatImageAttachments ? chatCustomEditSize : size);
+  const agentBackendUnavailableReason = isWebOnlyBackend
+    ? copy(
+        "Agent mode requires Codex/Responses backend. Web backend keeps the original ChatGPT Web route and does not expose Agent tools.",
+        "Agent 模式需要 Codex/Responses 后端。Web 后端保持原 ChatGPT Web 路线，不提供 Agent 工具。"
+      )
+    : chatMixWebFirstActive
+      ? copy(
+          "Agent mode is disabled while 1K Mixed routing would go to Web first. Turn off Web-first routing or choose a Codex/Responses group.",
+          "1K Mixed 路由会优先导向 Web 时，Agent 不可用。请关闭 Web-first 路由，或选择 Codex/Responses 分组。"
+        )
+      : undefined;
+  const effectiveAgentAllowed = agentAllowed && !agentBackendUnavailableReason;
   const currentModeMixWebFirstActive =
     activeMode === "image"
       ? editMixWebFirstActive
@@ -1957,6 +2184,94 @@ export function CreatePageClient({
   const visibleChatMessages = chatMessages.filter((message) =>
     isMessageInConversationMode(message, activeConversationMode)
   );
+  const canUseEditReferenceMentions =
+    activeBackendType === "responses" || activeBackendType === "mixed";
+  const canUseChatReferenceMentions =
+    (activeBackendType === "responses" || activeBackendType === "mixed") &&
+    activeMode !== "waterfall";
+  const editHasImageReference = hasPromptImageReference(editPrompt);
+  const chatHasImageReference = hasPromptImageReference(chatPrompt);
+  const editReferenceOptions = useMemo<ImageReferenceMentionOption[]>(
+    () =>
+      editImages.map((item, index) => ({
+        token: `@图${index + 1}`,
+        label: copy(`Source image ${index + 1}`, `源图片 ${index + 1}`),
+        detail: item.file.name || copy("Uploaded image", "已上传图片"),
+        previewUrl: item.previewUrl,
+      })),
+    [copy, editImages]
+  );
+  const chatReferenceOptions = useMemo<ImageReferenceMentionOption[]>(() => {
+    const options: ImageReferenceMentionOption[] = chatAttachments
+      .filter((item) => item.kind === "image")
+      .map((item, index) => ({
+        token: `@图${index + 1}`,
+        label: copy(
+          `Current attachment ${index + 1}`,
+          `当前附件 ${index + 1}`
+        ),
+        detail: item.file.name || copy("Uploaded image", "已上传图片"),
+        previewUrl: item.previewUrl,
+      }));
+    let roundIndex = 0;
+    for (const message of visibleChatMessages) {
+      if (message.role !== "assistant" || message.error) continue;
+      const imageVariants = getChatVariants(message).filter(
+        (variant) => variant.imageUrl || variant.imageFileId
+      );
+      if (!imageVariants.length) continue;
+      roundIndex += 1;
+      imageVariants.forEach((variant, imageIndex) => {
+        options.push({
+          token: `@第${roundIndex}轮图${imageIndex + 1}`,
+          label: copy(
+            `Round ${roundIndex} image ${imageIndex + 1}`,
+            `第 ${roundIndex} 轮图 ${imageIndex + 1}`
+          ),
+          detail:
+            variant.prompt || variant.size || copy("History image", "历史图片"),
+          previewUrl: variant.imageUrl,
+        });
+      });
+    }
+    return options;
+  }, [chatAttachments, copy, visibleChatMessages]);
+  const filteredEditReferenceOptions = filterMentionOptions(
+    editReferenceOptions,
+    editMention?.query || ""
+  );
+  const filteredChatReferenceOptions = filterMentionOptions(
+    chatReferenceOptions,
+    chatMention?.query || ""
+  );
+  const editReferenceMentionStatusText = !canUseEditReferenceMentions
+    ? copy(
+        "Exact @ image references are available only with Codex/Responses or Mixed backend groups. Web-only routes do not expose this exact reference mechanism.",
+        "精确 @ 图片引用仅支持 Codex/Responses 或 Mixed 后端分组；纯 Web 路线暂不提供这种精确引用机制。"
+      )
+    : editHasImageReference
+      ? copy(
+          "This request contains @ references and will use Codex/Responses, even if custom API or 1K Mixed Web-first routing is enabled.",
+          "本次请求包含 @ 引用，将走 Codex/Responses；即使自填 API 或 1K Mixed Web-first 已开启也不会走这些路线。"
+        )
+      : copy(
+          "Type @ to choose a source image. Using @ references routes this request to Codex/Responses so the backend can attach the selected image as real input.",
+          "输入 @ 可选择源图片。使用 @ 引用时，本次请求会走 Codex/Responses，以便后端把选中的图片作为真实图片输入。"
+      );
+  const chatReferenceMentionStatusText = !canUseChatReferenceMentions
+    ? copy(
+        "Exact @ image references are hidden while Web-only routing is active. Switch to Codex/Responses or Mixed to reference a specific image.",
+        "当前纯 Web 路线下隐藏精确 @ 图片引用。切换到 Codex/Responses 或 Mixed 后，可明确引用指定图片。"
+      )
+    : chatHasImageReference
+      ? copy(
+          "This message contains @ references and will use Codex/Responses, bypassing custom API and Web-first routing. Agent normally carries image context, but @ pins the exact attachment or draft.",
+          "本条消息包含 @ 引用，将走 Codex/Responses，并绕过自填 API 和 Web-first。Agent 通常会带图片上下文，但 @ 会明确钉住指定附件或草稿。"
+        )
+      : copy(
+          "Type @ to choose current attachments or generated history images. In Mixed groups, @ references bypass Web-first routing and use Codex/Responses. Agent already carries image context, but @ is useful when you need one exact draft or round.",
+          "输入 @ 可选择当前附件或历史生成图。Mixed 分组中，使用 @ 引用会跳过 Web-first 并走 Codex/Responses。Agent 默认会带图片上下文，但 @ 适合在多图、多轮草稿中明确指定某一张。"
+      );
   const customApiBillingLabel = copy(
     "Custom API active, no site credits",
     "自填 API 已启用，不消耗本站积分"
@@ -1971,6 +2286,18 @@ export function CreatePageClient({
     [chatCustomEditSize]
   );
   const busy = isGenerating || isEditing || isChatGenerating;
+  useEffect(() => {
+    if (activeMode !== "agent" || effectiveAgentAllowed) return;
+    setActiveMode("chat");
+    toast.error(copy("Agent is unavailable", "Agent 当前不可用"), {
+      description: agentBackendUnavailableReason,
+    });
+  }, [
+    activeMode,
+    agentBackendUnavailableReason,
+    copy,
+    effectiveAgentAllowed,
+  ]);
   const firstPreviewUrl = editImages[0]?.previewUrl || null;
   const chatFirstPreviewUrl =
     chatAttachments.find((item) => item.kind === "image")?.previewUrl || null;
@@ -2143,6 +2470,112 @@ export function CreatePageClient({
     );
 
     return control;
+  };
+
+  const renderReferenceMentionMenu = (params: {
+    open: boolean;
+    options: ImageReferenceMentionOption[];
+    onSelect: (option: ImageReferenceMentionOption) => void;
+    emptyText: string;
+  }) => {
+    if (!params.open) return null;
+    const visibleOptions = params.options.slice(0, 8);
+    return (
+      <div className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg">
+        {visibleOptions.length > 0 ? (
+          <div className="max-h-64 overflow-y-auto py-1">
+            {visibleOptions.map((option) => (
+              <button
+                key={option.token}
+                type="button"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  params.onSelect(option);
+                }}
+              >
+                {option.previewUrl ? (
+                  <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded border bg-muted">
+                    <Image
+                      src={option.previewUrl}
+                      alt={option.label}
+                      fill
+                      sizes="36px"
+                      className="object-cover"
+                      unoptimized={!shouldOptimizeStoredImage(option.previewUrl)}
+                    />
+                  </span>
+                ) : (
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded border bg-muted text-xs font-medium text-muted-foreground">
+                    @
+                  </span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-foreground">
+                    {option.token} · {option.label}
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {option.detail}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="px-3 py-2 text-xs text-muted-foreground">
+            {params.emptyText}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const handleEditPromptChange = (
+    event: React.ChangeEvent<HTMLTextAreaElement>
+  ) => {
+    const next = event.target.value;
+    setEditPrompt(next);
+    setEditMention(
+      canUseEditReferenceMentions
+        ? getMentionTrigger(next, event.target.selectionStart ?? next.length)
+        : null
+    );
+  };
+
+  const handleChatPromptChange = (
+    event: React.ChangeEvent<HTMLTextAreaElement>
+  ) => {
+    const next = event.target.value;
+    setChatPrompt(next);
+    setChatMention(
+      canUseChatReferenceMentions
+        ? getMentionTrigger(next, event.target.selectionStart ?? next.length)
+        : null
+    );
+  };
+
+  const selectEditMention = (option: ImageReferenceMentionOption) => {
+    if (!editMention) return;
+    const nextPrompt = insertMentionToken(editPrompt, editMention, option.token);
+    const nextCursor = getCursorAfterInsertedMention(editMention, option.token);
+    setEditPrompt(nextPrompt);
+    setEditMention(null);
+    requestAnimationFrame(() => {
+      editPromptRef.current?.focus();
+      editPromptRef.current?.setSelectionRange(nextCursor, nextCursor);
+    });
+  };
+
+  const selectChatMention = (option: ImageReferenceMentionOption) => {
+    if (!chatMention) return;
+    const nextPrompt = insertMentionToken(chatPrompt, chatMention, option.token);
+    const nextCursor = getCursorAfterInsertedMention(chatMention, option.token);
+    setChatPrompt(nextPrompt);
+    setChatMention(null);
+    requestAnimationFrame(() => {
+      chatPromptRef.current?.focus();
+      chatPromptRef.current?.setSelectionRange(nextCursor, nextCursor);
+    });
   };
 
   const clearStreamingPreview = () => {
@@ -2354,7 +2787,9 @@ export function CreatePageClient({
     if (promptOptimizationAllowed) {
       formData.append("prompt_optimization", String(promptOptimization));
     }
-    if (chatMixWebFirstActive) {
+    if (hasPromptImageReference(prompt)) {
+      formData.append("requires_responses_backend", "true");
+    } else if (chatMixWebFirstActive) {
       formData.append("mix_web_first", "true");
     }
     const imageAttachments = attachments.filter(
@@ -2872,6 +3307,7 @@ export function CreatePageClient({
     return {
       generationId: data.generationId,
       imageUrl: data.imageUrl,
+      imageFileId: data.imageFileId,
       prompt: resultPrompt,
       model,
       size: resultSize,
@@ -2895,11 +3331,30 @@ export function CreatePageClient({
       .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
     if (outputs.length === 0) return [data];
 
+    const outputUrlByIndex = new Map<number, string>();
+    for (const [index, output] of outputs.entries()) {
+      if (output.imageUrl) outputUrlByIndex.set(output.index ?? index, output.imageUrl);
+    }
+
     return outputs.map((output, index) => {
       const isLast = index === outputs.length - 1;
+      const outputAgentEvents = isLast
+        ? (data.agentEvents || []).map((event) => {
+            if (
+              event.kind === "image_generation" &&
+              event.status === "completed" &&
+              event.imageUrl === undefined
+            ) {
+              const imageUrl = outputUrlByIndex.get(event.index ?? -1);
+              return imageUrl ? { ...event, imageUrl } : event;
+            }
+            return event;
+          })
+        : undefined;
       return {
         generationId: output.generationId,
         imageUrl: output.imageUrl,
+        imageFileId: output.imageFileId,
         model: data.model,
         size: output.size || data.size,
         revisedPrompt:
@@ -2909,10 +3364,10 @@ export function CreatePageClient({
         responseText: isLast ? data.responseText : undefined,
         responseThinking: isLast ? data.responseThinking : undefined,
         responseAgent: isLast ? data.responseAgent : undefined,
-        agentEvents: isLast ? data.agentEvents : undefined,
+        agentEvents: outputAgentEvents,
         agentRoundCount: isLast ? data.agentRoundCount : undefined,
         webConversation: isLast ? data.webConversation : undefined,
-        backendMember: isLast ? data.backendMember : undefined,
+        backendMember: data.backendMember,
         responsesPreviousResponse: isLast ? data.responsesPreviousResponse : undefined,
         creditsConsumed: isLast ? data.creditsConsumed : 0,
         outputRole: output.outputRole || (isLast ? "final" : "agent_draft"),
@@ -3373,68 +3828,189 @@ export function CreatePageClient({
     return copy("started", "开始");
   };
 
-  const renderAgentTimeline = (
+  const agentTaskStatusLabel = (status?: AgentRunEvent["status"]) => {
+    if (status === "completed") return copy("Done", "完成");
+    if (status === "failed") return copy("Failed", "失败");
+    if (status === "running") return copy("Running", "运行中");
+    return copy("Started", "开始");
+  };
+
+  const agentTaskIcon = (kind: AgentRunEvent["kind"]) => {
+    if (kind === "web_search") return <Search className="h-3.5 w-3.5" />;
+    if (kind === "code_interpreter") return <FileText className="h-3.5 w-3.5" />;
+    if (kind === "image_generation" || kind === "image_partial") {
+      return <ImagePlus className="h-3.5 w-3.5" />;
+    }
+    if (kind === "reasoning") return <CircleHelp className="h-3.5 w-3.5" />;
+    return <Wand2 className="h-3.5 w-3.5" />;
+  };
+
+  const agentTaskBorderClass = (status?: AgentRunEvent["status"]) => {
+    if (status === "completed") return "border-emerald-500/35";
+    if (status === "failed") return "border-destructive/50";
+    if (status === "running") return "border-primary/40";
+    return "border-border";
+  };
+
+  const agentTaskStatusClass = (status?: AgentRunEvent["status"]) => {
+    if (status === "completed") {
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    }
+    if (status === "failed") {
+      return "border-destructive/30 bg-destructive/10 text-destructive";
+    }
+    if (status === "running") {
+      return "border-primary/30 bg-primary/10 text-primary";
+    }
+    return "border-border bg-muted text-muted-foreground";
+  };
+
+  const renderAgentTaskCard = (task: AgentTaskCard) => (
+    <div
+      key={task.key}
+      className={`rounded-md border bg-background/75 p-2.5 ${agentTaskBorderClass(
+        task.status
+      )}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
+              {agentTaskIcon(task.kind)}
+            </span>
+            <span className="text-xs font-semibold text-foreground">
+              {agentEventLabel({ ...task.events[0]!, kind: task.kind })}
+            </span>
+            {task.toolType && (
+              <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                {task.toolType}
+              </span>
+            )}
+          </div>
+          <p className="mt-2 whitespace-pre-wrap break-words text-xs font-medium leading-relaxed text-foreground">
+            {task.title}
+          </p>
+          {task.detail && (
+            <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+              {task.detail}
+            </p>
+          )}
+        </div>
+        <span
+          className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium ${agentTaskStatusClass(
+            task.status
+          )}`}
+        >
+          {agentTaskStatusLabel(task.status)}
+        </span>
+      </div>
+      {task.imageUrl && (
+        <div className="mt-2 max-w-[240px] overflow-hidden rounded-md border bg-muted">
+          <Image
+            src={task.imageUrl}
+            alt={task.title}
+            width={240}
+            height={240}
+            className="h-auto w-full object-contain"
+            unoptimized={!shouldOptimizeStoredImage(task.imageUrl)}
+          />
+        </div>
+      )}
+      {task.events.length > 1 && (
+        <div className="mt-2 space-y-1 border-t border-border pt-2">
+          {task.events.slice(-3).map((event, index) => (
+            <div
+              key={`${task.key}-event-${event.status || ""}-${index}`}
+              className="flex items-center gap-2 text-[11px] text-muted-foreground"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/45" />
+              <span>{agentEventStatusLabel(event)}</span>
+              {event.detail && (
+                <span className="min-w-0 truncate">{event.detail}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderAgentRoundCards = (
     events?: AgentRunEvent[],
     fallbackAgent?: string,
     open = false
   ) => {
     if (!showAgentProcessHint) return null;
-    const normalizedEvents = (events || []).reduce<AgentRunEvent[]>(
-      (items, event) => appendAgentRunEvent(items, event),
-      []
-    );
-    if (normalizedEvents.length === 0) {
-      return renderAgentBlock(fallbackAgent, open);
-    }
+    const rounds = buildAgentRoundCards(events);
+    if (rounds.length === 0) return renderAgentBlock(fallbackAgent, open);
+
     return (
       <details
         className="mb-3 rounded-md border border-border bg-background/70 p-2"
         open={open}
       >
         <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
-          {copy("Agent steps", "Agent 步骤")}
+          {copy("Agent tasks", "Agent 任务")}
         </summary>
         <div className="mt-3 space-y-3">
-          {normalizedEvents.map((event, index) => (
-            <div
-              key={`${event.id || event.kind}-${event.partialImageIndex ?? ""}-${index}`}
-              className="border-l border-border pl-3"
+          {rounds.map((round, index) => (
+            <section
+              key={round.key}
+              className="rounded-md border border-border bg-muted/20 p-2.5"
             >
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="rounded border border-border bg-muted px-1.5 py-0.5 font-medium text-foreground">
-                  {agentEventLabel(event)}
-                </span>
-                <span className="text-muted-foreground">
-                  {agentEventStatusLabel(event)}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground">
+                    {round.title || copy(`Round ${index + 1}`, `第 ${index + 1} 轮`)}
+                  </p>
+                  {round.detail && (
+                    <p className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                      {round.detail}
+                    </p>
+                  )}
+                </div>
+                <span
+                  className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${agentTaskStatusClass(
+                    round.status
+                  )}`}
+                >
+                  {agentTaskStatusLabel(round.status)}
                 </span>
               </div>
-              <p className="mt-1 whitespace-pre-wrap break-words text-xs font-medium leading-relaxed text-foreground">
-                {event.title}
-              </p>
-              {event.detail && (
-                <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
-                  {event.detail}
+              {round.tasks.length > 0 ? (
+                <div className="mt-3 grid gap-2">
+                  {round.tasks.map(renderAgentTaskCard)}
+                </div>
+              ) : (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {copy("No tool task in this round.", "本轮暂无工具任务。")}
                 </p>
               )}
-              {event.imageUrl && (
-                <div className="mt-2 max-w-[220px] overflow-hidden rounded-md border bg-muted">
-                  <Image
-                    src={event.imageUrl}
-                    alt={event.title}
-                    width={220}
-                    height={220}
-                    className="h-auto w-full object-contain"
-                    unoptimized={!shouldOptimizeStoredImage(event.imageUrl)}
-                  />
+              {round.notes.length > 0 && (
+                <div className="mt-3 space-y-1 border-t border-border pt-2">
+                  {round.notes.map((note, noteIndex) => (
+                    <p
+                      key={`${round.key}-note-${noteIndex}`}
+                      className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground"
+                    >
+                      {note.title}
+                      {note.detail ? ` - ${note.detail}` : ""}
+                    </p>
+                  ))}
                 </div>
               )}
-            </div>
+            </section>
           ))}
         </div>
         {fallbackAgent && (
-          <p className="mt-3 whitespace-pre-wrap break-words border-t border-border pt-2 text-xs leading-relaxed text-muted-foreground">
-            {fallbackAgent}
-          </p>
+          <details className="mt-3 border-t border-border pt-2">
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+              {copy("Raw log", "原始日志")}
+            </summary>
+            <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+              {fallbackAgent}
+            </p>
+          </details>
         )}
       </details>
     );
@@ -3445,7 +4021,7 @@ export function CreatePageClient({
     return (
       <div className="rounded-lg border border-border bg-muted/35 px-3 py-3 text-sm text-foreground">
         {renderThinkingBlock(chatStream.thinking, true)}
-        {renderAgentTimeline(chatStream.agentEvents, chatStream.agent, true)}
+        {renderAgentRoundCards(chatStream.agentEvents, chatStream.agent, true)}
         {chatStream.text && (
           <p className="whitespace-pre-wrap break-words leading-relaxed">
             {chatStream.text}
@@ -3573,7 +4149,7 @@ export function CreatePageClient({
             </span>
           )}
           <span className="ml-auto text-xs text-muted-foreground">
-            {customApiActive ? (
+            {customApiActive && !chatHasImageReference ? (
               <span className="font-medium text-foreground">
                 {customApiBillingLabel}
               </span>
@@ -3594,7 +4170,16 @@ export function CreatePageClient({
           )}
         </div>
 
-        <div className="flex items-end gap-2 rounded-lg border border-border bg-background p-2">
+        <div className="relative flex items-end gap-2 rounded-lg border border-border bg-background p-2">
+          {renderReferenceMentionMenu({
+            open: Boolean(chatMention?.open) && canUseChatReferenceMentions,
+            options: filteredChatReferenceOptions,
+            onSelect: selectChatMention,
+            emptyText: copy(
+              "No reference images available.",
+              "暂无可引用图片。"
+            ),
+          })}
           <Button
             type="button"
             variant="ghost"
@@ -3608,13 +4193,40 @@ export function CreatePageClient({
             <Upload className="h-4 w-4" />
           </Button>
           <Textarea
+            ref={chatPromptRef}
             value={chatPrompt}
-            onChange={(event) => setChatPrompt(event.target.value)}
+            onChange={handleChatPromptChange}
             placeholder={copy("Continue creating...", "继续描述你的创作...")}
             rows={1}
             disabled={isChatGenerating}
             className="max-h-40 min-h-9 resize-none border-0 bg-transparent px-0 py-2 text-base shadow-none focus-visible:ring-0"
+            onBlur={() => setTimeout(() => setChatMention(null), 120)}
+            onClick={(event) => {
+              const target = event.currentTarget;
+              setChatMention(
+                canUseChatReferenceMentions
+                  ? getMentionTrigger(
+                      target.value,
+                      target.selectionStart ?? target.value.length
+                    )
+                  : null
+              );
+            }}
             onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                chatMention?.open &&
+                filteredChatReferenceOptions[0]
+              ) {
+                event.preventDefault();
+                selectChatMention(filteredChatReferenceOptions[0]);
+                return;
+              }
+              if (event.key === "Escape" && chatMention?.open) {
+                event.preventDefault();
+                setChatMention(null);
+                return;
+              }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 event.currentTarget.form?.requestSubmit();
@@ -3645,6 +4257,9 @@ export function CreatePageClient({
             }}
           />
         </div>
+        <p className="mt-2 text-xs leading-snug text-muted-foreground">
+          {chatReferenceMentionStatusText}
+        </p>
       </form>
     );
   };
@@ -3679,6 +4294,21 @@ export function CreatePageClient({
   const triggerBatchGeneration = async (options?: { retryCardId?: string }) => {
     const currentPrompt = (batchPromptRef.current || batchPrompt).trim();
     if (!currentPrompt) return;
+    if (hasPromptImageReference(currentPrompt)) {
+      toast.error(
+        copy(
+          "@ references are not available in waterfall",
+          "瀑布流暂不支持 @ 精确引用"
+        ),
+        {
+          description: copy(
+            "Use Chat or Agent with Codex/Responses to reference a specific image.",
+            "请在 Chat 或 Agent 中使用 Codex/Responses 精确引用指定图片。"
+          ),
+        }
+      );
+      return;
+    }
 
     const fallbackSize = batchSizeRef.current || getBatchFallbackSize();
     if (!validateImageSize(fallbackSize).valid) {
@@ -3887,12 +4517,19 @@ export function CreatePageClient({
 
   const handleChatSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (activeMode === "agent" && !effectiveAgentAllowed) {
+      toast.error(copy("Agent is unavailable", "Agent 当前不可用"), {
+        description: agentBackendUnavailableReason,
+      });
+      return;
+    }
     if (!chatPrompt.trim()) {
       toast.error(copy("Please enter a message", "请输入消息"));
       return;
     }
 
     const currentPrompt = chatPrompt.trim();
+    const requiresResponsesForReference = hasPromptImageReference(currentPrompt);
     const attachments = chatAttachments.map((item) => ({
       ...item,
       file: cloneFile(item.file),
@@ -3906,7 +4543,7 @@ export function CreatePageClient({
       ? chatCustomEditSizeCheck
       : sizeCheck;
 
-    if (!customApiActive && balance < cost) {
+    if ((!customApiActive || requiresResponsesForReference) && balance < cost) {
       showGenerationError("Insufficient credits");
       return;
     }
@@ -4254,7 +4891,11 @@ export function CreatePageClient({
       });
       return;
     }
-    if (!customApiActive && balance < editBatchCreditCost) {
+    const editRequiresResponsesForReference = hasPromptImageReference(editPrompt);
+    if (
+      (!customApiActive || editRequiresResponsesForReference) &&
+      balance < editBatchCreditCost
+    ) {
       showGenerationError("Insufficient credits");
       return;
     }
@@ -4301,7 +4942,9 @@ export function CreatePageClient({
     if (promptOptimizationAllowed) {
       formData.append("prompt_optimization", String(promptOptimization));
     }
-    if (editMixWebFirstActive) {
+    if (hasPromptImageReference(editPrompt)) {
+      formData.append("requires_responses_backend", "true");
+    } else if (editMixWebFirstActive) {
       formData.append("mix_web_first", "true");
     }
 
@@ -5102,7 +5745,7 @@ export function CreatePageClient({
         onValueChange={(value) => {
           const modeAllowed =
             value === "agent"
-              ? agentAllowed
+              ? effectiveAgentAllowed
               : value === "waterfall"
                 ? waterfallAllowed
                 : value === "chat"
@@ -5115,6 +5758,12 @@ export function CreatePageClient({
                 "当前套餐未开启该模式。"
               )
             );
+            return;
+          }
+          if (value === "agent" && agentBackendUnavailableReason) {
+            toast.error(copy("Agent is unavailable", "Agent 当前不可用"), {
+              description: agentBackendUnavailableReason,
+            });
             return;
           }
           setActiveMode(value as ActiveMode);
@@ -5137,15 +5786,21 @@ export function CreatePageClient({
               <span className="text-[10px] text-muted-foreground">Pro</span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="agent" disabled={!agentAllowed}>
+          <TabsTrigger
+            value="agent"
+            disabled={!effectiveAgentAllowed}
+            title={agentBackendUnavailableReason}
+          >
             <Wand2 className="h-4 w-4" />
             {copy("Agent", "Agent")}
             {gpt55ChatAllowed && (
               <span className="text-[10px] text-muted-foreground">GPT-5.5</span>
             )}
-            {!agentAllowed && (
+            {!agentAllowed ? (
               <span className="text-[10px] text-muted-foreground">Locked</span>
-            )}
+            ) : agentBackendUnavailableReason ? (
+              <span className="text-[10px] text-muted-foreground">Codex</span>
+            ) : null}
           </TabsTrigger>
           <TabsTrigger value="waterfall" disabled={!waterfallAllowed}>
             <ImagePlus className="h-4 w-4" />
@@ -5271,17 +5926,59 @@ export function CreatePageClient({
             onPaste={handleImagePaste}
             className="space-y-4"
           >
-            <Textarea
-              value={editPrompt}
-              onChange={(e) => setEditPrompt(e.target.value)}
-              placeholder={copy(
-                "Describe how to transform the uploaded image...",
-                "描述如何改造上传的图片..."
-              )}
-              rows={5}
-              disabled={isEditing}
-              className="resize-none border-input bg-background text-base"
-            />
+            <div className="relative">
+              {renderReferenceMentionMenu({
+                open: Boolean(editMention?.open) && canUseEditReferenceMentions,
+                options: filteredEditReferenceOptions,
+                onSelect: selectEditMention,
+                emptyText: copy(
+                  "Upload a source image first.",
+                  "请先上传源图片。"
+                ),
+              })}
+              <Textarea
+                ref={editPromptRef}
+                value={editPrompt}
+                onChange={handleEditPromptChange}
+                placeholder={copy(
+                  "Describe how to transform the uploaded image...",
+                  "描述如何改造上传的图片..."
+                )}
+                rows={5}
+                disabled={isEditing}
+                className="resize-none border-input bg-background text-base"
+                onBlur={() => setTimeout(() => setEditMention(null), 120)}
+                onClick={(event) => {
+                  const target = event.currentTarget;
+                  setEditMention(
+                    canUseEditReferenceMentions
+                      ? getMentionTrigger(
+                          target.value,
+                          target.selectionStart ?? target.value.length
+                        )
+                      : null
+                  );
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    editMention?.open &&
+                    filteredEditReferenceOptions[0]
+                  ) {
+                    event.preventDefault();
+                    selectEditMention(filteredEditReferenceOptions[0]);
+                    return;
+                  }
+                  if (event.key === "Escape" && editMention?.open) {
+                    event.preventDefault();
+                    setEditMention(null);
+                  }
+                }}
+              />
+            </div>
+            <p className="text-xs leading-snug text-muted-foreground">
+              {editReferenceMentionStatusText}
+            </p>
             {promptOptimizationField("edit-prompt-optimization", isEditing)}
 
             <div className="space-y-4 rounded-lg border border-border bg-background p-4">
@@ -5880,7 +6577,7 @@ export function CreatePageClient({
                     <p className="mt-1">{editReferenceSizeNote}</p>
                   )}
                   <p className="mt-1">
-                    {customApiActive ? (
+                    {customApiActive && !editHasImageReference ? (
                       <span className="font-medium text-foreground">
                         {customApiBillingLabel}
                       </span>
@@ -6115,7 +6812,7 @@ export function CreatePageClient({
                                   activeVariant.responseThinking,
                                   message.mode === "agent"
                                 )}
-                                {renderAgentTimeline(
+                                {renderAgentRoundCards(
                                   activeVariant.agentEvents,
                                   activeVariant.responseAgent,
                                   message.mode === "agent"

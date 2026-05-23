@@ -16,11 +16,11 @@ import {
   validateImageSize,
 } from "@/features/image-generation/resolution";
 import {
-  deleteModerationImages,
+  deleteTemporaryImages,
   filesToImageInputs,
   formatMegabytes,
   getTotalUploadSize,
-  uploadModerationImages,
+  uploadTemporaryImageUrls,
   validateImageFile,
 } from "@/features/image-generation/request-utils";
 import { createImageStreamResponse } from "@/features/image-generation/streaming";
@@ -50,6 +50,7 @@ const VALID_THINKING = new Set<ThinkingLevel>([
   "high",
   "xhigh",
 ]);
+const PROMPT_IMAGE_REFERENCE_PATTERN = /@(?:第)?\d+轮图\d+|@图\d+/;
 
 function errorResponse(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -81,6 +82,10 @@ function getOptionalBoolean(formData: FormData, ...keys: string[]) {
     if (value === "false" || value === "0") return false;
   }
   return undefined;
+}
+
+function hasPromptImageReference(text: string | undefined) {
+  return Boolean(text && PROMPT_IMAGE_REFERENCE_PATTERN.test(text));
 }
 
 function wantsStreamResponse(request: NextRequest, formData: FormData) {
@@ -149,6 +154,14 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     "mixWebFirst",
     "mix_web_first"
   );
+  const requiresResponsesBackend =
+    getOptionalBoolean(
+      formData,
+      "requiresResponsesBackend",
+      "requires_responses_backend"
+    ) === true ||
+    hasPromptImageReference(prompt) ||
+    hasPromptImageReference(apiPrompt);
 
   const size = getText(formData, "size") || undefined;
   if (size) {
@@ -237,11 +250,18 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     }
 
     const batchId = randomUUID();
-    const moderationImages = await uploadModerationImages(
+    const sourceImageUrls = await uploadTemporaryImageUrls(
       session.user.id,
       batchId,
-      sourceFiles
+      sourceFiles,
+      { scope: "requests" }
     );
+    const maskImageUrls =
+      maskFile instanceof File
+        ? await uploadTemporaryImageUrls(session.user.id, `${batchId}-mask`, [maskFile], {
+            scope: "requests",
+          })
+        : undefined;
     const useStreamResponse = wantsStreamResponse(request, formData);
 
     const runEdit = async (
@@ -266,11 +286,12 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           outputFormat,
           outputCompression,
           n: 1,
-          mixWebFirst,
-          images: await filesToImageInputs(sourceFiles, moderationImages),
+          mixWebFirst: requiresResponsesBackend ? false : mixWebFirst,
+          requiresResponsesBackend,
+          images: await filesToImageInputs(sourceFiles, sourceImageUrls),
           mask:
             maskFile instanceof File
-              ? (await filesToImageInputs([maskFile]))[0]
+              ? (await filesToImageInputs([maskFile], maskImageUrls))[0]
               : undefined,
         },
         onPartialImage
@@ -311,7 +332,10 @@ export const POST = withApiLogging(async (request: NextRequest) => {
 
             return null;
           } finally {
-            await deleteModerationImages(moderationImages);
+            await Promise.allSettled([
+              deleteTemporaryImages(sourceImageUrls),
+              deleteTemporaryImages(maskImageUrls),
+            ]);
           }
         });
       }
@@ -332,7 +356,10 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       });
     } finally {
       if (!useStreamResponse) {
-        await deleteModerationImages(moderationImages);
+        await Promise.allSettled([
+          deleteTemporaryImages(sourceImageUrls),
+          deleteTemporaryImages(maskImageUrls),
+        ]);
       }
     }
   } catch (error) {

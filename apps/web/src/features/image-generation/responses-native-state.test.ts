@@ -4,15 +4,19 @@ import {
   buildResponsesImageGenerationRequest,
 } from "./responses-image";
 import {
+  buildAgentContinuationInput,
   buildPreviousResponseFallbackRequestBody,
   buildCurrentResponsesContent,
   buildContinueGenerationFunctionCallItems,
+  buildGeneratedImageReferenceInstruction,
   buildResponsesInput,
   getContinueGenerationFunctionCalls,
   isPreviousResponseStateError,
+  RESPONSES_IMAGE_REFERENCE_INSTRUCTIONS,
   resolvePromptImageReferences,
   resolveResponsesNativeState,
   shouldEnableResponsesPreviousResponse,
+  withResponsesImageReferenceInstructions,
 } from "./responses-native-state";
 import { normalizeResponsesImageRequestBody } from "./responses-request-normalizer";
 import type {
@@ -181,6 +185,11 @@ describe("Responses image references", () => {
           part.text.includes('<ref id="current-reference-1"')
       )
     ).toBe(true);
+    expect(
+      content.some(
+        (part) => part.type === "input_text" && part.text.includes("@图1")
+      )
+    ).toBe(true);
   });
 
   it("uses image file IDs as real input_image references", () => {
@@ -195,6 +204,88 @@ describe("Responses image references", () => {
       type: "input_image",
       file_id: "file_image_123",
     });
+  });
+
+  it("uses historical image file IDs before URLs for the same Responses backend", () => {
+    const input = buildResponsesInput(
+      "refine it",
+      undefined,
+      undefined,
+      [
+        {
+          role: "assistant",
+          variants: [
+            {
+              text: "Generated image",
+              imageUrl: "https://cdn.example.com/starry.png",
+              imageFileId: "file_img_cached",
+              backendMember: accountA,
+            },
+          ],
+        },
+      ],
+      { currentBackendMember: accountA }
+    );
+
+    expect(
+      input.some((message) =>
+        "content" in message &&
+        message.content.some(
+          (part) => part.type === "input_image" && part.file_id === "file_img_cached"
+        )
+      )
+    ).toBe(true);
+    expect(
+      input.some((message) =>
+        "content" in message &&
+        message.content.some(
+          (part) =>
+            part.type === "input_image" &&
+            part.image_url === "https://cdn.example.com/starry.png"
+        )
+      )
+    ).toBe(false);
+  });
+
+  it("drops historical image file IDs from @ refs when the Responses backend changes", () => {
+    const history: ChatHistoryMessage[] = [
+      {
+        role: "assistant",
+        variants: [
+          {
+            text: "Generated image",
+            imageUrl: "https://cdn.example.com/starry.png",
+            imageFileId: "file_img_wrong_account",
+            backendMember: accountA,
+          },
+        ],
+      },
+    ];
+    const resolved = resolvePromptImageReferences({
+      prompt: "参考 @第1轮图1 继续",
+      history,
+      currentBackendMember: accountB,
+    });
+    const content = buildCurrentResponsesContent(
+      resolved.prompt,
+      undefined,
+      undefined,
+      {
+        extraImageReferences: resolved.historyImageReferences,
+      }
+    );
+
+    expect(content).toContainEqual({
+      type: "input_image",
+      image_url: "https://cdn.example.com/starry.png",
+    });
+    expect(
+      content.some(
+        (part) =>
+          part.type === "input_image" &&
+          part.file_id === "file_img_wrong_account"
+      )
+    ).toBe(false);
   });
 
   it("adds historical generated images as real image inputs in the next turn", () => {
@@ -218,6 +309,32 @@ describe("Responses image references", () => {
             part.type === "input_image" &&
             part.image_url === "https://cdn.example.com/starry.png"
         )
+      )
+    ).toBe(true);
+  });
+
+  it("marks future Chat image outputs with stable history labels", () => {
+    const input = buildResponsesInput(
+      "generate a poster",
+      undefined,
+      undefined,
+      [],
+      {
+        generatedImageReferenceInstruction:
+          buildGeneratedImageReferenceInstruction({ roundIndex: 1 }),
+      }
+    );
+
+    expect(
+      input.some(
+        (message) =>
+          "content" in message &&
+          message.content.some(
+            (part) =>
+              part.type === "input_text" &&
+              part.text.includes("@第1轮图1") &&
+              part.text.includes("history-round-1-image-1")
+          )
       )
     ).toBe(true);
   });
@@ -266,6 +383,46 @@ describe("Responses image references", () => {
       type: "input_image",
       image_url: "https://cdn.example.com/two.png",
     });
+  });
+
+  it("keeps historical @ refs text-only when native previous_response_id is used", () => {
+    const history: ChatHistoryMessage[] = [
+      {
+        role: "assistant",
+        variants: [
+          {
+            text: "first",
+            imageUrl: "https://cdn.example.com/one.png",
+          },
+        ],
+      },
+    ];
+    const resolved = resolvePromptImageReferences({
+      prompt: "参考 @第1轮图1 继续",
+      history,
+    });
+    const content = buildCurrentResponsesContent(
+      resolved.prompt,
+      undefined,
+      undefined,
+      {
+        extraImageReferences: resolved.historyImageReferences,
+        includeExtraImageEntities: false,
+      }
+    );
+
+    expect(content).not.toContainEqual({
+      type: "input_image",
+      image_url: "https://cdn.example.com/one.png",
+    });
+    expect(
+      content.some(
+        (part) =>
+          part.type === "input_text" &&
+          part.text.includes("@第1轮图1") &&
+          part.text.includes("native Responses conversation state")
+      )
+    ).toBe(true);
   });
 
   it("passes PDF attachments as input_file for Responses", () => {
@@ -345,6 +502,47 @@ describe("Agent continue_generation tool", () => {
       },
     ]);
   });
+
+  it("keeps Agent draft image refs text-only when native state is active", () => {
+    const input = buildAgentContinuationInput({
+      baseInput: [],
+      previousResult: {
+        imageOutputs: [{ imageBase64: Buffer.from("draft").toString("base64") }],
+      },
+      currentRound: 1,
+      maxRounds: 3,
+      historyRoundIndex: 1,
+      includeImageEntities: false,
+    });
+
+    expect(
+      input.some(
+        (message) =>
+          "content" in message &&
+          message.content.some((part) => part.type === "input_image")
+      )
+    ).toBe(false);
+    expect(
+      input.some(
+        (message) =>
+          "content" in message &&
+          message.content.some(
+            (part) =>
+              part.type === "input_text" &&
+              part.text.includes("Agent round 1 draft 1")
+          )
+      )
+    ).toBe(true);
+    expect(
+      input.some(
+        (message) =>
+          "content" in message &&
+          message.content.some(
+            (part) => part.type === "input_text" && part.text.includes("@第1轮图2")
+          )
+      )
+    ).toBe(true);
+  });
 });
 
 describe("backend isolation", () => {
@@ -414,6 +612,28 @@ describe("backend isolation", () => {
 
     expect(request.store).toBe(false);
     expect("previous_response_id" in request).toBe(false);
+    expect(request.instructions).not.toContain(
+      RESPONSES_IMAGE_REFERENCE_INSTRUCTIONS
+    );
+  });
+
+  it("adds global image reference instructions to direct Responses edit requests", () => {
+    const request = buildResponsesImageEditRequest(responsesConfig(), {
+      prompt: "把 @图1 改成蓝色背景",
+      images: [testImage],
+    });
+
+    expect(request.instructions).toContain(RESPONSES_IMAGE_REFERENCE_INSTRUCTIONS);
+    expect(request.instructions).toContain("@图1");
+    expect(request.instructions).toContain('<ref id="..." />');
+  });
+
+  it("appends image reference instructions once to internal base instructions", () => {
+    const instructions = withResponsesImageReferenceInstructions("Base instructions.");
+
+    expect(instructions).toBe(
+      `Base instructions.\n\n${RESPONSES_IMAGE_REFERENCE_INSTRUCTIONS}`
+    );
   });
 
   it("rewrites direct image edit @图 mentions to edit reference tags", () => {
@@ -429,6 +649,59 @@ describe("backend isolation", () => {
     expect(request.input[0]?.content).toContainEqual({
       type: "input_image",
       image_url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=",
+    });
+  });
+
+  it("uses uploaded image URLs before base64 for direct Responses edit inputs", () => {
+    const request = buildResponsesImageEditRequest(responsesConfig(), {
+      prompt: "改这张图",
+      images: [{ ...testImage, url: "https://cdn.example.com/source.png" }],
+      mask: { ...testImage, url: "https://cdn.example.com/mask.png" },
+    });
+
+    expect(request.input[0]?.content).toContainEqual({
+      type: "input_image",
+      image_url: "https://cdn.example.com/source.png",
+    });
+    expect(request.tools[0]?.input_image_mask).toEqual({
+      image_url: "https://cdn.example.com/mask.png",
+    });
+  });
+
+  it("labels image edit source images before the user edit request", () => {
+    const request = buildResponsesImageEditRequest(responsesConfig(), {
+      prompt: "把 @图1 的构图套到 @图2 上",
+      images: [
+        testImage,
+        { ...testImage, name: "style.png", data: Buffer.from("style") },
+      ],
+    });
+    const content = request.input[0]?.content || [];
+
+    expect(content[0]).toMatchObject({
+      type: "input_text",
+      text: expect.stringContaining("@图1"),
+    });
+    expect(content[0]).toMatchObject({
+      type: "input_text",
+      text: expect.stringContaining('id="edit-reference-1"'),
+    });
+    expect(content[1]).toMatchObject({ type: "input_image" });
+    expect(content[2]).toMatchObject({
+      type: "input_text",
+      text: expect.stringContaining("source image above"),
+    });
+    expect(content[3]).toMatchObject({
+      type: "input_text",
+      text: expect.stringContaining("@图2"),
+    });
+    expect(content.at(-1)).toMatchObject({
+      type: "input_text",
+      text: expect.stringContaining("User edit request:"),
+    });
+    expect(content.at(-1)).toMatchObject({
+      type: "input_text",
+      text: expect.stringContaining('id="edit-reference-2"'),
     });
   });
 });
