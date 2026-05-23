@@ -6,7 +6,7 @@ GPT2Image-Pro 是一个面向生图业务的 SaaS 平台。当前版本采用 pn
 
 ## 主要功能
 
-- 文生图、图生图/编辑、对话生图、批量生成和历史瀑布流。
+- 文生图、图生图/编辑、对话生图、批量生成、历史瀑布流和 Codex 式 Agent 自动迭代生图。
 - OpenAI 风格外接 API：`/v1/images/generations`、`/v1/images/edits`、`/v1/responses`、`/v1/chat/completions`、`/v1/models`，同时提供 `/api/v1/*` 镜像路径。
 - 生图后端池：支持 Web 账号、Codex/Responses 账号和外接 OpenAI 兼容 API；支持分组、分组类型、默认分组、优先级、权重、并发、冷却、错误标记和额度显示。
 - Sub2API 同步：从 Sub2API PostgreSQL 同步 OpenAI OAuth 账号，支持按来源分组、套餐过滤、排除 free、排除错误账号、去重导入和定时同步。
@@ -250,6 +250,14 @@ curl https://your-domain.com/v1/responses \
 ```bash
 pnpm --filter @repo/shared test:matrix
 ```
+
+## Chat 与 Agent
+
+页面 Chat 是普通多模态对话/生图：一次请求保留上下文，先扣 1 积分；如果本轮产出图片，再按实际输出尺寸和数量追加计费。
+
+页面 Agent 面向 Codex 式任务执行：后端默认提供 `image_generation`、`web_search`、`code_interpreter`，不强制 `tool_choice`。一次用户请求内会自动执行多轮，每轮把上一轮文字、工具结果和生成草图作为下一轮上下文，模型可自行决定继续搜索、读上传的文本/代码附件、生成草图或改版。每个自动轮次扣 1 积分，图片输出另按实际尺寸和数量计费。
+
+Agent 最大自动轮数由系统设置 `IMAGE_AGENT_MAX_ROUNDS` 控制，默认 `3`，后台“系统设置 -> 模型与后端”可改。上传的文本/代码类文件会作为上下文读取；不会开放服务器本地路径读取。
 
 ## 部署
 

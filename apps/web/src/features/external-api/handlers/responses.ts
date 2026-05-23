@@ -540,12 +540,24 @@ function toResponsePayload(params: {
   previousContinuation?: StoredResponsesContinuation | null;
 }) {
   const output = [];
-  if (params.imageBase64) {
+  const imageOutputs = params.result.imageOutputs?.length
+    ? params.result.imageOutputs
+    : params.imageBase64
+      ? [
+          {
+            imageBase64: params.imageBase64,
+            revisedPrompt: params.result.revisedPrompt,
+          },
+        ]
+      : [];
+  for (const image of imageOutputs) {
+    const outputB64 = image.imageBase64;
+    if (!outputB64) continue;
     output.push(
       toOpenAIResponseImageItem({
         id: responseId("ig"),
-        b64Json: params.imageBase64,
-        revisedPrompt: params.result.revisedPrompt,
+        b64Json: outputB64,
+        revisedPrompt: image.revisedPrompt || params.result.revisedPrompt,
       })
     );
   }
@@ -729,6 +741,16 @@ export const postExternalResponses = withApiLogging(
     if (wantsImageStreamResponse(request, parsed.data.stream)) {
       return createExternalImageStreamResponse(async (emit) => {
         const result = await runImageGenerationForUser(input, {
+          onPartialImage: async (image) => {
+            await emit({
+              event: "response.image_generation_call.partial_image",
+              data: {
+                type: "response.image_generation_call.partial_image",
+                partial_image_index: image.partialImageIndex,
+                partial_image_b64: image.imageBase64,
+              },
+            });
+          },
           onTextDelta: async (delta) => {
             await emit({
               event: "response.output_text.delta",
@@ -769,6 +791,19 @@ export const postExternalResponses = withApiLogging(
         const imageBase64 = result.imageUrl
           ? await getImageBase64(request, result.imageUrl)
           : undefined;
+        const imageOutputs = result.imageOutputs?.length
+          ? await Promise.all(
+              result.imageOutputs.map(async (output) => ({
+                ...output,
+                imageBase64: output.imageUrl
+                  ? await getImageBase64(request, output.imageUrl)
+                  : output.imageBase64,
+              }))
+            )
+          : undefined;
+        const responseResult = imageOutputs
+          ? { ...result, imageOutputs }
+          : result;
         const fallbackHistory = buildFallbackHistoryForStorage({
           baseHistory,
           prompt,
@@ -786,7 +821,7 @@ export const postExternalResponses = withApiLogging(
         const response = toResponsePayload({
           requestId,
           model: parsed.data.model,
-          result,
+          result: responseResult,
           imageBase64,
           previousResponseId,
           previousContinuation,
@@ -830,6 +865,19 @@ export const postExternalResponses = withApiLogging(
       const imageBase64 = result.imageUrl
         ? await getImageBase64(request, result.imageUrl)
         : undefined;
+      const imageOutputs = result.imageOutputs?.length
+        ? await Promise.all(
+            result.imageOutputs.map(async (output) => ({
+              ...output,
+              imageBase64: output.imageUrl
+                ? await getImageBase64(request, output.imageUrl)
+                : output.imageBase64,
+            }))
+          )
+        : undefined;
+      const responseResult = imageOutputs
+        ? { ...result, imageOutputs }
+        : result;
       const fallbackHistory = buildFallbackHistoryForStorage({
         baseHistory,
         prompt,
@@ -848,7 +896,7 @@ export const postExternalResponses = withApiLogging(
       return toResponsePayload({
         requestId,
         model: parsed.data.model,
-        result,
+        result: responseResult,
         imageBase64,
         previousResponseId,
         previousContinuation,

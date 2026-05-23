@@ -10,7 +10,10 @@ import {
 import { logError, logWarn } from "@repo/shared/logger";
 import { canUsePlanCapability } from "@repo/shared/subscription/services/plan-capabilities";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
-import { getRuntimeSettingString } from "@repo/shared/system-settings";
+import {
+  getRuntimeSettingNumber,
+  getRuntimeSettingString,
+} from "@repo/shared/system-settings";
 import { eq } from "drizzle-orm";
 import {
   acquireImageBackendInflight,
@@ -76,9 +79,12 @@ const DEFAULT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS =
 const ORIGINAL_PROMPT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS =
   "You are a multimodal chat assistant. When calling image_generation, use the user's original image prompt exactly as written. Do not rewrite, expand, translate, polish, or optimize the latest user prompt before image generation.";
 const DEFAULT_RESPONSES_IMAGE_INSTRUCTIONS =
-  "You are a multimodal assistant. Use web_search when current or external information is needed, use code_interpreter when calculation or file analysis helps, and use image_generation when the user asks for an image, edit, or visual output.";
+  "You are a multimodal assistant. Use web_search when current or external information is needed, use code_interpreter when calculation or file analysis helps, and use image_generation when the user asks for an image, edit, or visual output. For image tasks, do not stop after research or a plan; either call image_generation or clearly ask for missing required input.";
 const ORIGINAL_PROMPT_RESPONSES_IMAGE_INSTRUCTIONS =
-  "You are a multimodal assistant. Use web_search when current or external information is needed, and use code_interpreter when calculation or file analysis helps. When calling image_generation, use the user's original image prompt exactly as written. Do not rewrite, expand, translate, polish, or optimize the latest user prompt before image generation.";
+  "You are a multimodal assistant. Use web_search when current or external information is needed, and use code_interpreter when calculation or file analysis helps. When calling image_generation, use the user's original image prompt exactly as written. Do not rewrite, expand, translate, polish, or optimize the latest user prompt before image generation. For image tasks, do not stop after research or a plan; either call image_generation or clearly ask for missing required input.";
+const AGENT_CONTINUE_INSTRUCTIONS =
+  "Continue the same Agent run. Review the previous assistant notes, tool outputs, and generated draft images in this conversation. If the user asked for image creation or iterative refinement and the task is not complete, continue autonomously: call image_generation for the next concrete version, or stop only when no further useful iteration is needed. Keep visible progress notes brief.";
+const DEFAULT_AGENT_IMAGE_ROUNDS = 3;
 
 type ImageOutput = {
   b64_json?: string;
@@ -123,6 +129,7 @@ type ResponsesOutputItem = {
 };
 
 type ResponsesPayload = {
+  id?: string;
   output?: ResponsesOutputItem[];
   error?: { message?: string } | string;
   message?: string;
@@ -136,6 +143,11 @@ type ResponsesRequestContent =
 type ResponsesRequestMessage = {
   role: "user" | "assistant";
   content: ResponsesRequestContent[];
+};
+
+type ResponsesResultWithOutput = GenerateImageResult & {
+  responseId?: string;
+  outputItems?: ResponsesOutputItem[];
 };
 
 type ReasoningConfig = {
@@ -487,16 +499,16 @@ function extractPayloadRetryMetadata(payload: unknown): {
   return {};
 }
 
-function withRetryMetadata(
-  result: GenerateImageResult,
+function withRetryMetadata<T extends GenerateImageResult>(
+  result: T,
   metadata: { upstreamResetAt?: string; retryAfterSeconds?: number }
-): GenerateImageResult {
+): T {
   if (!metadata.upstreamResetAt && !metadata.retryAfterSeconds) return result;
   return {
     ...result,
     upstreamResetAt: result.upstreamResetAt || metadata.upstreamResetAt,
     retryAfterSeconds: result.retryAfterSeconds ?? metadata.retryAfterSeconds,
-  };
+  } as T;
 }
 
 function safeParseJson(value: string) {
@@ -978,6 +990,61 @@ function stripToolTypes(
   };
 }
 
+async function fetchAgentRoundResponses(params: {
+  config: ApiConfig;
+  requestBody: ResponsesStreamRequestBody;
+  signal?: AbortSignal;
+  stream: boolean;
+  callbacks?: ImageGenerationCallbacks;
+}) {
+  let result = await fetchResponses(
+    params.config,
+    params.requestBody,
+    {
+      signal: params.signal,
+      stream: params.stream,
+    },
+    params.callbacks
+  );
+
+  const unsupportedTools = getUnsupportedToolTypes(result);
+  if (unsupportedTools.size > 0) {
+    await params.callbacks?.onAgentDelta?.(
+      `部分 Codex/Responses 工具不可用，已移除 ${Array.from(unsupportedTools).join(", ")} 后重试\n`
+    );
+    result = await fetchResponses(
+      params.config,
+      stripToolTypes(params.requestBody, unsupportedTools),
+      {
+        signal: params.signal,
+        stream: params.stream,
+      },
+      params.callbacks
+    );
+
+    const secondUnsupportedTools = getUnsupportedToolTypes(result);
+    if (secondUnsupportedTools.size > 0) {
+      await params.callbacks?.onAgentDelta?.(
+        "扩展工具仍不可用，已切换为仅保留图片生成工具重试\n"
+      );
+      result = await fetchResponses(
+        params.config,
+        stripToolTypes(
+          params.requestBody,
+          new Set(["web_search", "code_interpreter"])
+        ),
+        {
+          signal: params.signal,
+          stream: params.stream,
+        },
+        params.callbacks
+      );
+    }
+  }
+
+  return result;
+}
+
 function getUnsupportedToolTypes(result: GenerateImageResult) {
   if (!result.error) return new Set<string>();
   const message = result.error.toLowerCase();
@@ -995,6 +1062,30 @@ function getUnsupportedToolTypes(result: GenerateImageResult) {
   return types;
 }
 
+function hasAgentImage(result: GenerateImageResult) {
+  return Boolean(
+    result.imageBase64 ||
+      result.imageUrl ||
+      result.imageOutputs?.some((item) => item.imageBase64 || item.imageUrl)
+  );
+}
+
+async function getAgentMaxRounds() {
+  return Math.max(
+    1,
+    Math.min(
+      8,
+      Math.floor(
+        await getRuntimeSettingNumber(
+          "IMAGE_AGENT_MAX_ROUNDS",
+          DEFAULT_AGENT_IMAGE_ROUNDS,
+          { positive: true }
+        )
+      )
+    )
+  );
+}
+
 async function fetchResponses(
   config: ApiConfig,
   requestBody: ResponsesStreamRequestBody,
@@ -1003,7 +1094,7 @@ async function fetchResponses(
     stream: boolean;
   },
   callbacks?: ImageGenerationCallbacks
-) {
+): Promise<ResponsesResultWithOutput> {
   const response = await fetch(
     `${stripTrailingSlash(config.baseUrl)}/responses`,
     {
@@ -1025,6 +1116,16 @@ function getDataUrl(image: ImageInputFile) {
     return image.url;
   }
   return `data:${image.type || "image/png"};base64,${image.data.toString("base64")}`;
+}
+
+function imageBase64ToDataUrl(base64: string, outputFormat?: ImageOutputFormat) {
+  const mime =
+    outputFormat === "jpeg"
+      ? "image/jpeg"
+      : outputFormat === "webp"
+        ? "image/webp"
+        : "image/png";
+  return `data:${mime};base64,${base64}`;
 }
 
 function isUsableInputImageUrl(url: string) {
@@ -1104,6 +1205,72 @@ function buildResponsesInput(
   ];
   input.push({ role: "user", content: currentContent });
 
+  return input;
+}
+
+function buildAgentContinuationInput(params: {
+  baseInput: ResponsesRequestMessage[];
+  previousResult: ResponsesResultWithOutput;
+  currentRound: number;
+  maxRounds: number;
+  outputFormat?: ImageOutputFormat;
+}) {
+  const input: ResponsesRequestMessage[] = [...params.baseInput];
+  const previousContext = [
+    params.previousResult.responseThinking?.trim()
+      ? `Previous reasoning summary:\n${params.previousResult.responseThinking.trim()}`
+      : "",
+    params.previousResult.responseAgent?.trim()
+      ? `Previous tool log:\n${params.previousResult.responseAgent.trim()}`
+      : "",
+    params.previousResult.responseText?.trim()
+      ? `Previous assistant note:\n${params.previousResult.responseText.trim()}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  if (previousContext) {
+    input.push({
+      role: "assistant",
+      content: [{ type: "output_text", text: previousContext }],
+    });
+  }
+
+  const previousImages = (params.previousResult.imageOutputs || []).filter(
+    (item) => item.imageBase64 || item.imageUrl
+  );
+  for (const [index, image] of previousImages.entries()) {
+    const imageUrl =
+      image.imageUrl ||
+      (image.imageBase64
+        ? imageBase64ToDataUrl(image.imageBase64, params.outputFormat)
+        : undefined);
+    if (!imageUrl) continue;
+    input.push({
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: `Draft image from Agent round ${params.currentRound}, version ${
+            index + 1
+          }. Use it as visual reference for critique and possible refinement.`,
+        },
+        { type: "input_image", image_url: imageUrl },
+      ],
+    });
+  }
+
+  const statusLines = [
+    `Agent round ${params.currentRound} of ${params.maxRounds} finished.`,
+    previousImages.length
+      ? `It produced ${previousImages.length} draft image(s). Inspect the draft and either generate an improved next version or stop if the task is complete.`
+      : "It produced no image. If the user requested an image and no required input is missing, execute image_generation now.",
+    "When continuing, make the next action concrete. Do not repeat the same research summary.",
+  ];
+  input.push({
+    role: "user",
+    content: [{ type: "input_text", text: statusLines.join("\n") }],
+  });
   return input;
 }
 
@@ -1251,7 +1418,7 @@ function extractPartialImage(
 
 function parseResponsesOutput(
   output: ResponsesOutputItem[] | undefined
-): GenerateImageResult | null {
+): ResponsesResultWithOutput | null {
   let imageBase64: string | undefined;
   let revisedPrompt: string | undefined;
   let responseText: string | undefined;
@@ -1317,6 +1484,7 @@ function parseResponsesOutput(
     responseThinking,
     responseAgent,
     agentEvents: agentEvents.length ? agentEvents : undefined,
+    outputItems: output,
   };
 }
 
@@ -1489,11 +1657,92 @@ function mergeAgentEvents(
   return merged.length ? merged : undefined;
 }
 
+function mergeGenerateImageResults(
+  results: ResponsesResultWithOutput[]
+): ResponsesResultWithOutput {
+  const last = results[results.length - 1];
+  if (!last) return { error: "API returned no image data" };
+
+  const imageOutputs: NonNullable<GenerateImageResult["imageOutputs"]> = [];
+  const outputItems: ResponsesOutputItem[] = [];
+  const textParts: string[] = [];
+  const thinkingParts: string[] = [];
+  const agentParts: string[] = [];
+  let imageBase64: string | undefined;
+  let imageUrl: string | undefined;
+  let revisedPrompt: string | undefined;
+  let upstreamRevisedPrompt: string | undefined;
+
+  for (const result of results) {
+    if (result.responseText?.trim()) textParts.push(result.responseText.trim());
+    if (result.responseThinking?.trim()) {
+      thinkingParts.push(result.responseThinking.trim());
+    }
+    if (result.responseAgent?.trim()) {
+      agentParts.push(result.responseAgent.trim());
+    }
+    if (result.outputItems?.length) outputItems.push(...result.outputItems);
+
+    for (const output of result.imageOutputs || []) {
+      if (!output.imageBase64 && !output.imageUrl) continue;
+      const nextOutput = { ...output, index: imageOutputs.length };
+      imageOutputs.push(nextOutput);
+      if (output.imageBase64) imageBase64 = output.imageBase64;
+      if (output.imageUrl) imageUrl = output.imageUrl;
+      revisedPrompt = output.revisedPrompt || revisedPrompt;
+      upstreamRevisedPrompt =
+        output.upstreamRevisedPrompt || upstreamRevisedPrompt;
+    }
+
+    if (!result.imageOutputs?.length && (result.imageBase64 || result.imageUrl)) {
+      imageOutputs.push({
+        imageBase64: result.imageBase64,
+        imageUrl: result.imageUrl,
+        revisedPrompt: result.revisedPrompt,
+        upstreamRevisedPrompt: result.upstreamRevisedPrompt,
+        index: imageOutputs.length,
+      });
+      imageBase64 = result.imageBase64 || imageBase64;
+      imageUrl = result.imageUrl || imageUrl;
+      revisedPrompt = result.revisedPrompt || revisedPrompt;
+      upstreamRevisedPrompt =
+        result.upstreamRevisedPrompt || upstreamRevisedPrompt;
+    }
+  }
+
+  return {
+    ...last,
+    imageBase64,
+    imageUrl,
+    imageOutputs: imageOutputs.length ? imageOutputs : last.imageOutputs,
+    imageOutputCount: imageOutputs.length || last.imageOutputCount,
+    revisedPrompt: last.revisedPrompt || revisedPrompt,
+    upstreamRevisedPrompt:
+      last.upstreamRevisedPrompt || upstreamRevisedPrompt || revisedPrompt,
+    responseText: textParts.length ? textParts.join("\n\n") : last.responseText,
+    responseThinking: thinkingParts.length
+      ? thinkingParts.join("\n\n")
+      : last.responseThinking,
+    responseAgent: agentParts.length ? agentParts.join("\n") : last.responseAgent,
+    agentEvents: mergeAgentEvents(...results.map((result) => result.agentEvents)),
+    agentRoundCount: results.length,
+    outputItems: outputItems.length ? outputItems : last.outputItems,
+  };
+}
+
 async function emitAgentEvent(
   callbacks: ImageGenerationCallbacks | undefined,
   event: AgentRunEvent
 ) {
   await callbacks?.onAgentEvent?.(event);
+}
+
+async function emitAgentProgress(
+  callbacks: ImageGenerationCallbacks | undefined,
+  event: AgentRunEvent
+) {
+  await callbacks?.onAgentDelta?.(`${event.title}${event.detail ? ` - ${event.detail}` : ""}\n`);
+  await emitAgentEvent(callbacks, event);
 }
 
 async function recordAgentEvent(
@@ -1694,6 +1943,8 @@ async function processResponsesEventPayload(
     if (result) {
       state.completedResult = {
         ...result,
+        responseId: completedPayload.id,
+        outputItems: completedPayload.output,
         imageOutputs: result.imageOutputs || state.fallbackResult?.imageOutputs,
         imageOutputCount: Math.max(
           result.imageOutputCount || 0,
@@ -1744,7 +1995,7 @@ async function processResponsesEventBlock(
 async function parseResponsesEventStreamResponse(
   response: Response,
   callbacks?: ImageGenerationCallbacks
-): Promise<GenerateImageResult> {
+): Promise<ResponsesResultWithOutput> {
   if (!response.body) {
     return parseResponsesEventStreamText(await response.text(), callbacks);
   }
@@ -1786,7 +2037,7 @@ async function parseResponsesEventStreamResponse(
 async function parseResponsesEventStreamText(
   text: string,
   callbacks?: ImageGenerationCallbacks
-): Promise<GenerateImageResult> {
+): Promise<ResponsesResultWithOutput> {
   const state: EventStreamParseState = {
     completedResult: null,
     fallbackResult: null,
@@ -1804,7 +2055,7 @@ async function parseResponsesEventStreamText(
 async function parseResponsesResponse(
   response: Response,
   callbacks?: ImageGenerationCallbacks
-): Promise<GenerateImageResult> {
+): Promise<ResponsesResultWithOutput> {
   const responseRetryMetadata = getResponseRetryMetadata(response);
   if (!response.ok) {
     const rawBody = await response.text().catch(() => "");
@@ -1841,14 +2092,16 @@ async function parseResponsesResponse(
   const result = parseResponsesOutput(data.output);
 
   return withRetryMetadata(
-    result || { error: getPayloadError(data) || "API returned no image data" },
+    result
+      ? { ...result, responseId: data.id, outputItems: data.output }
+      : { error: getPayloadError(data) || "API returned no image data" },
     { ...responseRetryMetadata, ...extractPayloadRetryMetadata(data) }
   );
 }
 
 type EventStreamParseState = {
-  completedResult: GenerateImageResult | null;
-  fallbackResult: GenerateImageResult | null;
+  completedResult: ResponsesResultWithOutput | null;
+  fallbackResult: ResponsesResultWithOutput | null;
   responseAgent?: string;
   agentEvents?: AgentRunEvent[];
 };
@@ -1929,7 +2182,7 @@ async function processEventBlock(
   return await processEventPayload(eventName, dataLines, state, callbacks);
 }
 
-function finishEventStream(state: EventStreamParseState): GenerateImageResult {
+function finishEventStream(state: EventStreamParseState): ResponsesResultWithOutput {
   const result = state.completedResult || state.fallbackResult;
   if (result) {
     return {
@@ -2477,48 +2730,128 @@ export async function generateChatImage(
             ...(stream ? { stream: true } : {}),
           };
 
-    let result = await fetchResponses(
-      config,
-      requestBody,
-      {
-        signal: params.signal,
-        stream,
-      },
-      callbacks
-    );
+    let result: ResponsesResultWithOutput;
+    if (params.agentMode && !params.rawResponsesBody) {
+      const maxRounds = await getAgentMaxRounds();
+      const roundResults: ResponsesResultWithOutput[] = [];
+      let nextInput = input;
 
-    const unsupportedTools = getUnsupportedToolTypes(result);
-    if (params.agentMode && unsupportedTools.size > 0) {
-      await callbacks?.onAgentDelta?.(
-        `部分 Codex/Responses 工具不可用，已移除 ${Array.from(unsupportedTools).join(", ")} 后重试\n`
-      );
+      for (let round = 1; round <= maxRounds; round += 1) {
+        const roundRequestBody: ResponsesStreamRequestBody = {
+          ...requestBody,
+          input: nextInput,
+          instructions:
+            round === 1
+              ? requestBody.instructions
+              : `${requestBody.instructions || instructions}\n\n${AGENT_CONTINUE_INSTRUCTIONS}`,
+        };
+        await emitAgentProgress(callbacks, {
+          kind: "message",
+          status: "started",
+          title: `Agent 第 ${round} 轮开始`,
+          detail:
+            round === 1
+              ? "分析请求并按需调用工具"
+              : "根据上一版结果继续判断是否迭代",
+          timestamp: new Date().toISOString(),
+        });
+
+        const roundResult = await fetchAgentRoundResponses({
+          config,
+          requestBody: roundRequestBody,
+          signal: params.signal,
+          stream,
+          callbacks,
+        });
+        roundResults.push(roundResult);
+
+        if (roundResult.error) {
+          if (roundResults.slice(0, -1).some(hasAgentImage)) {
+            await emitAgentProgress(callbacks, {
+              kind: "message",
+              status: "failed",
+              title: `Agent 第 ${round} 轮停止`,
+              detail: `后续迭代失败，已保留上一版图片：${roundResult.error}`,
+              timestamp: new Date().toISOString(),
+            });
+            result = mergeGenerateImageResults(roundResults.slice(0, -1));
+            break;
+          }
+          result = mergeGenerateImageResults(roundResults);
+          break;
+        }
+
+        await emitAgentProgress(callbacks, {
+          kind: "message",
+          status: "completed",
+          title: `Agent 第 ${round} 轮完成`,
+          detail: hasAgentImage(roundResult)
+            ? "已生成图片，准备自检是否需要下一版"
+            : "未生成图片，继续推动执行",
+          timestamp: new Date().toISOString(),
+        });
+
+        if (round >= maxRounds) {
+          result = mergeGenerateImageResults(roundResults);
+          break;
+        }
+
+        if (hasAgentImage(roundResult)) {
+          nextInput = buildAgentContinuationInput({
+            baseInput: input,
+            previousResult: mergeGenerateImageResults(roundResults),
+            currentRound: round,
+            maxRounds,
+            outputFormat,
+          });
+          continue;
+        }
+
+        if (roundResults.some(hasAgentImage)) {
+          result = mergeGenerateImageResults(roundResults);
+          break;
+        }
+
+        const textOnly = Boolean(
+          roundResult.responseText?.trim() || roundResult.responseAgent?.trim()
+        );
+        if (!textOnly) {
+          result = mergeGenerateImageResults(roundResults);
+          break;
+        }
+
+        nextInput = buildAgentContinuationInput({
+          baseInput: input,
+          previousResult: mergeGenerateImageResults(roundResults),
+          currentRound: round,
+          maxRounds,
+          outputFormat,
+        });
+      }
+
+      result = mergeGenerateImageResults(roundResults);
+    } else {
       result = await fetchResponses(
         config,
-        stripToolTypes(requestBody, unsupportedTools),
+        requestBody,
         {
           signal: params.signal,
           stream,
         },
         callbacks
       );
+    }
 
-      const secondUnsupportedTools = getUnsupportedToolTypes(result);
-      if (secondUnsupportedTools.size > 0) {
-        await callbacks?.onAgentDelta?.(
-          "扩展工具仍不可用，已切换为仅保留图片生成工具重试\n"
-        );
-        result = await fetchResponses(
+    if (params.agentMode && params.rawResponsesBody) {
+      const unsupportedTools = getUnsupportedToolTypes(result);
+      if (unsupportedTools.size > 0) {
+        result = await fetchAgentRoundResponses({
           config,
-          stripToolTypes(
-            requestBody,
-            new Set(["web_search", "code_interpreter"])
-          ),
-          {
-            signal: params.signal,
-            stream,
-          },
-          callbacks
-        );
+          requestBody,
+          signal: params.signal,
+          stream,
+          callbacks,
+        });
       }
     }
 

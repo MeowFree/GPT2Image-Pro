@@ -29,6 +29,7 @@ export interface GenerateImageResult {
   responseThinking?: string;
   responseAgent?: string;
   agentEvents?: AgentRunEvent[];
+  agentRoundCount?: number;
   webConversation?: ChatGptWebConversationState;
   error?: string;
   upstreamResetAt?: string;

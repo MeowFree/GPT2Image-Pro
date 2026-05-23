@@ -40,6 +40,7 @@ export type ImageStreamEvent =
       responseThinking?: string;
       responseAgent?: string;
       agentEvents?: AgentRunEvent[];
+      agentRoundCount?: number;
       webConversation?: {
         conversationId: string;
         parentMessageId: string;

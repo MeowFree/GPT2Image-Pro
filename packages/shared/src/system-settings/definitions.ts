@@ -96,6 +96,7 @@ export type SettingKey =
   | "OPENAI_MODERATION_MODEL"
   | "PLATFORM_RESPONSES_MODEL"
   | "PLATFORM_CHAT_MODEL"
+  | "IMAGE_AGENT_MAX_ROUNDS"
   | "CHATGPT_WEB_PROXY_URL"
   | "CHATGPT_WEB_PROXY_SECRET"
   | "CHATGPT_WEB_ACCOUNT_REFRESH_STALE_MINUTES"
@@ -835,6 +836,15 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     description: "兼容旧配置。",
     category: "models",
     valueType: "string",
+  },
+  {
+    key: "IMAGE_AGENT_MAX_ROUNDS",
+    label: "Agent 最大自动迭代轮数",
+    description:
+      "页面 Agent 模式单次请求内最多执行多少轮 Responses 调用。每轮可继续联网、分析附件或生成下一版图片，用于模拟 Codex 式自发迭代。",
+    category: "models",
+    valueType: "number",
+    defaultValue: 3,
   },
   {
     key: "CHATGPT_WEB_PROXY_URL",

@@ -62,10 +62,21 @@ async function toStreamCompletedPayload(
   responseFormat: "url" | "b64_json",
   index: number
 ) {
-  const image =
-    responseFormat === "b64_json"
-      ? { b64_json: await getImageBase64(request, result.imageUrl) }
-      : { url: getPublicImageUrl(request, result.imageUrl) };
+  const outputs = result.imageOutputs?.length
+    ? result.imageOutputs
+    : [{ imageUrl: result.imageUrl, revisedPrompt: result.revisedPrompt }];
+  const images = [];
+  for (const output of outputs) {
+    const image =
+      responseFormat === "b64_json"
+        ? { b64_json: await getImageBase64(request, output.imageUrl) }
+        : { url: getPublicImageUrl(request, output.imageUrl) };
+    images.push({
+      ...image,
+      revised_prompt: output.revisedPrompt || result.revisedPrompt,
+    });
+  }
+  const primary = images[images.length - 1] || {};
 
   return {
     type: "image_generation.completed",
@@ -76,13 +87,8 @@ async function toStreamCompletedPayload(
     size: result.size,
     revised_prompt: result.revisedPrompt,
     credits_consumed: result.creditsConsumed,
-    ...image,
-    data: [
-      {
-        ...image,
-        revised_prompt: result.revisedPrompt,
-      },
-    ],
+    ...primary,
+    data: images,
   };
 }
 
@@ -247,7 +253,23 @@ export const postExternalImageGenerations = withApiLogging(
             creditsConsumed: result.creditsConsumed,
           });
         }
-        data.push(await toOpenAIImageData(request, result, responseFormat));
+        if (result.imageOutputs?.length) {
+          for (const output of result.imageOutputs) {
+            data.push(
+              await toOpenAIImageData(
+                request,
+                {
+                  ...result,
+                  imageUrl: output.imageUrl,
+                  revisedPrompt: output.revisedPrompt || result.revisedPrompt,
+                },
+                responseFormat
+              )
+            );
+          }
+        } else {
+          data.push(await toOpenAIImageData(request, result, responseFormat));
+        }
       }
 
       return {

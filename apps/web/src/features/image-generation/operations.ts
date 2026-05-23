@@ -92,6 +92,10 @@ const CHAT_TEXT_ONLY_CREDITS = 1;
 const TEXT_MODERATION_ONLY_CREDITS =
   getImageCreditCostBreakdown(DEFAULT_IMAGE_SIZE).moderationOnlyCredits;
 
+function getChatRoundCount(result: GenerateImageResult) {
+  return Math.max(1, Math.floor(result.agentRoundCount || 1));
+}
+
 export type ImageGenerationOperationResult = {
   error?: string;
   generationId?: string;
@@ -104,6 +108,7 @@ export type ImageGenerationOperationResult = {
   responseThinking?: string;
   responseAgent?: string;
   agentEvents?: GenerateImageResult["agentEvents"];
+  agentRoundCount?: GenerateImageResult["agentRoundCount"];
   webConversation?: GenerateImageResult["webConversation"];
   creditsConsumed?: number;
 };
@@ -1360,6 +1365,7 @@ async function runQueuedImageGenerationForUser({
       responseThinking: result.responseThinking,
       responseAgent: result.responseAgent,
       agentEvents: result.agentEvents,
+      agentRoundCount: result.agentRoundCount,
       webConversation: result.webConversation,
       creditsConsumed: finalChargedCredits,
     };
@@ -1448,8 +1454,9 @@ async function runQueuedImageGenerationForUser({
     (total, item) => roundCreditAmount(total + item.totalCredits),
     0
   );
+  const chatRoundCount = isChatInput ? getChatRoundCount(result) : 0;
   const targetSuccessCredits = isChatInput
-    ? CHAT_TEXT_ONLY_CREDITS + actualImageCredits
+    ? CHAT_TEXT_ONLY_CREDITS * chatRoundCount + actualImageCredits
     : actualImageCredits;
   try {
     await settleChargedCredits(
@@ -1466,6 +1473,7 @@ async function runQueuedImageGenerationForUser({
         actualCreditCost,
         perOutputCreditCosts,
         chatRoundCredits: isChatInput ? CHAT_TEXT_ONLY_CREDITS : 0,
+        chatRoundCount,
         billableImageOutputCount,
         upstreamImageOutputCount,
       }
@@ -1539,6 +1547,7 @@ async function runQueuedImageGenerationForUser({
             actualCreditCost,
             perOutputCreditCosts,
             chatRoundCredits: isChatInput ? CHAT_TEXT_ONLY_CREDITS : 0,
+            chatRoundCount,
             billableImageOutputCount,
             upstreamImageOutputCount,
             imageOutputs: storedOutputs.map((output, index) => ({
@@ -1578,6 +1587,7 @@ async function runQueuedImageGenerationForUser({
     responseThinking: result.responseThinking,
     responseAgent: result.responseAgent,
     agentEvents: result.agentEvents,
+    agentRoundCount: result.agentRoundCount,
     webConversation: result.webConversation,
     creditsConsumed: chargedCredits,
   };

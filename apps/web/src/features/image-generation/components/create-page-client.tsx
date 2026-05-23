@@ -117,6 +117,7 @@ type ImageApiResult = {
   responseThinking?: string;
   responseAgent?: string;
   agentEvents?: AgentRunEvent[];
+  agentRoundCount?: number;
   webConversation?: ChatGptWebConversationState;
   creditsConsumed?: number;
   results?: ImageApiResult[];
@@ -208,6 +209,7 @@ type ChatVariant = {
   responseThinking?: string;
   responseAgent?: string;
   agentEvents?: AgentRunEvent[];
+  agentRoundCount?: number;
   webConversation?: ChatGptWebConversationState;
   creditsConsumed?: number;
   createdAt?: string;
@@ -228,6 +230,7 @@ type ChatResultInput = Pick<
   | "responseThinking"
   | "responseAgent"
   | "agentEvents"
+  | "agentRoundCount"
   | "webConversation"
   | "creditsConsumed"
 >;
@@ -2519,6 +2522,7 @@ export function CreatePageClient({
       responseThinking: completed.responseThinking || thinking || undefined,
       responseAgent: agent || completed.responseAgent || undefined,
       agentEvents: completed.agentEvents || agentEvents,
+      agentRoundCount: completed.agentRoundCount,
       webConversation: completed.webConversation,
     };
   };
@@ -2779,6 +2783,7 @@ export function CreatePageClient({
       responseThinking: data.responseThinking,
       responseAgent: data.responseAgent,
       agentEvents: data.agentEvents,
+      agentRoundCount: data.agentRoundCount,
       webConversation: data.webConversation,
       creditsConsumed: data.creditsConsumed,
       createdAt: new Date().toISOString(),
@@ -2806,6 +2811,7 @@ export function CreatePageClient({
         responseThinking: isLast ? data.responseThinking : undefined,
         responseAgent: isLast ? data.responseAgent : undefined,
         agentEvents: isLast ? data.agentEvents : undefined,
+        agentRoundCount: isLast ? data.agentRoundCount : undefined,
         webConversation: isLast ? data.webConversation : undefined,
         creditsConsumed: isLast ? data.creditsConsumed : 0,
       };
