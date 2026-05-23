@@ -44,12 +44,14 @@ export interface GeneratedImageOutput {
   imageBase64?: string;
   imageUrl?: string;
   imageFileId?: string;
+  webImageMessageId?: string;
+  webImageGroupId?: string;
   generationId?: string;
   size?: string;
   revisedPrompt?: string;
   upstreamRevisedPrompt?: string;
   index?: number;
-  outputRole?: "final" | "agent_draft";
+  outputRole?: "final" | "agent_draft" | "choice";
 }
 
 export interface PartialImageResult {
@@ -180,6 +182,9 @@ export interface ChatGptWebConversationState {
   conversationId: string;
   parentMessageId: string;
   accountId?: string;
+  apiKeyId?: string;
+  selectionMessageId?: string;
+  selectedImageMessageId?: string;
 }
 
 export interface StickyBackendMemberState {
@@ -200,6 +205,8 @@ export interface ChatHistoryVariant {
   text?: string;
   imageUrl?: string;
   imageFileId?: string;
+  webImageMessageId?: string;
+  webImageGroupId?: string;
   size?: string;
   timestamp?: string;
   webConversation?: ChatGptWebConversationState;

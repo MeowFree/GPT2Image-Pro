@@ -108,11 +108,13 @@ type ImageApiResult = {
     generationId?: string;
     imageUrl?: string;
     imageFileId?: string;
+    webImageMessageId?: string;
+    webImageGroupId?: string;
     size?: string;
     revisedPrompt?: string;
     upstreamRevisedPrompt?: string;
     index?: number;
-    outputRole?: "final" | "agent_draft";
+    outputRole?: "final" | "agent_draft" | "choice";
   }>;
   model?: string;
   size?: string;
@@ -208,6 +210,8 @@ type ChatVariant = {
   generationId?: string;
   imageUrl?: string;
   imageFileId?: string;
+  webImageMessageId?: string;
+  webImageGroupId?: string;
   prompt: string;
   model: string;
   size: string;
@@ -222,6 +226,7 @@ type ChatVariant = {
   responsesPreviousResponse?: ResponsesPreviousResponseState;
   creditsConsumed?: number;
   createdAt?: string;
+  outputRole?: "final" | "agent_draft" | "choice";
 };
 
 type ChatRecentGeneration = RecentGeneration & {
@@ -246,13 +251,18 @@ type ChatResultInput = Pick<
   | "responsesPreviousResponse"
   | "creditsConsumed"
 > & {
-  outputRole?: "final" | "agent_draft";
+  webImageMessageId?: string;
+  webImageGroupId?: string;
+  outputRole?: "final" | "agent_draft" | "choice";
 };
 
 type ChatGptWebConversationState = {
   conversationId: string;
   parentMessageId: string;
   accountId?: string;
+  apiKeyId?: string;
+  selectionMessageId?: string;
+  selectedImageMessageId?: string;
 };
 
 type StickyBackendMemberState = {
@@ -1027,10 +1037,7 @@ function normalizeAgentEvent(event: AgentRunEvent): AgentRunEvent {
   };
 }
 
-function appendAgentRunEvent(
-  events: AgentRunEvent[],
-  incoming: AgentRunEvent
-) {
+function appendAgentRunEvent(events: AgentRunEvent[], incoming: AgentRunEvent) {
   const nextEvent = normalizeAgentEvent(incoming);
   const matchIndex = events.findIndex((event) => {
     if (nextEvent.kind === "image_partial" || event.kind === "image_partial") {
@@ -1052,7 +1059,7 @@ function appendAgentRunEvent(
 
   return events.map((event, index) =>
     index === matchIndex ? { ...event, ...nextEvent } : event
-      );
+  );
 }
 
 function getAgentTaskKey(event: AgentRunEvent, index: number) {
@@ -1074,7 +1081,9 @@ function getAgentTaskKey(event: AgentRunEvent, index: number) {
 }
 
 function isAgentRoundStartEvent(event: AgentRunEvent) {
-  return event.kind === "message" && /Agent 第\s*\d+\s*轮开始/.test(event.title);
+  return (
+    event.kind === "message" && /Agent 第\s*\d+\s*轮开始/.test(event.title)
+  );
 }
 
 function isAgentRoundEndEvent(event: AgentRunEvent) {
@@ -1316,6 +1325,19 @@ function sanitizeChatMessages(value: unknown): ChatMessage[] {
                     typeof value.webConversation.accountId === "string"
                       ? value.webConversation.accountId
                       : undefined,
+                  apiKeyId:
+                    typeof value.webConversation.apiKeyId === "string"
+                      ? value.webConversation.apiKeyId
+                      : undefined,
+                  selectionMessageId:
+                    typeof value.webConversation.selectionMessageId === "string"
+                      ? value.webConversation.selectionMessageId
+                      : undefined,
+                  selectedImageMessageId:
+                    typeof value.webConversation.selectedImageMessageId ===
+                    "string"
+                      ? value.webConversation.selectedImageMessageId
+                      : undefined,
                 }
               : undefined;
           const backendMember =
@@ -1344,24 +1366,27 @@ function sanitizeChatMessages(value: unknown): ChatMessage[] {
             value.responsesPreviousResponse?.backendMember &&
             typeof value.responsesPreviousResponse.backendMember === "object" &&
             (value.responsesPreviousResponse.backendMember.type === "api" ||
-              value.responsesPreviousResponse.backendMember.type === "account") &&
+              value.responsesPreviousResponse.backendMember.type ===
+                "account") &&
             typeof value.responsesPreviousResponse.backendMember.id === "string"
               ? {
                   type: value.responsesPreviousResponse.backendMember.type,
                   id: value.responsesPreviousResponse.backendMember.id,
                   groupId:
-                    typeof value.responsesPreviousResponse.backendMember.groupId ===
-                    "string"
+                    typeof value.responsesPreviousResponse.backendMember
+                      .groupId === "string"
                       ? value.responsesPreviousResponse.backendMember.groupId
-                      : value.responsesPreviousResponse.backendMember.groupId === null
+                      : value.responsesPreviousResponse.backendMember
+                            .groupId === null
                         ? null
                         : undefined,
                   accountBackend:
-                    value.responsesPreviousResponse.backendMember.accountBackend ===
-                      "web" ||
-                    value.responsesPreviousResponse.backendMember.accountBackend ===
-                      "responses"
-                      ? value.responsesPreviousResponse.backendMember.accountBackend
+                    value.responsesPreviousResponse.backendMember
+                      .accountBackend === "web" ||
+                    value.responsesPreviousResponse.backendMember
+                      .accountBackend === "responses"
+                      ? value.responsesPreviousResponse.backendMember
+                          .accountBackend
                       : undefined,
                 }
               : undefined;
@@ -1375,7 +1400,8 @@ function sanitizeChatMessages(value: unknown): ChatMessage[] {
                   backendMember: responsesBackendMember,
                   store: true as const,
                   createdAt:
-                    typeof value.responsesPreviousResponse.createdAt === "string"
+                    typeof value.responsesPreviousResponse.createdAt ===
+                    "string"
                       ? value.responsesPreviousResponse.createdAt
                       : undefined,
                 }
@@ -1388,19 +1414,24 @@ function sanitizeChatMessages(value: unknown): ChatMessage[] {
               size: value.size || DEFAULT_IMAGE_SIZE,
               agentEvents: Array.isArray(value.agentEvents)
                 ? value.agentEvents
-                    .filter(
-                      (event): event is AgentRunEvent =>
-                        Boolean(
-                          event &&
-                            typeof event === "object" &&
-                            typeof event.title === "string"
-                        )
+                    .filter((event): event is AgentRunEvent =>
+                      Boolean(
+                        event &&
+                          typeof event === "object" &&
+                          typeof event.title === "string"
+                      )
                     )
                     .map(normalizeAgentEvent)
                 : undefined,
               webConversation,
               backendMember,
               responsesPreviousResponse,
+              outputRole:
+                value.outputRole === "agent_draft" ||
+                value.outputRole === "choice" ||
+                value.outputRole === "final"
+                  ? value.outputRole
+                  : undefined,
             },
           ];
         })
@@ -1571,6 +1602,8 @@ function toChatHistory(messages: ChatMessage[]) {
             : undefined),
         imageUrl: variant.imageUrl,
         imageFileId: variant.imageFileId,
+        webImageMessageId: variant.webImageMessageId,
+        webImageGroupId: variant.webImageGroupId,
         size: variant.size,
         timestamp: variant.createdAt,
         webConversation: variant.webConversation,
@@ -2206,10 +2239,7 @@ export function CreatePageClient({
       .filter((item) => item.kind === "image")
       .map((item, index) => ({
         token: `@图${index + 1}`,
-        label: copy(
-          `Current attachment ${index + 1}`,
-          `当前附件 ${index + 1}`
-        ),
+        label: copy(`Current attachment ${index + 1}`, `当前附件 ${index + 1}`),
         detail: item.file.name || copy("Uploaded image", "已上传图片"),
         previewUrl: item.previewUrl,
       }));
@@ -2257,7 +2287,7 @@ export function CreatePageClient({
       : copy(
           "Type @ to choose a source image. Using @ references routes this request to Codex/Responses so the backend can attach the selected image as real input.",
           "输入 @ 可选择源图片。使用 @ 引用时，本次请求会走 Codex/Responses，以便后端把选中的图片作为真实图片输入。"
-      );
+        );
   const chatReferenceMentionStatusText = !canUseChatReferenceMentions
     ? copy(
         "Exact @ image references are hidden while Web-only routing is active. Switch to Codex/Responses or Mixed to reference a specific image.",
@@ -2271,7 +2301,7 @@ export function CreatePageClient({
       : copy(
           "Type @ to choose current attachments or generated history images. In Mixed groups, @ references bypass Web-first routing and use Codex/Responses. Agent already carries image context, but @ is useful when you need one exact draft or round.",
           "输入 @ 可选择当前附件或历史生成图。Mixed 分组中，使用 @ 引用会跳过 Web-first 并走 Codex/Responses。Agent 默认会带图片上下文，但 @ 适合在多图、多轮草稿中明确指定某一张。"
-      );
+        );
   const customApiBillingLabel = copy(
     "Custom API active, no site credits",
     "自填 API 已启用，不消耗本站积分"
@@ -2292,12 +2322,7 @@ export function CreatePageClient({
     toast.error(copy("Agent is unavailable", "Agent 当前不可用"), {
       description: agentBackendUnavailableReason,
     });
-  }, [
-    activeMode,
-    agentBackendUnavailableReason,
-    copy,
-    effectiveAgentAllowed,
-  ]);
+  }, [activeMode, agentBackendUnavailableReason, copy, effectiveAgentAllowed]);
   const firstPreviewUrl = editImages[0]?.previewUrl || null;
   const chatFirstPreviewUrl =
     chatAttachments.find((item) => item.kind === "image")?.previewUrl || null;
@@ -2502,7 +2527,9 @@ export function CreatePageClient({
                       fill
                       sizes="36px"
                       className="object-cover"
-                      unoptimized={!shouldOptimizeStoredImage(option.previewUrl)}
+                      unoptimized={
+                        !shouldOptimizeStoredImage(option.previewUrl)
+                      }
                     />
                   </span>
                 ) : (
@@ -2556,7 +2583,11 @@ export function CreatePageClient({
 
   const selectEditMention = (option: ImageReferenceMentionOption) => {
     if (!editMention) return;
-    const nextPrompt = insertMentionToken(editPrompt, editMention, option.token);
+    const nextPrompt = insertMentionToken(
+      editPrompt,
+      editMention,
+      option.token
+    );
     const nextCursor = getCursorAfterInsertedMention(editMention, option.token);
     setEditPrompt(nextPrompt);
     setEditMention(null);
@@ -2568,7 +2599,11 @@ export function CreatePageClient({
 
   const selectChatMention = (option: ImageReferenceMentionOption) => {
     if (!chatMention) return;
-    const nextPrompt = insertMentionToken(chatPrompt, chatMention, option.token);
+    const nextPrompt = insertMentionToken(
+      chatPrompt,
+      chatMention,
+      option.token
+    );
     const nextCursor = getCursorAfterInsertedMention(chatMention, option.token);
     setChatPrompt(nextPrompt);
     setChatMention(null);
@@ -3308,6 +3343,8 @@ export function CreatePageClient({
       generationId: data.generationId,
       imageUrl: data.imageUrl,
       imageFileId: data.imageFileId,
+      webImageMessageId: data.webImageMessageId,
+      webImageGroupId: data.webImageGroupId,
       prompt: resultPrompt,
       model,
       size: resultSize,
@@ -3322,6 +3359,7 @@ export function CreatePageClient({
       responsesPreviousResponse: data.responsesPreviousResponse,
       creditsConsumed: data.creditsConsumed,
       createdAt: new Date().toISOString(),
+      outputRole: data.outputRole,
     };
   };
 
@@ -3333,11 +3371,22 @@ export function CreatePageClient({
 
     const outputUrlByIndex = new Map<number, string>();
     for (const [index, output] of outputs.entries()) {
-      if (output.imageUrl) outputUrlByIndex.set(output.index ?? index, output.imageUrl);
+      if (output.imageUrl)
+        outputUrlByIndex.set(output.index ?? index, output.imageUrl);
     }
 
     return outputs.map((output, index) => {
       const isLast = index === outputs.length - 1;
+      const isChoice = output.outputRole === "choice";
+      const choiceConversation =
+        isChoice && data.webConversation
+          ? {
+              ...data.webConversation,
+              selectedImageMessageId:
+                output.webImageMessageId ||
+                data.webConversation.selectedImageMessageId,
+            }
+          : undefined;
       const outputAgentEvents = isLast
         ? (data.agentEvents || []).map((event) => {
             if (
@@ -3355,20 +3404,25 @@ export function CreatePageClient({
         generationId: output.generationId,
         imageUrl: output.imageUrl,
         imageFileId: output.imageFileId,
+        webImageMessageId: output.webImageMessageId,
+        webImageGroupId: output.webImageGroupId,
         model: data.model,
         size: output.size || data.size,
         revisedPrompt:
           output.revisedPrompt ||
           output.upstreamRevisedPrompt ||
           data.revisedPrompt,
-        responseText: isLast ? data.responseText : undefined,
+        responseText: isChoice || isLast ? data.responseText : undefined,
         responseThinking: isLast ? data.responseThinking : undefined,
         responseAgent: isLast ? data.responseAgent : undefined,
         agentEvents: outputAgentEvents,
         agentRoundCount: isLast ? data.agentRoundCount : undefined,
-        webConversation: isLast ? data.webConversation : undefined,
+        webConversation:
+          choiceConversation || (isLast ? data.webConversation : undefined),
         backendMember: data.backendMember,
-        responsesPreviousResponse: isLast ? data.responsesPreviousResponse : undefined,
+        responsesPreviousResponse: isLast
+          ? data.responsesPreviousResponse
+          : undefined,
         creditsConsumed: isLast ? data.creditsConsumed : 0,
         outputRole: output.outputRole || (isLast ? "final" : "agent_draft"),
       };
@@ -3390,6 +3444,17 @@ export function CreatePageClient({
       if (variant) variants.push(variant);
     }
     if (variants.length > 0) {
+      const activeChoiceIndex = variants.findIndex(
+        (variant) =>
+          variant.outputRole === "choice" &&
+          variant.webConversation?.selectedImageMessageId &&
+          variant.webImageMessageId ===
+            variant.webConversation.selectedImageMessageId
+      );
+      if (activeChoiceIndex >= 0 && activeChoiceIndex < variants.length - 1) {
+        const [selected] = variants.splice(activeChoiceIndex, 1);
+        variants.push(selected!);
+      }
       const nextRecent = variants
         .filter((variant) => variant.imageUrl && variant.generationId)
         .toReversed()
@@ -3629,21 +3694,68 @@ export function CreatePageClient({
     return null;
   };
 
-  const handleChatVariantChange = (messageId: string, direction: -1 | 1) => {
+  const syncWebImageSelection = async (variant?: ChatVariant | null) => {
+    if (
+      variant?.outputRole !== "choice" ||
+      !variant.generationId ||
+      !variant.webImageMessageId ||
+      !variant.webConversation?.selectionMessageId
+    ) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/images/chat/web-select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generationId: variant.generationId }),
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(data?.error || "Failed to sync Web selection");
+      }
+    } catch (error) {
+      toast.error(
+        copy("Failed to sync Web image choice", "同步 Web 图片选择失败"),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : copy(
+                  "The local selection is still preserved.",
+                  "本地选择仍会保留。"
+                ),
+        }
+      );
+    }
+  };
+
+  const handleChatVariantSelect = (messageId: string, nextIndex: number) => {
+    let selectedVariant: ChatVariant | null = null;
     setChatMessages((prev) =>
       prev.map((message) => {
         if (message.id !== messageId) return message;
         const variants = getChatVariants(message);
-        const current = message.activeVariant || 0;
+        const next = Math.max(
+          0,
+          Math.min(variants.length - 1, Math.floor(nextIndex))
+        );
+        selectedVariant = variants[next] || null;
         return {
           ...message,
-          activeVariant: Math.max(
-            0,
-            Math.min(variants.length - 1, current + direction)
-          ),
+          activeVariant: next,
         };
       })
     );
+    void syncWebImageSelection(selectedVariant);
+  };
+
+  const handleChatVariantChange = (messageId: string, direction: -1 | 1) => {
+    const message = chatMessages.find((item) => item.id === messageId);
+    const current = message?.activeVariant || 0;
+    handleChatVariantSelect(messageId, current + direction);
   };
 
   const handleChatRetry = async (assistantId: string) => {
@@ -3837,7 +3949,8 @@ export function CreatePageClient({
 
   const agentTaskIcon = (kind: AgentRunEvent["kind"]) => {
     if (kind === "web_search") return <Search className="h-3.5 w-3.5" />;
-    if (kind === "code_interpreter") return <FileText className="h-3.5 w-3.5" />;
+    if (kind === "code_interpreter")
+      return <FileText className="h-3.5 w-3.5" />;
     if (kind === "image_generation" || kind === "image_partial") {
       return <ImagePlus className="h-3.5 w-3.5" />;
     }
@@ -3961,7 +4074,8 @@ export function CreatePageClient({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-foreground">
-                    {round.title || copy(`Round ${index + 1}`, `第 ${index + 1} 轮`)}
+                    {round.title ||
+                      copy(`Round ${index + 1}`, `第 ${index + 1} 轮`)}
                   </p>
                   {round.detail && (
                     <p className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">
@@ -4529,7 +4643,8 @@ export function CreatePageClient({
     }
 
     const currentPrompt = chatPrompt.trim();
-    const requiresResponsesForReference = hasPromptImageReference(currentPrompt);
+    const requiresResponsesForReference =
+      hasPromptImageReference(currentPrompt);
     const attachments = chatAttachments.map((item) => ({
       ...item,
       file: cloneFile(item.file),
@@ -4891,7 +5006,8 @@ export function CreatePageClient({
       });
       return;
     }
-    const editRequiresResponsesForReference = hasPromptImageReference(editPrompt);
+    const editRequiresResponsesForReference =
+      hasPromptImageReference(editPrompt);
     if (
       (!customApiActive || editRequiresResponsesForReference) &&
       balance < editBatchCreditCost
@@ -6744,6 +6860,10 @@ export function CreatePageClient({
                     const variants = getChatVariants(message);
                     const activeVariant = getActiveChatVariant(message);
                     const activeIndex = message.activeVariant || 0;
+                    const webChoiceVariants = variants.filter(
+                      (variant) =>
+                        variant.outputRole === "choice" && variant.imageUrl
+                    );
                     const isRetrying =
                       retryingChatMessageId === message.id && chatStream;
 
@@ -6915,7 +7035,7 @@ export function CreatePageClient({
                           </div>
 
                           {message.role === "assistant" && (
-                            <div className="mt-2 flex items-center gap-2">
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
                               {variants.length > 1 && (
                                 <div className="inline-flex items-center rounded-md border border-border bg-background text-xs text-muted-foreground">
                                   <Button
@@ -6954,6 +7074,67 @@ export function CreatePageClient({
                                     <ChevronRight className="h-3 w-3" />
                                   </Button>
                                 </div>
+                              )}
+                              {webChoiceVariants.length > 1 && (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {variants.map((variant, index) => {
+                                    if (
+                                      variant.outputRole !== "choice" ||
+                                      !variant.imageUrl
+                                    ) {
+                                      return null;
+                                    }
+                                    return (
+                                      <button
+                                        key={`${variant.generationId || index}-choice`}
+                                        type="button"
+                                        className={`relative h-10 w-10 overflow-hidden rounded-md border bg-muted ${
+                                          index === activeIndex
+                                            ? "border-primary ring-1 ring-primary"
+                                            : "border-border"
+                                        }`}
+                                        onClick={() =>
+                                          handleChatVariantSelect(
+                                            message.id,
+                                            index
+                                          )
+                                        }
+                                        title={copy(
+                                          `Choose image ${index + 1}`,
+                                          `选择第 ${index + 1} 张`
+                                        )}
+                                      >
+                                        <Image
+                                          src={variant.imageUrl}
+                                          alt={variant.prompt}
+                                          fill
+                                          sizes="40px"
+                                          className="object-cover"
+                                          unoptimized={
+                                            !shouldOptimizeStoredImage(
+                                              variant.imageUrl
+                                            )
+                                          }
+                                        />
+                                        {index === activeIndex && (
+                                          <span className="absolute right-0.5 top-0.5 rounded-full bg-primary p-0.5 text-primary-foreground">
+                                            <Check className="h-2.5 w-2.5" />
+                                          </span>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {variants.some(
+                                (variant) => variant.outputRole === "choice"
+                              ) && (
+                                <span className="text-xs text-muted-foreground">
+                                  {copy(
+                                    "Web returned multiple choices; switching syncs the selected image.",
+                                    "Web 返回了多个候选，切换时会同步选中图片。"
+                                  )}
+                                </span>
                               )}
                               <Button
                                 type="button"

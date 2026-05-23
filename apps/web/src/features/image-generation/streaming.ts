@@ -46,6 +46,9 @@ export type ImageStreamEvent =
         conversationId: string;
         parentMessageId: string;
         accountId?: string;
+        apiKeyId?: string;
+        selectionMessageId?: string;
+        selectedImageMessageId?: string;
       };
       backendMember?: {
         type: "api" | "account";
@@ -68,10 +71,13 @@ export type ImageStreamEvent =
         generationId?: string;
         imageUrl?: string;
         imageFileId?: string;
+        webImageMessageId?: string;
+        webImageGroupId?: string;
         size?: string;
         revisedPrompt?: string;
         upstreamRevisedPrompt?: string;
         index?: number;
+        outputRole?: "final" | "agent_draft" | "choice";
       }>;
       creditsConsumed?: number;
     }

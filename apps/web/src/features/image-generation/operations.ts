@@ -105,10 +105,11 @@ function getChatRoundCount(result: GenerateImageResult) {
 
 function resolveOutputRole(params: {
   input: RunImageGenerationInput;
-  outputRole?: "final" | "agent_draft";
+  outputRole?: "final" | "agent_draft" | "choice";
   index: number;
   total: number;
 }) {
+  if (params.outputRole === "choice") return "choice";
   if (params.input.mode === "chat" && params.input.agentMode) {
     return (
       params.outputRole ||
@@ -166,7 +167,10 @@ function stripTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
 
-function getImageFileName(params: { generationId: string; contentType: string }) {
+function getImageFileName(params: {
+  generationId: string;
+  contentType: string;
+}) {
   const extension =
     params.contentType === "image/jpeg"
       ? "jpg"
@@ -229,11 +233,14 @@ async function uploadResponsesImageFile(params: {
   formData.append("purpose", "vision");
 
   try {
-    const response = await fetch(`${stripTrailingSlash(params.config.baseUrl)}/files`, {
-      method: "POST",
-      headers: getMultipartHeaders(params.config),
-      body: formData,
-    });
+    const response = await fetch(
+      `${stripTrailingSlash(params.config.baseUrl)}/files`,
+      {
+        method: "POST",
+        headers: getMultipartHeaders(params.config),
+        body: formData,
+      }
+    );
     if (!response.ok) {
       const body = await response.text().catch(() => "");
       logWarn("Responses 输出图片上传 Files 失败", {
@@ -243,9 +250,9 @@ async function uploadResponsesImageFile(params: {
       });
       return undefined;
     }
-    const payload = (await response.json().catch(() => null)) as
-      | { id?: unknown }
-      | null;
+    const payload = (await response.json().catch(() => null)) as {
+      id?: unknown;
+    } | null;
     const fileId = typeof payload?.id === "string" ? payload.id : undefined;
     if (!fileId) {
       logWarn("Responses 输出图片上传 Files 未返回 file id", {
@@ -267,6 +274,8 @@ type StoredGeneratedImageOutput = {
   generationId: string;
   imageUrl: string;
   imageFileId?: string;
+  webImageMessageId?: string;
+  webImageGroupId?: string;
   storageKey: string;
   fileSize: number;
   size: string;
@@ -275,7 +284,7 @@ type StoredGeneratedImageOutput = {
   actualSizeDetected: boolean;
   actualOutputFormat: string | null;
   actualOutputFormatDetected: boolean;
-  outputRole?: "final" | "agent_draft";
+  outputRole?: "final" | "agent_draft" | "choice";
 };
 
 type ResponsesUploadedImageFile = {
@@ -505,7 +514,7 @@ function getResultImageOutputs(result: GenerateImageResult) {
       upstreamRevisedPrompt: result.upstreamRevisedPrompt,
       index: 0,
     },
-  ];
+  ] satisfies NonNullable<GenerateImageResult["imageOutputs"]>;
 }
 
 function resolveOutputGenerationId(
@@ -523,9 +532,11 @@ async function storeGeneratedImageOutput(params: {
     imageBase64?: string;
     imageUrl?: string;
     imageFileId?: string;
+    webImageMessageId?: string;
+    webImageGroupId?: string;
     revisedPrompt?: string;
     upstreamRevisedPrompt?: string;
-    outputRole?: "final" | "agent_draft";
+    outputRole?: "final" | "agent_draft" | "choice";
   };
   config: ApiConfig;
   userId: string;
@@ -572,6 +583,8 @@ async function storeGeneratedImageOutput(params: {
     generationId: params.generationId,
     imageUrl: await getStoredImageUrl(params.bucket, storageKey),
     imageFileId: uploadedImageFile,
+    webImageMessageId: params.output.webImageMessageId,
+    webImageGroupId: params.output.webImageGroupId,
     storageKey,
     fileSize: imageBuffer.length,
     size: actualSize,
@@ -600,6 +613,7 @@ function buildBackendExecutionMetadata(params: {
       useCredits: params.useCredits,
       baseUrl: params.config.baseUrl,
       model: params.config.model,
+      apiKeyId: backend.apiKeyId,
     },
   };
 }
@@ -835,7 +849,10 @@ export async function runImageGenerationForUser(
         ignoreUserConfig: requiresResponsesBackend,
       });
     } catch (error) {
-      if (!mixWebFirst || !(error instanceof ImageBackendPoolUnavailableError)) {
+      if (
+        !mixWebFirst ||
+        !(error instanceof ImageBackendPoolUnavailableError)
+      ) {
         throw error;
       }
       effectiveConfig = await getEffectiveConfig(userConfig, {
@@ -1572,7 +1589,7 @@ async function runQueuedImageGenerationForUser({
           total: items.length,
         }),
       })
-    );
+    ) satisfies NonNullable<GenerateImageResult["imageOutputs"]>;
     if (imageOutputs.length === 0) {
       throw new Error("Missing image data");
     }
@@ -1632,17 +1649,31 @@ async function runQueuedImageGenerationForUser({
     };
   }
 
-  const primaryOutput = storedOutputs[storedOutputs.length - 1]!;
+  const selectedWebChoiceId = result.webConversation?.selectedImageMessageId;
+  const selectedOutputIndex =
+    selectedWebChoiceId && storedOutputs.length > 1
+      ? storedOutputs.findIndex(
+          (output) => output.webImageMessageId === selectedWebChoiceId
+        )
+      : -1;
+  const primaryOutput =
+    storedOutputs[
+      selectedOutputIndex >= 0 ? selectedOutputIndex : storedOutputs.length - 1
+    ]!;
   const upstreamImageOutputCount = Math.max(
     Math.floor(result.imageOutputCount || 0),
     storedOutputs.length
   );
-  const billableOutputs = storedOutputs.filter(
-    (output) => output.outputRole !== "agent_draft"
+  const hasChoiceOutputs = storedOutputs.some(
+    (output) => output.outputRole === "choice"
   );
+  const billableOutputs = hasChoiceOutputs
+    ? [primaryOutput]
+    : storedOutputs.filter((output) => output.outputRole !== "agent_draft");
   const billableImageOutputCount = billableOutputs.length;
   const perOutputCreditCosts = storedOutputs.map((output) =>
-    output.outputRole === "agent_draft"
+    output.outputRole === "agent_draft" ||
+    (hasChoiceOutputs && output.generationId !== primaryOutput.generationId)
       ? {
           baseCredits: 0,
           totalCredits: 0,
@@ -1755,6 +1786,7 @@ async function runQueuedImageGenerationForUser({
       metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
         {
           ...buildRevisedPromptMetadata({ input, apiPrompt, result }),
+          webConversation: result.webConversation || null,
           outputImage: {
             requestedSize: size,
             actualSize: primaryOutput.size,
@@ -1775,6 +1807,8 @@ async function runQueuedImageGenerationForUser({
               generationId: output.generationId,
               imageUrl: output.imageUrl,
               imageFileId: output.imageFileId,
+              webImageMessageId: output.webImageMessageId,
+              webImageGroupId: output.webImageGroupId,
               storageKey: output.storageKey,
               size: output.size,
               revisedPrompt: output.revisedPrompt,
@@ -1789,7 +1823,7 @@ async function runQueuedImageGenerationForUser({
                   index,
                   total: storedOutputs.length,
                 }),
-              primary: index === storedOutputs.length - 1,
+              primary: output.generationId === primaryOutput.generationId,
             })),
           },
         }
@@ -1806,6 +1840,8 @@ async function runQueuedImageGenerationForUser({
       generationId: output.generationId,
       imageUrl: output.imageUrl,
       imageFileId: output.imageFileId,
+      webImageMessageId: output.webImageMessageId,
+      webImageGroupId: output.webImageGroupId,
       size: output.size,
       revisedPrompt: output.revisedPrompt,
       upstreamRevisedPrompt: output.upstreamRevisedPrompt,

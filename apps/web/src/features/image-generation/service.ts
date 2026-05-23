@@ -700,15 +700,18 @@ async function postResponsesImageRequest(
   },
   callbacks?: ImageGenerationCallbacks
 ) {
-  const response = await fetch(`${stripTrailingSlash(config.baseUrl)}/responses`, {
-    method: "POST",
-    signal: params.signal,
-    headers: getHeaders(config, {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-    }),
-    body: JSON.stringify(requestBody),
-  });
+  const response = await fetch(
+    `${stripTrailingSlash(config.baseUrl)}/responses`,
+    {
+      method: "POST",
+      signal: params.signal,
+      headers: getHeaders(config, {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      }),
+      body: JSON.stringify(requestBody),
+    }
+  );
   return await parseResponsesResponse(response, callbacks);
 }
 
@@ -732,7 +735,12 @@ async function postResponsesImageRequestWithToolChoiceFallback(
 
   const fallbackBody = { ...requestBody };
   delete fallbackBody.tool_choice;
-  return await postResponsesImageRequest(config, fallbackBody, params, callbacks);
+  return await postResponsesImageRequest(
+    config,
+    fallbackBody,
+    params,
+    callbacks
+  );
 }
 
 async function reportPoolBackendResult(
@@ -980,7 +988,8 @@ async function retryPoolBackendResult(
               requestKind,
               excludedMemberKeys: Array.from(excluded),
               accountBackendPreference,
-              accountBackendPreferenceMode: options?.accountBackendPreferenceMode,
+              accountBackendPreferenceMode:
+                options?.accountBackendPreferenceMode,
             });
           } catch (fallbackError) {
             if (fallbackError instanceof ImageBackendPoolUnavailableError) {
@@ -1726,7 +1735,10 @@ function mergeGenerateImageResults(
         output.upstreamRevisedPrompt || upstreamRevisedPrompt;
     }
 
-    if (!result.imageOutputs?.length && (result.imageBase64 || result.imageUrl)) {
+    if (
+      !result.imageOutputs?.length &&
+      (result.imageBase64 || result.imageUrl)
+    ) {
       imageOutputs.push({
         imageBase64: result.imageBase64,
         imageUrl: result.imageUrl,
@@ -1750,9 +1762,11 @@ function mergeGenerateImageResults(
       ? imageOutputs.map((output, index) => ({
           ...output,
           outputRole:
-            index === imageOutputs.length - 1
-              ? "final"
-              : output.outputRole || "agent_draft",
+            output.outputRole === "choice"
+              ? "choice"
+              : index === imageOutputs.length - 1
+                ? "final"
+                : output.outputRole || "agent_draft",
         }))
       : last.imageOutputs,
     imageOutputCount: imageOutputs.length || last.imageOutputCount,
@@ -1763,8 +1777,12 @@ function mergeGenerateImageResults(
     responseThinking: thinkingParts.length
       ? thinkingParts.join("\n\n")
       : last.responseThinking,
-    responseAgent: agentParts.length ? agentParts.join("\n") : last.responseAgent,
-    agentEvents: mergeAgentEvents(...results.map((result) => result.agentEvents)),
+    responseAgent: agentParts.length
+      ? agentParts.join("\n")
+      : last.responseAgent,
+    agentEvents: mergeAgentEvents(
+      ...results.map((result) => result.agentEvents)
+    ),
     agentRoundCount: results.length,
     outputItems: outputItems.length ? outputItems : last.outputItems,
   };
@@ -1781,7 +1799,9 @@ async function emitAgentProgress(
   callbacks: ImageGenerationCallbacks | undefined,
   event: AgentRunEvent
 ) {
-  await callbacks?.onAgentDelta?.(`${event.title}${event.detail ? ` - ${event.detail}` : ""}\n`);
+  await callbacks?.onAgentDelta?.(
+    `${event.title}${event.detail ? ` - ${event.detail}` : ""}\n`
+  );
   await emitAgentEvent(callbacks, event);
 }
 
@@ -2029,7 +2049,9 @@ async function processResponsesEventPayload(
         partialImageIndex: partialImage.partialImageIndex,
         timestamp: new Date().toISOString(),
         toolType:
-          typeof payload.type === "string" ? payload.type : eventName || undefined,
+          typeof payload.type === "string"
+            ? payload.type
+            : eventName || undefined,
       });
       await callbacks?.onPartialImage?.(partialImage);
     }
@@ -2313,7 +2335,9 @@ async function processEventBlock(
   return await processEventPayload(eventName, dataLines, state, callbacks);
 }
 
-function finishEventStream(state: EventStreamParseState): ResponsesResultWithOutput {
+function finishEventStream(
+  state: EventStreamParseState
+): ResponsesResultWithOutput {
   const result = state.completedResult || state.fallbackResult;
   if (result) {
     return {
@@ -2826,14 +2850,12 @@ export async function generateChatImage(
         rawResponsesBody: params.rawResponsesBody,
         currentBackendMember,
       });
-    const {
-      previousState: previousResponsesState,
-      canUsePreviousResponseId,
-    } = resolveResponsesNativeState({
-      enabled: responsesPreviousResponseEnabled,
-      currentBackendMember,
-      history: params.history,
-    });
+    const { previousState: previousResponsesState, canUsePreviousResponseId } =
+      resolveResponsesNativeState({
+        enabled: responsesPreviousResponseEnabled,
+        currentBackendMember,
+        history: params.history,
+      });
     const responseImageRoundIndex = getNextAssistantImageRoundIndex(
       params.history
     );
@@ -2877,7 +2899,8 @@ export async function generateChatImage(
         : params.agentMode
           ? DEFAULT_RESPONSES_IMAGE_INSTRUCTIONS
           : DEFAULT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS;
-    const instructions = withResponsesImageReferenceInstructions(baseInstructions);
+    const instructions =
+      withResponsesImageReferenceInstructions(baseInstructions);
     const tool: {
       type: "image_generation";
       action: "auto";

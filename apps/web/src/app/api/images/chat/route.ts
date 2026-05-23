@@ -247,7 +247,9 @@ function isReadableChatFile(file: File) {
 
 function isPdfChatFile(file: File) {
   const type = (file.type || "").toLowerCase();
-  return PDF_MIME_TYPES.has(type) || getFileExtension(file.name || "") === ".pdf";
+  return (
+    PDF_MIME_TYPES.has(type) || getFileExtension(file.name || "") === ".pdf"
+  );
 }
 
 function sanitizeFileText(value: string) {
@@ -362,6 +364,24 @@ function getHistory(
                           ? ((item.webConversation as Record<string, unknown>)
                               .accountId as string)
                           : undefined,
+                      apiKeyId:
+                        typeof (item.webConversation as Record<string, unknown>)
+                          .apiKeyId === "string"
+                          ? ((item.webConversation as Record<string, unknown>)
+                              .apiKeyId as string)
+                          : undefined,
+                      selectionMessageId:
+                        typeof (item.webConversation as Record<string, unknown>)
+                          .selectionMessageId === "string"
+                          ? ((item.webConversation as Record<string, unknown>)
+                              .selectionMessageId as string)
+                          : undefined,
+                      selectedImageMessageId:
+                        typeof (item.webConversation as Record<string, unknown>)
+                          .selectedImageMessageId === "string"
+                          ? ((item.webConversation as Record<string, unknown>)
+                              .selectedImageMessageId as string)
+                          : undefined,
                     }
                   : undefined,
               backendMember:
@@ -400,12 +420,14 @@ function getHistory(
               responsesPreviousResponse:
                 item.responsesPreviousResponse &&
                 typeof item.responsesPreviousResponse === "object" &&
-                typeof (item.responsesPreviousResponse as Record<string, unknown>)
-                  .responseId === "string" &&
+                typeof (
+                  item.responsesPreviousResponse as Record<string, unknown>
+                ).responseId === "string" &&
                 (item.responsesPreviousResponse as Record<string, unknown>)
                   .backendMember &&
-                typeof (item.responsesPreviousResponse as Record<string, unknown>)
-                  .backendMember === "object"
+                typeof (
+                  item.responsesPreviousResponse as Record<string, unknown>
+                ).backendMember === "object"
                   ? (() => {
                       const native = item.responsesPreviousResponse as Record<
                         string,
@@ -619,7 +641,10 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       : waterfallMode
         ? "Waterfall"
         : "Chat";
-    return errorResponse(`${modeLabel} mode is not enabled for this plan.`, 403);
+    return errorResponse(
+      `${modeLabel} mode is not enabled for this plan.`,
+      403
+    );
   }
   const planLimits = await getPlanLimits(plan.plan);
   let history: ChatHistoryMessage[] = [];

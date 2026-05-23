@@ -975,6 +975,28 @@ function messageIdFromValue(value: unknown): string {
   return "";
 }
 
+function metadataString(value: unknown, key: string) {
+  return isRecord(value) && typeof value[key] === "string"
+    ? (value[key] as string)
+    : "";
+}
+
+function messageMetadataFromValue(value: unknown) {
+  if (!isRecord(value)) return {};
+  if (isRecord(value.metadata)) return value.metadata;
+  if (isRecord(value.message) && isRecord(value.message.metadata)) {
+    return value.message.metadata;
+  }
+  return {};
+}
+
+function selectedImageMessageIdFromValue(value: unknown) {
+  return metadataString(
+    messageMetadataFromValue(value),
+    "selected_image_message_id"
+  );
+}
+
 function extractLastMessageId(text: string) {
   let messageId = "";
   const normalized = text.replace(/\r\n/g, "\n");
@@ -1012,6 +1034,42 @@ function extractLastMessageId(text: string) {
   return messageId;
 }
 
+function extractSelectionMessageId(text: string) {
+  let selectionMessageId = "";
+  const normalized = text.replace(/\r\n/g, "\n");
+  for (const block of normalized.split("\n\n")) {
+    const data = block
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+    if (!data || data === "[DONE]" || data === "v1") continue;
+    let payload: unknown;
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      continue;
+    }
+    if (!isRecord(payload)) continue;
+    const directSelected = selectedImageMessageIdFromValue(payload);
+    const directId = messageIdFromValue(payload);
+    if (directSelected && directId) selectionMessageId = directId;
+    const valueSelected = selectedImageMessageIdFromValue(payload.v);
+    const valueId = messageIdFromValue(payload.v);
+    if (valueSelected && valueId) selectionMessageId = valueId;
+    if (Array.isArray(payload.v)) {
+      for (const item of payload.v) {
+        const value = isRecord(item) ? item.v : undefined;
+        const patchSelected = selectedImageMessageIdFromValue(value);
+        const patchId = messageIdFromValue(value);
+        if (patchSelected && patchId) selectionMessageId = patchId;
+      }
+    }
+  }
+  return selectionMessageId;
+}
+
 function extractImageIds(text: string) {
   const fileIds = new Set<string>();
   const sedimentIds = new Set<string>();
@@ -1025,6 +1083,14 @@ function extractImageIds(text: string) {
   return { fileIds: [...fileIds], sedimentIds: [...sedimentIds] };
 }
 
+type WebImageCandidate = {
+  fileIds: string[];
+  sedimentIds: string[];
+  messageId?: string;
+  groupId?: string;
+  generationIndex?: number;
+};
+
 type WebImageIds = ReturnType<typeof extractImageIds>;
 
 function emptyImageIds(): WebImageIds {
@@ -1033,6 +1099,55 @@ function emptyImageIds(): WebImageIds {
 
 function hasImageIds(ids: WebImageIds) {
   return ids.fileIds.length > 0 || ids.sedimentIds.length > 0;
+}
+
+function imageIdsFromCandidate(candidate: WebImageCandidate): WebImageIds {
+  return {
+    fileIds: candidate.fileIds,
+    sedimentIds: candidate.sedimentIds,
+  };
+}
+
+function mergeImageCandidates(candidates: WebImageCandidate[]) {
+  const byKey = new Map<string, WebImageCandidate>();
+  for (const candidate of candidates) {
+    const ids = imageIdsFromCandidate(candidate);
+    if (!hasImageIds(ids)) continue;
+    const key =
+      candidate.messageId ||
+      `${candidate.fileIds.join(",")}|${candidate.sedimentIds.join(",")}`;
+    const previous = byKey.get(key);
+    byKey.set(key, {
+      fileIds: dedupeStrings([
+        ...(previous?.fileIds || []),
+        ...candidate.fileIds,
+      ]),
+      sedimentIds: dedupeStrings([
+        ...(previous?.sedimentIds || []),
+        ...candidate.sedimentIds,
+      ]),
+      messageId: candidate.messageId || previous?.messageId,
+      groupId: candidate.groupId || previous?.groupId,
+      generationIndex: candidate.generationIndex ?? previous?.generationIndex,
+    });
+  }
+  return [...byKey.values()].sort((left, right) => {
+    const leftIndex = left.generationIndex ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = right.generationIndex ?? Number.MAX_SAFE_INTEGER;
+    if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+    return 0;
+  });
+}
+
+function dedupeStrings(values: string[]) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function mergeImageIds(...items: WebImageIds[]) {
+  return {
+    fileIds: dedupeStrings(items.flatMap((item) => item.fileIds)),
+    sedimentIds: dedupeStrings(items.flatMap((item) => item.sedimentIds)),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1058,11 +1173,22 @@ function conversationNodeParentId(node: unknown) {
 
 function conversationNodeId(node: unknown, fallbackId = "") {
   if (!isRecord(node)) return fallbackId;
-  if (typeof node.id === "string") return node.id;
   if (isRecord(node.message) && typeof node.message.id === "string") {
     return node.message.id;
   }
+  if (typeof node.id === "string") return node.id;
   return fallbackId;
+}
+
+function conversationNodeCreateTime(node: unknown) {
+  if (!isRecord(node)) return null;
+  const direct = Number(node.create_time);
+  if (Number.isFinite(direct)) return direct;
+  if (isRecord(node.message)) {
+    const messageCreateTime = Number(node.message.create_time);
+    if (Number.isFinite(messageCreateTime)) return messageCreateTime;
+  }
+  return null;
 }
 
 function directConversationChildren(
@@ -1101,6 +1227,60 @@ function descendantConversationNodes(
   return nodes;
 }
 
+function findConversationNode(
+  mapping: Record<string, unknown>,
+  messageId: string
+) {
+  if (!messageId) return null;
+  if (mapping[messageId]) {
+    return { id: messageId, node: mapping[messageId] };
+  }
+  for (const [id, node] of Object.entries(mapping)) {
+    if (conversationNodeId(node, id) === messageId) return { id, node };
+  }
+  return null;
+}
+
+function conversationNodesAfterCreateTime(
+  mapping: Record<string, unknown>,
+  requestMessageId: string
+) {
+  const request = findConversationNode(mapping, requestMessageId);
+  const requestCreateTime = conversationNodeCreateTime(request?.node);
+  if (requestCreateTime === null) return [];
+
+  return Object.entries(mapping)
+    .filter(([id, node]) => {
+      const nodeId = conversationNodeId(node, id);
+      if (request && id === request.id) return false;
+      if (nodeId === requestMessageId) return false;
+      const createTime = conversationNodeCreateTime(node);
+      return createTime !== null && createTime >= requestCreateTime;
+    })
+    .sort(([, left], [, right]) => {
+      const leftTime = conversationNodeCreateTime(left) ?? 0;
+      const rightTime = conversationNodeCreateTime(right) ?? 0;
+      return leftTime - rightTime;
+    })
+    .map(([id, node]) => ({ id, node }));
+}
+
+function mergeConversationNodes(
+  ...lists: Array<Array<{ id: string; node: unknown }>>
+) {
+  const merged: Array<{ id: string; node: unknown }> = [];
+  const seen = new Set<string>();
+  for (const list of lists) {
+    for (const item of list) {
+      const id = conversationNodeId(item.node, item.id);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      merged.push(item);
+    }
+  }
+  return merged;
+}
+
 function conversationNodesAfterMessage(
   conversationText: string,
   requestMessageId: string
@@ -1115,9 +1295,10 @@ function conversationNodesAfterMessage(
   const mapping = getConversationMapping(data);
   if (!mapping) return [];
 
-  const currentNode = isRecord(data) && typeof data.current_node === "string"
-    ? data.current_node
-    : "";
+  const currentNode =
+    isRecord(data) && typeof data.current_node === "string"
+      ? data.current_node
+      : "";
   const chain: Array<{ id: string; node: unknown }> = [];
   const seen = new Set<string>();
   let cursor = currentNode;
@@ -1133,9 +1314,21 @@ function conversationNodesAfterMessage(
     chain.push({ id: cursor, node });
     cursor = conversationNodeParentId(node);
   }
-  if (reachedRequest) return chain.reverse();
+  const request = findConversationNode(mapping, requestMessageId);
+  const descendantNodes = descendantConversationNodes(
+    mapping,
+    request?.id || requestMessageId
+  );
+  const temporalNodes = conversationNodesAfterCreateTime(
+    mapping,
+    requestMessageId
+  );
 
-  return descendantConversationNodes(mapping, requestMessageId);
+  return mergeConversationNodes(
+    reachedRequest ? chain.reverse() : [],
+    descendantNodes,
+    temporalNodes
+  );
 }
 
 function scopedConversationTextAfterMessage(
@@ -1147,11 +1340,67 @@ function scopedConversationTextAfterMessage(
     .join("\n");
 }
 
+function imageIdsFromJson(value: unknown): WebImageIds {
+  return extractImageIds(JSON.stringify(value));
+}
+
+function imageCandidateFromConversationNode(
+  id: string,
+  node: unknown
+): WebImageCandidate | null {
+  const ids = imageIdsFromJson(node);
+  if (!hasImageIds(ids)) return null;
+  const metadata = messageMetadataFromValue(node);
+  const generationIndex = Number(metadata.generation_index);
+  return {
+    ...ids,
+    messageId: conversationNodeId(node, id),
+    groupId: metadataString(metadata, "image_gen_group_id"),
+    generationIndex: Number.isFinite(generationIndex)
+      ? generationIndex
+      : undefined,
+  };
+}
+
+function imageCandidatesAfterMessage(
+  conversationText: string,
+  requestMessageId: string
+) {
+  return mergeImageCandidates(
+    conversationNodesAfterMessage(conversationText, requestMessageId).flatMap(
+      ({ id, node }) => {
+        const candidate = imageCandidateFromConversationNode(id, node);
+        return candidate ? [candidate] : [];
+      }
+    )
+  );
+}
+
+function imageSelectionAfterMessage(
+  conversationText: string,
+  requestMessageId: string
+) {
+  for (const { id, node } of conversationNodesAfterMessage(
+    conversationText,
+    requestMessageId
+  )) {
+    const selectedImageMessageId = selectedImageMessageIdFromValue(node);
+    const messageId = conversationNodeId(node, id);
+    if (selectedImageMessageId && messageId) {
+      return { messageId, selectedImageMessageId };
+    }
+  }
+  return { messageId: "", selectedImageMessageId: "" };
+}
+
 function latestConversationMessageIdAfter(
   conversationText: string,
   requestMessageId: string
 ) {
-  const nodes = conversationNodesAfterMessage(conversationText, requestMessageId);
+  const nodes = conversationNodesAfterMessage(
+    conversationText,
+    requestMessageId
+  );
   const latest = nodes.at(-1);
   return latest ? conversationNodeId(latest.node, latest.id) : "";
 }
@@ -1277,6 +1526,34 @@ async function pollImageIds(
   return { ids: emptyImageIds(), parentMessageId: "" };
 }
 
+async function pollImageCandidates(
+  config: ApiConfig,
+  conversationId: string,
+  requestMessageId: string,
+  signal?: AbortSignal
+) {
+  const deadline = Date.now() + IMAGE_POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    throwIfAborted(signal);
+    const text = await getConversationText(config, conversationId, signal);
+    const candidates = imageCandidatesAfterMessage(text, requestMessageId);
+    if (candidates.length) {
+      const selection = imageSelectionAfterMessage(text, requestMessageId);
+      return {
+        candidates,
+        selectionMessageId: selection.messageId,
+        selectedImageMessageId: selection.selectedImageMessageId,
+        parentMessageId: latestConversationMessageIdAfter(
+          text,
+          requestMessageId
+        ),
+      };
+    }
+    await sleep(IMAGE_POLL_INTERVAL_MS);
+  }
+  return { candidates: [], parentMessageId: "" };
+}
+
 async function getDownloadUrl(
   config: ApiConfig,
   path: string,
@@ -1305,13 +1582,15 @@ async function resolveImageUrls(
     conversationId && requestMessageId
       ? await pollImageIds(config, conversationId, requestMessageId, signal)
       : null;
-  const shouldPollUnscoped = conversationId && !hasImageIds(ids);
+  const scopedHasIds = hasImageIds(polled?.ids || emptyImageIds());
+  const shouldPollUnscoped =
+    conversationId && !requestMessageId && !hasImageIds(ids) && !scopedHasIds;
   const unscopedPolled =
     !polled && shouldPollUnscoped
       ? await pollImageIds(config, conversationId, undefined, signal)
       : null;
-  const resolvedIds = hasImageIds(polled?.ids || emptyImageIds())
-    ? polled?.ids || ids
+  const resolvedIds = scopedHasIds
+    ? mergeImageIds(polled?.ids || emptyImageIds(), ids)
     : hasImageIds(unscopedPolled?.ids || emptyImageIds())
       ? unscopedPolled?.ids || ids
       : ids;
@@ -1324,10 +1603,12 @@ async function resolveImageUrls(
     );
     if (url) urls.push(url);
   }
+  const uniqueUrls = dedupeStrings(urls);
   if (urls.length || !conversationId) {
     return {
-      urls,
-      parentMessageId: polled?.parentMessageId || unscopedPolled?.parentMessageId || "",
+      urls: uniqueUrls,
+      parentMessageId:
+        polled?.parentMessageId || unscopedPolled?.parentMessageId || "",
     };
   }
   for (const sedimentId of resolvedIds.sedimentIds) {
@@ -1339,8 +1620,90 @@ async function resolveImageUrls(
     if (url) urls.push(url);
   }
   return {
-    urls,
-    parentMessageId: polled?.parentMessageId || unscopedPolled?.parentMessageId || "",
+    urls: dedupeStrings(urls),
+    parentMessageId:
+      polled?.parentMessageId || unscopedPolled?.parentMessageId || "",
+  };
+}
+
+async function resolveImageCandidateUrls(
+  config: ApiConfig,
+  conversationId: string,
+  streamIds: WebImageIds,
+  requestMessageId?: string,
+  signal?: AbortSignal
+) {
+  const polled =
+    conversationId && requestMessageId
+      ? await pollImageCandidates(
+          config,
+          conversationId,
+          requestMessageId,
+          signal
+        )
+      : null;
+  const candidates = polled?.candidates.length
+    ? polled.candidates
+    : hasImageIds(streamIds)
+      ? [{ ...streamIds }]
+      : [];
+  const outputs: Array<{
+    url: string;
+    messageId?: string;
+    groupId?: string;
+    generationIndex?: number;
+  }> = [];
+
+  for (const candidate of mergeImageCandidates(candidates)) {
+    const urls: string[] = [];
+    for (const fileId of candidate.fileIds) {
+      const url = await getDownloadUrl(
+        config,
+        `/backend-api/files/${fileId}/download`,
+        signal
+      );
+      if (url) urls.push(url);
+    }
+    for (const sedimentId of candidate.sedimentIds) {
+      const url = await getDownloadUrl(
+        config,
+        `/backend-api/conversation/${conversationId}/attachment/${sedimentId}/download`,
+        signal
+      );
+      if (url) urls.push(url);
+    }
+    for (const url of dedupeStrings(urls)) {
+      outputs.push({
+        url,
+        messageId: candidate.messageId,
+        groupId: candidate.groupId,
+        generationIndex: candidate.generationIndex,
+      });
+    }
+  }
+
+  if (!outputs.length) {
+    const fallback = await resolveImageUrls(
+      config,
+      conversationId,
+      streamIds,
+      requestMessageId,
+      signal
+    );
+    for (const url of fallback.urls) outputs.push({ url });
+    return {
+      outputs,
+      selectionMessageId: polled?.selectionMessageId || "",
+      selectedImageMessageId: polled?.selectedImageMessageId || "",
+      parentMessageId: fallback.parentMessageId,
+    };
+  }
+
+  return {
+    outputs,
+    selectionMessageId: polled?.selectionMessageId || "",
+    selectedImageMessageId: polled?.selectedImageMessageId || "",
+    parentMessageId: polled?.parentMessageId || "",
   };
 }
 
@@ -1364,6 +1727,39 @@ async function downloadImage(
   return Buffer.from(await response.arrayBuffer()).toString("base64");
 }
 
+async function downloadImageOutputs(
+  config: ApiConfig,
+  images: Array<{
+    url: string;
+    messageId?: string;
+    groupId?: string;
+    generationIndex?: number;
+  }>,
+  signal?: AbortSignal
+) {
+  const outputs: NonNullable<GenerateImageResult["imageOutputs"]> = [];
+  const seenUrls = new Set<string>();
+  for (const image of images) {
+    if (!image.url || seenUrls.has(image.url)) continue;
+    seenUrls.add(image.url);
+    try {
+      outputs.push({
+        imageBase64: await downloadImage(config, image.url, signal),
+        webImageMessageId: image.messageId,
+        webImageGroupId: image.groupId,
+        index: outputs.length,
+        outputRole: images.length > 1 ? "choice" : "final",
+      });
+    } catch (error) {
+      logError(error, {
+        source: "chatgpt-web-image-download",
+        backendId: config.backend?.id,
+      });
+    }
+  }
+  return outputs;
+}
+
 async function runWebImage(
   config: ApiConfig,
   params: WebImageParams,
@@ -1378,16 +1774,14 @@ async function runWebImage(
       params.history,
       config.backend?.id
     );
-    const historyReference =
-      continuation?.useNativeContinuation
-        ? null
-        : getLatestWebHistoryImageReference(params.history);
+    const historyReference = continuation?.useNativeContinuation
+      ? null
+      : getLatestWebHistoryImageReference(params.history);
     const prompt = applyImageSizePrompt(getPrompt(params), params.size);
     const historyImage = historyReference
-      ? await downloadWebHistoryImageReference(
-          historyReference,
-          { signal: abortController.signal }
-        )
+      ? await downloadWebHistoryImageReference(historyReference, {
+          signal: abortController.signal,
+        })
       : null;
     const references = [
       ...(await Promise.all(
@@ -1452,15 +1846,16 @@ async function runWebImage(
     }
     const conversationId = extractConversationId(text);
     let parentMessageId = extractLastMessageId(text);
+    const selectionMessageIdFromStream = extractSelectionMessageId(text);
     const ids = extractImageIds(text);
-    const resolved = await resolveImageUrls(
+    const resolved = await resolveImageCandidateUrls(
       configWithSignal,
       conversationId,
       ids,
       requestMessageId,
       abortController.signal
     );
-    const urls = resolved.urls;
+    const candidateImages = resolved.outputs;
     parentMessageId = resolved.parentMessageId || parentMessageId;
     if (conversationId && !parentMessageId) {
       parentMessageId = latestConversationMessageId(
@@ -1471,21 +1866,34 @@ async function runWebImage(
         )
       );
     }
-    if (!urls[0]) {
+    if (!candidateImages[0]?.url) {
       return { error: "ChatGPT Web backend returned no image output" };
     }
+    const imageOutputs = await downloadImageOutputs(
+      configWithSignal,
+      candidateImages,
+      abortController.signal
+    );
+    if (!imageOutputs[0]?.imageBase64) {
+      return { error: "ChatGPT Web backend returned no downloadable image" };
+    }
+    const selectionMessageId =
+      selectionMessageIdFromStream || resolved.selectionMessageId || "";
+    const selectedImageMessageId =
+      resolved.selectedImageMessageId || imageOutputs[0].webImageMessageId;
     return {
-      imageBase64: await downloadImage(
-        configWithSignal,
-        urls[0],
-        abortController.signal
-      ),
+      imageBase64: imageOutputs[0].imageBase64,
+      imageOutputs,
+      imageOutputCount: imageOutputs.length,
       ...(conversationId && parentMessageId
         ? {
             webConversation: {
               conversationId,
               parentMessageId,
               accountId: config.backend?.id,
+              apiKeyId: config.backend?.apiKeyId,
+              selectionMessageId,
+              selectedImageMessageId,
             },
           }
         : {}),
@@ -1518,3 +1926,40 @@ export async function editImageWithChatGptWeb(
 ) {
   return runWebImage(config, params, params.images);
 }
+
+export async function selectChatGptWebImageCandidate(params: {
+  config: ApiConfig;
+  conversationId: string;
+  messageId: string;
+  selectedImageMessageId: string;
+}) {
+  const path = "/backend-api/image-gen/message-select";
+  const response = await fetchChatGptWeb(params.config, path, path, {
+    method: "POST",
+    signal: params.config.signal,
+    headers: getHeaders(params.config, path, {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    }),
+    body: JSON.stringify({
+      message_id: params.messageId,
+      selected_image_message_id: params.selectedImageMessageId,
+      conversation_id: params.conversationId,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      await webErrorMessage(response, "ChatGPT Web image select")
+    );
+  }
+  return true;
+}
+
+export const __testing__ = {
+  imageCandidatesAfterMessage,
+  imageSelectionAfterMessage,
+  conversationNodesAfterMessage,
+  extractImageIds,
+  extractSelectionMessageId,
+  scopedConversationTextAfterMessage,
+};
