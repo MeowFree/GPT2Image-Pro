@@ -1,6 +1,8 @@
 "use client";
 
+import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
+import { Tabs, TabsList, TabsTrigger } from "@repo/ui/components/tabs";
 import { ImagePlus } from "lucide-react";
 import Link from "next/link";
 import { useLocale } from "next-intl";
@@ -13,6 +15,7 @@ import {
 
 export interface GenerationWithUrl {
   id: string;
+  parentId?: string;
   prompt: string;
   revisedPrompt: string | null;
   model: string;
@@ -23,17 +26,24 @@ export interface GenerationWithUrl {
   storageKey: string | null;
   storageBucket: string | null;
   imageUrl: string | null;
+  outputRole?: "final" | "agent_draft";
 }
 
 export interface GalleryClientProps {
   initialGenerations: GenerationWithUrl[];
   totalCount: number;
+  finalCount: number;
+  draftCount: number;
+  activeTab: "final" | "agent-drafts";
   page: number;
 }
 
 export function GalleryClient({
   initialGenerations,
   totalCount,
+  finalCount,
+  draftCount,
+  activeTab,
   page,
 }: GalleryClientProps) {
   const locale = useLocale();
@@ -45,37 +55,79 @@ export function GalleryClient({
   const selected = items.find((i) => i.id === selectedId) ?? null;
   const hasMore = items.length < totalCount;
   const createHref = `/${locale}/dashboard/create`;
-  const nextPageHref = `/${locale}/dashboard/gallery?page=${page + 1}`;
+  const galleryHref = (tab: GalleryClientProps["activeTab"], nextPage = 1) =>
+    `/${locale}/dashboard/gallery?tab=${tab}&page=${nextPage}`;
+  const nextPageHref = galleryHref(activeTab, page + 1);
 
   const handleDelete = (id: string) => {
     setItems((prev) => prev.filter((x) => x.id !== id));
   };
 
+  const tabs = (
+    <Tabs value={activeTab} className="w-full">
+      <TabsList className="h-auto flex-wrap justify-start border border-border bg-muted/40">
+        <TabsTrigger value="final" asChild>
+          <Link href={galleryHref("final")} scroll={false}>
+            {copy("Final images", "成品")}
+            <Badge
+              variant="outline"
+              className="ml-2 rounded-full border-border px-1.5 py-0 text-[10px] font-normal"
+            >
+              {finalCount}
+            </Badge>
+          </Link>
+        </TabsTrigger>
+        <TabsTrigger value="agent-drafts" asChild>
+          <Link href={galleryHref("agent-drafts")} scroll={false}>
+            {copy("Agent drafts", "Agent 中间图")}
+            <Badge
+              variant="outline"
+              className="ml-2 rounded-full border-border px-1.5 py-0 text-[10px] font-normal"
+            >
+              {draftCount}
+            </Badge>
+          </Link>
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background px-6 py-24 text-center">
-        <ImagePlus
-          className="h-10 w-10 text-muted-foreground"
-          strokeWidth={1.2}
-        />
-        <h3 className="mt-4 font-serif text-lg font-medium text-foreground">
-          {copy("No images yet", "还没有图片")}
-        </h3>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          {copy(
-            "Your generated images will appear here. Start by creating your first one.",
-            "你生成的图片会显示在这里。先创建第一张图片吧。"
-          )}
-        </p>
-        <Button asChild variant="outline" className="mt-6">
-          <Link href={createHref}>{copy("Create an image", "创建图片")}</Link>
-        </Button>
+      <div className="space-y-5">
+        {tabs}
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background px-6 py-24 text-center">
+          <ImagePlus
+            className="h-10 w-10 text-muted-foreground"
+            strokeWidth={1.2}
+          />
+          <h3 className="mt-4 font-serif text-lg font-medium text-foreground">
+            {activeTab === "agent-drafts"
+              ? copy("No Agent drafts yet", "还没有 Agent 中间图")
+              : copy("No images yet", "还没有图片")}
+          </h3>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            {activeTab === "agent-drafts"
+              ? copy(
+                  "Intermediate images from Agent iterations will appear here.",
+                  "Agent 自动迭代产生的中间图会显示在这里。"
+                )
+              : copy(
+                  "Your generated images will appear here. Start by creating your first one.",
+                  "你生成的图片会显示在这里。先创建第一张图片吧。"
+                )}
+          </p>
+          <Button asChild variant="outline" className="mt-6">
+            <Link href={createHref}>{copy("Create an image", "创建图片")}</Link>
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
     <>
+      <div className="mb-5">{tabs}</div>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         {items.map((item) => (
           <div key={item.id}>
@@ -89,6 +141,11 @@ export function GalleryClient({
               createdAt={item.createdAt}
               status={item.status}
               onClick={() => setSelectedId(item.id)}
+              badge={
+                item.outputRole === "agent_draft"
+                  ? copy("Draft", "中间图")
+                  : undefined
+              }
             />
           </div>
         ))}
@@ -110,7 +167,9 @@ export function GalleryClient({
           imageUrl={selected.imageUrl}
           open={selectedId !== null}
           onClose={() => setSelectedId(null)}
-          onDelete={handleDelete}
+          onDelete={
+            selected.outputRole === "agent_draft" ? undefined : handleDelete
+          }
         />
       )}
     </>

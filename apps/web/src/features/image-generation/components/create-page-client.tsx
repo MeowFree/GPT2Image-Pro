@@ -109,6 +109,7 @@ type ImageApiResult = {
     revisedPrompt?: string;
     upstreamRevisedPrompt?: string;
     index?: number;
+    outputRole?: "final" | "agent_draft";
   }>;
   model?: string;
   size?: string;
@@ -233,7 +234,9 @@ type ChatResultInput = Pick<
   | "agentRoundCount"
   | "webConversation"
   | "creditsConsumed"
->;
+> & {
+  outputRole?: "final" | "agent_draft";
+};
 
 type ChatGptWebConversationState = {
   conversationId: string;
@@ -965,16 +968,19 @@ function appendAgentRunEvent(
 ) {
   const nextEvent = normalizeAgentEvent(incoming);
   const matchIndex = events.findIndex((event) => {
+    if (nextEvent.kind === "image_partial" || event.kind === "image_partial") {
+      return (
+        nextEvent.kind === "image_partial" &&
+        event.kind === "image_partial" &&
+        nextEvent.partialImageIndex !== undefined &&
+        event.partialImageIndex === nextEvent.partialImageIndex &&
+        (event.index === undefined ||
+          nextEvent.index === undefined ||
+          event.index === nextEvent.index)
+      );
+    }
     if (nextEvent.id && event.id === nextEvent.id) return true;
-    return (
-      nextEvent.kind === "image_partial" &&
-      event.kind === "image_partial" &&
-      nextEvent.partialImageIndex !== undefined &&
-      event.partialImageIndex === nextEvent.partialImageIndex &&
-      (event.index === undefined ||
-        nextEvent.index === undefined ||
-        event.index === nextEvent.index)
-    );
+    return false;
   });
 
   if (matchIndex < 0) return [...events, nextEvent];
@@ -2736,7 +2742,8 @@ export function CreatePageClient({
     const resultSize = data.size || fallbackSize;
     if (!data.imageUrl && !data.responseText) return null;
 
-    if (data.imageUrl && data.generationId) {
+    const isAgentDraft = data.outputRole === "agent_draft";
+    if (data.imageUrl && data.generationId && !isAgentDraft) {
       const nextResult: ResultState = {
         generationId: data.generationId,
         imageUrl: data.imageUrl,
@@ -2753,7 +2760,7 @@ export function CreatePageClient({
           Math.round(Math.max(0, b - (data.creditsConsumed || 0)) * 100) / 100
       );
     }
-    if (addRecent && data.imageUrl && data.generationId) {
+    if (addRecent && data.imageUrl && data.generationId && !isAgentDraft) {
       const generationId = data.generationId;
       setRecent((prev) => [
         {
@@ -2814,6 +2821,7 @@ export function CreatePageClient({
         agentRoundCount: isLast ? data.agentRoundCount : undefined,
         webConversation: isLast ? data.webConversation : undefined,
         creditsConsumed: isLast ? data.creditsConsumed : 0,
+        outputRole: output.outputRole || (isLast ? "final" : "agent_draft"),
       };
     });
   };

@@ -529,6 +529,16 @@ function isUsageLimitBackendError(error?: string | null) {
   );
 }
 
+function isResetAwareLimitedBackendError(error?: string | null) {
+  const normalized = (error || "").toLowerCase();
+  return (
+    isUsageLimitBackendError(error) ||
+    normalized.includes("429") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("too many requests")
+  );
+}
+
 function isOverloadBackendError(error?: string | null) {
   const normalized = (error || "").toLowerCase();
   return (
@@ -686,6 +696,17 @@ function resolveCooldownDate(
 
 function cooldownFromMinutes(minutes: number) {
   return new Date(Date.now() + Math.max(1, minutes) * 60_000);
+}
+
+function isMeaningfulSourceCooldownForError(
+  error: string | null,
+  cooldownUntil: Date | null
+) {
+  return Boolean(
+    cooldownUntil &&
+      cooldownUntil.getTime() > Date.now() &&
+      isResetAwareLimitedBackendError(error)
+  );
 }
 
 async function getBackendCooldownMinutes(
@@ -3023,10 +3044,13 @@ async function getSub2ApiHealthOverride(account: Sub2ApiTokenAccount): Promise<{
         ? "IMAGE_BACKEND_USAGE_LIMIT_COOLDOWN_MINUTES"
         : "IMAGE_BACKEND_RATE_LIMIT_COOLDOWN_MINUTES"
     );
+    const fallbackCooldown = cooldownFromMinutes(minutes);
     return {
       status: "limited",
       cooldownUntil:
-        account.sourceCooldownUntil ?? cooldownFromMinutes(minutes),
+        isMeaningfulSourceCooldownForError(message, account.sourceCooldownUntil)
+          ? account.sourceCooldownUntil
+          : fallbackCooldown,
       lastError: message || "Sub2API 标记账号限流",
     };
   }
@@ -3061,8 +3085,7 @@ async function getSub2ApiHealthOverride(account: Sub2ApiTokenAccount): Promise<{
     );
     return {
       status: "active",
-      cooldownUntil:
-        account.sourceCooldownUntil ?? cooldownFromMinutes(minutes),
+      cooldownUntil: cooldownFromMinutes(minutes),
       lastError: message || "Sub2API 标记账号临时不可用",
     };
   }
@@ -3106,18 +3129,41 @@ async function getExistingSub2ApiSyncedAccountState(
   return existing ?? null;
 }
 
-function shouldPreserveLocalUnavailableState(
+async function shouldPreserveLocalUnavailableState(
   existing?: {
     status: string;
     cooldownUntil: Date | null;
     isEnabled: boolean;
+    lastError?: string | null;
   } | null
 ) {
   if (!existing) return false;
   if (!existing.isEnabled) return true;
-  if (existing.status === "error" || existing.status === "limited") return true;
-  return Boolean(
-    existing.cooldownUntil && existing.cooldownUntil.getTime() > Date.now()
+  if (existing.status === "error" || existing.status === "limited") {
+    return true;
+  }
+  if (!existing.cooldownUntil || existing.cooldownUntil.getTime() <= Date.now()) {
+    return false;
+  }
+
+  const error = existing.lastError || "";
+  if (!error) return true;
+  if (isResetAwareLimitedBackendError(error)) return true;
+
+  const cooldownKey = isUnsupportedModelBackendError(error)
+    ? "IMAGE_BACKEND_UNSUPPORTED_MODEL_COOLDOWN_MINUTES"
+    : isOverloadBackendError(error)
+      ? "IMAGE_BACKEND_OVERLOAD_COOLDOWN_MINUTES"
+      : isRecoverableBackendError(error)
+        ? "IMAGE_BACKEND_TEMPORARY_ERROR_COOLDOWN_MINUTES"
+        : null;
+  if (!cooldownKey) return true;
+
+  const minutes = await getBackendCooldownMinutes(cooldownKey);
+  const graceMs = 60_000;
+  return (
+    existing.cooldownUntil.getTime() <=
+    Date.now() + Math.max(1, minutes) * 60_000 + graceMs
   );
 }
 
@@ -3133,7 +3179,7 @@ async function resolveSyncedAccountHealth(
 ) {
   const sourceHealth = await getSub2ApiHealthOverride(account);
   const preserveLocalUnavailable =
-    !sourceHealth.status && shouldPreserveLocalUnavailableState(existing);
+    !sourceHealth.status && (await shouldPreserveLocalUnavailableState(existing));
   const now = new Date();
   const update = sourceHealth.status
     ? {

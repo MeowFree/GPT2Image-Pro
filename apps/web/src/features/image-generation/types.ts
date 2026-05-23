@@ -44,6 +44,7 @@ export interface GeneratedImageOutput {
   revisedPrompt?: string;
   upstreamRevisedPrompt?: string;
   index?: number;
+  outputRole?: "final" | "agent_draft";
 }
 
 export interface PartialImageResult {

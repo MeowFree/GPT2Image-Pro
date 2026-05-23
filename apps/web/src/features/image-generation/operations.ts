@@ -96,6 +96,21 @@ function getChatRoundCount(result: GenerateImageResult) {
   return Math.max(1, Math.floor(result.agentRoundCount || 1));
 }
 
+function resolveOutputRole(params: {
+  input: RunImageGenerationInput;
+  outputRole?: "final" | "agent_draft";
+  index: number;
+  total: number;
+}) {
+  if (params.input.mode === "chat" && params.input.agentMode) {
+    return (
+      params.outputRole ||
+      (params.index === params.total - 1 ? "final" : "agent_draft")
+    );
+  }
+  return "final";
+}
+
 export type ImageGenerationOperationResult = {
   error?: string;
   generationId?: string;
@@ -148,6 +163,7 @@ type StoredGeneratedImageOutput = {
   actualSizeDetected: boolean;
   actualOutputFormat: string | null;
   actualOutputFormatDetected: boolean;
+  outputRole?: "final" | "agent_draft";
 };
 
 function resolveStoredImageFormat(buffer: Buffer, requestedFormat?: string) {
@@ -391,6 +407,7 @@ async function storeGeneratedImageOutput(params: {
     imageUrl?: string;
     revisedPrompt?: string;
     upstreamRevisedPrompt?: string;
+    outputRole?: "final" | "agent_draft";
   };
   userId: string;
   generationId: string;
@@ -434,6 +451,7 @@ async function storeGeneratedImageOutput(params: {
     actualSizeDetected,
     actualOutputFormat: storedFormat.format,
     actualOutputFormatDetected: storedFormat.detected,
+    outputRole: params.output.outputRole,
   } satisfies StoredGeneratedImageOutput;
 }
 
@@ -1373,7 +1391,17 @@ async function runQueuedImageGenerationForUser({
 
   let storedOutputs: StoredGeneratedImageOutput[] = [];
   try {
-    const imageOutputs = getResultImageOutputs(result);
+    const imageOutputs = getResultImageOutputs(result).map(
+      (output, index, items) => ({
+        ...output,
+        outputRole: resolveOutputRole({
+          input,
+          outputRole: output.outputRole,
+          index,
+          total: items.length,
+        }),
+      })
+    );
     if (imageOutputs.length === 0) {
       throw new Error("Missing image data");
     }
@@ -1437,15 +1465,36 @@ async function runQueuedImageGenerationForUser({
     Math.floor(result.imageOutputCount || 0),
     storedOutputs.length
   );
-  const billableImageOutputCount = storedOutputs.length;
+  const billableOutputs = storedOutputs.filter(
+    (output) => output.outputRole !== "agent_draft"
+  );
+  const billableImageOutputCount = billableOutputs.length;
   const perOutputCreditCosts = storedOutputs.map((output) =>
+    output.outputRole === "agent_draft"
+      ? {
+          baseCredits: 0,
+          totalCredits: 0,
+          imageModerationCount: 0,
+          moderationCny: 0,
+          moderationCredits: 0,
+          moderationOnlyCredits: 0,
+          textModerationCredits: 0,
+          textModerationCount: 0,
+          pixels: 0,
+        }
+      : getImageCreditCostBreakdown(output.size, {
+          textModerationCount: moderationEnabled ? undefined : 0,
+          imageModerationCount: moderationEnabled ? inputImages.length : 0,
+        })
+  );
+  const billableOutputCreditCosts = billableOutputs.map((output) =>
     getImageCreditCostBreakdown(output.size, {
       textModerationCount: moderationEnabled ? undefined : 0,
       imageModerationCount: moderationEnabled ? inputImages.length : 0,
     })
   );
   const actualCreditCost =
-    perOutputCreditCosts[perOutputCreditCosts.length - 1] ||
+    billableOutputCreditCosts[billableOutputCreditCosts.length - 1] ||
     getImageCreditCostBreakdown(primaryOutput.size, {
       textModerationCount: moderationEnabled ? undefined : 0,
       imageModerationCount: moderationEnabled ? inputImages.length : 0,
@@ -1560,6 +1609,13 @@ async function runQueuedImageGenerationForUser({
               actualFormat: output.actualOutputFormat,
               actualFormatDetected: output.actualOutputFormatDetected,
               actualSizeDetected: output.actualSizeDetected,
+              role:
+                output.outputRole ||
+                resolveOutputRole({
+                  input,
+                  index,
+                  total: storedOutputs.length,
+                }),
               primary: index === storedOutputs.length - 1,
             })),
           },
@@ -1579,6 +1635,9 @@ async function runQueuedImageGenerationForUser({
       revisedPrompt: output.revisedPrompt,
       upstreamRevisedPrompt: output.upstreamRevisedPrompt,
       index,
+      outputRole:
+        output.outputRole ||
+        resolveOutputRole({ input, index, total: storedOutputs.length }),
     })),
     model: recordModel,
     size: primaryOutput.size,

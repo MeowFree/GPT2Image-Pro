@@ -748,6 +748,60 @@ function isResponsesBackend(config: ApiConfig) {
   return isPoolAccountBackend(config, "responses");
 }
 
+function isResponsesImageToolChoiceMismatch(error?: string | null) {
+  const normalized = (error || "").toLowerCase();
+  return (
+    Boolean(normalized) &&
+    (normalized.includes("tool_choice") ||
+      normalized.includes("tool choice")) &&
+    normalized.includes("image_generation") &&
+    normalized.includes("not found")
+  );
+}
+
+async function postResponsesImageRequest(
+  config: ApiConfig,
+  requestBody: unknown,
+  params: {
+    signal?: AbortSignal;
+  },
+  callbacks?: ImageGenerationCallbacks
+) {
+  const response = await fetch(`${stripTrailingSlash(config.baseUrl)}/responses`, {
+    method: "POST",
+    signal: params.signal,
+    headers: getHeaders(config, {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    }),
+    body: JSON.stringify(requestBody),
+  });
+  return await parseResponsesResponse(response, callbacks);
+}
+
+async function postResponsesImageRequestWithToolChoiceFallback(
+  config: ApiConfig,
+  requestBody: Record<string, unknown>,
+  params: {
+    signal?: AbortSignal;
+  },
+  callbacks?: ImageGenerationCallbacks
+) {
+  const result = await postResponsesImageRequest(
+    config,
+    requestBody,
+    params,
+    callbacks
+  );
+  if (!isResponsesImageToolChoiceMismatch(result.error)) {
+    return result;
+  }
+
+  const fallbackBody = { ...requestBody };
+  delete fallbackBody.tool_choice;
+  return await postResponsesImageRequest(config, fallbackBody, params, callbacks);
+}
+
 async function reportPoolBackendResult(
   config: ApiConfig,
   result: GenerateImageResult
@@ -1725,13 +1779,17 @@ function mergeAgentEvents(
   ...groups: Array<AgentRunEvent[] | undefined>
 ): AgentRunEvent[] | undefined {
   const merged: AgentRunEvent[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   for (const events of groups) {
     for (const event of events || []) {
       const key = getAgentEventKey(event);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(event);
+      const existingIndex = seen.get(key);
+      if (existingIndex === undefined) {
+        seen.set(key, merged.length);
+        merged.push(event);
+        continue;
+      }
+      merged[existingIndex] = { ...merged[existingIndex], ...event };
     }
   }
   return merged.length ? merged : undefined;
@@ -1765,7 +1823,10 @@ function mergeGenerateImageResults(
 
     for (const output of result.imageOutputs || []) {
       if (!output.imageBase64 && !output.imageUrl) continue;
-      const nextOutput = { ...output, index: imageOutputs.length };
+      const nextOutput = {
+        ...output,
+        index: imageOutputs.length,
+      } satisfies NonNullable<GenerateImageResult["imageOutputs"]>[number];
       imageOutputs.push(nextOutput);
       if (output.imageBase64) imageBase64 = output.imageBase64;
       if (output.imageUrl) imageUrl = output.imageUrl;
@@ -1794,7 +1855,15 @@ function mergeGenerateImageResults(
     ...last,
     imageBase64,
     imageUrl,
-    imageOutputs: imageOutputs.length ? imageOutputs : last.imageOutputs,
+    imageOutputs: imageOutputs.length
+      ? imageOutputs.map((output, index) => ({
+          ...output,
+          outputRole:
+            index === imageOutputs.length - 1
+              ? "final"
+              : output.outputRole || "agent_draft",
+        }))
+      : last.imageOutputs,
     imageOutputCount: imageOutputs.length || last.imageOutputCount,
     revisedPrompt: last.revisedPrompt || revisedPrompt,
     upstreamRevisedPrompt:
@@ -1849,13 +1918,59 @@ function shouldReportResponsesToolItem(
   return item.type.endsWith("_call");
 }
 
+function extractStreamItemId(payload: Record<string, unknown>) {
+  return (
+    (typeof payload.item_id === "string" && payload.item_id) ||
+    (typeof payload.output_item_id === "string" && payload.output_item_id) ||
+    (typeof payload.id === "string" && payload.id) ||
+    (typeof payload.call_id === "string" && payload.call_id) ||
+    undefined
+  );
+}
+
+function eventNameToFallbackToolType(eventName: string) {
+  if (eventName.includes("web_search_call")) return "web_search_call";
+  if (eventName.includes("code_interpreter_call")) {
+    return "code_interpreter_call";
+  }
+  if (eventName.includes("image_generation_call")) {
+    return "image_generation_call";
+  }
+  if (eventName.includes("function_call")) return "function_call";
+  return undefined;
+}
+
+function getStreamToolItem(
+  state: EventStreamParseState,
+  eventName: string,
+  payload: Record<string, unknown>
+) {
+  const item =
+    getStreamItem(state, payload) ||
+    (payload.item as ResponsesOutputItem | undefined);
+  if (item?.type) return updateStreamItem(state, item);
+
+  const itemId = extractStreamItemId(payload);
+  const fallbackType = eventNameToFallbackToolType(eventName);
+  if (!itemId || !fallbackType) return undefined;
+  return updateStreamItem(state, {
+    id: itemId,
+    call_id: itemId,
+    type: fallbackType,
+    status: typeof payload.status === "string" ? payload.status : undefined,
+  });
+}
+
 async function reportResponsesToolEvent(
   state: EventStreamParseState,
   callbacks: ImageGenerationCallbacks | undefined,
   item: ResponsesOutputItem | undefined,
   status: AgentRunEventStatus
 ) {
-  if (!item?.type || !shouldReportResponsesToolItem("response.output_item.added", item)) {
+  if (
+    !item?.type ||
+    !shouldReportResponsesToolItem("response.output_item.added", item)
+  ) {
     return;
   }
   const itemId = getResponseItemId(item);
@@ -1941,6 +2056,7 @@ async function processResponsesEventPayload(
         imageBase64: item.result,
         upstreamRevisedPrompt: item.revised_prompt,
         index: imageOutputCount - 1,
+        outputRole: "agent_draft" as const,
       };
       const partialImage = {
         imageBase64: item.result,
@@ -1989,7 +2105,7 @@ async function processResponsesEventPayload(
     eventName === "response.code_interpreter_call.in_progress" ||
     eventName === "response.image_generation_call.in_progress"
   ) {
-    const item = updateStreamItem(state, getStreamItem(state, payload));
+    const item = getStreamToolItem(state, eventName, payload);
     await reportResponsesToolEvent(state, callbacks, item, "running");
     return null;
   }
@@ -2001,7 +2117,9 @@ async function processResponsesEventPayload(
     eventName === "response.code_interpreter_call.code.delta" ||
     eventName === "response.function_call_arguments.delta"
   ) {
-    const item = getStreamDeltaItem(state, payload);
+    const item =
+      getStreamDeltaItem(state, payload) ||
+      getStreamToolItem(state, eventName, payload);
     await reportResponsesToolEvent(state, callbacks, item, "running");
     return null;
   }
@@ -2512,30 +2630,21 @@ export async function generateImage(
   }
   if (isResponsesBackend(config)) {
     try {
-      const response = await fetch(
-        `${stripTrailingSlash(config.baseUrl)}/responses`,
-        {
-          method: "POST",
-          signal: params.signal,
-          headers: getHeaders(config, {
-            "Content-Type": "application/json",
-            Accept: "text/event-stream",
-          }),
-          body: JSON.stringify(
-            buildResponsesImageGenerationRequest(config, {
-              ...params,
-              model,
-              gptModel:
-                params.gptModel ||
-                (await getDefaultImageGptModel(config, {
-                  allowGpt55: true,
-                })),
-            })
-          ),
-        }
-      );
       return applyPromptOptimizationResultVisibility(
-        await parseResponsesResponse(response, callbacks)
+        await postResponsesImageRequestWithToolChoiceFallback(
+          config,
+          buildResponsesImageGenerationRequest(config, {
+            ...params,
+            model,
+            gptModel:
+              params.gptModel ||
+              (await getDefaultImageGptModel(config, {
+                allowGpt55: true,
+              })),
+          }),
+          { signal: params.signal },
+          callbacks
+        )
       );
     } catch (error) {
       logImageRequestError(error, {
@@ -2631,30 +2740,21 @@ export async function editImage(
   }
   if (isResponsesBackend(config)) {
     try {
-      const response = await fetch(
-        `${stripTrailingSlash(config.baseUrl)}/responses`,
-        {
-          method: "POST",
-          signal: params.signal,
-          headers: getHeaders(config, {
-            "Content-Type": "application/json",
-            Accept: "text/event-stream",
-          }),
-          body: JSON.stringify(
-            buildResponsesImageEditRequest(config, {
-              ...params,
-              model,
-              gptModel:
-                params.gptModel ||
-                (await getDefaultImageGptModel(config, {
-                  allowGpt55: true,
-                })),
-            })
-          ),
-        }
-      );
       return applyPromptOptimizationResultVisibility(
-        await parseResponsesResponse(response, callbacks)
+        await postResponsesImageRequestWithToolChoiceFallback(
+          config,
+          buildResponsesImageEditRequest(config, {
+            ...params,
+            model,
+            gptModel:
+              params.gptModel ||
+              (await getDefaultImageGptModel(config, {
+                allowGpt55: true,
+              })),
+          }),
+          { signal: params.signal },
+          callbacks
+        )
       );
     } catch (error) {
       logImageRequestError(error, {

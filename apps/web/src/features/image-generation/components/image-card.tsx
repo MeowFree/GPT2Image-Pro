@@ -15,6 +15,7 @@ export interface ImageCardProps {
   creditsConsumed: number;
   createdAt: string;
   status: "pending" | "completed" | "failed";
+  badge?: string;
   onClick?: () => void;
 }
 
@@ -37,6 +38,7 @@ export function ImageCard({
   model,
   status,
   createdAt,
+  badge,
   onClick,
 }: ImageCardProps) {
   const locale = useLocale();
@@ -62,6 +64,13 @@ export function ImageCard({
         ) : (
           <div className="flex h-full w-full items-center justify-center text-muted-foreground">
             <ImageIcon className="h-10 w-10" strokeWidth={1.2} />
+          </div>
+        )}
+        {badge && (
+          <div className="absolute left-2 top-2">
+            <Badge className="rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-medium text-foreground shadow-sm">
+              {badge}
+            </Badge>
           </div>
         )}
       </div>
