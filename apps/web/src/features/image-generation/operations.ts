@@ -628,6 +628,16 @@ async function storeGeneratedImageOutput(params: {
   } satisfies StoredGeneratedImageOutput;
 }
 
+async function emitAgentOperationEvent(
+  callbacks: ImageGenerationCallbacks | undefined,
+  event: NonNullable<GenerateImageResult["agentEvents"]>[number]
+) {
+  await callbacks?.onAgentEvent?.({
+    ...event,
+    timestamp: event.timestamp || new Date().toISOString(),
+  });
+}
+
 function buildBackendExecutionMetadata(params: {
   config: ApiConfig;
   useCredits: boolean;
@@ -1083,6 +1093,7 @@ async function runQueuedImageGenerationForUser({
   const mixWebFirst = Boolean(
     input.mixWebFirst && isOneKImageSize(size) && !forceWebBackend
   );
+  const isAgentChatInput = input.mode === "chat" && input.agentMode === true;
 
   await db.insert(generation).values({
     id: generationId,
@@ -1522,6 +1533,8 @@ async function runQueuedImageGenerationForUser({
                 stream: input.stream,
                 thinking: input.thinking,
                 agentMode: input.agentMode,
+                agentMaxRounds: input.agentMaxRounds,
+                agentForceMaxRounds: input.agentForceMaxRounds,
                 rawResponsesBody: input.rawResponsesBody,
                 mixWebFirst,
                 requiresResponsesBackend: input.requiresResponsesBackend,
@@ -1724,6 +1737,15 @@ async function runQueuedImageGenerationForUser({
     if (imageOutputs.length === 0) {
       throw new Error("Missing image data");
     }
+    if (isAgentChatInput) {
+      await emitAgentOperationEvent(wrappedCallbacks, {
+        kind: "tool",
+        status: "running",
+        title: "保存生成图片",
+        detail: `正在保存 ${imageOutputs.length} 张图片并生成站内访问地址`,
+        toolType: "image_storage",
+      });
+    }
     storedOutputs = [];
     for (const [index, output] of imageOutputs.entries()) {
       storedOutputs.push(
@@ -1741,6 +1763,17 @@ async function runQueuedImageGenerationForUser({
           requestedFormat: input.outputFormat,
         })
       );
+      if (isAgentChatInput) {
+        await emitAgentOperationEvent(wrappedCallbacks, {
+          kind: "tool",
+          status:
+            index === imageOutputs.length - 1 ? "completed" : "running",
+          title:
+            index === imageOutputs.length - 1 ? "图片保存完成" : "保存生成图片",
+          detail: `已保存 ${index + 1}/${imageOutputs.length} 张图片`,
+          toolType: "image_storage",
+        });
+      }
     }
   } catch (storageError: unknown) {
     const message =
@@ -1842,6 +1875,15 @@ async function runQueuedImageGenerationForUser({
     ? CHAT_TEXT_ONLY_CREDITS * chatRoundCount + actualImageCredits
     : actualImageCredits;
   try {
+    if (isAgentChatInput) {
+      await emitAgentOperationEvent(wrappedCallbacks, {
+        kind: "tool",
+        status: "running",
+        title: "结算本次生成",
+        detail: `正在按 ${billableImageOutputCount} 张成品图结算积分`,
+        toolType: "billing",
+      });
+    }
     await settleChargedCredits(
       targetSuccessCredits,
       "image-generation",
@@ -1861,6 +1903,15 @@ async function runQueuedImageGenerationForUser({
         upstreamImageOutputCount,
       }
     );
+    if (isAgentChatInput) {
+      await emitAgentOperationEvent(wrappedCallbacks, {
+        kind: "tool",
+        status: "completed",
+        title: "结算完成",
+        detail: `本次实际消耗 ${targetSuccessCredits} 积分`,
+        toolType: "billing",
+      });
+    }
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Insufficient credits";

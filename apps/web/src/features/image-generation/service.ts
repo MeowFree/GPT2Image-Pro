@@ -1584,10 +1584,17 @@ function toAgentRunEvent(
 
 function getAgentEventKey(event: AgentRunEvent) {
   if (event.id) return `id:${event.id}`;
+  if (event.kind === "image_partial") {
+    return [
+      event.kind,
+      event.toolType || "",
+      event.partialImageIndex ?? "",
+      event.index ?? "",
+    ].join("|");
+  }
   return [
     event.kind,
     event.toolType || "",
-    event.status || "",
     event.partialImageIndex ?? "",
     event.index ?? "",
     event.title,
@@ -1811,6 +1818,24 @@ async function emitAgentProgress(
   await emitAgentEvent(callbacks, event);
 }
 
+async function emitAgentDecision(
+  callbacks: ImageGenerationCallbacks | undefined,
+  params: {
+    status: AgentRunEventStatus;
+    title: string;
+    detail?: string;
+  }
+) {
+  await emitAgentProgress(callbacks, {
+    kind: "tool",
+    status: params.status,
+    title: params.title,
+    detail: params.detail,
+    timestamp: new Date().toISOString(),
+    toolType: "agent_decision",
+  });
+}
+
 async function recordAgentEvent(
   state: EventStreamParseState,
   callbacks: ImageGenerationCallbacks | undefined,
@@ -1857,6 +1882,21 @@ function eventNameToFallbackToolType(eventName: string) {
   return undefined;
 }
 
+function getFallbackToolEventKey(
+  eventName: string,
+  payload: Record<string, unknown>
+) {
+  const fallbackType = eventNameToFallbackToolType(eventName);
+  if (!fallbackType) return undefined;
+  const action = isPlainRecord(payload.action) ? payload.action : undefined;
+  const detail =
+    compactToolText(typeof payload.query === "string" ? payload.query : "") ||
+    describeWebSearchAction(action) ||
+    compactToolText(typeof payload.name === "string" ? payload.name : "") ||
+    fallbackType;
+  return `${fallbackType}:${detail || "active"}`;
+}
+
 function getStreamToolItem(
   state: EventStreamParseState,
   eventName: string,
@@ -1869,12 +1909,15 @@ function getStreamToolItem(
 
   const itemId = extractStreamItemId(payload);
   const fallbackType = eventNameToFallbackToolType(eventName);
-  if (!itemId || !fallbackType) return undefined;
+  const fallbackKey = itemId || getFallbackToolEventKey(eventName, payload);
+  if (!fallbackKey || !fallbackType) return undefined;
   return updateStreamItem(state, {
-    id: itemId,
-    call_id: itemId,
+    id: fallbackKey,
+    call_id: fallbackKey,
     type: fallbackType,
     status: typeof payload.status === "string" ? payload.status : undefined,
+    query: typeof payload.query === "string" ? payload.query : undefined,
+    action: isPlainRecord(payload.action) ? payload.action : undefined,
     name: typeof payload.name === "string" ? payload.name : undefined,
   });
 }
@@ -2047,8 +2090,8 @@ async function processResponsesEventPayload(
     if (partialImage) {
       await recordAgentEvent(state, callbacks, {
         kind: "image_partial",
-        status: "running",
-        title: "中间图已生成",
+        status: "completed",
+        title: "流式预览已生成",
         imageBase64: partialImage.imageBase64,
         imageUrl: partialImage.imageUrl,
         index: partialImage.index,
@@ -3065,7 +3108,7 @@ export async function generateChatImage(
           status: "completed",
           title: `Agent 第 ${round} 轮完成`,
           detail: hasAgentImage(roundResult)
-            ? "已生成图片，准备自检是否需要下一版"
+            ? "已生成图片，正在判断是否继续"
             : "未生成图片，继续推动执行",
           timestamp: new Date().toISOString(),
         });
@@ -3098,17 +3141,20 @@ export async function generateChatImage(
         }
         const shouldForceContinue = forceMaxRounds && round < maxRounds;
         if (shouldForceContinue && continueCalls.length === 0) {
-          await emitAgentProgress(callbacks, {
-            kind: "message",
+          await emitAgentDecision(callbacks, {
             status: "running",
             title: "Agent 强制继续",
             detail: `系统已开启强制迭代，将继续执行第 ${round + 1} 轮`,
-            timestamp: new Date().toISOString(),
           });
         }
 
         if (hasAgentImage(roundResult)) {
           if (continueCalls.length === 0 && !shouldForceContinue) {
+            await emitAgentDecision(callbacks, {
+              status: "completed",
+              title: "Agent 自检完成",
+              detail: "模型未请求继续，已停止迭代",
+            });
             result = mergeGenerateImageResults(roundResults);
             break;
           }
@@ -3130,6 +3176,11 @@ export async function generateChatImage(
           continueCalls.length === 0 &&
           !shouldForceContinue
         ) {
+          await emitAgentDecision(callbacks, {
+            status: "completed",
+            title: "Agent 自检完成",
+            detail: "模型未请求继续，已停止迭代",
+          });
           result = mergeGenerateImageResults(roundResults);
           break;
         }

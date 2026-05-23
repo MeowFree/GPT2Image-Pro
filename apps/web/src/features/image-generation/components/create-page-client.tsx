@@ -136,18 +136,6 @@ type ImageApiResult = {
   results?: ImageApiResult[];
 };
 
-type PendingGenerationMode = "text" | "image" | "chat" | "agent";
-
-type PendingGenerationState = {
-  id: string;
-  mode: PendingGenerationMode;
-  prompt: string;
-  size: string;
-  createdAt: string;
-  conversationId?: string;
-  assistantMessageId?: string;
-};
-
 type GenerationRequestError = Error & {
   creditsConsumed?: number;
 };
@@ -595,6 +583,7 @@ type ImageAspectRatio =
   | "21:9";
 
 type ActiveMode = "text" | "image" | "chat" | "agent" | "waterfall";
+type VisualOutputMode = "text-single" | "text-lines" | "image";
 
 type BackendGroupOption = {
   id: string;
@@ -1092,8 +1081,6 @@ const CHAT_CONVERSATIONS_STORAGE_KEY = "gpt2image_chat_conversations_v1";
 const CHAT_ACTIVE_CONVERSATION_STORAGE_KEY =
   "gpt2image_active_chat_conversation_v1";
 const WATERFALL_STORAGE_KEY = "gpt2image_waterfall_state_v1";
-const PENDING_GENERATIONS_STORAGE_KEY = "gpt2image_pending_generations_v1";
-const PENDING_GENERATION_TTL_MS = 30 * 60 * 1000;
 const CHAT_CONTEXT_MESSAGE_LIMIT = 8;
 const CHAT_CONVERSATION_LIMIT = 30;
 const PROMPT_IMAGE_REFERENCE_PATTERN = /@(?:第)?\d+轮图\d+|@图\d+/;
@@ -1194,7 +1181,7 @@ function appendAgentRunEvent(events: AgentRunEvent[], incoming: AgentRunEvent) {
   );
 }
 
-function getAgentTaskKey(event: AgentRunEvent, index: number) {
+function getAgentTaskKey(event: AgentRunEvent) {
   if (event.id) return `id:${event.id}`;
   if (event.kind === "image_partial") {
     return [
@@ -1208,7 +1195,8 @@ function getAgentTaskKey(event: AgentRunEvent, index: number) {
     event.kind,
     event.toolType || "",
     event.title,
-    event.timestamp || index,
+    event.index ?? "",
+    event.partialImageIndex ?? "",
   ].join(":");
 }
 
@@ -1255,7 +1243,7 @@ function buildAgentRoundCards(events: AgentRunEvent[] | undefined) {
     return currentRound;
   };
 
-  for (const [index, event] of normalizedEvents.entries()) {
+  for (const event of normalizedEvents) {
     if (isAgentRoundStartEvent(event)) {
       currentRound = {
         key: event.id || `round-${rounds.length + 1}`,
@@ -1287,7 +1275,7 @@ function buildAgentRoundCards(events: AgentRunEvent[] | undefined) {
       continue;
     }
 
-    const key = getAgentTaskKey(event, index);
+    const key = getAgentTaskKey(event);
     const existingIndex = round.tasks.findIndex((task) => task.key === key);
     const imageUrl = agentEventToImageUrl(event);
     if (existingIndex >= 0) {
@@ -1384,79 +1372,6 @@ function getCursorAfterInsertedMention(mention: MentionState, token: string) {
 
 function createGenerationId() {
   return nanoid();
-}
-
-function readPendingGenerationStates() {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(PENDING_GENERATIONS_STORAGE_KEY);
-    if (!raw) return [];
-    const now = Date.now();
-    return (JSON.parse(raw) as unknown[]).flatMap((item) => {
-      if (!item || typeof item !== "object") return [];
-      const value = item as Partial<PendingGenerationState>;
-      if (
-        typeof value.id !== "string" ||
-        !["text", "image", "chat", "agent"].includes(String(value.mode)) ||
-        typeof value.prompt !== "string" ||
-        typeof value.size !== "string" ||
-        typeof value.createdAt !== "string"
-      ) {
-        return [];
-      }
-      if (now - new Date(value.createdAt).getTime() > PENDING_GENERATION_TTL_MS) {
-        return [];
-      }
-      return [
-        {
-          id: value.id,
-          mode: value.mode as PendingGenerationMode,
-          prompt: value.prompt,
-          size: value.size,
-          createdAt: value.createdAt,
-          conversationId:
-            typeof value.conversationId === "string"
-              ? value.conversationId
-              : undefined,
-          assistantMessageId:
-            typeof value.assistantMessageId === "string"
-              ? value.assistantMessageId
-              : undefined,
-        },
-      ];
-    });
-  } catch {
-    return [];
-  }
-}
-
-function writePendingGenerationStates(items: PendingGenerationState[]) {
-  if (typeof window === "undefined") return;
-  try {
-    if (items.length === 0) {
-      window.localStorage.removeItem(PENDING_GENERATIONS_STORAGE_KEY);
-      return;
-    }
-    window.localStorage.setItem(
-      PENDING_GENERATIONS_STORAGE_KEY,
-      JSON.stringify(items.slice(-50))
-    );
-  } catch {
-    /* ignore local storage quota errors */
-  }
-}
-
-function addPendingGenerationState(item: PendingGenerationState) {
-  const items = readPendingGenerationStates().filter(
-    (existing) => existing.id !== item.id
-  );
-  writePendingGenerationStates([...items, item]);
-}
-
-function removePendingGenerationState(id: string) {
-  writePendingGenerationStates(
-    readPendingGenerationStates().filter((item) => item.id !== id)
-  );
 }
 
 function readFileAsDataUrl(file: File) {
@@ -2030,9 +1945,6 @@ export function CreatePageClient({
     string | null
   >(null);
   const [batchCards, setBatchCards] = useState<BatchCard[]>([]);
-  const [restoredPendingGenerations, setRestoredPendingGenerations] = useState<
-    PendingGenerationState[]
-  >([]);
   const [batchPrompt, setBatchPrompt] = useState("");
   const [isBatchActive, setIsBatchActive] = useState(false);
   const [isBatchLoadingMore, setIsBatchLoadingMore] = useState(false);
@@ -2220,12 +2132,20 @@ export function CreatePageClient({
     height: number;
   } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [streamingPreviewUrl, setStreamingPreviewUrl] = useState<string | null>(
-    null
-  );
+  const [isTextSingleGenerating, setIsTextSingleGenerating] = useState(false);
+  const [isTextLinesGenerating, setIsTextLinesGenerating] = useState(false);
+  const [, setStreamingPreviewUrl] = useState<string | null>(null);
+  const [visualPreviewUrls, setVisualPreviewUrls] = useState<
+    Partial<Record<VisualOutputMode, string | null>>
+  >({});
+  const [visualLoading, setVisualLoading] = useState<
+    Partial<Record<VisualOutputMode, { size: string } | null>>
+  >({});
   const [balance, setBalance] = useState(initialBalance);
   const [result, setResult] = useState<ResultState | null>(null);
+  const [visualResults, setVisualResults] = useState<
+    Partial<Record<VisualOutputMode, ResultState | null>>
+  >({});
   const [recent, setRecent] = useState<ChatRecentGeneration[]>(initialRecent);
   const [selectedRecentId, setSelectedRecentId] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -2450,9 +2370,6 @@ export function CreatePageClient({
   const visibleChatMessages = chatMessages.filter((message) =>
     isMessageInConversationMode(message, activeConversationMode)
   );
-  const visibleRestoredPendingGenerations = restoredPendingGenerations.filter(
-    (item) => item.mode === activeConversationMode
-  );
   const canUseEditReferenceMentions =
     activeBackendType === "responses" || activeBackendType === "mixed";
   const canUseChatReferenceMentions =
@@ -2551,7 +2468,18 @@ export function CreatePageClient({
     () => validateImageSize(chatCustomEditSize),
     [chatCustomEditSize]
   );
-  const busy = isGenerating || isEditing || isChatGenerating;
+  const visualModeBusy = (mode: VisualOutputMode) =>
+    mode === "image"
+      ? isEditing
+      : mode === "text-single"
+        ? isTextSingleGenerating
+        : isTextLinesGenerating;
+  const setVisualModeLoading = (
+    mode: VisualOutputMode,
+    value: { size: string } | null
+  ) => {
+    setVisualLoading((prev) => ({ ...prev, [mode]: value }));
+  };
   useEffect(() => {
     if (activeMode !== "agent" || effectiveAgentAllowed) return;
     setActiveMode("chat");
@@ -2579,13 +2507,16 @@ export function CreatePageClient({
             `参考图：${firstImageOriginalSize}；输出已贴近为 ${effectiveEditSize}。`
           )
       : null;
-  const loadingSize =
-    activeMode === "image" && effectiveEditSize
-      ? effectiveEditSize
-      : isConversationMode(activeMode) && hasChatImageAttachments
-        ? chatCustomEditSize
-        : size;
-  const loadingDimensions = parseImageSize(loadingSize) || defaultDimensions;
+  const isVisualModeLoading = (mode: VisualOutputMode) =>
+    Boolean(visualLoading[mode]) && visualModeBusy(mode);
+  const getVisualLoadingDimensions = (mode: VisualOutputMode) => {
+    const fallbackSize =
+      mode === "image" ? effectiveEditSize || customEditSize : size;
+    return (
+      parseImageSize(visualLoading[mode]?.size || fallbackSize) ||
+      defaultDimensions
+    );
+  };
   const chatSuggestions = isZh ? CHAT_SUGGESTIONS_ZH : CHAT_SUGGESTIONS;
   const promptOptimizationField = (id: string, disabled = false) => (
     <label
@@ -2853,6 +2784,17 @@ export function CreatePageClient({
     setStreamingPreviewUrl(null);
   };
 
+  const setVisualStreamingPreview = (
+    mode: VisualOutputMode,
+    imageUrl: string | null
+  ) => {
+    setVisualPreviewUrls((prev) => ({ ...prev, [mode]: imageUrl }));
+  };
+
+  const clearVisualStreamingPreview = (mode: VisualOutputMode) => {
+    setVisualStreamingPreview(mode, null);
+  };
+
   const resetChatConversation = () => {
     setChatMessages([]);
     setChatStream(null);
@@ -2916,7 +2858,10 @@ export function CreatePageClient({
     });
   };
 
-  const readImageStreamResponse = async (response: Response) => {
+  const readImageStreamResponse = async (
+    response: Response,
+    options?: { previewMode?: VisualOutputMode }
+  ) => {
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("text/event-stream")) {
       return readImageApiJsonResponse(response);
@@ -2951,7 +2896,13 @@ export function CreatePageClient({
 
       if (event.type === "partial_image") {
         const previewUrl = imageStreamEventToPreviewUrl(event);
-        if (previewUrl) setStreamingPreviewUrl(previewUrl);
+        if (previewUrl) {
+          if (options?.previewMode) {
+            setVisualStreamingPreview(options.previewMode, previewUrl);
+          } else {
+            setStreamingPreviewUrl(previewUrl);
+          }
+        }
         return;
       }
 
@@ -2996,7 +2947,8 @@ export function CreatePageClient({
       return { results: completed };
     }
 
-    return failed || { error: "API returned no image data" };
+    if (failed) return failed;
+    return { error: "API returned no image data" };
   };
 
   const runChatRequest = async ({
@@ -3007,7 +2959,7 @@ export function CreatePageClient({
     generationId,
     streamMessageId,
     streamCardId,
-    agentMode = activeMode === "agent",
+    agentMode,
     signal,
   }: {
     prompt: string;
@@ -3017,7 +2969,7 @@ export function CreatePageClient({
     generationId?: string;
     streamMessageId?: string;
     streamCardId?: string;
-    agentMode?: boolean;
+    agentMode: boolean;
     signal?: AbortSignal;
   }) => {
     const streamMode: "chat" | "agent" | undefined =
@@ -3058,6 +3010,10 @@ export function CreatePageClient({
     formData.append("size", requestSize);
     formData.append("count", "1");
     formData.append("stream", "true");
+    formData.append(
+      "conversation_mode",
+      agentMode ? "agent" : streamCardId ? "waterfall" : "chat"
+    );
     formData.append("agent_mode", String(agentMode));
     if (agentMode) {
       formData.append("agent_max_rounds", String(agentMaxRounds));
@@ -3261,8 +3217,8 @@ export function CreatePageClient({
           if (!event.final) {
             agentEvents = appendAgentRunEvent(agentEvents, {
               kind: "image_partial",
-              status: "running",
-              title: copy("Intermediate image", "中间图已生成"),
+              status: "completed",
+              title: copy("Streaming preview generated", "流式预览已生成"),
               imageUrl: nextPreviewUrl,
               index: event.index,
               partialImageIndex: event.partial_image_index,
@@ -3621,16 +3577,26 @@ export function CreatePageClient({
     data: ChatResultInput,
     resultPrompt: string,
     fallbackSize = size,
-    options?: { syncCredits?: boolean; addRecent?: boolean }
+    options?: {
+      syncCredits?: boolean;
+      addRecent?: boolean;
+      previewMode?: VisualOutputMode | null;
+    }
   ): ChatVariant | null => {
     const syncCredits = options?.syncCredits ?? true;
     const addRecent = options?.addRecent ?? true;
+    const previewMode = options?.previewMode;
     const model = data.model || DEFAULT_IMAGE_MODEL;
     const resultSize = data.size || fallbackSize;
     if (!data.imageUrl && !data.responseText) return null;
 
     const isAgentDraft = data.outputRole === "agent_draft";
-    if (data.imageUrl && data.generationId && !isAgentDraft) {
+    if (
+      previewMode !== null &&
+      data.imageUrl &&
+      data.generationId &&
+      !isAgentDraft
+    ) {
       const nextResult: ResultState = {
         generationId: data.generationId,
         imageUrl: data.imageUrl,
@@ -3640,6 +3606,9 @@ export function CreatePageClient({
       };
       if (data.revisedPrompt) nextResult.revisedPrompt = data.revisedPrompt;
       setResult(nextResult);
+      if (previewMode) {
+        setVisualResults((prev) => ({ ...prev, [previewMode]: nextResult }));
+      }
     }
     if (syncCredits) {
       setBalance(
@@ -3769,6 +3738,7 @@ export function CreatePageClient({
       const variant = addSuccessfulResult(item, resultPrompt, fallbackSize, {
         syncCredits: shouldSyncCredits && index === expanded.length - 1,
         addRecent: false,
+        previewMode: null,
       });
       if (variant) variants.push(variant);
     }
@@ -3814,7 +3784,7 @@ export function CreatePageClient({
     data: ImageApiResult,
     resultPrompt: string,
     fallbackSize = size,
-    options?: { syncCredits?: boolean }
+    options?: { syncCredits?: boolean; previewMode?: VisualOutputMode }
   ) => {
     const successfulResults =
       data.results?.filter((item) => item.imageUrl && item.generationId) ||
@@ -3826,6 +3796,7 @@ export function CreatePageClient({
     for (const item of successfulResults.toReversed()) {
       const variant = addSuccessfulResult(item, resultPrompt, fallbackSize, {
         syncCredits: options?.syncCredits ?? true,
+        previewMode: options?.previewMode,
       });
       if (variant) {
         variants.unshift(variant);
@@ -3834,221 +3805,6 @@ export function CreatePageClient({
 
     return variants;
   };
-
-  const fetchGenerationStatus = async (id: string) => {
-    const response = await fetch(`/api/images/status/${encodeURIComponent(id)}`);
-    const data = await readImageApiJsonResponse(response);
-    if (!response.ok || data.error) {
-      throw new Error(data.error || `API error: ${response.status}`);
-    }
-    return data;
-  };
-
-  const patchConversationAssistantMessage = (
-    conversationId: string | undefined,
-    assistantMessageId: string | undefined,
-    updater: (message: ChatMessage) => ChatMessage
-  ) => {
-    if (!assistantMessageId) return;
-    setChatMessages((prev) =>
-      prev.map((message) =>
-        message.id === assistantMessageId ? updater(message) : message
-      )
-    );
-    if (!conversationId) return;
-
-    const now = new Date().toISOString();
-    const nextConversations = chatConversationsRef.current.map(
-      (conversation) =>
-        conversation.id === conversationId
-          ? {
-              ...conversation,
-              messages: conversation.messages.map((message) =>
-                message.id === assistantMessageId ? updater(message) : message
-              ),
-              updatedAt: now,
-            }
-          : conversation
-    );
-    chatConversationsRef.current = nextConversations;
-    setChatConversations(nextConversations);
-    try {
-      window.localStorage.setItem(
-        CHAT_CONVERSATIONS_STORAGE_KEY,
-        JSON.stringify(nextConversations)
-      );
-    } catch {
-      /* ignore local storage quota errors */
-    }
-  };
-
-  const restorePendingChatGeneration = (
-    pending: PendingGenerationState,
-    data: ImageApiResult
-  ) => {
-    const forgetPending = () => {
-      removePendingGenerationState(pending.id);
-      setRestoredPendingGenerations((prev) =>
-        prev.filter((item) => item.id !== pending.id)
-      );
-    };
-    if (data.status === "failed") {
-      const message = data.error || copy("Generation failed", "生成失败");
-      if (!pending.assistantMessageId) {
-        toast.error(copy("Generation failed", "生成失败"), {
-          description: message,
-        });
-        forgetPending();
-        return;
-      }
-      patchConversationAssistantMessage(
-        pending.conversationId,
-        pending.assistantMessageId,
-        (item) => ({
-          ...item,
-          text: copy("Generation failed", "生成失败"),
-          error: message,
-        })
-      );
-      forgetPending();
-      return;
-    }
-
-    if (data.status !== "completed") {
-      if (!pending.assistantMessageId) return;
-      patchConversationAssistantMessage(
-        pending.conversationId,
-        pending.assistantMessageId,
-        (item) => ({
-          ...item,
-          text:
-            data.responseText ||
-            data.responseAgent ||
-            item.text ||
-            copy("Generating...", "生成中..."),
-          error: undefined,
-          variants: item.variants?.length
-            ? item.variants
-            : data.responseText || data.responseAgent || data.agentEvents?.length
-              ? [
-                  {
-                    generationId: data.generationId || pending.id,
-                    prompt: pending.prompt,
-                    model: data.model || DEFAULT_IMAGE_MODEL,
-                    size: data.size || pending.size,
-                    responseText: data.responseText,
-                    responseThinking: data.responseThinking,
-                    responseAgent: data.responseAgent,
-                    agentEvents: data.agentEvents,
-                    agentRoundCount: data.agentRoundCount,
-                    createdAt: data.createdAt,
-                  },
-                ]
-              : item.variants,
-        })
-      );
-      return;
-    }
-
-    const variants = addSuccessfulChatResults(data, pending.prompt, pending.size, {
-      syncCredits: false,
-    });
-    const variant = variants[variants.length - 1];
-    if (!pending.assistantMessageId) {
-      if (variants.length > 0) {
-        setActiveMode(pending.mode === "agent" ? "agent" : "chat");
-        toast.success(copy("Background task restored", "后台任务已恢复"));
-      }
-      forgetPending();
-      return;
-    }
-    patchConversationAssistantMessage(
-      pending.conversationId,
-      pending.assistantMessageId,
-      (item) => ({
-        ...item,
-        text:
-          variant?.responseText ||
-          (variant?.imageUrl
-            ? copy("Image generated", "图片已生成")
-            : copy("Response generated", "回复已生成")),
-        error: undefined,
-        variants: variants.length ? variants : item.variants,
-        activeVariant: variants.length
-          ? variants.length - 1
-          : item.activeVariant,
-      })
-    );
-    forgetPending();
-  };
-
-  const restorePendingGeneration = async (pending: PendingGenerationState) => {
-    const data = await fetchGenerationStatus(pending.id);
-    if (pending.mode === "chat" || pending.mode === "agent") {
-      restorePendingChatGeneration(pending, data);
-      return data.status;
-    }
-
-    if (data.status === "completed") {
-      addSuccessfulResults(data, pending.prompt, pending.size, {
-        syncCredits: false,
-      });
-      removePendingGenerationState(pending.id);
-    } else if (data.status === "failed") {
-      toast.error(copy("Generation failed", "生成失败"), {
-        description: data.error || copy("The background task failed.", "后台任务失败。"),
-      });
-      removePendingGenerationState(pending.id);
-    }
-    return data.status;
-  };
-
-  useEffect(() => {
-    const pending = readPendingGenerationStates();
-    if (pending.length === 0) return;
-    let cancelled = false;
-    const activeIds = new Set(pending.map((item) => item.id));
-    setRestoredPendingGenerations(
-      pending.filter(
-        (item) =>
-          (item.mode === "chat" || item.mode === "agent") &&
-          !item.assistantMessageId
-      )
-    );
-
-    const poll = async () => {
-      const currentPending = readPendingGenerationStates();
-      const currentIds = new Set(currentPending.map((item) => item.id));
-      for (const id of Array.from(activeIds)) {
-        if (!currentIds.has(id)) activeIds.delete(id);
-      }
-      for (const item of currentPending) {
-        if (!activeIds.has(item.id)) continue;
-        try {
-          const status = await restorePendingGeneration(item);
-          if (status === "completed" || status === "failed") {
-            activeIds.delete(item.id);
-          }
-        } catch {
-          /* The row may not exist yet if the request was queued locally. */
-        }
-      }
-      if (cancelled || activeIds.size === 0) return;
-      window.setTimeout(poll, 2000);
-    };
-
-    toast.info(copy("Restoring background tasks", "正在恢复后台任务"), {
-      description: copy(
-        "Pending generations will be updated when the server finishes them.",
-        "后台生成完成后会自动补回当前页面。"
-      ),
-    });
-    void poll();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const syncChargedCredits = (creditsConsumed?: number) => {
     if (!creditsConsumed || creditsConsumed <= 0) return;
@@ -4344,15 +4100,6 @@ export function CreatePageClient({
       agent: "",
       agentEvents: [],
     });
-    addPendingGenerationState({
-      id: generationId,
-      mode: assistantMessage.mode === "agent" ? "agent" : "chat",
-      prompt: userMessage.text,
-      size: retrySize,
-      createdAt: new Date().toISOString(),
-      conversationId: chatConversationId,
-      assistantMessageId: assistantId,
-    });
 
     try {
       const data = await runChatRequest({
@@ -4364,7 +4111,6 @@ export function CreatePageClient({
         agentMode:
           assistantMessage.mode === "agent" || userMessage.mode === "agent",
       });
-      removePendingGenerationState(generationId);
       const newVariants = addSuccessfulChatResults(
         data,
         userMessage.text,
@@ -4407,7 +4153,6 @@ export function CreatePageClient({
       syncChargedCredits(creditsConsumed);
       toast.error(copy("Retry failed", "重试失败"), { description: message });
     } finally {
-      removePendingGenerationState(generationId);
       setRetryingChatMessageId(null);
       setIsChatGenerating(false);
       setChatStream(null);
@@ -4487,9 +4232,10 @@ export function CreatePageClient({
     if (event.kind === "web_search") return copy("Search", "联网");
     if (event.kind === "code_interpreter") return copy("Code", "代码");
     if (event.kind === "image_generation") return copy("Image", "生图");
-    if (event.kind === "image_partial") return copy("Draft", "中间图");
+    if (event.kind === "image_partial") return copy("Stream", "流式");
     if (event.kind === "reasoning") return copy("Thinking", "思考");
     if (event.kind === "message") return copy("Message", "消息");
+    if (event.toolType === "agent_decision") return copy("Decision", "决策");
     return copy("Tool", "工具");
   };
 
@@ -5419,18 +5165,8 @@ export function CreatePageClient({
       },
     ]);
     setChatPrompt("");
-    setResult(null);
     clearStreamingPreview();
     setIsChatGenerating(true);
-    addPendingGenerationState({
-      id: generationId,
-      mode: conversationMode,
-      prompt: currentPrompt,
-      size: fallbackSize || size,
-      createdAt: new Date().toISOString(),
-      conversationId: chatConversationId,
-      assistantMessageId,
-    });
     scrollChatToBottom();
 
     try {
@@ -5441,8 +5177,8 @@ export function CreatePageClient({
         historyMessages: conversationBeforeSend,
         generationId,
         streamMessageId: assistantMessageId,
+        agentMode: conversationMode === "agent",
       });
-      removePendingGenerationState(generationId);
       const variants = addSuccessfulChatResults(
         data,
         currentPrompt,
@@ -5516,7 +5252,6 @@ export function CreatePageClient({
         )
       );
     } finally {
-      removePendingGenerationState(generationId);
       setIsChatGenerating(false);
       setChatStream(null);
       clearStreamingPreview();
@@ -5541,32 +5276,23 @@ export function CreatePageClient({
       return;
     }
     const currentPrompt = prompt.trim();
-    const requestedGenerationIds = Array.from(
-      { length: batchCount },
-      createGenerationId
-    );
-    for (const id of requestedGenerationIds) {
-      addPendingGenerationState({
-        id,
-        mode: "text",
-        prompt: currentPrompt,
-        size,
-        createdAt: new Date().toISOString(),
-      });
-    }
-    setResult(null);
-    clearStreamingPreview();
-    setIsGenerating(true);
+    const requestSize = size;
+    const previewMode: VisualOutputMode = "text-single";
+    setVisualResults((prev) => ({ ...prev, [previewMode]: null }));
+    setVisualModeLoading(previewMode, { size: requestSize });
+    clearVisualStreamingPreview(previewMode);
+    setIsTextSingleGenerating(true);
     try {
       const data = await runTextGenerationRequest({
         prompt: currentPrompt,
         count: batchCount,
         stream: true,
-        generationIds: requestedGenerationIds,
+        previewMode,
       });
-      for (const id of requestedGenerationIds) removePendingGenerationState(id);
 
-      const generatedCount = addSuccessfulResults(data, currentPrompt).length;
+      const generatedCount = addSuccessfulResults(data, currentPrompt, size, {
+        previewMode,
+      }).length;
       toast.success(
         generatedCount > 1
           ? copy(
@@ -5588,8 +5314,9 @@ export function CreatePageClient({
             : copy("An unexpected error occurred.", "发生未知错误。"),
       });
     } finally {
-      setIsGenerating(false);
-      clearStreamingPreview();
+      setIsTextSingleGenerating(false);
+      setVisualModeLoading(previewMode, null);
+      clearVisualStreamingPreview(previewMode);
     }
   };
 
@@ -5597,8 +5324,7 @@ export function CreatePageClient({
     prompt: string;
     count?: number;
     stream?: boolean;
-    generationId?: string;
-    generationIds?: string[];
+    previewMode?: VisualOutputMode;
   }) => {
     const response = await fetch("/api/images/generate", {
       method: "POST",
@@ -5608,8 +5334,6 @@ export function CreatePageClient({
       },
       body: JSON.stringify({
         prompt: params.prompt,
-        ...(params.generationId ? { generationId: params.generationId } : {}),
-        ...(params.generationIds ? { generationIds: params.generationIds } : {}),
         size,
         stream: Boolean(params.stream),
         count: params.count || 1,
@@ -5630,7 +5354,9 @@ export function CreatePageClient({
     });
 
     const data = params.stream
-      ? await readImageStreamResponse(response)
+      ? await readImageStreamResponse(response, {
+          previewMode: params.previewMode,
+        })
       : await readImageApiJsonResponse(response);
 
     if (!response.ok || data.error) {
@@ -5661,9 +5387,12 @@ export function CreatePageClient({
       return;
     }
 
-    setResult(null);
-    clearStreamingPreview();
-    setIsGenerating(true);
+    const requestSize = size;
+    const previewMode: VisualOutputMode = "text-lines";
+    setVisualResults((prev) => ({ ...prev, [previewMode]: null }));
+    setVisualModeLoading(previewMode, { size: requestSize });
+    clearVisualStreamingPreview(previewMode);
+    setIsTextLinesGenerating(true);
     let generatedCount = 0;
     try {
       for (const itemPrompt of linePromptItems) {
@@ -5672,22 +5401,14 @@ export function CreatePageClient({
           repeatIndex < lineBatchRepeatCount;
           repeatIndex++
         ) {
-          const generationId = createGenerationId();
-          addPendingGenerationState({
-            id: generationId,
-            mode: "text",
-            prompt: itemPrompt,
-            size,
-            createdAt: new Date().toISOString(),
-          });
           const data = await runTextGenerationRequest({
             prompt: itemPrompt,
             count: 1,
             stream: false,
-            generationId,
           });
-          removePendingGenerationState(generationId);
-          generatedCount += addSuccessfulResults(data, itemPrompt).length;
+          generatedCount += addSuccessfulResults(data, itemPrompt, size, {
+            previewMode,
+          }).length;
         }
       }
 
@@ -5712,8 +5433,9 @@ export function CreatePageClient({
             : copy("An unexpected error occurred.", "发生未知错误。"),
       });
     } finally {
-      setIsGenerating(false);
-      clearStreamingPreview();
+      setIsTextLinesGenerating(false);
+      setVisualModeLoading(previewMode, null);
+      clearVisualStreamingPreview(previewMode);
     }
   };
 
@@ -5771,11 +5493,8 @@ export function CreatePageClient({
     }
 
     const currentEditPrompt = editPrompt.trim();
-    const editGenerationId =
-      editBatchCount === 1 ? createGenerationId() : undefined;
     const formData = new FormData();
     formData.append("prompt", currentEditPrompt);
-    if (editGenerationId) formData.append("generation_id", editGenerationId);
     formData.append("quality", quality);
     formData.append("moderation", moderation);
     formData.append("output_format", outputFormat);
@@ -5810,19 +5529,11 @@ export function CreatePageClient({
       formData.append("mix_web_first", "true");
     }
 
+    setVisualResults((prev) => ({ ...prev, image: null }));
+    setVisualModeLoading("image", { size: effectiveEditSize });
     setIsEditing(true);
-    setResult(null);
-    clearStreamingPreview();
+    clearVisualStreamingPreview("image");
     formData.append("stream", "true");
-    if (editGenerationId) {
-      addPendingGenerationState({
-        id: editGenerationId,
-        mode: "image",
-        prompt: currentEditPrompt,
-        size: effectiveEditSize,
-        createdAt: new Date().toISOString(),
-      });
-    }
     try {
       const response = await fetch("/api/images/edit", {
         method: "POST",
@@ -5831,7 +5542,9 @@ export function CreatePageClient({
         },
         body: formData,
       });
-      const data = await readImageStreamResponse(response);
+      const data = await readImageStreamResponse(response, {
+        previewMode: "image",
+      });
 
       if (!response.ok || data.error) {
         showGenerationError(data.error || `API error: ${response.status}`, {
@@ -5843,9 +5556,9 @@ export function CreatePageClient({
       const generatedCount = addSuccessfulResults(
         data,
         currentEditPrompt,
-        effectiveEditSize
+        effectiveEditSize,
+        { previewMode: "image" }
       ).length;
-      if (editGenerationId) removePendingGenerationState(editGenerationId);
       toast.success(
         generatedCount > 1
           ? copy(
@@ -5862,9 +5575,9 @@ export function CreatePageClient({
             : copy("An unexpected error occurred.", "发生未知错误。"),
       });
     } finally {
-      if (editGenerationId) removePendingGenerationState(editGenerationId);
       setIsEditing(false);
-      clearStreamingPreview();
+      setVisualModeLoading("image", null);
+      clearVisualStreamingPreview("image");
     }
   };
 
@@ -6132,14 +5845,14 @@ export function CreatePageClient({
     }, "image/png");
   };
 
-  const useResultAsReference = async () => {
-    if (!result?.imageUrl) return;
+  const useResultAsReference = async (sourceResult = result) => {
+    if (!sourceResult?.imageUrl) return;
 
     try {
       const item = await urlToEditImageFile(
-        result.imageUrl,
-        `gpt2image-${result.generationId}`,
-        result.generationId
+        sourceResult.imageUrl,
+        `gpt2image-${sourceResult.generationId}`,
+        sourceResult.generationId
       );
       clearEditImages();
       setEditImages([item]);
@@ -6262,6 +5975,9 @@ export function CreatePageClient({
 
   const textSettingsPanel = (mode: TextGenerationMode) => {
     const isLineMode = mode === "lines";
+    const modeBusy = isLineMode
+      ? isTextLinesGenerating
+      : isTextSingleGenerating;
     const countValue = isLineMode ? lineBatchRepeatCount : batchCount;
     const setCountValue = (value: number) => {
       const normalized = Math.min(Math.max(1, value), maxBatchCount);
@@ -6309,7 +6025,7 @@ export function CreatePageClient({
                   <Select
                     value={textModel}
                     onValueChange={setTextModel}
-                    disabled={busy || textMixWebFirstActive}
+                    disabled={modeBusy || textMixWebFirstActive}
                   >
                     <SelectTrigger
                       id={`text-model-${mode}`}
@@ -6343,7 +6059,7 @@ export function CreatePageClient({
                   id: `text-gpt-model-${mode}`,
                   value: imageGptModel,
                   onChange: setImageGptModel,
-                  disabled: busy,
+                  disabled: modeBusy,
                   allowDefault: true,
                 })}
                 <p className="text-[11px] leading-snug text-muted-foreground">
@@ -6369,7 +6085,7 @@ export function CreatePageClient({
                     id: `text-thinking-${mode}`,
                     value: imageThinking,
                     onChange: setImageThinking,
-                    disabled: busy,
+                    disabled: modeBusy,
                   })}
                 </div>
               )}
@@ -6386,7 +6102,7 @@ export function CreatePageClient({
                 <Select
                   value={String(countValue)}
                   onValueChange={(value) => setCountValue(Number(value))}
-                  disabled={busy}
+                  disabled={modeBusy}
                 >
                   <SelectTrigger
                     id={isLineMode ? "line-repeat-count" : "batch-count"}
@@ -6423,7 +6139,7 @@ export function CreatePageClient({
                   type="button"
                   variant="outline"
                   onClick={() => setTextSizeDialogOpen(true)}
-                  disabled={busy}
+                  disabled={modeBusy}
                   className="shrink-0"
                 >
                   {copy("Set size", "设置尺寸")}
@@ -6448,7 +6164,7 @@ export function CreatePageClient({
                   <Select
                     value={quality}
                     onValueChange={(value) => setQuality(value as ImageQuality)}
-                    disabled={busy || disableResponsesOnlyControls}
+                    disabled={modeBusy || disableResponsesOnlyControls}
                   >
                     <SelectTrigger
                       id={`image-quality-${mode}`}
@@ -6480,7 +6196,7 @@ export function CreatePageClient({
                     onValueChange={(value) =>
                       setOutputFormat(value as ImageOutputFormat)
                     }
-                    disabled={busy || disableResponsesOnlyControls}
+                    disabled={modeBusy || disableResponsesOnlyControls}
                   >
                     <SelectTrigger
                       id={`image-output-format-${mode}`}
@@ -6524,7 +6240,7 @@ export function CreatePageClient({
                           )
                         )
                       }
-                      disabled={busy || disableResponsesOnlyControls}
+                      disabled={modeBusy || disableResponsesOnlyControls}
                       title={outputCompressionHelpText}
                     />
                   </div>
@@ -6541,7 +6257,7 @@ export function CreatePageClient({
                     onValueChange={(value) =>
                       setModeration(value as ImageModeration)
                     }
-                    disabled={busy || disableResponsesOnlyControls}
+                    disabled={modeBusy || disableResponsesOnlyControls}
                   >
                     <SelectTrigger
                       id={`image-oai-moderation-${mode}`}
@@ -6597,7 +6313,129 @@ export function CreatePageClient({
     );
   };
 
-  const loading = busy;
+  const renderVisualOutput = (mode: VisualOutputMode) => {
+    const loading = isVisualModeLoading(mode);
+    const modeResult = visualResults[mode] || null;
+    const dimensions = getVisualLoadingDimensions(mode);
+    const previewUrl = visualPreviewUrls[mode] || null;
+
+    return (
+      <>
+        {loading && (
+          <div
+            className="mt-8 mb-10 flex max-w-2xl items-center justify-center overflow-hidden rounded-lg border border-dashed bg-muted/30"
+            style={{
+              aspectRatio: `${dimensions.width} / ${dimensions.height}`,
+            }}
+          >
+            {previewUrl ? (
+              <div className="relative h-full w-full">
+                <Image
+                  src={previewUrl}
+                  alt={copy("Streaming preview", "流式预览")}
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 768px"
+                  className="object-contain"
+                  unoptimized={!shouldOptimizeStoredImage(previewUrl)}
+                />
+                <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {copy("Previewing stream", "正在预览流式结果")}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                <Loader2 className="h-8 w-8 animate-spin" />
+                <p className="text-sm">
+                  {copy("Generating your image...", "正在生成图片...")}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {modeResult && !loading && (
+          <section className="mt-8 mb-10 space-y-4">
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedRecentId(
+                  recent.some((item) => item.id === modeResult.generationId)
+                    ? modeResult.generationId
+                    : null
+                )
+              }
+              className="group relative mx-auto block w-full max-w-2xl overflow-hidden rounded-lg border bg-muted"
+              style={{
+                aspectRatio: `${parseImageSize(modeResult.size)?.width || defaultDimensions.width} / ${
+                  parseImageSize(modeResult.size)?.height ||
+                  defaultDimensions.height
+                }`,
+              }}
+              title={copy("Open image preview", "打开图片预览")}
+            >
+              <Image
+                src={modeResult.imageUrl}
+                alt={modeResult.prompt}
+                fill
+                sizes="(max-width: 1024px) 100vw, 768px"
+                className="object-contain"
+                unoptimized={!shouldOptimizeStoredImage(modeResult.imageUrl)}
+              />
+              <span className="absolute right-2 top-2 rounded bg-background/90 px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity hover:opacity-100 focus:opacity-100 group-hover:opacity-100">
+                <Eye className="mr-1 inline h-3.5 w-3.5" />
+                {copy("Preview", "预览")}
+              </span>
+            </button>
+            <div className="mx-auto max-w-2xl space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {modeResult.prompt}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {copy("Model", "模型")}:{" "}
+                <span className="font-medium text-foreground">
+                  {modeResult.model}
+                </span>{" "}
+                · {copy("Resolution", "分辨率")}:{" "}
+                <span className="font-medium text-foreground">
+                  {modeResult.size}
+                </span>
+              </p>
+              {modeResult.revisedPrompt &&
+                modeResult.revisedPrompt !== modeResult.prompt && (
+                  <p className="text-xs italic text-muted-foreground">
+                    {copy("Revised", "优化提示词")}:{" "}
+                    {modeResult.revisedPrompt}
+                  </p>
+                )}
+              <div className="flex gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <a
+                    href={modeResult.imageUrl}
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    {copy("Download", "下载")}
+                  </a>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => useResultAsReference(modeResult)}
+                >
+                  <RefreshCcw className="mr-2 h-4 w-4" />
+                  {copy("Edit this", "编辑这张")}
+                </Button>
+              </div>
+            </div>
+          </section>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className="container mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-12">
@@ -6684,7 +6522,7 @@ export function CreatePageClient({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="text" className="mt-0">
+        <TabsContent value="text" className="mt-0" forceMount>
           <Tabs
             value={textMode}
             onValueChange={(value) => setTextMode(value as TextGenerationMode)}
@@ -6699,7 +6537,7 @@ export function CreatePageClient({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="single" className="mt-0">
+            <TabsContent value="single" className="mt-0" forceMount>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Textarea
                   value={prompt}
@@ -6709,20 +6547,20 @@ export function CreatePageClient({
                     "描述你想创作的图片..."
                   )}
                   rows={5}
-                  disabled={isGenerating}
+                  disabled={isTextSingleGenerating}
                   className="resize-none border-input bg-background text-base"
                 />
                 {promptOptimizationField(
                   "text-prompt-optimization",
-                  isGenerating
+                  isTextSingleGenerating
                 )}
                 {textSettingsPanel("single")}
                 <div className="flex justify-end">
                   <Button
                     type="submit"
-                    disabled={isGenerating || !prompt.trim()}
+                    disabled={isTextSingleGenerating || !prompt.trim()}
                   >
-                    {isGenerating ? (
+                    {isTextSingleGenerating ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         {copy("Generating", "生成中")}
@@ -6736,9 +6574,10 @@ export function CreatePageClient({
                   </Button>
                 </div>
               </form>
+              {renderVisualOutput("text-single")}
             </TabsContent>
 
-            <TabsContent value="lines" className="mt-0">
+            <TabsContent value="lines" className="mt-0" forceMount>
               <form onSubmit={handleTextLineBatchSubmit} className="space-y-4">
                 <Textarea
                   value={linePrompts}
@@ -6748,7 +6587,7 @@ export function CreatePageClient({
                     "每行一个提示词，每行生成一张图片。"
                   )}
                   rows={8}
-                  disabled={isGenerating}
+                  disabled={isTextLinesGenerating}
                   className="resize-none border-input bg-background text-base"
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -6767,15 +6606,17 @@ export function CreatePageClient({
                 </div>
                 {promptOptimizationField(
                   "text-line-prompt-optimization",
-                  isGenerating
+                  isTextLinesGenerating
                 )}
                 {textSettingsPanel("lines")}
                 <div className="flex justify-end">
                   <Button
                     type="submit"
-                    disabled={isGenerating || linePromptItems.length === 0}
+                    disabled={
+                      isTextLinesGenerating || linePromptItems.length === 0
+                    }
                   >
-                    {isGenerating ? (
+                    {isTextLinesGenerating ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         {copy("Generating", "生成中")}
@@ -6789,11 +6630,12 @@ export function CreatePageClient({
                   </Button>
                 </div>
               </form>
+              {renderVisualOutput("text-lines")}
             </TabsContent>
           </Tabs>
         </TabsContent>
 
-        <TabsContent value="image" className="mt-0">
+        <TabsContent value="image" className="mt-0" forceMount>
           <form
             onSubmit={handleEditSubmit}
             onPaste={handleImagePaste}
@@ -7376,14 +7218,6 @@ export function CreatePageClient({
                       ))}
                     </SelectContent>
                   </Select>
-                  {editBatchCount > 1 && (
-                    <p className="text-xs text-muted-foreground">
-                      {copy(
-                        "Background recovery is enabled for single edit requests. Batch edits still finish normally but are not restored after a refresh.",
-                        "后台恢复目前对单张图生图生效；批量编辑仍会正常执行，但刷新后不会逐张恢复。"
-                      )}
-                    </p>
-                  )}
                 </div>
 
                 <div className="space-y-3 rounded-md bg-muted/40 p-3">
@@ -7497,11 +7331,13 @@ export function CreatePageClient({
               </Button>
             </div>
           </form>
+          {renderVisualOutput("image")}
         </TabsContent>
 
         <TabsContent
           value={activeMode === "agent" ? "agent" : "chat"}
           className="mt-0"
+          forceMount
         >
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -7596,8 +7432,7 @@ export function CreatePageClient({
                 ref={chatMessagesRef}
                 className="flex-1 space-y-5 overflow-y-auto px-4 py-4"
               >
-                {visibleChatMessages.length === 0 &&
-                visibleRestoredPendingGenerations.length === 0 ? (
+                {visibleChatMessages.length === 0 ? (
                   <div className="flex min-h-[420px] flex-col items-center justify-center text-center text-muted-foreground">
                     {activeMode === "agent" ? (
                       <Wand2 className="mb-3 h-8 w-8" />
@@ -7623,22 +7458,6 @@ export function CreatePageClient({
                   </div>
                 ) : (
                   <>
-                    {visibleRestoredPendingGenerations.map((pending) => (
-                      <div key={pending.id} className="flex justify-start">
-                        <div className="max-w-[88%] rounded-lg border border-border bg-muted/35 px-3 py-3 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            {copy(
-                              "Background generation is still running...",
-                              "后台生成仍在处理中..."
-                            )}
-                          </div>
-                          <p className="mt-2 line-clamp-2 break-words text-xs">
-                            {pending.prompt}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
                     {visibleChatMessages.map((message) => {
                     const variants = getChatVariants(message);
                     const activeVariant = getActiveChatVariant(message);
@@ -7963,7 +7782,7 @@ export function CreatePageClient({
           </div>
         </TabsContent>
 
-        <TabsContent value="waterfall" className="mt-0">
+        <TabsContent value="waterfall" className="mt-0" forceMount>
           <div className="overflow-hidden rounded-lg border border-border bg-background">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -8347,112 +8166,6 @@ export function CreatePageClient({
           </div>
         </TabsContent>
       </Tabs>
-
-      {loading && (
-        <div
-          className="mb-10 flex max-w-2xl items-center justify-center overflow-hidden rounded-lg border border-dashed bg-muted/30"
-          style={{
-            aspectRatio: `${loadingDimensions.width} / ${loadingDimensions.height}`,
-          }}
-        >
-          {streamingPreviewUrl ? (
-            <div className="relative h-full w-full">
-              <Image
-                src={streamingPreviewUrl}
-                alt={copy("Streaming preview", "流式预览")}
-                fill
-                sizes="(max-width: 1024px) 100vw, 768px"
-                className="object-contain"
-                unoptimized={!shouldOptimizeStoredImage(streamingPreviewUrl)}
-              />
-              <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {copy("Previewing stream", "正在预览流式结果")}
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-3 text-muted-foreground">
-              <Loader2 className="h-8 w-8 animate-spin" />
-              <p className="text-sm">
-                {copy("Generating your image...", "正在生成图片...")}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {result && !loading && (
-        <section className="mb-10 space-y-4">
-          <button
-            type="button"
-            onClick={() =>
-              setSelectedRecentId(
-                recent.some((item) => item.id === result.generationId)
-                  ? result.generationId
-                  : null
-              )
-            }
-            className="group relative mx-auto block w-full max-w-2xl overflow-hidden rounded-lg border bg-muted"
-            style={{
-              aspectRatio: `${parseImageSize(result.size)?.width || defaultDimensions.width} / ${
-                parseImageSize(result.size)?.height || defaultDimensions.height
-              }`,
-            }}
-            title={copy("Open image preview", "打开图片预览")}
-          >
-            <Image
-              src={result.imageUrl}
-              alt={result.prompt}
-              fill
-              sizes="(max-width: 1024px) 100vw, 768px"
-              className="object-contain"
-              unoptimized={!shouldOptimizeStoredImage(result.imageUrl)}
-            />
-            <span className="absolute right-2 top-2 rounded bg-background/90 px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity hover:opacity-100 focus:opacity-100 group-hover:opacity-100">
-              <Eye className="mr-1 inline h-3.5 w-3.5" />
-              {copy("Preview", "预览")}
-            </span>
-          </button>
-          <div className="mx-auto max-w-2xl space-y-3">
-            <p className="text-sm text-muted-foreground">{result.prompt}</p>
-            <p className="text-xs text-muted-foreground">
-              {copy("Model", "模型")}:{" "}
-              <span className="font-medium text-foreground">
-                {result.model}
-              </span>{" "}
-              · {copy("Resolution", "分辨率")}:{" "}
-              <span className="font-medium text-foreground">{result.size}</span>
-            </p>
-            {result.revisedPrompt && result.revisedPrompt !== result.prompt && (
-              <p className="text-xs italic text-muted-foreground">
-                {copy("Revised", "优化提示词")}: {result.revisedPrompt}
-              </p>
-            )}
-            <div className="flex gap-2">
-              <Button asChild variant="outline" size="sm">
-                <a
-                  href={result.imageUrl}
-                  download
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  {copy("Download", "下载")}
-                </a>
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={useResultAsReference}
-              >
-                <RefreshCcw className="mr-2 h-4 w-4" />
-                {copy("Edit this", "编辑这张")}
-              </Button>
-            </div>
-          </div>
-        </section>
-      )}
 
       {recent.length > 0 && (
         <section className="space-y-4">

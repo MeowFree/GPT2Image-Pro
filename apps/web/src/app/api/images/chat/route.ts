@@ -167,6 +167,17 @@ function getOptionalInteger(formData: FormData, ...keys: string[]) {
   return undefined;
 }
 
+function getConversationMode(formData: FormData) {
+  const value =
+    getText(formData, "conversationMode") ||
+    getText(formData, "conversation_mode");
+  if (!value) return undefined;
+  if (value === "chat" || value === "agent" || value === "waterfall") {
+    return value;
+  }
+  throw new Error("conversation_mode must be chat, agent, or waterfall.");
+}
+
 function hasPromptImageReference(text: string | undefined) {
   return Boolean(text && PROMPT_IMAGE_REFERENCE_PATTERN.test(text));
 }
@@ -643,8 +654,18 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     ) === true ||
     hasPromptImageReference(prompt) ||
     hasPromptImageReference(apiPrompt);
+  let conversationMode: "chat" | "agent" | "waterfall" | undefined;
+  try {
+    conversationMode = getConversationMode(formData);
+  } catch (error) {
+    return errorResponse(
+      error instanceof Error ? error.message : "Invalid conversation mode."
+    );
+  }
   const agentMode =
-    getOptionalBoolean(formData, "agentMode", "agent_mode") === true;
+    conversationMode === "agent" ||
+    (!conversationMode &&
+      getOptionalBoolean(formData, "agentMode", "agent_mode") === true);
   let agentMaxRounds: number | undefined;
   try {
     agentMaxRounds = getOptionalInteger(
@@ -669,7 +690,9 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     "agent_force_max_rounds"
   );
   const waterfallMode =
-    getOptionalBoolean(formData, "waterfallMode", "waterfall_mode") === true;
+    conversationMode === "waterfall" ||
+    (!conversationMode &&
+      getOptionalBoolean(formData, "waterfallMode", "waterfall_mode") === true);
   const requiredCapability = agentMode
     ? "imageGeneration.agent"
     : waterfallMode
