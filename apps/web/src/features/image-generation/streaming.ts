@@ -36,6 +36,14 @@ export type ImageStreamEvent =
         parentMessageId: string;
         accountId?: string;
       };
+      imageOutputs?: Array<{
+        generationId?: string;
+        imageUrl?: string;
+        size?: string;
+        revisedPrompt?: string;
+        upstreamRevisedPrompt?: string;
+        index?: number;
+      }>;
       creditsConsumed?: number;
     }
   | {

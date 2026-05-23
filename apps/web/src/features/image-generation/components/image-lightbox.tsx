@@ -337,21 +337,23 @@ export function ImageLightbox({
                   </Button>
                 </>
               )}
-              <Button
-                variant={confirmDelete ? "destructive" : "ghost"}
-                className="w-full justify-center"
-                onClick={handleDelete}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="mr-2 h-4 w-4" />
-                )}
-                {confirmDelete
-                  ? copy("Click again to confirm", "再次点击确认删除")
-                  : copy("Delete", "删除")}
-              </Button>
+              {onDelete && (
+                <Button
+                  variant={confirmDelete ? "destructive" : "ghost"}
+                  className="w-full justify-center"
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="mr-2 h-4 w-4" />
+                  )}
+                  {confirmDelete
+                    ? copy("Click again to confirm", "再次点击确认删除")
+                    : copy("Delete", "删除")}
+                </Button>
+              )}
             </div>
           </div>
         </div>

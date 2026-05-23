@@ -21,6 +21,7 @@ export interface GenerateImageParams {
 export interface GenerateImageResult {
   imageBase64?: string;
   imageUrl?: string;
+  imageOutputs?: GeneratedImageOutput[];
   imageOutputCount?: number;
   revisedPrompt?: string;
   upstreamRevisedPrompt?: string;
@@ -31,6 +32,16 @@ export interface GenerateImageResult {
   error?: string;
   upstreamResetAt?: string;
   retryAfterSeconds?: number;
+}
+
+export interface GeneratedImageOutput {
+  imageBase64?: string;
+  imageUrl?: string;
+  generationId?: string;
+  size?: string;
+  revisedPrompt?: string;
+  upstreamRevisedPrompt?: string;
+  index?: number;
 }
 
 export interface PartialImageResult {

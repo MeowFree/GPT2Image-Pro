@@ -79,6 +79,7 @@ type ImageOutput = {
   b64_json?: string;
   url?: string;
   revised_prompt?: string;
+  index?: number;
 };
 
 type ImageResponsePayload = {
@@ -1175,7 +1176,19 @@ function toGenerateImageResult(image: ImageOutput): GenerateImageResult {
   if (image.b64_json) result.imageBase64 = image.b64_json;
   if (image.url) result.imageUrl = image.url;
   if (image.b64_json || image.url) result.imageOutputCount = 1;
-  if (image.revised_prompt) result.upstreamRevisedPrompt = image.revised_prompt;
+  if (image.revised_prompt) {
+    result.upstreamRevisedPrompt = image.revised_prompt;
+  }
+  if (image.b64_json || image.url) {
+    result.imageOutputs = [
+      {
+        imageBase64: image.b64_json,
+        imageUrl: image.url,
+        upstreamRevisedPrompt: image.revised_prompt,
+        index: typeof image.index === "number" ? image.index : 0,
+      },
+    ];
+  }
   return result;
 }
 
@@ -1238,6 +1251,7 @@ function parseResponsesOutput(
   let responseThinking: string | undefined;
   let responseAgent: string | undefined;
   let imageOutputCount = 0;
+  const imageOutputs: NonNullable<GenerateImageResult["imageOutputs"]> = [];
 
   for (const item of output || []) {
     if (item.type === "reasoning" && item.summary) {
@@ -1257,6 +1271,11 @@ function parseResponsesOutput(
       imageBase64 = item.result;
       imageOutputCount += 1;
       if (item.revised_prompt) revisedPrompt = item.revised_prompt;
+      imageOutputs.push({
+        imageBase64: item.result,
+        upstreamRevisedPrompt: item.revised_prompt,
+        index: imageOutputCount - 1,
+      });
       continue;
     }
 
@@ -1281,6 +1300,7 @@ function parseResponsesOutput(
 
   return {
     imageBase64,
+    imageOutputs: imageOutputs.length ? imageOutputs : undefined,
     imageOutputCount: imageOutputCount || undefined,
     upstreamRevisedPrompt: revisedPrompt,
     responseText,
@@ -1308,6 +1328,22 @@ function compactToolJson(value: unknown, maxLength = 140) {
   }
 }
 
+function describeWebSearchAction(action: unknown) {
+  if (!isPlainRecord(action)) return undefined;
+  const type = typeof action.type === "string" ? action.type : "";
+  if (type === "search" && Array.isArray(action.queries)) {
+    const queries = action.queries
+      .filter((item): item is string => typeof item === "string")
+      .slice(0, 2)
+      .join("; ");
+    return compactToolText(queries);
+  }
+  if (type === "open_page" && typeof action.url === "string") {
+    return compactToolText(action.url);
+  }
+  return compactToolJson(action);
+}
+
 function describeResponsesToolItem(
   item: ResponsesOutputItem | undefined,
   options: { done?: boolean } = {}
@@ -1321,8 +1357,8 @@ function describeResponsesToolItem(
   }
 
   if (item.type === "web_search_call") {
-    const query = compactToolText(item.query);
-    const suffix = query ? ` - ${query}` : item.status ? ` - ${item.status}` : "";
+    const detail = compactToolText(item.query) || describeWebSearchAction(item.action);
+    const suffix = detail ? ` - ${detail}` : item.status ? ` - ${item.status}` : "";
     return `${options.done ? "联网搜索完成" : "联网搜索"}${suffix}`;
   }
 
@@ -1410,14 +1446,25 @@ async function processResponsesEventPayload(
       }
     }
     if (item?.type === "image_generation_call" && item.result) {
+      const imageOutputCount = (state.fallbackResult?.imageOutputCount || 0) + 1;
+      const imageOutput = {
+        imageBase64: item.result,
+        upstreamRevisedPrompt: item.revised_prompt,
+        index: imageOutputCount - 1,
+      };
       const partialImage = {
         imageBase64: item.result,
+        partialImageIndex: imageOutput.index,
       };
       await callbacks?.onPartialImage?.(partialImage);
       state.fallbackResult = {
         ...(state.fallbackResult || {}),
         imageBase64: item.result,
-        imageOutputCount: (state.fallbackResult?.imageOutputCount || 0) + 1,
+        imageOutputs: [
+          ...(state.fallbackResult?.imageOutputs || []),
+          imageOutput,
+        ],
+        imageOutputCount,
         upstreamRevisedPrompt: item.revised_prompt,
         responseAgent:
           state.fallbackResult?.responseAgent || state.responseAgent,
@@ -1474,6 +1521,8 @@ async function processResponsesEventPayload(
     if (result) {
       state.completedResult = {
         ...result,
+        imageOutputs:
+          result.imageOutputs || state.fallbackResult?.imageOutputs,
         imageOutputCount: Math.max(
           result.imageOutputCount || 0,
           state.fallbackResult?.imageOutputCount || 0

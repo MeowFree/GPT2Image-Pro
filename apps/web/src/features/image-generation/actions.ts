@@ -23,6 +23,30 @@ const generateImageSchema = z.object({
   model: z.string().optional(),
 });
 
+function getAdditionalOutputStorageKeys(
+  metadata: Record<string, unknown> | null | undefined
+) {
+  const outputImage =
+    metadata &&
+    typeof metadata === "object" &&
+    !Array.isArray(metadata) &&
+    metadata.outputImage &&
+    typeof metadata.outputImage === "object" &&
+    !Array.isArray(metadata.outputImage)
+      ? (metadata.outputImage as Record<string, unknown>)
+      : null;
+  const outputs = Array.isArray(outputImage?.imageOutputs)
+    ? outputImage.imageOutputs
+    : [];
+
+  return outputs
+    .filter((item): item is Record<string, unknown> =>
+      Boolean(item && typeof item === "object" && !Array.isArray(item))
+    )
+    .map((item) => item.storageKey)
+    .filter((key): key is string => typeof key === "string" && key.length > 0);
+}
+
 export const generateImageAction = protectedAction
   .metadata({ action: "image-generation.generate" })
   .schema(generateImageSchema)
@@ -50,10 +74,18 @@ export const deleteGenerationAction = protectedAction
       return { error: "Not found" };
     }
 
-    if (gen[0].storageKey && gen[0].storageBucket) {
+    const storageKeys = new Set<string>();
+    if (gen[0].storageKey) storageKeys.add(gen[0].storageKey);
+    for (const key of getAdditionalOutputStorageKeys(gen[0].metadata)) {
+      storageKeys.add(key);
+    }
+
+    if (storageKeys.size > 0 && gen[0].storageBucket) {
       try {
         const storage = await getStorageProvider();
-        await storage.deleteObject(gen[0].storageKey, gen[0].storageBucket);
+        for (const storageKey of storageKeys) {
+          await storage.deleteObject(storageKey, gen[0].storageBucket);
+        }
       } catch {
         /* best effort */
       }

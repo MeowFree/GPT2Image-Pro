@@ -106,6 +106,14 @@ type ImageApiResult = {
   error?: string;
   generationId?: string;
   imageUrl?: string;
+  imageOutputs?: Array<{
+    generationId?: string;
+    imageUrl?: string;
+    size?: string;
+    revisedPrompt?: string;
+    upstreamRevisedPrompt?: string;
+    index?: number;
+  }>;
   model?: string;
   size?: string;
   revisedPrompt?: string;
@@ -179,6 +187,24 @@ type ChatVariant = {
   creditsConsumed?: number;
   createdAt?: string;
 };
+
+type ChatRecentGeneration = RecentGeneration & {
+  canDelete?: boolean;
+};
+
+type ChatResultInput = Pick<
+  ImageApiResult,
+  | "generationId"
+  | "imageUrl"
+  | "model"
+  | "size"
+  | "revisedPrompt"
+  | "responseText"
+  | "responseThinking"
+  | "responseAgent"
+  | "webConversation"
+  | "creditsConsumed"
+>;
 
 type ChatGptWebConversationState = {
   conversationId: string;
@@ -1468,7 +1494,7 @@ export function CreatePageClient({
   );
   const [balance, setBalance] = useState(initialBalance);
   const [result, setResult] = useState<ResultState | null>(null);
-  const [recent, setRecent] = useState<RecentGeneration[]>(initialRecent);
+  const [recent, setRecent] = useState<ChatRecentGeneration[]>(initialRecent);
   const [selectedRecentId, setSelectedRecentId] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const chatImageInputRef = useRef<HTMLInputElement | null>(null);
@@ -2453,21 +2479,13 @@ export function CreatePageClient({
   }, [maskPoints, firstImageSize]);
 
   const addSuccessfulResult = (
-    data: {
-      generationId?: string;
-      imageUrl?: string;
-      model?: string;
-      size?: string;
-      revisedPrompt?: string;
-      responseText?: string;
-      responseThinking?: string;
-      responseAgent?: string;
-      webConversation?: ChatGptWebConversationState;
-      creditsConsumed?: number;
-    },
+    data: ChatResultInput,
     resultPrompt: string,
-    fallbackSize = size
+    fallbackSize = size,
+    options?: { syncCredits?: boolean; addRecent?: boolean }
   ): ChatVariant | null => {
+    const syncCredits = options?.syncCredits ?? true;
+    const addRecent = options?.addRecent ?? true;
     const model = data.model || DEFAULT_IMAGE_MODEL;
     const resultSize = data.size || fallbackSize;
     if (!data.imageUrl && !data.responseText) return null;
@@ -2483,11 +2501,13 @@ export function CreatePageClient({
       if (data.revisedPrompt) nextResult.revisedPrompt = data.revisedPrompt;
       setResult(nextResult);
     }
-    setBalance(
-      (b) =>
-        Math.round(Math.max(0, b - (data.creditsConsumed || 0)) * 100) / 100
-    );
-    if (data.imageUrl && data.generationId) {
+    if (syncCredits) {
+      setBalance(
+        (b) =>
+          Math.round(Math.max(0, b - (data.creditsConsumed || 0)) * 100) / 100
+      );
+    }
+    if (addRecent && data.imageUrl && data.generationId) {
       const generationId = data.generationId;
       setRecent((prev) => [
         {
@@ -2500,6 +2520,7 @@ export function CreatePageClient({
           status: "completed",
           imageUrl: data.imageUrl || null,
           createdAt: new Date().toISOString(),
+          canDelete: true,
         },
         ...prev.slice(0, 5),
       ]);
@@ -2519,6 +2540,71 @@ export function CreatePageClient({
       creditsConsumed: data.creditsConsumed,
       createdAt: new Date().toISOString(),
     };
+  };
+
+  const expandChatImageOutputs = (data: ImageApiResult): ChatResultInput[] => {
+    const outputs = (data.imageOutputs || [])
+      .filter((item) => item.imageUrl && item.generationId)
+      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    if (outputs.length === 0) return [data];
+
+    return outputs.map((output, index) => {
+      const isLast = index === outputs.length - 1;
+      return {
+        generationId: output.generationId,
+        imageUrl: output.imageUrl,
+        model: data.model,
+        size: output.size || data.size,
+        revisedPrompt:
+          output.revisedPrompt || output.upstreamRevisedPrompt || data.revisedPrompt,
+        responseText: isLast ? data.responseText : undefined,
+        responseThinking: isLast ? data.responseThinking : undefined,
+        responseAgent: isLast ? data.responseAgent : undefined,
+        webConversation: isLast ? data.webConversation : undefined,
+        creditsConsumed: isLast ? data.creditsConsumed : 0,
+      };
+    });
+  };
+
+  const addSuccessfulChatResults = (
+    data: ImageApiResult,
+    resultPrompt: string,
+    fallbackSize = size
+  ) => {
+    const expanded = expandChatImageOutputs(data);
+    const variants: ChatVariant[] = [];
+    for (const [index, item] of expanded.entries()) {
+      const variant = addSuccessfulResult(item, resultPrompt, fallbackSize, {
+        syncCredits: index === expanded.length - 1,
+        addRecent: false,
+      });
+      if (variant) variants.push(variant);
+    }
+    if (variants.length > 0) {
+      const nextRecent = variants
+        .filter((variant) => variant.imageUrl && variant.generationId)
+        .toReversed()
+        .map((variant, index) => ({
+          id: variant.generationId!,
+          prompt: resultPrompt,
+          revisedPrompt: variant.revisedPrompt || null,
+          model: variant.model,
+          size: variant.size,
+          creditsConsumed: index === 0 ? data.creditsConsumed || 0 : 0,
+          status: "completed" as const,
+          imageUrl: variant.imageUrl || null,
+          createdAt: new Date().toISOString(),
+          canDelete: index === 0,
+        }));
+      if (nextRecent.length > 0) {
+        setRecent((prev) => {
+          const known = new Set(prev.map((item) => item.id));
+          const uniqueNext = nextRecent.filter((item) => !known.has(item.id));
+          return [...uniqueNext, ...prev].slice(0, 6);
+        });
+      }
+    }
+    return variants;
   };
 
   const addSuccessfulResults = (
@@ -2780,15 +2866,20 @@ export function CreatePageClient({
         historyMessages,
         streamMessageId: assistantId,
       });
-      const variant = addSuccessfulResult(data, userMessage.text, retrySize);
-      if (!variant) {
+      const newVariants = addSuccessfulChatResults(
+        data,
+        userMessage.text,
+        retrySize
+      );
+      const variant = newVariants[newVariants.length - 1];
+      if (!variant || newVariants.length === 0) {
         throw new Error(copy("API returned no image data", "接口未返回图片数据"));
       }
 
       setChatMessages((prev) =>
         prev.map((message) => {
           if (message.id !== assistantId) return message;
-          const variants = [...getChatVariants(message), variant];
+          const variants = [...getChatVariants(message), ...newVariants];
           return {
             ...message,
             error: undefined,
@@ -2839,6 +2930,7 @@ export function CreatePageClient({
           status: "completed",
           imageUrl: card.imageUrl || null,
           createdAt: new Date().toISOString(),
+          canDelete: false,
         },
         ...prev.slice(0, 5),
       ];
@@ -3199,22 +3291,27 @@ export function CreatePageClient({
           historyMessages: [],
           streamCardId: cardId,
         });
-        const variant = addSuccessfulResult(data, currentPrompt, fallbackSize);
+        const variants = addSuccessfulChatResults(
+          data,
+          currentPrompt,
+          fallbackSize
+        );
+        const variant = variants[variants.length - 1];
         syncWaterfallCredits(data.creditsConsumed);
         setBatchCards((prev) =>
           prev.map((card) =>
             card.id === cardId
               ? {
                   ...card,
-                  state: data.imageUrl ? "image" : "text",
-                  imageUrl: data.imageUrl,
-                  generationId: data.generationId,
+                  state: variant?.imageUrl ? "image" : "text",
+                  imageUrl: variant?.imageUrl || data.imageUrl,
+                  generationId: variant?.generationId || data.generationId,
                   text: data.responseText || variant?.responseText,
                   streamText: undefined,
                   streamThinking: data.responseThinking,
                   streamAgent: data.responseAgent,
                   model: data.model,
-                  size: data.size || fallbackSize,
+                  size: variant?.size || data.size || fallbackSize,
                   creditsConsumed: data.creditsConsumed,
                 }
               : card
@@ -3409,12 +3506,13 @@ export function CreatePageClient({
         historyMessages: conversationBeforeSend,
         streamMessageId: assistantMessageId,
       });
-      const variant = addSuccessfulResult(
+      const variants = addSuccessfulChatResults(
         data,
         currentPrompt,
         fallbackSize || size
       );
-      if (!variant) {
+      const variant = variants[variants.length - 1];
+      if (!variant || variants.length === 0) {
         const message = copy("API returned no image data", "接口未返回图片数据");
         showGenerationError(message);
         setChatMessages((prev) =>
@@ -3437,8 +3535,8 @@ export function CreatePageClient({
                   (variant.imageUrl
                     ? copy("Image generated", "图片已生成")
                     : copy("Response generated", "回复已生成")),
-                variants: [variant],
-                activeVariant: 0,
+                variants,
+                activeVariant: variants.length - 1,
               }
             : message
         )
@@ -4118,7 +4216,27 @@ export function CreatePageClient({
   };
 
   const selectedRecent =
-    recent.find((item) => item.id === selectedRecentId) ?? null;
+    recent.find((item) => item.id === selectedRecentId) ??
+    chatMessages
+      .flatMap((message) =>
+        getChatVariants(message)
+          .filter((variant) => variant.generationId === selectedRecentId)
+          .map(
+            (variant): ChatRecentGeneration => ({
+              id: variant.generationId || createLocalId(),
+              prompt: variant.prompt,
+              revisedPrompt: variant.revisedPrompt || null,
+              model: variant.model,
+              size: variant.size,
+              creditsConsumed: variant.creditsConsumed || 0,
+              status: "completed",
+              imageUrl: variant.imageUrl || null,
+              createdAt: variant.createdAt || new Date().toISOString(),
+              canDelete: false,
+            })
+          )
+      )[0] ??
+    null;
 
   const textSettingsPanel = (mode: TextGenerationMode) => {
     const isLineMode = mode === "lines";
@@ -6113,16 +6231,20 @@ export function CreatePageClient({
           imageUrl={selectedRecent.imageUrl}
           open={selectedRecentId !== null}
           onClose={() => setSelectedRecentId(null)}
-          onDelete={(id) => {
-            setRecent((prev) => prev.filter((item) => item.id !== id));
-            setEditImages((prev) => {
-              const next = prev.filter((item) => item.sourceId !== id);
-              for (const item of prev) {
-                if (item.sourceId === id) revokePreview(item.previewUrl);
-              }
-              return next;
-            });
-          }}
+          onDelete={
+            selectedRecent.canDelete === false
+              ? undefined
+              : (id) => {
+                  setRecent((prev) => prev.filter((item) => item.id !== id));
+                  setEditImages((prev) => {
+                    const next = prev.filter((item) => item.sourceId !== id);
+                    for (const item of prev) {
+                      if (item.sourceId === id) revokePreview(item.previewUrl);
+                    }
+                    return next;
+                  });
+                }
+          }
         />
       )}
 

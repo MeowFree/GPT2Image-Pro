@@ -96,6 +96,7 @@ export type ImageGenerationOperationResult = {
   error?: string;
   generationId?: string;
   imageUrl?: string;
+  imageOutputs?: GenerateImageResult["imageOutputs"];
   model?: string;
   size?: string;
   revisedPrompt?: string;
@@ -129,6 +130,19 @@ async function toImageBuffer(result: {
 
   return Buffer.from(await response.arrayBuffer());
 }
+
+type StoredGeneratedImageOutput = {
+  generationId: string;
+  imageUrl: string;
+  storageKey: string;
+  fileSize: number;
+  size: string;
+  revisedPrompt?: string;
+  upstreamRevisedPrompt?: string;
+  actualSizeDetected: boolean;
+  actualOutputFormat: string | null;
+  actualOutputFormatDetected: boolean;
+};
 
 function resolveStoredImageFormat(
   buffer: Buffer,
@@ -339,6 +353,85 @@ function buildRevisedPromptMetadata(params: {
         Boolean(upstreamRevisedPrompt),
     },
   };
+}
+
+function getResultImageOutputs(result: GenerateImageResult) {
+  const outputs = (result.imageOutputs || []).filter(
+    (item) => item.imageBase64 || item.imageUrl
+  );
+  if (outputs.length > 0) return outputs;
+  if (!result.imageBase64 && !result.imageUrl) return [];
+  return [
+    {
+      imageBase64: result.imageBase64,
+      imageUrl: result.imageUrl,
+      revisedPrompt: result.revisedPrompt,
+      upstreamRevisedPrompt: result.upstreamRevisedPrompt,
+      index: 0,
+    },
+  ];
+}
+
+function resolveOutputGenerationId(
+  parentGenerationId: string,
+  index: number,
+  total: number
+) {
+  return index === total - 1
+    ? parentGenerationId
+    : `${parentGenerationId}-${index + 1}`;
+}
+
+async function storeGeneratedImageOutput(params: {
+  output: {
+    imageBase64?: string;
+    imageUrl?: string;
+    revisedPrompt?: string;
+    upstreamRevisedPrompt?: string;
+  };
+  userId: string;
+  generationId: string;
+  bucket: string;
+  requestedSize: string;
+  requestedFormat?: string;
+}) {
+  const imageBuffer = await toImageBuffer(params.output);
+  const storedFormat = resolveStoredImageFormat(
+    imageBuffer,
+    params.requestedFormat
+  );
+  const storageKey = `${params.userId}/${nanoid(32)}.${storedFormat.extension}`;
+  let actualSize = params.requestedSize || DEFAULT_IMAGE_SIZE;
+  let actualSizeDetected = false;
+  const actualDimensions = getImageDimensionsFromBuffer(imageBuffer);
+  if (actualDimensions) {
+    actualSizeDetected = true;
+    actualSize = normalizeImageSize(
+      actualDimensions.width,
+      actualDimensions.height
+    );
+  }
+  const storage = await getStorageProvider();
+  await storage.putObject(
+    storageKey,
+    params.bucket,
+    imageBuffer,
+    storedFormat.contentType
+  );
+
+  return {
+    generationId: params.generationId,
+    imageUrl: await getStoredImageUrl(params.bucket, storageKey),
+    storageKey,
+    fileSize: imageBuffer.length,
+    size: actualSize,
+    revisedPrompt:
+      params.output.revisedPrompt || params.output.upstreamRevisedPrompt,
+    upstreamRevisedPrompt: params.output.upstreamRevisedPrompt,
+    actualSizeDetected,
+    actualOutputFormat: storedFormat.format,
+    actualOutputFormatDetected: storedFormat.detected,
+  } satisfies StoredGeneratedImageOutput;
 }
 
 function buildBackendExecutionMetadata(params: {
@@ -1230,6 +1323,7 @@ async function runQueuedImageGenerationForUser({
 
     return {
       generationId,
+      imageOutputs: result.imageOutputs,
       model: recordModel,
       size,
       revisedPrompt: result.revisedPrompt,
@@ -1241,37 +1335,29 @@ async function runQueuedImageGenerationForUser({
     };
   }
 
-  let storageKey = "";
-  let fileSize = 0;
-  let actualSize = size;
-  let actualSizeDetected = false;
-  let actualOutputFormat: string | null = null;
-  let actualOutputFormatDetected = false;
+  let storedOutputs: StoredGeneratedImageOutput[] = [];
   try {
-    const imageBuffer = await toImageBuffer(result);
-    const storedFormat = resolveStoredImageFormat(
-      imageBuffer,
-      input.outputFormat
-    );
-    actualOutputFormat = storedFormat.format;
-    actualOutputFormatDetected = storedFormat.detected;
-    storageKey = `${input.userId}/${nanoid(32)}.${storedFormat.extension}`;
-    fileSize = imageBuffer.length;
-    const actualDimensions = getImageDimensionsFromBuffer(imageBuffer);
-    if (actualDimensions) {
-      actualSizeDetected = true;
-      actualSize = normalizeImageSize(
-        actualDimensions.width,
-        actualDimensions.height
+    const imageOutputs = getResultImageOutputs(result);
+    if (imageOutputs.length === 0) {
+      throw new Error("Missing image data");
+    }
+    storedOutputs = [];
+    for (const [index, output] of imageOutputs.entries()) {
+      storedOutputs.push(
+        await storeGeneratedImageOutput({
+          output,
+          userId: input.userId,
+          generationId: resolveOutputGenerationId(
+            generationId,
+            index,
+            imageOutputs.length
+          ),
+          bucket,
+          requestedSize: size,
+          requestedFormat: input.outputFormat,
+        })
       );
     }
-    const storage = await getStorageProvider();
-    await storage.putObject(
-      storageKey,
-      bucket,
-      imageBuffer,
-      storedFormat.contentType
-    );
   } catch (storageError: unknown) {
     const message =
       storageError instanceof Error
@@ -1310,18 +1396,31 @@ async function runQueuedImageGenerationForUser({
     };
   }
 
-  const actualCreditCost = getImageCreditCostBreakdown(actualSize, {
-    textModerationCount: moderationEnabled ? undefined : 0,
-    imageModerationCount: moderationEnabled ? inputImages.length : 0,
-  });
-  const actualCreditsPerImage = actualCreditCost.totalCredits;
-  const billableImageOutputCount = Math.max(
-    1,
-    Math.floor(result.imageOutputCount || 1)
+  const primaryOutput = storedOutputs[storedOutputs.length - 1]!;
+  const upstreamImageOutputCount = Math.max(
+    Math.floor(result.imageOutputCount || 0),
+    storedOutputs.length
+  );
+  const billableImageOutputCount = storedOutputs.length;
+  const perOutputCreditCosts = storedOutputs.map((output) =>
+    getImageCreditCostBreakdown(output.size, {
+      textModerationCount: moderationEnabled ? undefined : 0,
+      imageModerationCount: moderationEnabled ? inputImages.length : 0,
+    })
+  );
+  const actualCreditCost =
+    perOutputCreditCosts[perOutputCreditCosts.length - 1] ||
+    getImageCreditCostBreakdown(primaryOutput.size, {
+      textModerationCount: moderationEnabled ? undefined : 0,
+      imageModerationCount: moderationEnabled ? inputImages.length : 0,
+    });
+  const actualImageCredits = perOutputCreditCosts.reduce(
+    (total, item) => roundCreditAmount(total + item.totalCredits),
+    0
   );
   const targetSuccessCredits = isChatInput
-    ? CHAT_TEXT_ONLY_CREDITS + actualCreditsPerImage * billableImageOutputCount
-    : actualCreditsPerImage;
+    ? CHAT_TEXT_ONLY_CREDITS + actualImageCredits
+    : actualImageCredits;
   try {
     await settleChargedCredits(
       targetSuccessCredits,
@@ -1332,11 +1431,13 @@ async function runQueuedImageGenerationForUser({
         generationId,
         mode: input.mode,
         requestedSize: size,
-        actualSize,
+        actualSize: primaryOutput.size,
         requestedCreditCost: creditCost,
         actualCreditCost,
+        perOutputCreditCosts,
         chatRoundCredits: isChatInput ? CHAT_TEXT_ONLY_CREDITS : 0,
         billableImageOutputCount,
+        upstreamImageOutputCount,
       }
     );
   } catch (error) {
@@ -1387,27 +1488,41 @@ async function runQueuedImageGenerationForUser({
     .update(generation)
     .set({
       status: "completed",
-      storageKey,
-      fileSize,
-      size: actualSize,
-      revisedPrompt: result.revisedPrompt,
+      storageKey: primaryOutput.storageKey,
+      fileSize: primaryOutput.fileSize,
+      size: primaryOutput.size,
+      revisedPrompt: result.revisedPrompt || primaryOutput.revisedPrompt,
       creditsConsumed: chargedCredits,
       metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
         {
           ...buildRevisedPromptMetadata({ input, apiPrompt, result }),
           outputImage: {
             requestedSize: size,
-            actualSize,
-            actualSizeDetected,
-            actualSizeMatchesRequested: actualSize === size,
+            actualSize: primaryOutput.size,
+            actualSizeDetected: primaryOutput.actualSizeDetected,
+            actualSizeMatchesRequested: primaryOutput.size === size,
             requestedFormat: input.outputFormat || null,
             requestedCompression: input.outputCompression ?? null,
-            actualFormat: actualOutputFormat,
-            actualFormatDetected: actualOutputFormatDetected,
+            actualFormat: primaryOutput.actualOutputFormat,
+            actualFormatDetected: primaryOutput.actualOutputFormatDetected,
             requestedCreditCost: creditCost,
             actualCreditCost,
+            perOutputCreditCosts,
             chatRoundCredits: isChatInput ? CHAT_TEXT_ONLY_CREDITS : 0,
             billableImageOutputCount,
+            upstreamImageOutputCount,
+            imageOutputs: storedOutputs.map((output, index) => ({
+              generationId: output.generationId,
+              imageUrl: output.imageUrl,
+              storageKey: output.storageKey,
+              size: output.size,
+              revisedPrompt: output.revisedPrompt,
+              upstreamRevisedPrompt: output.upstreamRevisedPrompt,
+              actualFormat: output.actualOutputFormat,
+              actualFormatDetected: output.actualOutputFormatDetected,
+              actualSizeDetected: output.actualSizeDetected,
+              primary: index === storedOutputs.length - 1,
+            })),
           },
         }
       )}::jsonb`,
@@ -1417,10 +1532,18 @@ async function runQueuedImageGenerationForUser({
 
   return {
     generationId,
-    imageUrl: await getStoredImageUrl(bucket, storageKey),
+    imageUrl: primaryOutput.imageUrl,
+    imageOutputs: storedOutputs.map((output, index) => ({
+      generationId: output.generationId,
+      imageUrl: output.imageUrl,
+      size: output.size,
+      revisedPrompt: output.revisedPrompt,
+      upstreamRevisedPrompt: output.upstreamRevisedPrompt,
+      index,
+    })),
     model: recordModel,
-    size: actualSize,
-    revisedPrompt: result.revisedPrompt,
+    size: primaryOutput.size,
+    revisedPrompt: result.revisedPrompt || primaryOutput.revisedPrompt,
     responseText: result.responseText,
     responseThinking: result.responseThinking,
     responseAgent: result.responseAgent,
