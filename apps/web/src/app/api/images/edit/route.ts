@@ -149,6 +149,11 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     "promptOptimization",
     "prompt_optimization"
   );
+  const requestedGenerationId =
+    getText(formData, "generationId") || getText(formData, "generation_id");
+  if (requestedGenerationId.length > 128) {
+    return errorResponse("generationId is too long.");
+  }
   const mixWebFirst = getOptionalBoolean(
     formData,
     "mixWebFirst",
@@ -303,6 +308,10 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           try {
             await runBatchImageGeneration({
               count,
+              generationIds:
+                count === 1 && requestedGenerationId
+                  ? [requestedGenerationId]
+                  : undefined,
               run: runEdit,
               callbacks: (index) => ({
                 onPartialImage: async (image) => {
@@ -341,12 +350,16 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       }
 
       if (count === 1) {
-        const result = await runEdit(randomUUID());
+        const result = await runEdit(requestedGenerationId || randomUUID());
         return NextResponse.json(result);
       }
 
       const results = await runBatchImageGeneration({
         count,
+        generationIds:
+          count === 1 && requestedGenerationId
+            ? [requestedGenerationId]
+            : undefined,
         run: runEdit,
       });
 

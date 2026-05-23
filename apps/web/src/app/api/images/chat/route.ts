@@ -155,6 +155,18 @@ function getOptionalBoolean(formData: FormData, ...keys: string[]) {
   return undefined;
 }
 
+function getOptionalInteger(formData: FormData, ...keys: string[]) {
+  for (const key of keys) {
+    const value = getText(formData, key);
+    if (!value) continue;
+    if (!/^\d+$/.test(value)) {
+      throw new Error(`${key} must be an integer.`);
+    }
+    return Number(value);
+  }
+  return undefined;
+}
+
 function hasPromptImageReference(text: string | undefined) {
   return Boolean(text && PROMPT_IMAGE_REFERENCE_PATTERN.test(text));
 }
@@ -613,6 +625,11 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     "promptOptimization",
     "prompt_optimization"
   );
+  const requestedGenerationId =
+    getText(formData, "generationId") || getText(formData, "generation_id");
+  if (requestedGenerationId.length > 128) {
+    return errorResponse("generationId is too long.");
+  }
   const mixWebFirst = getOptionalBoolean(
     formData,
     "mixWebFirst",
@@ -628,6 +645,29 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     hasPromptImageReference(apiPrompt);
   const agentMode =
     getOptionalBoolean(formData, "agentMode", "agent_mode") === true;
+  let agentMaxRounds: number | undefined;
+  try {
+    agentMaxRounds = getOptionalInteger(
+      formData,
+      "agentMaxRounds",
+      "agent_max_rounds"
+    );
+  } catch (error) {
+    return errorResponse(
+      error instanceof Error ? error.message : "Invalid Agent max rounds."
+    );
+  }
+  if (
+    agentMaxRounds !== undefined &&
+    (agentMaxRounds < 1 || agentMaxRounds > 8)
+  ) {
+    return errorResponse("agentMaxRounds must be between 1 and 8.");
+  }
+  const agentForceMaxRounds = getOptionalBoolean(
+    formData,
+    "agentForceMaxRounds",
+    "agent_force_max_rounds"
+  );
   const waterfallMode =
     getOptionalBoolean(formData, "waterfallMode", "waterfall_mode") === true;
   const requiredCapability = agentMode
@@ -831,6 +871,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           stream: useStreamResponse,
           thinking,
           agentMode,
+          agentMaxRounds,
+          agentForceMaxRounds,
           waterfallMode,
           mixWebFirst: requiresResponsesBackend ? false : mixWebFirst,
           requiresResponsesBackend,
@@ -844,6 +886,10 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           try {
             await runBatchImageGeneration({
               count,
+              generationIds:
+                count === 1 && requestedGenerationId
+                  ? [requestedGenerationId]
+                  : undefined,
               run: runChat,
               callbacks: (index) => ({
                 onPartialImage: async (image) => {
@@ -892,12 +938,16 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       }
 
       if (count === 1) {
-        const result = await runChat(randomUUID());
+        const result = await runChat(requestedGenerationId || randomUUID());
         return NextResponse.json(result);
       }
 
       const results = await runBatchImageGeneration({
         count,
+        generationIds:
+          count === 1 && requestedGenerationId
+            ? [requestedGenerationId]
+            : undefined,
         run: runChat,
       });
 

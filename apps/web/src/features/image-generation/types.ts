@@ -97,6 +97,12 @@ export interface ImageGenerationCallbacks {
   onThinkingDelta?: (delta: string) => Promise<void> | void;
   onAgentDelta?: (delta: string) => Promise<void> | void;
   onAgentEvent?: (event: AgentRunEvent) => Promise<void> | void;
+  onStatusUpdate?: (update: {
+    responseText?: string;
+    responseThinking?: string;
+    responseAgent?: string;
+    agentEvents?: AgentRunEvent[];
+  }) => Promise<void> | void;
 }
 
 export type ImageQuality = "auto" | "low" | "medium" | "high";
@@ -172,6 +178,8 @@ export interface ChatImageParams {
   stream?: boolean;
   thinking?: ThinkingLevel;
   agentMode?: boolean;
+  agentMaxRounds?: number;
+  agentForceMaxRounds?: boolean;
   waterfallMode?: boolean;
   rawResponsesBody?: unknown;
   mixWebFirst?: boolean;

@@ -1192,6 +1192,12 @@ async function getAgentMaxRounds() {
   );
 }
 
+function normalizeAgentMaxRounds(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.max(1, Math.min(8, Math.floor(numeric)));
+}
+
 async function getAgentForceMaxRounds() {
   return await getRuntimeSettingBoolean("IMAGE_AGENT_FORCE_MAX_ROUNDS", false);
 }
@@ -2973,8 +2979,11 @@ export async function generateChatImage(
 
     let result: ResponsesResultWithOutput | undefined;
     if (params.agentMode && !params.rawResponsesBody) {
-      const maxRounds = await getAgentMaxRounds();
-      const forceMaxRounds = await getAgentForceMaxRounds();
+      const maxRounds =
+        normalizeAgentMaxRounds(params.agentMaxRounds) ||
+        (await getAgentMaxRounds());
+      const forceMaxRounds =
+        params.agentForceMaxRounds ?? (await getAgentForceMaxRounds());
       const roundResults: ResponsesResultWithOutput[] = [];
       let nextInput = input;
       const agentPreviousResponseEnabled = responsesPreviousResponseEnabled;

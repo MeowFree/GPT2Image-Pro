@@ -22,6 +22,10 @@ import {
 
 const generateImageSchema = z.object({
   prompt: z.string().min(1).max(4000),
+  generationId: z.string().min(1).max(128).optional(),
+  generation_id: z.string().min(1).max(128).optional(),
+  generationIds: z.array(z.string().min(1).max(128)).optional(),
+  generation_ids: z.array(z.string().min(1).max(128)).optional(),
   apiPrompt: z.string().min(1).max(8000).optional(),
   promptOptimization: z.boolean().optional(),
   size: z
@@ -121,6 +125,18 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       parsed.data.requiresResponsesBackend ??
       parsed.data.requires_responses_backend,
   };
+  const requestedGenerationIds =
+    parsed.data.generationIds || parsed.data.generation_ids;
+  const requestedGenerationId =
+    parsed.data.generationId ||
+    parsed.data.generation_id ||
+    requestedGenerationIds?.[0];
+  const batchGenerationIds =
+    requestedGenerationIds?.length === count
+      ? requestedGenerationIds
+      : count === 1 && requestedGenerationId
+        ? [requestedGenerationId]
+        : undefined;
 
   try {
     const useStreamResponse = wantsStreamResponse(request, parsed.data.stream);
@@ -129,6 +145,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       return createImageStreamResponse(async (emit) => {
         await runBatchImageGeneration({
           count,
+          generationIds: batchGenerationIds,
           run: (generationId, callbacks) =>
             runImageGenerationForUser({ ...input, generationId }, callbacks),
           callbacks: (index) => ({
@@ -162,12 +179,19 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     }
 
     if (count === 1) {
-      return NextResponse.json(await runImageGenerationForUser(input));
+      return NextResponse.json(
+        await runImageGenerationForUser({
+          ...input,
+          generationId: requestedGenerationId,
+        })
+      );
     }
 
     const results = await runBatchImageGeneration({
       count,
-      run: () => runImageGenerationForUser(input),
+      generationIds: batchGenerationIds,
+      run: (generationId) =>
+        runImageGenerationForUser({ ...input, generationId }),
     });
 
     return NextResponse.json({

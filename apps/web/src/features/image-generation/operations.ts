@@ -500,6 +500,36 @@ function buildRevisedPromptMetadata(params: {
   };
 }
 
+function buildResponseOutputMetadata(result: GenerateImageResult) {
+  const agentEvents = sanitizeAgentEventsForMetadata(result.agentEvents);
+
+  return {
+    responseOutput: {
+      responseText: result.responseText,
+      responseThinking: result.responseThinking,
+      responseAgent: result.responseAgent,
+      agentEvents,
+      agentRoundCount: result.agentRoundCount,
+      webConversation: result.webConversation,
+      backendMember: result.backendMember,
+      responsesPreviousResponse: result.responsesPreviousResponse,
+    },
+  };
+}
+
+function sanitizeAgentEventsForMetadata(
+  events: GenerateImageResult["agentEvents"] | undefined
+) {
+  return events?.map((event) => {
+    const next = { ...event };
+    delete next.imageBase64;
+    if (next.imageUrl?.startsWith("data:image/")) {
+      delete next.imageUrl;
+    }
+    return next;
+  });
+}
+
 function getResultImageOutputs(result: GenerateImageResult) {
   const outputs = (result.imageOutputs || []).filter(
     (item) => item.imageBase64 || item.imageUrl
@@ -1280,6 +1310,104 @@ async function runQueuedImageGenerationForUser({
       };
     };
 
+  let pendingResponseText = "";
+  let pendingResponseThinking = "";
+  let pendingResponseAgent = "";
+  let pendingAgentEvents: NonNullable<GenerateImageResult["agentEvents"]> = [];
+  let lastPendingStatusUpdateAt = 0;
+  const persistPendingOutput = async (force = false) => {
+    if (!force && Date.now() - lastPendingStatusUpdateAt < 1000) return;
+    lastPendingStatusUpdateAt = Date.now();
+    await db
+      .update(generation)
+      .set({
+        metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
+          {
+            pendingOutput: {
+              responseText: pendingResponseText || undefined,
+              responseThinking: pendingResponseThinking || undefined,
+              responseAgent: pendingResponseAgent || undefined,
+              agentEvents: sanitizeAgentEventsForMetadata(pendingAgentEvents),
+              updatedAt: new Date().toISOString(),
+            },
+          }
+        )}::jsonb`,
+      })
+      .where(isPendingGeneration(generationId));
+  };
+  const mergePendingAgentEvent = (
+    event: NonNullable<GenerateImageResult["agentEvents"]>[number]
+  ) => {
+    const key =
+      event.id ||
+      `${event.kind}:${event.toolType || ""}:${event.index ?? ""}:${
+        event.partialImageIndex ?? ""
+      }:${event.title}`;
+    const existingIndex = pendingAgentEvents.findIndex(
+      (item) =>
+        (item.id ||
+          `${item.kind}:${item.toolType || ""}:${item.index ?? ""}:${
+            item.partialImageIndex ?? ""
+          }:${item.title}`) === key
+    );
+    if (existingIndex >= 0) {
+      pendingAgentEvents = pendingAgentEvents.map((item, index) =>
+        index === existingIndex ? { ...item, ...event } : item
+      );
+      return;
+    }
+    pendingAgentEvents = [...pendingAgentEvents, event];
+  };
+  const wrappedCallbacks: ImageGenerationCallbacks | undefined = callbacks
+    ? {
+        ...callbacks,
+        onTextDelta: async (delta) => {
+          pendingResponseText += delta;
+          await callbacks.onTextDelta?.(delta);
+          await callbacks.onStatusUpdate?.({
+            responseText: pendingResponseText,
+            responseThinking: pendingResponseThinking || undefined,
+            responseAgent: pendingResponseAgent || undefined,
+            agentEvents: pendingAgentEvents,
+          });
+          await persistPendingOutput();
+        },
+        onThinkingDelta: async (delta) => {
+          pendingResponseThinking += delta;
+          await callbacks.onThinkingDelta?.(delta);
+          await callbacks.onStatusUpdate?.({
+            responseText: pendingResponseText || undefined,
+            responseThinking: pendingResponseThinking,
+            responseAgent: pendingResponseAgent || undefined,
+            agentEvents: pendingAgentEvents,
+          });
+          await persistPendingOutput();
+        },
+        onAgentDelta: async (delta) => {
+          pendingResponseAgent += delta;
+          await callbacks.onAgentDelta?.(delta);
+          await callbacks.onStatusUpdate?.({
+            responseText: pendingResponseText || undefined,
+            responseThinking: pendingResponseThinking || undefined,
+            responseAgent: pendingResponseAgent,
+            agentEvents: pendingAgentEvents,
+          });
+          await persistPendingOutput();
+        },
+        onAgentEvent: async (event) => {
+          mergePendingAgentEvent(event);
+          await callbacks.onAgentEvent?.(event);
+          await callbacks.onStatusUpdate?.({
+            responseText: pendingResponseText || undefined,
+            responseThinking: pendingResponseThinking || undefined,
+            responseAgent: pendingResponseAgent || undefined,
+            agentEvents: pendingAgentEvents,
+          });
+          await persistPendingOutput();
+        },
+      }
+    : undefined;
+
   const moderation = !moderationEnabled
     ? ({ decision: "skipped" } as const)
     : await moderateContent({
@@ -1366,7 +1494,7 @@ async function runQueuedImageGenerationForUser({
               forceWebBackend,
               requiresResponsesBackend: input.requiresResponsesBackend,
             },
-            callbacks
+            wrappedCallbacks
           )
         : input.mode === "chat"
           ? await generateChatImage(
@@ -1398,7 +1526,7 @@ async function runQueuedImageGenerationForUser({
                 mixWebFirst,
                 requiresResponsesBackend: input.requiresResponsesBackend,
               },
-              callbacks
+              wrappedCallbacks
             )
           : await generateImage(
               config,
@@ -1422,7 +1550,7 @@ async function runQueuedImageGenerationForUser({
                 forceWebBackend,
                 requiresResponsesBackend: input.requiresResponsesBackend,
               },
-              callbacks
+              wrappedCallbacks
             );
   } catch (error) {
     const message =
@@ -1465,6 +1593,8 @@ async function runQueuedImageGenerationForUser({
   if (isTimedOut()) {
     return failTimedOutGeneration();
   }
+
+  await persistPendingOutput(true);
 
   if (result.error) {
     const failureTargetCredits = getFailedGenerationTargetCredits({
@@ -1546,6 +1676,7 @@ async function runQueuedImageGenerationForUser({
         metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
           {
             ...buildRevisedPromptMetadata({ input, apiPrompt, result }),
+            ...buildResponseOutputMetadata(result),
             ...(isChatInput
               ? {
                   chatTextOnlyCharge: {
@@ -1786,6 +1917,7 @@ async function runQueuedImageGenerationForUser({
       metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
         {
           ...buildRevisedPromptMetadata({ input, apiPrompt, result }),
+          ...buildResponseOutputMetadata(result),
           webConversation: result.webConversation || null,
           outputImage: {
             requestedSize: size,

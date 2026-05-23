@@ -58,6 +58,7 @@ import {
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useLocale } from "next-intl";
+import { nanoid } from "nanoid";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -101,6 +102,8 @@ type ResultState = {
 
 type ImageApiResult = {
   error?: string;
+  status?: "pending" | "completed" | "failed";
+  prompt?: string;
   generationId?: string;
   imageUrl?: string;
   imageFileId?: string;
@@ -128,7 +131,21 @@ type ImageApiResult = {
   backendMember?: StickyBackendMemberState;
   responsesPreviousResponse?: ResponsesPreviousResponseState;
   creditsConsumed?: number;
+  createdAt?: string;
+  completedAt?: string;
   results?: ImageApiResult[];
+};
+
+type PendingGenerationMode = "text" | "image" | "chat" | "agent";
+
+type PendingGenerationState = {
+  id: string;
+  mode: PendingGenerationMode;
+  prompt: string;
+  size: string;
+  createdAt: string;
+  conversationId?: string;
+  assistantMessageId?: string;
 };
 
 type GenerationRequestError = Error & {
@@ -1075,6 +1092,8 @@ const CHAT_CONVERSATIONS_STORAGE_KEY = "gpt2image_chat_conversations_v1";
 const CHAT_ACTIVE_CONVERSATION_STORAGE_KEY =
   "gpt2image_active_chat_conversation_v1";
 const WATERFALL_STORAGE_KEY = "gpt2image_waterfall_state_v1";
+const PENDING_GENERATIONS_STORAGE_KEY = "gpt2image_pending_generations_v1";
+const PENDING_GENERATION_TTL_MS = 30 * 60 * 1000;
 const CHAT_CONTEXT_MESSAGE_LIMIT = 8;
 const CHAT_CONVERSATION_LIMIT = 30;
 const PROMPT_IMAGE_REFERENCE_PATTERN = /@(?:第)?\d+轮图\d+|@图\d+/;
@@ -1361,6 +1380,83 @@ function insertMentionToken(
 
 function getCursorAfterInsertedMention(mention: MentionState, token: string) {
   return mention.start + token.length + 1;
+}
+
+function createGenerationId() {
+  return nanoid();
+}
+
+function readPendingGenerationStates() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PENDING_GENERATIONS_STORAGE_KEY);
+    if (!raw) return [];
+    const now = Date.now();
+    return (JSON.parse(raw) as unknown[]).flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const value = item as Partial<PendingGenerationState>;
+      if (
+        typeof value.id !== "string" ||
+        !["text", "image", "chat", "agent"].includes(String(value.mode)) ||
+        typeof value.prompt !== "string" ||
+        typeof value.size !== "string" ||
+        typeof value.createdAt !== "string"
+      ) {
+        return [];
+      }
+      if (now - new Date(value.createdAt).getTime() > PENDING_GENERATION_TTL_MS) {
+        return [];
+      }
+      return [
+        {
+          id: value.id,
+          mode: value.mode as PendingGenerationMode,
+          prompt: value.prompt,
+          size: value.size,
+          createdAt: value.createdAt,
+          conversationId:
+            typeof value.conversationId === "string"
+              ? value.conversationId
+              : undefined,
+          assistantMessageId:
+            typeof value.assistantMessageId === "string"
+              ? value.assistantMessageId
+              : undefined,
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function writePendingGenerationStates(items: PendingGenerationState[]) {
+  if (typeof window === "undefined") return;
+  try {
+    if (items.length === 0) {
+      window.localStorage.removeItem(PENDING_GENERATIONS_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(
+      PENDING_GENERATIONS_STORAGE_KEY,
+      JSON.stringify(items.slice(-50))
+    );
+  } catch {
+    /* ignore local storage quota errors */
+  }
+}
+
+function addPendingGenerationState(item: PendingGenerationState) {
+  const items = readPendingGenerationStates().filter(
+    (existing) => existing.id !== item.id
+  );
+  writePendingGenerationStates([...items, item]);
+}
+
+function removePendingGenerationState(id: string) {
+  writePendingGenerationStates(
+    readPendingGenerationStates().filter((item) => item.id !== id)
+  );
 }
 
 function readFileAsDataUrl(file: File) {
@@ -1934,6 +2030,9 @@ export function CreatePageClient({
     string | null
   >(null);
   const [batchCards, setBatchCards] = useState<BatchCard[]>([]);
+  const [restoredPendingGenerations, setRestoredPendingGenerations] = useState<
+    PendingGenerationState[]
+  >([]);
   const [batchPrompt, setBatchPrompt] = useState("");
   const [isBatchActive, setIsBatchActive] = useState(false);
   const [isBatchLoadingMore, setIsBatchLoadingMore] = useState(false);
@@ -1946,6 +2045,8 @@ export function CreatePageClient({
   });
   const [chatModel, setChatModel] = useState<ChatModel>(GPT54_CHAT_MODEL);
   const [chatThinking, setChatThinking] = useState<ChatThinkingLevel>("low");
+  const [agentForceRounds, setAgentForceRounds] = useState(false);
+  const [agentMaxRounds, setAgentMaxRounds] = useState(3);
   const [imageGptModel, setImageGptModel] = useState<ChatModel | "default">(
     "default"
   );
@@ -2348,6 +2449,9 @@ export function CreatePageClient({
   const activeConversationMode = getConversationMode(activeMode);
   const visibleChatMessages = chatMessages.filter((message) =>
     isMessageInConversationMode(message, activeConversationMode)
+  );
+  const visibleRestoredPendingGenerations = restoredPendingGenerations.filter(
+    (item) => item.mode === activeConversationMode
   );
   const canUseEditReferenceMentions =
     activeBackendType === "responses" || activeBackendType === "mixed";
@@ -2900,6 +3004,7 @@ export function CreatePageClient({
     attachments = [],
     fallbackSize,
     historyMessages,
+    generationId,
     streamMessageId,
     streamCardId,
     agentMode = activeMode === "agent",
@@ -2909,6 +3014,7 @@ export function CreatePageClient({
     attachments?: ChatAttachment[];
     fallbackSize: string;
     historyMessages: ChatMessage[];
+    generationId?: string;
     streamMessageId?: string;
     streamCardId?: string;
     agentMode?: boolean;
@@ -2934,6 +3040,7 @@ export function CreatePageClient({
         : size;
     const formData = new FormData();
     formData.append("prompt", prompt);
+    if (generationId) formData.append("generation_id", generationId);
     formData.append("history", JSON.stringify(toChatHistory(historyMessages)));
     formData.append("quality", quality);
     formData.append("moderation", moderation);
@@ -2952,6 +3059,10 @@ export function CreatePageClient({
     formData.append("count", "1");
     formData.append("stream", "true");
     formData.append("agent_mode", String(agentMode));
+    if (agentMode) {
+      formData.append("agent_max_rounds", String(agentMaxRounds));
+      formData.append("agent_force_max_rounds", String(agentForceRounds));
+    }
     formData.append("waterfall_mode", String(Boolean(streamCardId)));
     if (promptOptimizationAllowed) {
       formData.append("prompt_optimization", String(promptOptimization));
@@ -3648,13 +3759,15 @@ export function CreatePageClient({
   const addSuccessfulChatResults = (
     data: ImageApiResult,
     resultPrompt: string,
-    fallbackSize = size
+    fallbackSize = size,
+    options?: { syncCredits?: boolean }
   ) => {
+    const shouldSyncCredits = options?.syncCredits ?? true;
     const expanded = expandChatImageOutputs(data);
     const variants: ChatVariant[] = [];
     for (const [index, item] of expanded.entries()) {
       const variant = addSuccessfulResult(item, resultPrompt, fallbackSize, {
-        syncCredits: index === expanded.length - 1,
+        syncCredits: shouldSyncCredits && index === expanded.length - 1,
         addRecent: false,
       });
       if (variant) variants.push(variant);
@@ -3700,7 +3813,8 @@ export function CreatePageClient({
   const addSuccessfulResults = (
     data: ImageApiResult,
     resultPrompt: string,
-    fallbackSize = size
+    fallbackSize = size,
+    options?: { syncCredits?: boolean }
   ) => {
     const successfulResults =
       data.results?.filter((item) => item.imageUrl && item.generationId) ||
@@ -3710,7 +3824,9 @@ export function CreatePageClient({
 
     const variants: ChatVariant[] = [];
     for (const item of successfulResults.toReversed()) {
-      const variant = addSuccessfulResult(item, resultPrompt, fallbackSize);
+      const variant = addSuccessfulResult(item, resultPrompt, fallbackSize, {
+        syncCredits: options?.syncCredits ?? true,
+      });
       if (variant) {
         variants.unshift(variant);
       }
@@ -3718,6 +3834,221 @@ export function CreatePageClient({
 
     return variants;
   };
+
+  const fetchGenerationStatus = async (id: string) => {
+    const response = await fetch(`/api/images/status/${encodeURIComponent(id)}`);
+    const data = await readImageApiJsonResponse(response);
+    if (!response.ok || data.error) {
+      throw new Error(data.error || `API error: ${response.status}`);
+    }
+    return data;
+  };
+
+  const patchConversationAssistantMessage = (
+    conversationId: string | undefined,
+    assistantMessageId: string | undefined,
+    updater: (message: ChatMessage) => ChatMessage
+  ) => {
+    if (!assistantMessageId) return;
+    setChatMessages((prev) =>
+      prev.map((message) =>
+        message.id === assistantMessageId ? updater(message) : message
+      )
+    );
+    if (!conversationId) return;
+
+    const now = new Date().toISOString();
+    const nextConversations = chatConversationsRef.current.map(
+      (conversation) =>
+        conversation.id === conversationId
+          ? {
+              ...conversation,
+              messages: conversation.messages.map((message) =>
+                message.id === assistantMessageId ? updater(message) : message
+              ),
+              updatedAt: now,
+            }
+          : conversation
+    );
+    chatConversationsRef.current = nextConversations;
+    setChatConversations(nextConversations);
+    try {
+      window.localStorage.setItem(
+        CHAT_CONVERSATIONS_STORAGE_KEY,
+        JSON.stringify(nextConversations)
+      );
+    } catch {
+      /* ignore local storage quota errors */
+    }
+  };
+
+  const restorePendingChatGeneration = (
+    pending: PendingGenerationState,
+    data: ImageApiResult
+  ) => {
+    const forgetPending = () => {
+      removePendingGenerationState(pending.id);
+      setRestoredPendingGenerations((prev) =>
+        prev.filter((item) => item.id !== pending.id)
+      );
+    };
+    if (data.status === "failed") {
+      const message = data.error || copy("Generation failed", "生成失败");
+      if (!pending.assistantMessageId) {
+        toast.error(copy("Generation failed", "生成失败"), {
+          description: message,
+        });
+        forgetPending();
+        return;
+      }
+      patchConversationAssistantMessage(
+        pending.conversationId,
+        pending.assistantMessageId,
+        (item) => ({
+          ...item,
+          text: copy("Generation failed", "生成失败"),
+          error: message,
+        })
+      );
+      forgetPending();
+      return;
+    }
+
+    if (data.status !== "completed") {
+      if (!pending.assistantMessageId) return;
+      patchConversationAssistantMessage(
+        pending.conversationId,
+        pending.assistantMessageId,
+        (item) => ({
+          ...item,
+          text:
+            data.responseText ||
+            data.responseAgent ||
+            item.text ||
+            copy("Generating...", "生成中..."),
+          error: undefined,
+          variants: item.variants?.length
+            ? item.variants
+            : data.responseText || data.responseAgent || data.agentEvents?.length
+              ? [
+                  {
+                    generationId: data.generationId || pending.id,
+                    prompt: pending.prompt,
+                    model: data.model || DEFAULT_IMAGE_MODEL,
+                    size: data.size || pending.size,
+                    responseText: data.responseText,
+                    responseThinking: data.responseThinking,
+                    responseAgent: data.responseAgent,
+                    agentEvents: data.agentEvents,
+                    agentRoundCount: data.agentRoundCount,
+                    createdAt: data.createdAt,
+                  },
+                ]
+              : item.variants,
+        })
+      );
+      return;
+    }
+
+    const variants = addSuccessfulChatResults(data, pending.prompt, pending.size, {
+      syncCredits: false,
+    });
+    const variant = variants[variants.length - 1];
+    if (!pending.assistantMessageId) {
+      if (variants.length > 0) {
+        setActiveMode(pending.mode === "agent" ? "agent" : "chat");
+        toast.success(copy("Background task restored", "后台任务已恢复"));
+      }
+      forgetPending();
+      return;
+    }
+    patchConversationAssistantMessage(
+      pending.conversationId,
+      pending.assistantMessageId,
+      (item) => ({
+        ...item,
+        text:
+          variant?.responseText ||
+          (variant?.imageUrl
+            ? copy("Image generated", "图片已生成")
+            : copy("Response generated", "回复已生成")),
+        error: undefined,
+        variants: variants.length ? variants : item.variants,
+        activeVariant: variants.length
+          ? variants.length - 1
+          : item.activeVariant,
+      })
+    );
+    forgetPending();
+  };
+
+  const restorePendingGeneration = async (pending: PendingGenerationState) => {
+    const data = await fetchGenerationStatus(pending.id);
+    if (pending.mode === "chat" || pending.mode === "agent") {
+      restorePendingChatGeneration(pending, data);
+      return data.status;
+    }
+
+    if (data.status === "completed") {
+      addSuccessfulResults(data, pending.prompt, pending.size, {
+        syncCredits: false,
+      });
+      removePendingGenerationState(pending.id);
+    } else if (data.status === "failed") {
+      toast.error(copy("Generation failed", "生成失败"), {
+        description: data.error || copy("The background task failed.", "后台任务失败。"),
+      });
+      removePendingGenerationState(pending.id);
+    }
+    return data.status;
+  };
+
+  useEffect(() => {
+    const pending = readPendingGenerationStates();
+    if (pending.length === 0) return;
+    let cancelled = false;
+    const activeIds = new Set(pending.map((item) => item.id));
+    setRestoredPendingGenerations(
+      pending.filter(
+        (item) =>
+          (item.mode === "chat" || item.mode === "agent") &&
+          !item.assistantMessageId
+      )
+    );
+
+    const poll = async () => {
+      const currentPending = readPendingGenerationStates();
+      const currentIds = new Set(currentPending.map((item) => item.id));
+      for (const id of Array.from(activeIds)) {
+        if (!currentIds.has(id)) activeIds.delete(id);
+      }
+      for (const item of currentPending) {
+        if (!activeIds.has(item.id)) continue;
+        try {
+          const status = await restorePendingGeneration(item);
+          if (status === "completed" || status === "failed") {
+            activeIds.delete(item.id);
+          }
+        } catch {
+          /* The row may not exist yet if the request was queued locally. */
+        }
+      }
+      if (cancelled || activeIds.size === 0) return;
+      window.setTimeout(poll, 2000);
+    };
+
+    toast.info(copy("Restoring background tasks", "正在恢复后台任务"), {
+      description: copy(
+        "Pending generations will be updated when the server finishes them.",
+        "后台生成完成后会自动补回当前页面。"
+      ),
+    });
+    void poll();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const syncChargedCredits = (creditsConsumed?: number) => {
     if (!creditsConsumed || creditsConsumed <= 0) return;
@@ -3988,6 +4319,7 @@ export function CreatePageClient({
     if (!assistantMessage) return;
     const activeVariant = getActiveChatVariant(assistantMessage);
     const retrySize = activeVariant?.size || size;
+    const generationId = createGenerationId();
     const userIndex = chatMessages.findIndex(
       (message) => message.id === userMessage.id
     );
@@ -4012,16 +4344,27 @@ export function CreatePageClient({
       agent: "",
       agentEvents: [],
     });
+    addPendingGenerationState({
+      id: generationId,
+      mode: assistantMessage.mode === "agent" ? "agent" : "chat",
+      prompt: userMessage.text,
+      size: retrySize,
+      createdAt: new Date().toISOString(),
+      conversationId: chatConversationId,
+      assistantMessageId: assistantId,
+    });
 
     try {
       const data = await runChatRequest({
         prompt: userMessage.text,
         fallbackSize: retrySize,
         historyMessages,
+        generationId,
         streamMessageId: assistantId,
         agentMode:
           assistantMessage.mode === "agent" || userMessage.mode === "agent",
       });
+      removePendingGenerationState(generationId);
       const newVariants = addSuccessfulChatResults(
         data,
         userMessage.text,
@@ -4064,6 +4407,7 @@ export function CreatePageClient({
       syncChargedCredits(creditsConsumed);
       toast.error(copy("Retry failed", "重试失败"), { description: message });
     } finally {
+      removePendingGenerationState(generationId);
       setRetryingChatMessageId(null);
       setIsChatGenerating(false);
       setChatStream(null);
@@ -4472,6 +4816,46 @@ export function CreatePageClient({
               ? autoSizeLabel
               : activeChatSize}
           </Button>
+          {activeMode === "agent" && (
+            <div className="flex items-center gap-2 rounded-full border border-border bg-background px-2 py-1">
+              <label
+                htmlFor="agent-force-rounds"
+                className="flex items-center gap-1.5 text-xs text-foreground"
+                title={copy(
+                  "When enabled, Agent runs all selected rounds instead of stopping when the model does not request continue_generation.",
+                  "开启后，Agent 会跑满所选轮数，而不是在模型未请求 continue_generation 时提前停止。"
+                )}
+              >
+                <Checkbox
+                  id="agent-force-rounds"
+                  checked={agentForceRounds}
+                  onCheckedChange={(checked) =>
+                    setAgentForceRounds(checked === true)
+                  }
+                  disabled={isChatGenerating}
+                />
+                {copy("Force", "强制")}
+              </label>
+              <Select
+                value={String(agentMaxRounds)}
+                onValueChange={(value) =>
+                  setAgentMaxRounds(Math.min(8, Math.max(1, Number(value))))
+                }
+                disabled={isChatGenerating}
+              >
+                <SelectTrigger className="h-7 w-[86px] border-0 px-2 text-xs shadow-none">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((round) => (
+                    <SelectItem key={round} value={String(round)}>
+                      {copy(`${round} rounds`, `${round} 轮`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {helpMarker(copy("Resolution", "分辨率"), resolutionHelpText)}
           {isEditChat && chatFirstImageOriginalSize && (
             <span className="text-xs text-muted-foreground">
@@ -5008,6 +5392,7 @@ export function CreatePageClient({
       kind: item.kind,
     }));
     const conversationMode = getConversationMode(activeMode);
+    const generationId = createGenerationId();
     const userMessageId = createLocalId();
     const assistantMessageId = createLocalId();
     const conversationBeforeSend = chatMessages.filter((message) =>
@@ -5037,6 +5422,15 @@ export function CreatePageClient({
     setResult(null);
     clearStreamingPreview();
     setIsChatGenerating(true);
+    addPendingGenerationState({
+      id: generationId,
+      mode: conversationMode,
+      prompt: currentPrompt,
+      size: fallbackSize || size,
+      createdAt: new Date().toISOString(),
+      conversationId: chatConversationId,
+      assistantMessageId,
+    });
     scrollChatToBottom();
 
     try {
@@ -5045,8 +5439,10 @@ export function CreatePageClient({
         attachments,
         fallbackSize: fallbackSize || size,
         historyMessages: conversationBeforeSend,
+        generationId,
         streamMessageId: assistantMessageId,
       });
+      removePendingGenerationState(generationId);
       const variants = addSuccessfulChatResults(
         data,
         currentPrompt,
@@ -5120,6 +5516,7 @@ export function CreatePageClient({
         )
       );
     } finally {
+      removePendingGenerationState(generationId);
       setIsChatGenerating(false);
       setChatStream(null);
       clearStreamingPreview();
@@ -5144,6 +5541,19 @@ export function CreatePageClient({
       return;
     }
     const currentPrompt = prompt.trim();
+    const requestedGenerationIds = Array.from(
+      { length: batchCount },
+      createGenerationId
+    );
+    for (const id of requestedGenerationIds) {
+      addPendingGenerationState({
+        id,
+        mode: "text",
+        prompt: currentPrompt,
+        size,
+        createdAt: new Date().toISOString(),
+      });
+    }
     setResult(null);
     clearStreamingPreview();
     setIsGenerating(true);
@@ -5152,7 +5562,9 @@ export function CreatePageClient({
         prompt: currentPrompt,
         count: batchCount,
         stream: true,
+        generationIds: requestedGenerationIds,
       });
+      for (const id of requestedGenerationIds) removePendingGenerationState(id);
 
       const generatedCount = addSuccessfulResults(data, currentPrompt).length;
       toast.success(
@@ -5185,6 +5597,8 @@ export function CreatePageClient({
     prompt: string;
     count?: number;
     stream?: boolean;
+    generationId?: string;
+    generationIds?: string[];
   }) => {
     const response = await fetch("/api/images/generate", {
       method: "POST",
@@ -5194,6 +5608,8 @@ export function CreatePageClient({
       },
       body: JSON.stringify({
         prompt: params.prompt,
+        ...(params.generationId ? { generationId: params.generationId } : {}),
+        ...(params.generationIds ? { generationIds: params.generationIds } : {}),
         size,
         stream: Boolean(params.stream),
         count: params.count || 1,
@@ -5256,11 +5672,21 @@ export function CreatePageClient({
           repeatIndex < lineBatchRepeatCount;
           repeatIndex++
         ) {
+          const generationId = createGenerationId();
+          addPendingGenerationState({
+            id: generationId,
+            mode: "text",
+            prompt: itemPrompt,
+            size,
+            createdAt: new Date().toISOString(),
+          });
           const data = await runTextGenerationRequest({
             prompt: itemPrompt,
             count: 1,
             stream: false,
+            generationId,
           });
+          removePendingGenerationState(generationId);
           generatedCount += addSuccessfulResults(data, itemPrompt).length;
         }
       }
@@ -5344,8 +5770,12 @@ export function CreatePageClient({
       return;
     }
 
+    const currentEditPrompt = editPrompt.trim();
+    const editGenerationId =
+      editBatchCount === 1 ? createGenerationId() : undefined;
     const formData = new FormData();
-    formData.append("prompt", editPrompt.trim());
+    formData.append("prompt", currentEditPrompt);
+    if (editGenerationId) formData.append("generation_id", editGenerationId);
     formData.append("quality", quality);
     formData.append("moderation", moderation);
     formData.append("output_format", outputFormat);
@@ -5384,6 +5814,15 @@ export function CreatePageClient({
     setResult(null);
     clearStreamingPreview();
     formData.append("stream", "true");
+    if (editGenerationId) {
+      addPendingGenerationState({
+        id: editGenerationId,
+        mode: "image",
+        prompt: currentEditPrompt,
+        size: effectiveEditSize,
+        createdAt: new Date().toISOString(),
+      });
+    }
     try {
       const response = await fetch("/api/images/edit", {
         method: "POST",
@@ -5403,9 +5842,10 @@ export function CreatePageClient({
 
       const generatedCount = addSuccessfulResults(
         data,
-        editPrompt,
+        currentEditPrompt,
         effectiveEditSize
       ).length;
+      if (editGenerationId) removePendingGenerationState(editGenerationId);
       toast.success(
         generatedCount > 1
           ? copy(
@@ -5422,6 +5862,7 @@ export function CreatePageClient({
             : copy("An unexpected error occurred.", "发生未知错误。"),
       });
     } finally {
+      if (editGenerationId) removePendingGenerationState(editGenerationId);
       setIsEditing(false);
       clearStreamingPreview();
     }
@@ -6935,6 +7376,14 @@ export function CreatePageClient({
                       ))}
                     </SelectContent>
                   </Select>
+                  {editBatchCount > 1 && (
+                    <p className="text-xs text-muted-foreground">
+                      {copy(
+                        "Background recovery is enabled for single edit requests. Batch edits still finish normally but are not restored after a refresh.",
+                        "后台恢复目前对单张图生图生效；批量编辑仍会正常执行，但刷新后不会逐张恢复。"
+                      )}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-3 rounded-md bg-muted/40 p-3">
@@ -7147,7 +7596,8 @@ export function CreatePageClient({
                 ref={chatMessagesRef}
                 className="flex-1 space-y-5 overflow-y-auto px-4 py-4"
               >
-                {visibleChatMessages.length === 0 ? (
+                {visibleChatMessages.length === 0 &&
+                visibleRestoredPendingGenerations.length === 0 ? (
                   <div className="flex min-h-[420px] flex-col items-center justify-center text-center text-muted-foreground">
                     {activeMode === "agent" ? (
                       <Wand2 className="mb-3 h-8 w-8" />
@@ -7172,7 +7622,24 @@ export function CreatePageClient({
                     </p>
                   </div>
                 ) : (
-                  visibleChatMessages.map((message) => {
+                  <>
+                    {visibleRestoredPendingGenerations.map((pending) => (
+                      <div key={pending.id} className="flex justify-start">
+                        <div className="max-w-[88%] rounded-lg border border-border bg-muted/35 px-3 py-3 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            {copy(
+                              "Background generation is still running...",
+                              "后台生成仍在处理中..."
+                            )}
+                          </div>
+                          <p className="mt-2 line-clamp-2 break-words text-xs">
+                            {pending.prompt}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                    {visibleChatMessages.map((message) => {
                     const variants = getChatVariants(message);
                     const activeVariant = getActiveChatVariant(message);
                     const activeIndex = message.activeVariant || 0;
@@ -7474,7 +7941,8 @@ export function CreatePageClient({
                         </div>
                       </div>
                     );
-                  })
+                  })}
+                  </>
                 )}
 
                 {chatStream && !retryingChatMessageId && (

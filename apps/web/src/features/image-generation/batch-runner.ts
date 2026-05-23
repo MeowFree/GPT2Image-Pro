@@ -8,6 +8,7 @@ export type ImageGenerationOperationResult = Awaited<
 
 export type RunBatchImageGenerationParams = {
   count: number;
+  generationIds?: string[];
   run: (
     generationId: string,
     callbacks?: ImageGenerationCallbacks
@@ -22,6 +23,7 @@ export type RunBatchImageGenerationParams = {
 
 export async function runBatchImageGeneration({
   count,
+  generationIds,
   run,
   callbacks,
   onResult,
@@ -29,7 +31,10 @@ export async function runBatchImageGeneration({
 }: RunBatchImageGenerationParams) {
   const results: ImageGenerationOperationResult[] = [];
   for (let index = 0; index < count; index++) {
-    const result = await run(randomUUID(), callbacks?.(index));
+    const result = await run(
+      generationIds?.[index] || randomUUID(),
+      callbacks?.(index)
+    );
     results.push(result);
     await onResult?.(result, index);
     if (stopOnError && result.error) break;
