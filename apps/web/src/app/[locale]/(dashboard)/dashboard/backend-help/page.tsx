@@ -24,8 +24,7 @@ const sections = {
       "这里按当前代码真实链路说明：六个入口都是协议适配层，不互相 HTTP 调用，最终统一进入同一套生成、扣费、调度和存储链路。",
     flow: {
       title: "请求路由图",
-      note:
-        "用户自接 API 目前仍保留最高优先级；没有可用的用户自接 API 时，才进入平台后端池。外接接口不会反向请求站内 /api/images/*。",
+      note: "用户自接 API 目前仍保留最高优先级；没有可用的用户自接 API 时，才进入平台后端池。外接接口不会反向请求站内 /api/images/*。",
       entryTitle: "入口",
       resolverTitle: "统一处理",
       groupTitle: "分组选择",
@@ -174,8 +173,7 @@ const sections = {
           "按命中的成员转换成 ChatGPT Web、Codex/Responses 或外接 API 请求。",
         ],
       ],
-      note:
-        "所以关系不是“外接 API 调页面 API”，而是“六个入口共享同一个 service 层”。",
+      note: "所以关系不是“外接 API 调页面 API”，而是“六个入口共享同一个 service 层”。",
     },
     externalDocs: {
       title: "外接 API 详细文档",
@@ -567,8 +565,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             {
               name: "mask",
               requirement: "可选",
-              description:
-                "PNG mask 文件；JSON 中可传 URL 形式的 mask 引用。",
+              description: "PNG mask 文件；JSON 中可传 URL 形式的 mask 引用。",
             },
             {
               name: "model",
@@ -793,7 +790,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
               name: "tools",
               requirement: "可选",
               description:
-                "若显式传入，必须包含 { type: \"image_generation\" }；未传时本站会自动补 image_generation。图片模型请放在 image_generation tool 的 model 字段。",
+                '若显式传入，必须包含 { type: "image_generation" }；未传时本站会自动补 image_generation。图片模型请放在 image_generation tool 的 model 字段。',
             },
             {
               name: "tool_choice",
@@ -829,8 +826,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
               name: "quality",
               requirement: "可选",
               custom: true,
-              description:
-                "本站便捷字段：作为本次生图 quality 运行参数使用。",
+              description: "本站便捷字段：作为本次生图 quality 运行参数使用。",
             },
             {
               name: "moderation",
@@ -886,10 +882,10 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
             "该接口不是通用 Chat Completions；/v1/chat/completions 当前仍不支持。",
             "input_image 只支持 image_url/data URL；file_id/file 输入当前不会作为参考图使用。",
             "显式传 tools 但不包含 image_generation 会返回错误，避免模型只产出文本而不生图。",
-            "页面 Codex/Responses 对话会默认提供 image_generation、web_search 和 code_interpreter；不会强制 tool_choice，模型按任务自行选择工具。不支持的工具会自动移除后重试。",
-            "页面对话支持上传文本/代码类本地文件作为上下文读取；不会读取用户在提示词中写入的服务器本地路径。",
-            "Codex/Responses 对话每轮先扣 1 积分；如果本轮完成图片生成，会按实际输出尺寸追加图片积分。流式或多工具过程中完成的 image_generation_call 会计入图片输出数量。",
-            "同一轮对话内多次 image_generation_call 会作为自动迭代版本展示，最后一张作为默认选中版本。",
+            "页面 Chat 模式只提供普通多模态对话/生图语义；Agent 模式才默认提供 image_generation、web_search 和 code_interpreter，不强制 tool_choice，模型按任务自行选择工具。不支持的工具会自动移除后重试。",
+            "页面 Chat/Agent 支持上传文本/代码类本地文件作为上下文读取；不会读取用户在提示词中写入的服务器本地路径。",
+            "页面 Chat/Agent 每轮先扣 1 积分；如果本轮完成图片生成，会按实际输出尺寸追加图片积分。Agent 流式或多工具过程中完成的 image_generation_call 会计入图片输出数量。",
+            "Agent 同一轮内多次 image_generation_call 会作为自动迭代版本展示，最后一张作为默认选中版本。",
           ],
         },
       ],
@@ -912,17 +908,16 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
     },
     codex: {
       title: "Codex / Responses 账号",
-      description:
-        "走 Responses 语义，是本站可参数化程度最高的系统账号后端。",
+      description: "走 Responses 语义，是本站可参数化程度最高的系统账号后端。",
       valid: [
         "GPT 模型传给 Responses 顶层 model。",
         "图片模型传给 image_generation 工具 model。",
         "size、quality、moderation、参考图、mask 会组装进 Responses 工具请求。",
-        "页面对话默认提供 image_generation、web_search、code_interpreter，不强制 tool_choice，模型可像 Codex 一样按需联网、分析上传文本文件或生成图片。",
-        "上传的本地文本/代码文件会作为请求上下文读取；不会开放服务器文件系统路径读取。",
+        "页面 Chat 模式只提供普通多模态对话/生图语义；页面 Agent 模式默认提供 image_generation、web_search、code_interpreter，不强制 tool_choice，模型可像 Codex 一样按需联网、分析上传文本文件或生成图片。",
+        "Chat/Agent 上传的本地文本/代码文件会作为请求上下文读取；不会开放服务器文件系统路径读取。",
         "支持外部 /v1/responses；也可承接 /v1/images/generations 和 /v1/images/edits 的内部转换。",
         "关闭提示词优化时，会通过指令引导模型不要修改提示词；这是尽力约束，不能保证上游一定完全照做。",
-        "页面 Codex/Responses 对话每轮扣 1 积分；本轮完成的图片输出另按实际尺寸和完成数量计费。",
+        "页面 Chat/Agent 每轮扣 1 积分；本轮完成的图片输出另按实际尺寸和完成数量计费。",
       ],
       invalid: [
         "不是 ChatGPT Web，不支持 Web 专属能力或 Web 额度语义。",
@@ -946,9 +941,18 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
     prompt: {
       title: "提示词优化与思考强度",
       rows: [
-        ["开启提示词优化", "平台可使用优化后的提示词，Web 思考强度按选择值传入。"],
-        ["关闭提示词优化", "平台发送原始提示词，Web 强制使用 instant，尽量减少改写。"],
-        ["Codex/Responses", "关闭提示词优化时通过指令要求模型不要修改提示词，但具体是否改写仍由上游模型和工具决定。"],
+        [
+          "开启提示词优化",
+          "平台可使用优化后的提示词，Web 思考强度按选择值传入。",
+        ],
+        [
+          "关闭提示词优化",
+          "平台发送原始提示词，Web 强制使用 instant，尽量减少改写。",
+        ],
+        [
+          "Codex/Responses",
+          "关闭提示词优化时通过指令要求模型不要修改提示词，但具体是否改写仍由上游模型和工具决定。",
+        ],
         ["外接 API", "平台尽量透传，最终行为取决于外接服务。"],
       ],
     },
@@ -959,8 +963,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       "The six endpoints are protocol adapters. They do not call each other over HTTP; they enter the same generation, billing, scheduling, and storage path.",
     flow: {
       title: "Request Routing Diagram",
-      note:
-        "User custom API keeps the highest priority for now; when unavailable, the request enters the platform backend pool. External endpoints do not call internal /api/images/* routes.",
+      note: "User custom API keeps the highest priority for now; when unavailable, the request enters the platform backend pool. External endpoints do not call internal /api/images/* routes.",
       entryTitle: "Entry",
       resolverTitle: "Unified Handler",
       groupTitle: "Group Selection",
@@ -1036,8 +1039,18 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       title: "Entry To Backend Mapping",
       pageTitle: "Page Requests",
       apiTitle: "External API Requests",
-      headers: ["Entry", "Internal Endpoint", "Request Kind", "Backend Behavior"],
-      apiHeaders: ["Entry", "Compatible Endpoint", "Request Kind", "Backend Behavior"],
+      headers: [
+        "Entry",
+        "Internal Endpoint",
+        "Request Kind",
+        "Backend Behavior",
+      ],
+      apiHeaders: [
+        "Entry",
+        "Compatible Endpoint",
+        "Request Kind",
+        "Backend Behavior",
+      ],
       pageRows: [
         [
           "Create page generation",
@@ -1109,8 +1122,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
           "The selected member is converted to a ChatGPT Web, Codex/Responses, or external API request.",
         ],
       ],
-      note:
-        "The relationship is not external API -> page API. It is six adapters -> one shared service layer.",
+      note: "The relationship is not external API -> page API. It is six adapters -> one shared service layer.",
     },
     externalDocs: {
       title: "External API Reference",
@@ -1370,7 +1382,8 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
             },
             {
               name: "data[].revised_prompt",
-              description: "Returned when the upstream provides a revised prompt.",
+              description:
+                "Returned when the upstream provides a revised prompt.",
             },
             {
               name: "SSE image_generation.partial_image",
@@ -1508,7 +1521,8 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             {
               name: "model",
               requirement: "Optional",
-              description: "Image model; must be a gpt-image-* style image model.",
+              description:
+                "Image model; must be a gpt-image-* style image model.",
             },
             {
               name: "n",
@@ -1728,7 +1742,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
               name: "tools",
               requirement: "Optional",
               description:
-                "If provided, must include { type: \"image_generation\" }. If omitted, GPT2IMAGE adds image_generation automatically. Put the image model in the image_generation tool's model field.",
+                'If provided, must include { type: "image_generation" }. If omitted, GPT2IMAGE adds image_generation automatically. Put the image model in the image_generation tool\'s model field.',
             },
             {
               name: "tool_choice",
@@ -1792,7 +1806,8 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
           responses: [
             {
               name: "id / object / created_at / status / model / output",
-              description: "Compatible with the basic Responses response object.",
+              description:
+                "Compatible with the basic Responses response object.",
             },
             {
               name: "output[].type = image_generation_call",
@@ -1800,11 +1815,13 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
             },
             {
               name: "output[].type = message",
-              description: "Upstream text, when present, is returned as output_text.",
+              description:
+                "Upstream text, when present, is returned as output_text.",
             },
             {
               name: "metadata.generation_id / credits_consumed / size",
-              description: "GPT2IMAGE generation record, billing, and size metadata.",
+              description:
+                "GPT2IMAGE generation record, billing, and size metadata.",
               custom: true,
             },
             {
@@ -1821,10 +1838,10 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
             "This is not Chat Completions. /v1/chat/completions is still unsupported.",
             "input_image supports image_url/data URLs. file_id/file inputs are not used as references today.",
             "If tools is provided without image_generation, GPT2IMAGE returns an error to avoid text-only responses.",
-            "Page Codex/Responses chat provides image_generation, web_search, and code_interpreter by default without forcing tool_choice. Unsupported tools are removed and retried.",
-            "Page chat can read uploaded local text/code files as request context. Prompted server filesystem paths are not read.",
-            "Codex/Responses chat charges 1 credit for each round first. Completed image_generation_call outputs are then charged by actual output size and output count.",
-            "Multiple image_generation_call outputs in one chat round are shown as automatic iteration variants, with the last image selected by default.",
+            "Page Chat mode uses normal multimodal chat/image semantics. Agent mode provides image_generation, web_search, and code_interpreter by default without forcing tool_choice. Unsupported tools are removed and retried.",
+            "Page Chat/Agent can read uploaded local text/code files as request context. Prompted server filesystem paths are not read.",
+            "Page Chat/Agent charges 1 credit for each round first. Completed image_generation_call outputs are then charged by actual output size and output count.",
+            "Multiple image_generation_call outputs in one Agent round are shown as automatic iteration variants, with the last image selected by default.",
           ],
         },
       ],
@@ -1853,11 +1870,11 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         "GPT model is sent as the top-level Responses model.",
         "Image model is sent as the image_generation tool model.",
         "size, quality, moderation, reference images, and mask are assembled into the Responses tool request.",
-        "Page chat provides image_generation, web_search, and code_interpreter by default without forcing tool_choice, so the model can search, analyze uploaded text files, or generate images as needed.",
-        "Uploaded local text/code files are read as request context. Server filesystem paths written in prompts are not read.",
+        "Page Chat mode uses normal multimodal chat/image semantics. Page Agent mode provides image_generation, web_search, and code_interpreter by default without forcing tool_choice, so the model can search, analyze uploaded text files, or generate images as needed.",
+        "Uploaded local text/code files in Chat/Agent are read as request context. Server filesystem paths written in prompts are not read.",
         "Supports external /v1/responses and can also handle converted /v1/images/generations and /v1/images/edits requests.",
         "When prompt optimization is off, GPT2IMAGE instructs the model not to modify the prompt; this is best effort and upstream may still deviate.",
-        "Page Codex/Responses chat charges 1 credit per round; completed image outputs in that round are billed additionally by detected size and count.",
+        "Page Chat/Agent charges 1 credit per round; completed image outputs in that round are billed additionally by detected size and count.",
       ],
       invalid: [
         "Not ChatGPT Web, so Web-only capability or quota semantics do not apply.",
@@ -1881,10 +1898,22 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
     prompt: {
       title: "Prompt Optimization And Thinking",
       rows: [
-        ["Prompt optimization on", "Optimized prompt may be used; Web thinking follows the selected value."],
-        ["Prompt optimization off", "Original prompt is sent; Web is forced to instant to minimize changes."],
-        ["Codex/Responses", "When prompt optimization is off, GPT2IMAGE instructs the model not to modify the prompt, but final behavior still depends on the upstream model/tool."],
-        ["External API", "The platform passes through where possible; the external service decides final behavior."],
+        [
+          "Prompt optimization on",
+          "Optimized prompt may be used; Web thinking follows the selected value.",
+        ],
+        [
+          "Prompt optimization off",
+          "Original prompt is sent; Web is forced to instant to minimize changes.",
+        ],
+        [
+          "Codex/Responses",
+          "When prompt optimization is off, GPT2IMAGE instructs the model not to modify the prompt, but final behavior still depends on the upstream model/tool.",
+        ],
+        [
+          "External API",
+          "The platform passes through where possible; the external service decides final behavior.",
+        ],
       ],
     },
   },
@@ -1942,7 +1971,10 @@ function renderEmphasis(text: string) {
   return parts.map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
-        <strong className="font-semibold text-foreground" key={`${part}-${index}`}>
+        <strong
+          className="font-semibold text-foreground"
+          key={`${part}-${index}`}
+        >
           {part.slice(2, -2)}
         </strong>
       );
@@ -1954,7 +1986,7 @@ function renderEmphasis(text: string) {
 function RouteDiagram({
   flow,
 }: {
-  flow: (typeof sections.zh.flow) | (typeof sections.en.flow);
+  flow: typeof sections.zh.flow | typeof sections.en.flow;
 }) {
   return (
     <Card className="rounded-lg">
@@ -1969,10 +2001,16 @@ function RouteDiagram({
           <RouteColumn title={flow.entryTitle}>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
               {flow.entries.map((entry) => (
-                <div className="rounded-md border bg-background p-3" key={entry.path}>
+                <div
+                  className="rounded-md border bg-background p-3"
+                  key={entry.path}
+                >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium">{entry.label}</span>
-                    <Badge variant="secondary" className="rounded-sm font-mono text-[10px]">
+                    <Badge
+                      variant="secondary"
+                      className="rounded-sm font-mono text-[10px]"
+                    >
                       {entry.kind}
                     </Badge>
                   </div>
@@ -2001,7 +2039,10 @@ function RouteDiagram({
           <RouteColumn title={flow.backendTitle}>
             <div className="space-y-2">
               {flow.backends.map((backend) => (
-                <div className="rounded-md border bg-background p-3" key={backend.title}>
+                <div
+                  className="rounded-md border bg-background p-3"
+                  key={backend.title}
+                >
                   <div className="text-sm font-medium">{backend.title}</div>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                     {backend.description}
@@ -2087,7 +2128,10 @@ function RouteTable({
               {endpoint}
             </div>
             <div>
-              <Badge variant="outline" className="rounded-sm font-mono text-[10px]">
+              <Badge
+                variant="outline"
+                className="rounded-sm font-mono text-[10px]"
+              >
                 {kind}
               </Badge>
             </div>
@@ -2103,8 +2147,8 @@ function RelationshipTable({
   relationship,
 }: {
   relationship:
-    | (typeof sections.zh.relationship)
-    | (typeof sections.en.relationship);
+    | typeof sections.zh.relationship
+    | typeof sections.en.relationship;
 }) {
   return (
     <Card className="rounded-lg">
@@ -2116,18 +2160,20 @@ function RelationshipTable({
       </CardHeader>
       <CardContent>
         <div className="overflow-hidden rounded-md border">
-          {relationship.rows.map(([name, endpoints, description]: RelationshipRow) => (
-            <div
-              className="grid gap-2 border-b p-3 text-sm last:border-b-0 md:grid-cols-[160px_1.3fr_1.7fr]"
-              key={name}
-            >
-              <div className="font-medium text-foreground">{name}</div>
-              <div className="font-mono text-xs leading-relaxed text-muted-foreground">
-                {endpoints}
+          {relationship.rows.map(
+            ([name, endpoints, description]: RelationshipRow) => (
+              <div
+                className="grid gap-2 border-b p-3 text-sm last:border-b-0 md:grid-cols-[160px_1.3fr_1.7fr]"
+                key={name}
+              >
+                <div className="font-medium text-foreground">{name}</div>
+                <div className="font-mono text-xs leading-relaxed text-muted-foreground">
+                  {endpoints}
+                </div>
+                <div className="text-muted-foreground">{description}</div>
               </div>
-              <div className="text-muted-foreground">{description}</div>
-            </div>
-          ))}
+            )
+          )}
         </div>
       </CardContent>
     </Card>
@@ -2137,7 +2183,7 @@ function RelationshipTable({
 function ExternalApiDocs({
   docs,
 }: {
-  docs: (typeof sections.zh.externalDocs) | (typeof sections.en.externalDocs);
+  docs: typeof sections.zh.externalDocs | typeof sections.en.externalDocs;
 }) {
   return (
     <Card className="rounded-lg">
@@ -2266,7 +2312,10 @@ function ExternalEndpointDoc({
             {doc.method}
           </Badge>
           <span className="font-mono text-sm font-medium">{doc.path}</span>
-          <Badge variant="secondary" className="rounded-sm font-mono text-[10px]">
+          <Badge
+            variant="secondary"
+            className="rounded-sm font-mono text-[10px]"
+          >
             {doc.contentType}
           </Badge>
         </div>

@@ -175,8 +175,8 @@ function normalizeHistoryImageUrls(
 ) {
   return history.map((message) => ({
     ...message,
-    imageUrls: (message.imageUrls || []).map((url) =>
-      toPublicImageUrl(request, url) || url
+    imageUrls: (message.imageUrls || []).map(
+      (url) => toPublicImageUrl(request, url) || url
     ),
     variants: message.variants?.map((variant) => ({
       ...variant,
@@ -480,6 +480,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     "mixWebFirst",
     "mix_web_first"
   );
+  const agentMode =
+    getOptionalBoolean(formData, "agentMode", "agent_mode") === true;
   let history: ChatHistoryMessage[] = [];
   try {
     history = getHistory(formData, planLimits.maxChatImages);
@@ -605,7 +607,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     for (const file of sourceFiles) {
       validateImageFile(file, {
         maxImageBytes,
-        invalidTypeMessage: "Reference images must be PNG, JPEG, or WebP files.",
+        invalidTypeMessage:
+          "Reference images must be PNG, JPEG, or WebP files.",
       });
     }
 
@@ -656,6 +659,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           outputCompression,
           stream: useStreamResponse,
           thinking,
+          agentMode,
           mixWebFirst,
         },
         onPartialImage

@@ -144,10 +144,7 @@ type StoredGeneratedImageOutput = {
   actualOutputFormatDetected: boolean;
 };
 
-function resolveStoredImageFormat(
-  buffer: Buffer,
-  requestedFormat?: string
-) {
+function resolveStoredImageFormat(buffer: Buffer, requestedFormat?: string) {
   const detectedFormat = detectImageOutputFormatFromBuffer(buffer);
   const fallbackFormat = normalizeOutputFormat(requestedFormat) || "png";
   const format = detectedFormat || fallbackFormat;
@@ -599,8 +596,7 @@ export async function runImageGenerationForUser(
   }
   const maxChatContextChars =
     input.mode === "chat"
-      ? input.maxChatContextChars ||
-        planCapabilities.limits.maxChatContextChars
+      ? input.maxChatContextChars || planCapabilities.limits.maxChatContextChars
       : planCapabilities.limits.maxChatContextChars;
   if (
     input.mode === "chat" &&
@@ -637,7 +633,10 @@ export async function runImageGenerationForUser(
         accountBackendPreference: mixWebFirst ? "web" : undefined,
       });
     } catch (error) {
-      if (!mixWebFirst || !(error instanceof ImageBackendPoolUnavailableError)) {
+      if (
+        !mixWebFirst ||
+        !(error instanceof ImageBackendPoolUnavailableError)
+      ) {
         throw error;
       }
       effectiveConfig = await getEffectiveConfig(userConfig, {
@@ -863,7 +862,7 @@ async function runQueuedImageGenerationForUser({
           }
         : input.mode === "chat"
           ? {
-              mode: "chat",
+              mode: input.agentMode ? "agent" : "chat",
               action: "auto",
               ...backendMetadata,
               ...modelMetadata,
@@ -1054,18 +1053,17 @@ async function runQueuedImageGenerationForUser({
       };
     };
 
-  const moderation =
-    !moderationEnabled
-      ? ({ decision: "skipped" } as const)
-      : await moderateContent({
-          prompt: moderationPrompt,
-          images: inputImages,
-          mode: inputImages.length > 0 ? "image" : "text",
-          userId: input.userId,
-          userPlan: userPlan.plan,
-          userModerationBlockRiskLevel: moderationBlockRiskLevel,
-          generationId,
-        });
+  const moderation = !moderationEnabled
+    ? ({ decision: "skipped" } as const)
+    : await moderateContent({
+        prompt: moderationPrompt,
+        images: inputImages,
+        mode: inputImages.length > 0 ? "image" : "text",
+        userId: input.userId,
+        userPlan: userPlan.plan,
+        userModerationBlockRiskLevel: moderationBlockRiskLevel,
+        generationId,
+      });
 
   if (isTimedOut()) {
     return failTimedOutGeneration();
@@ -1074,7 +1072,9 @@ async function runQueuedImageGenerationForUser({
   if (moderation.decision === "block" || moderation.decision === "error") {
     const targetCredits = getFailedGenerationTargetCredits({
       reason:
-        moderation.decision === "block" ? "moderation_block" : "moderation_error",
+        moderation.decision === "block"
+          ? "moderation_block"
+          : "moderation_error",
       moderationFailureCredits,
       moderationOnlyCredits: creditCost.moderationOnlyCredits,
     });
@@ -1147,7 +1147,9 @@ async function runQueuedImageGenerationForUser({
                 apiPrompt,
                 fileContext: input.fileContext,
                 promptOptimization,
-                signal: AbortSignal.timeout(IMAGE_GENERATION_PENDING_TIMEOUT_MS),
+                signal: AbortSignal.timeout(
+                  IMAGE_GENERATION_PENDING_TIMEOUT_MS
+                ),
                 images: input.images,
                 history: input.history,
                 size,
@@ -1161,6 +1163,7 @@ async function runQueuedImageGenerationForUser({
                 outputCompression: input.outputCompression,
                 stream: input.stream,
                 thinking: input.thinking,
+                agentMode: input.agentMode,
                 rawResponsesBody: input.rawResponsesBody,
                 mixWebFirst,
               },
@@ -1172,7 +1175,9 @@ async function runQueuedImageGenerationForUser({
                 prompt: input.prompt,
                 apiPrompt,
                 promptOptimization,
-                signal: AbortSignal.timeout(IMAGE_GENERATION_PENDING_TIMEOUT_MS),
+                signal: AbortSignal.timeout(
+                  IMAGE_GENERATION_PENDING_TIMEOUT_MS
+                ),
                 size,
                 model: imageModel,
                 gptModel,

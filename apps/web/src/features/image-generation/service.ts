@@ -70,6 +70,10 @@ const VALID_QUALITIES = new Set<ImageQuality>([
 ]);
 const VALID_MODERATION = new Set<ImageModeration>(["auto", "low"]);
 const DEFAULT_RESPONSES_MODEL = GPT54_CHAT_MODEL;
+const DEFAULT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS =
+  "You are a multimodal chat assistant. Use image_generation when the user asks for an image, edit, or visual output. Keep replies concise and preserve the conversation context.";
+const ORIGINAL_PROMPT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS =
+  "You are a multimodal chat assistant. When calling image_generation, use the user's original image prompt exactly as written. Do not rewrite, expand, translate, polish, or optimize the latest user prompt before image generation.";
 const DEFAULT_RESPONSES_IMAGE_INSTRUCTIONS =
   "You are a multimodal assistant. Use web_search when current or external information is needed, use code_interpreter when calculation or file analysis helps, and use image_generation when the user asks for an image, edit, or visual output.";
 const ORIGINAL_PROMPT_RESPONSES_IMAGE_INSTRUCTIONS =
@@ -1357,8 +1361,13 @@ function describeResponsesToolItem(
   }
 
   if (item.type === "web_search_call") {
-    const detail = compactToolText(item.query) || describeWebSearchAction(item.action);
-    const suffix = detail ? ` - ${detail}` : item.status ? ` - ${item.status}` : "";
+    const detail =
+      compactToolText(item.query) || describeWebSearchAction(item.action);
+    const suffix = detail
+      ? ` - ${detail}`
+      : item.status
+        ? ` - ${item.status}`
+        : "";
     return `${options.done ? "联网搜索完成" : "联网搜索"}${suffix}`;
   }
 
@@ -1446,7 +1455,8 @@ async function processResponsesEventPayload(
       }
     }
     if (item?.type === "image_generation_call" && item.result) {
-      const imageOutputCount = (state.fallbackResult?.imageOutputCount || 0) + 1;
+      const imageOutputCount =
+        (state.fallbackResult?.imageOutputCount || 0) + 1;
       const imageOutput = {
         imageBase64: item.result,
         upstreamRevisedPrompt: item.revised_prompt,
@@ -1521,8 +1531,7 @@ async function processResponsesEventPayload(
     if (result) {
       state.completedResult = {
         ...result,
-        imageOutputs:
-          result.imageOutputs || state.fallbackResult?.imageOutputs,
+        imageOutputs: result.imageOutputs || state.fallbackResult?.imageOutputs,
         imageOutputCount: Math.max(
           result.imageOutputCount || 0,
           state.fallbackResult?.imageOutputCount || 0
@@ -1997,7 +2006,8 @@ export async function generateImage(
         useStream: config.useStream,
       });
       return {
-        error: error instanceof Error ? error.message : "Unknown error occurred",
+        error:
+          error instanceof Error ? error.message : "Unknown error occurred",
       };
     }
   }
@@ -2115,7 +2125,8 @@ export async function editImage(
         useStream: config.useStream,
       });
       return {
-        error: error instanceof Error ? error.message : "Unknown error occurred",
+        error:
+          error instanceof Error ? error.message : "Unknown error occurred",
       };
     }
   }
@@ -2228,8 +2239,12 @@ export async function generateChatImage(
     const input = buildResponsesInput(prompt, params.images, params.history);
     const instructions =
       params.promptOptimization === false
-        ? ORIGINAL_PROMPT_RESPONSES_IMAGE_INSTRUCTIONS
-        : DEFAULT_RESPONSES_IMAGE_INSTRUCTIONS;
+        ? params.agentMode
+          ? ORIGINAL_PROMPT_RESPONSES_IMAGE_INSTRUCTIONS
+          : ORIGINAL_PROMPT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS
+        : params.agentMode
+          ? DEFAULT_RESPONSES_IMAGE_INSTRUCTIONS
+          : DEFAULT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS;
     const tool: {
       type: "image_generation";
       action: "auto";
@@ -2270,10 +2285,12 @@ export async function generateChatImage(
       : undefined;
 
     const stream = Boolean(params.stream || config.useStream);
-    const defaultAdditionalTools = [
-      { type: "web_search" },
-      { type: "code_interpreter", container: { type: "auto" } },
-    ];
+    const defaultAdditionalTools = params.agentMode
+      ? [
+          { type: "web_search" },
+          { type: "code_interpreter", container: { type: "auto" } },
+        ]
+      : [];
     const requestBody: ResponsesStreamRequestBody =
       params.rawResponsesBody && isPlainRecord(params.rawResponsesBody)
         ? normalizeResponsesImageRequestBody(params.rawResponsesBody, {
@@ -2303,7 +2320,7 @@ export async function generateChatImage(
     );
 
     const unsupportedTools = getUnsupportedToolTypes(result);
-    if (unsupportedTools.size > 0) {
+    if (params.agentMode && unsupportedTools.size > 0) {
       await callbacks?.onAgentDelta?.(
         `部分 Codex/Responses 工具不可用，已移除 ${Array.from(unsupportedTools).join(", ")} 后重试\n`
       );

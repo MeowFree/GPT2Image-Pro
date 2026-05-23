@@ -118,6 +118,7 @@ export interface ChatImageParams {
   outputCompression?: number;
   stream?: boolean;
   thinking?: ThinkingLevel;
+  agentMode?: boolean;
   rawResponsesBody?: unknown;
   mixWebFirst?: boolean;
 }
