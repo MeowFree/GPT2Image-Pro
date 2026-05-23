@@ -57,6 +57,7 @@ import type {
   GenerateImageParams,
   GenerateImageResult,
   AgentRunEvent,
+  AgentRunEventStatus,
   ImageGenerationCallbacks,
   ImageInputFile,
   ImageModeration,
@@ -110,6 +111,7 @@ type ResponsesOutputItem = {
   type?: string;
   id?: string;
   status?: string;
+  role?: string;
   name?: string;
   action?: unknown;
   arguments?: string;
@@ -1641,6 +1643,84 @@ function getAgentEventKey(event: AgentRunEvent) {
   ].join("|");
 }
 
+function getResponseItemId(item: ResponsesOutputItem | undefined) {
+  return item?.id || item?.call_id;
+}
+
+function mergeResponseOutputItem(
+  previous: ResponsesOutputItem | undefined,
+  next: ResponsesOutputItem
+): ResponsesOutputItem {
+  return {
+    ...(previous || {}),
+    ...next,
+    action: next.action ?? previous?.action,
+    arguments:
+      typeof previous?.arguments === "string" ||
+      typeof next.arguments === "string"
+        ? `${previous?.arguments || ""}${next.arguments || ""}`
+        : undefined,
+    query: next.query ?? previous?.query,
+    results: next.results ?? previous?.results,
+    result: next.result ?? previous?.result,
+    revised_prompt: next.revised_prompt ?? previous?.revised_prompt,
+    content: next.content ?? previous?.content,
+    summary: next.summary ?? previous?.summary,
+  };
+}
+
+function getStreamItem(
+  state: EventStreamParseState,
+  payload: Record<string, unknown>
+) {
+  const item = payload.item as ResponsesOutputItem | undefined;
+  if (item?.type) return item;
+
+  const itemId =
+    typeof payload.item_id === "string"
+      ? payload.item_id
+      : typeof payload.output_item_id === "string"
+        ? payload.output_item_id
+        : typeof payload.id === "string"
+          ? payload.id
+          : typeof payload.call_id === "string"
+            ? payload.call_id
+            : undefined;
+  if (!itemId) return undefined;
+  return state.streamItems?.[itemId];
+}
+
+function updateStreamItem(
+  state: EventStreamParseState,
+  item: ResponsesOutputItem | undefined
+) {
+  if (!item?.type) return item;
+  const itemId = getResponseItemId(item);
+  if (!itemId) return item;
+  state.streamItems = state.streamItems || {};
+  const merged = mergeResponseOutputItem(state.streamItems[itemId], item);
+  state.streamItems[itemId] = merged;
+  return merged;
+}
+
+function getStreamDeltaItem(
+  state: EventStreamParseState,
+  payload: Record<string, unknown>
+) {
+  const previous = getStreamItem(state, payload);
+  const delta = isPlainRecord(payload.delta)
+    ? (payload.delta as ResponsesOutputItem)
+    : undefined;
+  if (!previous && !delta?.type) return undefined;
+  const deltaItem: ResponsesOutputItem = {
+    ...(delta || {}),
+    id: previous?.id || delta?.id,
+    call_id: previous?.call_id || delta?.call_id,
+    type: previous?.type || delta?.type,
+  };
+  return updateStreamItem(state, deltaItem);
+}
+
 function mergeAgentEvents(
   ...groups: Array<AgentRunEvent[] | undefined>
 ): AgentRunEvent[] | undefined {
@@ -1769,6 +1849,36 @@ function shouldReportResponsesToolItem(
   return item.type.endsWith("_call");
 }
 
+async function reportResponsesToolEvent(
+  state: EventStreamParseState,
+  callbacks: ImageGenerationCallbacks | undefined,
+  item: ResponsesOutputItem | undefined,
+  status: AgentRunEventStatus
+) {
+  if (!item?.type || !shouldReportResponsesToolItem("response.output_item.added", item)) {
+    return;
+  }
+  const itemId = getResponseItemId(item);
+  if (itemId) {
+    state.emittedToolEvents = state.emittedToolEvents || {};
+    const previousStatus = state.emittedToolEvents[itemId];
+    if (previousStatus === status) return;
+    state.emittedToolEvents[itemId] = status;
+  }
+
+  const done = status === "completed";
+  const line = describeResponsesToolItem(item, { done });
+  if (line) {
+    await callbacks?.onAgentDelta?.(`${line}\n`);
+    state.responseAgent = `${state.responseAgent || ""}${line}\n`;
+  }
+  const event = toAgentRunEvent(item, { done });
+  if (event) {
+    event.status = status;
+    await recordAgentEvent(state, callbacks, event);
+  }
+}
+
 function isResponsesPartialImageEvent(
   eventName: string,
   payload: Record<string, unknown>
@@ -1819,18 +1929,11 @@ async function processResponsesEventPayload(
   }
 
   if (eventName === "response.output_item.done") {
-    const item = payload.item as ResponsesOutputItem | undefined;
-    if (shouldReportResponsesToolItem(eventName, item)) {
-      const line = describeResponsesToolItem(item, { done: true });
-      if (line) {
-        await callbacks?.onAgentDelta?.(`${line}\n`);
-        state.responseAgent = `${state.responseAgent || ""}${line}\n`;
-      }
-      const event = toAgentRunEvent(item, { done: true });
-      if (event) {
-        await recordAgentEvent(state, callbacks, event);
-      }
-    }
+    const item = updateStreamItem(
+      state,
+      payload.item as ResponsesOutputItem | undefined
+    );
+    await reportResponsesToolEvent(state, callbacks, item, "completed");
     if (item?.type === "image_generation_call" && item.result) {
       const imageOutputCount =
         (state.fallbackResult?.imageOutputCount || 0) + 1;
@@ -1872,18 +1975,34 @@ async function processResponsesEventPayload(
   }
 
   if (eventName === "response.output_item.added") {
-    const item = payload.item as ResponsesOutputItem | undefined;
-    if (shouldReportResponsesToolItem(eventName, item)) {
-      const line = describeResponsesToolItem(item);
-      if (line) {
-        await callbacks?.onAgentDelta?.(`${line}\n`);
-        state.responseAgent = `${state.responseAgent || ""}${line}\n`;
-      }
-      const event = toAgentRunEvent(item);
-      if (event) {
-        await recordAgentEvent(state, callbacks, event);
-      }
-    }
+    const item = updateStreamItem(
+      state,
+      payload.item as ResponsesOutputItem | undefined
+    );
+    await reportResponsesToolEvent(state, callbacks, item, "started");
+    return null;
+  }
+
+  if (
+    eventName === "response.output_item.in_progress" ||
+    eventName === "response.web_search_call.in_progress" ||
+    eventName === "response.code_interpreter_call.in_progress" ||
+    eventName === "response.image_generation_call.in_progress"
+  ) {
+    const item = updateStreamItem(state, getStreamItem(state, payload));
+    await reportResponsesToolEvent(state, callbacks, item, "running");
+    return null;
+  }
+
+  if (
+    eventName === "response.output_item.delta" ||
+    eventName === "response.web_search_call.searching" ||
+    eventName === "response.web_search_call.in_progress" ||
+    eventName === "response.code_interpreter_call.code.delta" ||
+    eventName === "response.function_call_arguments.delta"
+  ) {
+    const item = getStreamDeltaItem(state, payload);
+    await reportResponsesToolEvent(state, callbacks, item, "running");
     return null;
   }
 
@@ -2104,6 +2223,8 @@ type EventStreamParseState = {
   fallbackResult: ResponsesResultWithOutput | null;
   responseAgent?: string;
   agentEvents?: AgentRunEvent[];
+  streamItems?: Record<string, ResponsesOutputItem>;
+  emittedToolEvents?: Record<string, AgentRunEventStatus>;
 };
 
 async function processEventPayload(
@@ -2730,7 +2851,7 @@ export async function generateChatImage(
             ...(stream ? { stream: true } : {}),
           };
 
-    let result: ResponsesResultWithOutput;
+    let result: ResponsesResultWithOutput | undefined;
     if (params.agentMode && !params.rawResponsesBody) {
       const maxRounds = await getAgentMaxRounds();
       const roundResults: ResponsesResultWithOutput[] = [];
@@ -2829,7 +2950,9 @@ export async function generateChatImage(
         });
       }
 
-      result = mergeGenerateImageResults(roundResults);
+      if (!result) {
+        result = mergeGenerateImageResults(roundResults);
+      }
     } else {
       result = await fetchResponses(
         config,
@@ -2840,6 +2963,10 @@ export async function generateChatImage(
         },
         callbacks
       );
+    }
+
+    if (!result) {
+      result = { error: "API returned no image data" };
     }
 
     if (params.agentMode && params.rawResponsesBody) {
