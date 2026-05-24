@@ -1223,6 +1223,7 @@ async function fetchResponses(
       headers: getHeaders(config, {
         "Content-Type": "application/json",
         Accept: options.stream ? "text/event-stream" : "application/json",
+        ...(options.stream ? { "Accept-Encoding": "identity" } : {}),
       }),
       body: JSON.stringify(requestBody),
     }
@@ -2114,12 +2115,20 @@ async function reportResponsesToolEvent(
   }
 
   const done = status === "completed";
-  const line = describeResponsesToolItem(item, { done });
+  const displayItem: ResponsesOutputItem = {
+    ...item,
+    status: done
+      ? "completed"
+      : status === "running"
+        ? item.status || "in_progress"
+        : status,
+  };
+  const line = describeResponsesToolItem(displayItem, { done });
   if (line) {
     await callbacks?.onAgentDelta?.(`${line}\n`);
     state.responseAgent = `${state.responseAgent || ""}${line}\n`;
   }
-  const event = toAgentRunEvent(item, { done });
+  const event = toAgentRunEvent(displayItem, { done });
   if (event) {
     event.status = status;
     await recordAgentEvent(state, callbacks, event);
