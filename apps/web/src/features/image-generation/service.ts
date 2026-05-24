@@ -1890,6 +1890,116 @@ async function emitAgentRoundRequestStatus(
   });
 }
 
+function createAgentRoundRequestTracker(
+  callbacks: ImageGenerationCallbacks | undefined,
+  round: number
+) {
+  const startedAt = Date.now();
+  let stopped = false;
+  let settled = false;
+  let interval: ReturnType<typeof setInterval> | undefined;
+
+  const emitStatus = async (
+    status: AgentRunEventStatus,
+    detail: string,
+    options: { rawLog?: boolean } = {}
+  ) => {
+    const event: AgentRunEvent = {
+      id: `agent-round-${round}-upstream`,
+      kind: "tool",
+      status,
+      title: "等待 Codex/Responses 上游响应",
+      detail,
+      timestamp: new Date().toISOString(),
+      toolType: "agent_round_request",
+    };
+    if (options.rawLog) {
+      await emitAgentProgress(callbacks, event);
+      return;
+    }
+    await emitAgentEvent(callbacks, event);
+  };
+
+  if (callbacks) {
+    interval = setInterval(() => {
+      if (stopped || settled) return;
+      const elapsedSeconds = Math.max(
+        5,
+        Math.floor((Date.now() - startedAt) / 1000)
+      );
+      void emitStatus(
+        "running",
+        `模型仍在处理，已等待 ${elapsedSeconds} 秒`
+      ).catch((error) => {
+        logWarn("Agent round heartbeat failed", { error });
+      });
+    }, 5_000);
+  }
+
+  const stopTimer = () => {
+    stopped = true;
+    if (interval) {
+      clearInterval(interval);
+      interval = undefined;
+    }
+  };
+
+  const markReceived = async () => {
+    if (settled) return;
+    settled = true;
+    stopTimer();
+    await emitStatus("completed", "已收到上游流式响应，正在继续处理");
+  };
+
+  const finish = async (params: { error?: string }) => {
+    stopTimer();
+    if (params.error) {
+      settled = true;
+      await emitStatus("failed", params.error, { rawLog: true });
+      return;
+    }
+    if (!settled) {
+      settled = true;
+      await emitStatus("completed", "上游响应已返回，正在整理本轮结果", {
+        rawLog: true,
+      });
+    }
+  };
+
+  const wrapCallbacks = (): ImageGenerationCallbacks | undefined => {
+    if (!callbacks) return undefined;
+    return {
+      ...callbacks,
+      onPartialImage: async (image) => {
+        await markReceived();
+        await callbacks.onPartialImage?.(image);
+      },
+      onTextDelta: async (delta) => {
+        await markReceived();
+        await callbacks.onTextDelta?.(delta);
+      },
+      onThinkingDelta: async (delta) => {
+        await markReceived();
+        await callbacks.onThinkingDelta?.(delta);
+      },
+      onAgentDelta: async (delta) => {
+        await markReceived();
+        await callbacks.onAgentDelta?.(delta);
+      },
+      onAgentEvent: async (event) => {
+        await markReceived();
+        await callbacks.onAgentEvent?.(event);
+      },
+      onStatusUpdate: callbacks.onStatusUpdate,
+    };
+  };
+
+  return {
+    finish,
+    wrapCallbacks,
+  };
+}
+
 async function recordAgentEvent(
   state: EventStreamParseState,
   callbacks: ImageGenerationCallbacks | undefined,
@@ -3135,6 +3245,11 @@ export async function generateChatImage(
           status: "running",
           detail: "已发送请求，等待模型返回工具调用、文本或图片",
         });
+        const roundRequestTracker = createAgentRoundRequestTracker(
+          callbacks,
+          round
+        );
+        const roundCallbacks = roundRequestTracker.wrapCallbacks();
         let roundResult: ResponsesResultWithOutput;
         try {
           roundResult = await fetchAgentRoundResponses({
@@ -3142,7 +3257,7 @@ export async function generateChatImage(
             requestBody: roundRequestBody,
             signal: params.signal,
             stream,
-            callbacks,
+            callbacks: roundCallbacks,
           });
           if (
             round === 1 &&
@@ -3160,7 +3275,7 @@ export async function generateChatImage(
               },
               signal: params.signal,
               stream,
-              callbacks,
+              callbacks: roundCallbacks,
             });
           }
           if (
@@ -3194,7 +3309,7 @@ export async function generateChatImage(
               },
               signal: params.signal,
               stream,
-              callbacks,
+              callbacks: roundCallbacks,
             });
           }
         } catch (error) {
@@ -3203,13 +3318,7 @@ export async function generateChatImage(
               error instanceof Error ? error.message : "Unknown error occurred",
           };
         }
-        await emitAgentRoundRequestStatus(callbacks, {
-          round,
-          status: roundResult.error ? "failed" : "completed",
-          detail: roundResult.error
-            ? roundResult.error
-            : "上游响应已返回，正在整理本轮结果",
-        });
+        await roundRequestTracker.finish({ error: roundResult.error });
         roundResults.push(roundResult);
         if (agentPreviousResponseEnabled && roundResult.responseId) {
           agentPreviousResponseId = roundResult.responseId;

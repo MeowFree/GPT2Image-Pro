@@ -4652,12 +4652,14 @@ export function CreatePageClient({
             />
           </div>
         )}
-        {!chatStream.text && !chatStream.imageUrl && (
+        {!chatStream.text &&
+          !chatStream.imageUrl &&
+          chatStream.agentEvents.length === 0 && (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             {copy("Generating...", "生成中...")}
           </div>
-        )}
+          )}
       </div>
     );
   };
