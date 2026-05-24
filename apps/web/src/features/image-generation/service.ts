@@ -3179,11 +3179,6 @@ export async function generateChatImage(
           timestamp: new Date().toISOString(),
         });
 
-        if (round >= maxRounds) {
-          result = mergeGenerateImageResults(roundResults);
-          break;
-        }
-
         const continueCalls = getContinueGenerationFunctionCalls(
           roundResult.outputItems
         );
@@ -3213,6 +3208,18 @@ export async function generateChatImage(
               ? `系统已开启强制迭代，将继续执行第 ${round + 1} 轮`
               : `已完成强制迭代轮数 ${maxRounds}`,
           });
+        }
+
+        if (round >= maxRounds) {
+          if (continueCalls.length > 0) {
+            await emitAgentDecision(callbacks, {
+              status: "completed",
+              title: "Agent 最大轮数完成",
+              detail: `模型请求继续，但已达到最大轮数 ${maxRounds}`,
+            });
+          }
+          result = mergeGenerateImageResults(roundResults);
+          break;
         }
 
         if (hasAgentImage(roundResult)) {
