@@ -1112,9 +1112,14 @@ async function fetchAgentRoundResponses(params: {
 
   const unsupportedTools = getUnsupportedToolTypes(result);
   if (unsupportedTools.size > 0) {
-    await params.callbacks?.onAgentDelta?.(
-      `部分 Codex/Responses 工具不可用，已移除 ${Array.from(unsupportedTools).join(", ")} 后重试\n`
-    );
+    await emitAgentProgress(params.callbacks, {
+      kind: "tool",
+      status: "completed",
+      title: "工具兼容性调整",
+      detail: `已移除 ${Array.from(unsupportedTools).join(", ")} 后重试`,
+      timestamp: new Date().toISOString(),
+      toolType: "agent_tool_compat",
+    });
     result = await fetchResponses(
       params.config,
       stripToolTypes(params.requestBody, unsupportedTools),
@@ -1127,9 +1132,14 @@ async function fetchAgentRoundResponses(params: {
 
     const secondUnsupportedTools = getUnsupportedToolTypes(result);
     if (secondUnsupportedTools.size > 0) {
-      await params.callbacks?.onAgentDelta?.(
-        "扩展工具仍不可用，已切换为仅保留图片生成工具重试\n"
-      );
+      await emitAgentProgress(params.callbacks, {
+        kind: "tool",
+        status: "completed",
+        title: "工具兼容性调整",
+        detail: "扩展工具仍不可用，已切换为仅保留图片生成工具重试",
+        timestamp: new Date().toISOString(),
+        toolType: "agent_tool_compat",
+      });
       result = await fetchResponses(
         params.config,
         stripToolTypes(
@@ -1989,10 +1999,12 @@ async function processResponsesEventPayload(
   } catch {
     return null;
   }
+  const streamEventName =
+    eventName || (typeof payload.type === "string" ? payload.type : "");
 
   if (
-    eventName === "response.failed" ||
-    eventName === "error" ||
+    streamEventName === "response.failed" ||
+    streamEventName === "error" ||
     payload.type === "response.failed" ||
     payload.type === "error"
   ) {
@@ -2004,7 +2016,7 @@ async function processResponsesEventPayload(
     return `${message} ${JSON.stringify(retryMetadata)}`;
   }
 
-  if (eventName === "response.output_item.done") {
+  if (streamEventName === "response.output_item.done") {
     const item = updateStreamItem(
       state,
       payload.item as ResponsesOutputItem | undefined
@@ -2051,7 +2063,7 @@ async function processResponsesEventPayload(
     return null;
   }
 
-  if (eventName === "response.output_item.added") {
+  if (streamEventName === "response.output_item.added") {
     const item = updateStreamItem(
       state,
       payload.item as ResponsesOutputItem | undefined
@@ -2061,31 +2073,31 @@ async function processResponsesEventPayload(
   }
 
   if (
-    eventName === "response.output_item.in_progress" ||
-    eventName === "response.web_search_call.in_progress" ||
-    eventName === "response.code_interpreter_call.in_progress" ||
-    eventName === "response.image_generation_call.in_progress"
+    streamEventName === "response.output_item.in_progress" ||
+    streamEventName === "response.web_search_call.in_progress" ||
+    streamEventName === "response.code_interpreter_call.in_progress" ||
+    streamEventName === "response.image_generation_call.in_progress"
   ) {
-    const item = getStreamToolItem(state, eventName, payload);
+    const item = getStreamToolItem(state, streamEventName, payload);
     await reportResponsesToolEvent(state, callbacks, item, "running");
     return null;
   }
 
   if (
-    eventName === "response.output_item.delta" ||
-    eventName === "response.web_search_call.searching" ||
-    eventName === "response.web_search_call.in_progress" ||
-    eventName === "response.code_interpreter_call.code.delta" ||
-    eventName === "response.function_call_arguments.delta"
+    streamEventName === "response.output_item.delta" ||
+    streamEventName === "response.web_search_call.searching" ||
+    streamEventName === "response.web_search_call.in_progress" ||
+    streamEventName === "response.code_interpreter_call.code.delta" ||
+    streamEventName === "response.function_call_arguments.delta"
   ) {
     const item =
       getStreamDeltaItem(state, payload) ||
-      getStreamToolItem(state, eventName, payload);
+      getStreamToolItem(state, streamEventName, payload);
     await reportResponsesToolEvent(state, callbacks, item, "running");
     return null;
   }
 
-  if (isResponsesPartialImageEvent(eventName, payload)) {
+  if (isResponsesPartialImageEvent(streamEventName, payload)) {
     const partialImage = extractPartialImage(payload as ImageResponsePayload);
     if (partialImage) {
       await recordAgentEvent(state, callbacks, {
@@ -2100,14 +2112,14 @@ async function processResponsesEventPayload(
         toolType:
           typeof payload.type === "string"
             ? payload.type
-            : eventName || undefined,
+            : streamEventName || undefined,
       });
       await callbacks?.onPartialImage?.(partialImage);
     }
     return null;
   }
 
-  if (eventName === "response.output_text.delta") {
+  if (streamEventName === "response.output_text.delta") {
     const delta = payload.delta;
     if (typeof delta === "string" && delta) {
       await callbacks?.onTextDelta?.(delta);
@@ -2121,7 +2133,7 @@ async function processResponsesEventPayload(
     return null;
   }
 
-  if (eventName === "response.reasoning_summary_text.delta") {
+  if (streamEventName === "response.reasoning_summary_text.delta") {
     const delta = payload.delta;
     if (typeof delta === "string" && delta) {
       await callbacks?.onThinkingDelta?.(delta);
@@ -2135,7 +2147,7 @@ async function processResponsesEventPayload(
     return null;
   }
 
-  if (eventName === "response.completed") {
+  if (streamEventName === "response.completed") {
     const completedPayload = extractResponseCompletedPayload(
       payload as ResponsesPayload | { response?: ResponsesPayload }
     );
