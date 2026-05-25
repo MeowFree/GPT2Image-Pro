@@ -18,6 +18,12 @@ import { getUserRoleById } from "@repo/shared/auth/role-server";
 import { canViewImageBackendPool } from "@repo/shared/auth/roles";
 import { getServerSession } from "@repo/shared/auth/server";
 import { formatCredits } from "@repo/shared/credits/format";
+import {
+  formatDateInTimeZone,
+  formatDateInputInTimeZone,
+  parseDateInputInTimeZone,
+} from "@repo/shared/time-zone";
+import { getAppTimeZone } from "@repo/shared/time-zone/server";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import {
@@ -28,6 +34,11 @@ import {
   CardTitle,
 } from "@repo/ui/components/card";
 import { Progress } from "@repo/ui/components/progress";
+import {
+  AUTO_IMAGE_SIZE,
+  IMAGE_1K_BASE_EDGE,
+  normalizeValidImageSize,
+} from "@/features/image-generation/resolution";
 import { classifyGenerationError } from "@/features/image-generation/sla";
 
 export const dynamic = "force-dynamic";
@@ -50,10 +61,30 @@ type GenerationMetricRow = {
   error: string | null;
   creditsConsumed: number;
   storageKey: string | null;
+  size: string;
   createdAt: Date;
   completedAt: Date | null;
   metadata: Record<string, unknown> | null;
 };
+
+const RESOLUTION_DURATION_BUCKETS = ["4k", "2k", "1k", "custom"] as const;
+const BACKEND_DURATION_BUCKETS = ["web", "codex"] as const;
+
+type ResolutionDurationBucket = (typeof RESOLUTION_DURATION_BUCKETS)[number];
+type BackendDurationBucket = (typeof BACKEND_DURATION_BUCKETS)[number];
+type DurationBucketStats = {
+  count: number;
+  avgSeconds: number | null;
+  p95Seconds: number | null;
+};
+type DurationBreakdown = Record<
+  ResolutionDurationBucket,
+  Record<BackendDurationBucket, DurationBucketStats>
+>;
+type DurationAccumulator = Record<
+  ResolutionDurationBucket,
+  Record<BackendDurationBucket, number[]>
+>;
 
 type GenerationWindowStats = {
   total: number;
@@ -69,6 +100,7 @@ type GenerationWindowStats = {
   userRequestErrors: number;
   avgSeconds: number | null;
   p95Seconds: number | null;
+  durationBreakdown: DurationBreakdown;
 };
 
 type BackendHealthStats = {
@@ -131,27 +163,29 @@ function parsePositiveInteger(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
-function parseDateInput(value: string | undefined, endOfDay = false) {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const suffix = endOfDay ? "T23:59:59.999Z" : "T00:00:00.000Z";
-  const date = new Date(`${value}${suffix}`);
-  return Number.isNaN(date.getTime()) ? null : date;
+function parseDateInput(
+  value: string | undefined,
+  timeZone: string,
+  endOfDay = false
+) {
+  return parseDateInputInTimeZone(value, { timeZone, endOfDay });
 }
 
-function formatDateInput(date: Date) {
-  return date.toISOString().slice(0, 10);
+function formatDateInput(date: Date, timeZone: string) {
+  return formatDateInputInTimeZone(date, timeZone);
 }
 
 function parseHistoricalErrorFilters(
   searchParams: GlobalStatusPageProps["searchParams"] extends Promise<infer T>
     ? T
-    : never
+    : never,
+  timeZone: string
 ): HistoricalErrorFilters {
   const range = normalizeErrorRange(searchParams.errorRange);
   const now = new Date();
   const page = parsePositiveInteger(searchParams.errorPage, 1);
-  const customFrom = parseDateInput(searchParams.errorFrom);
-  const customTo = parseDateInput(searchParams.errorTo, true);
+  const customFrom = parseDateInput(searchParams.errorFrom, timeZone);
+  const customTo = parseDateInput(searchParams.errorTo, timeZone, true);
 
   if (range === "all") {
     return {
@@ -187,8 +221,8 @@ function parseHistoricalErrorFilters(
 
   return {
     range,
-    fromInput: formatDateInput(fromDate),
-    toInput: formatDateInput(now),
+    fromInput: formatDateInput(fromDate, timeZone),
+    toInput: formatDateInput(now, timeZone),
     fromDate,
     toDate: null,
     page,
@@ -202,12 +236,12 @@ function buildHistoricalErrorWhere(filters: HistoricalErrorFilters) {
   return and(...conditions);
 }
 
-function formatDateTime(value: Date | null, locale: string) {
+function formatDateTime(value: Date | null, locale: string, timeZone: string) {
   if (!value) return copy(locale, "Not recorded", "未记录");
-  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
+  return formatDateInTimeZone(value, locale, {
     dateStyle: "medium",
     timeStyle: "medium",
-  }).format(value);
+  }, timeZone);
 }
 
 function truncateText(value: string | null, length: number) {
@@ -247,6 +281,79 @@ function numberFrom(value: unknown) {
   return null;
 }
 
+function stringFrom(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+const RESOLUTION_RATIO_PRESETS = [
+  { width: 1, height: 1 },
+  { width: 3, height: 2 },
+  { width: 2, height: 3 },
+  { width: 16, height: 9 },
+  { width: 9, height: 16 },
+  { width: 4, height: 3 },
+  { width: 3, height: 4 },
+  { width: 21, height: 9 },
+] as const;
+
+function buildResolutionPresetSizes(edge: number) {
+  const sizes = new Set<string>();
+  for (const ratio of RESOLUTION_RATIO_PRESETS) {
+    const landscape = ratio.width >= ratio.height;
+    const rawWidth = landscape
+      ? edge
+      : (edge * ratio.width) / ratio.height;
+    const rawHeight = landscape
+      ? (edge * ratio.height) / ratio.width
+      : edge;
+    sizes.add(normalizeValidImageSize({ width: rawWidth, height: rawHeight }));
+  }
+  return sizes;
+}
+
+const RESOLUTION_PRESET_SIZES: Record<
+  Exclude<ResolutionDurationBucket, "custom">,
+  Set<string>
+> = {
+  "1k": buildResolutionPresetSizes(IMAGE_1K_BASE_EDGE),
+  "2k": buildResolutionPresetSizes(2048),
+  "4k": buildResolutionPresetSizes(3840),
+};
+for (const legacySize of ["1024x1024", "1536x1024", "1024x1536"]) {
+  RESOLUTION_PRESET_SIZES["1k"].add(legacySize);
+}
+
+function classifyResolutionDurationBucket(
+  size: string | null | undefined
+): ResolutionDurationBucket {
+  const normalized = size?.trim().toLowerCase();
+  if (!normalized || normalized === AUTO_IMAGE_SIZE) return "custom";
+
+  if (RESOLUTION_PRESET_SIZES["4k"].has(normalized)) return "4k";
+  if (RESOLUTION_PRESET_SIZES["2k"].has(normalized)) return "2k";
+  if (RESOLUTION_PRESET_SIZES["1k"].has(normalized)) return "1k";
+  return "custom";
+}
+
+function getRequestedGenerationSize(row: GenerationMetricRow) {
+  const outputImage = asRecord(asRecord(row.metadata)?.outputImage);
+  return (
+    stringFrom(outputImage?.requestedSize) ||
+    stringFrom(outputImage?.actualSize) ||
+    stringFrom(row.size)
+  );
+}
+
+function getBackendDurationBucket(
+  row: GenerationMetricRow
+): BackendDurationBucket | null {
+  const backend = asRecord(asRecord(row.metadata)?.backend);
+  const accountBackend = backend?.accountBackend;
+  if (accountBackend === "web") return "web";
+  if (accountBackend === "responses") return "codex";
+  return null;
+}
+
 function getProducedImageCount(row: GenerationMetricRow) {
   if (row.status !== "completed") return 0;
 
@@ -279,6 +386,50 @@ function percentile(values: number[], p: number) {
   return sorted[index] ?? null;
 }
 
+function summarizeDurations(values: number[]): DurationBucketStats {
+  const avgSeconds =
+    values.length > 0
+      ? values.reduce((total, item) => total + item, 0) / values.length
+      : null;
+  return {
+    count: values.length,
+    avgSeconds,
+    p95Seconds: percentile(values, 0.95),
+  };
+}
+
+function createDurationAccumulator(): DurationAccumulator {
+  return {
+    "4k": { web: [], codex: [] },
+    "2k": { web: [], codex: [] },
+    "1k": { web: [], codex: [] },
+    custom: { web: [], codex: [] },
+  };
+}
+
+function buildDurationBreakdown(
+  accumulator: DurationAccumulator
+): DurationBreakdown {
+  return {
+    "4k": {
+      web: summarizeDurations(accumulator["4k"].web),
+      codex: summarizeDurations(accumulator["4k"].codex),
+    },
+    "2k": {
+      web: summarizeDurations(accumulator["2k"].web),
+      codex: summarizeDurations(accumulator["2k"].codex),
+    },
+    "1k": {
+      web: summarizeDurations(accumulator["1k"].web),
+      codex: summarizeDurations(accumulator["1k"].codex),
+    },
+    custom: {
+      web: summarizeDurations(accumulator.custom.web),
+      codex: summarizeDurations(accumulator.custom.codex),
+    },
+  };
+}
+
 function buildGenerationWindowStats(
   rows: GenerationMetricRow[]
 ): GenerationWindowStats {
@@ -291,6 +442,7 @@ function buildGenerationWindowStats(
   let moderationErrors = 0;
   let userRequestErrors = 0;
   const durations: number[] = [];
+  const durationAccumulator = createDurationAccumulator();
 
   for (const row of rows) {
     creditsConsumed += Number(row.creditsConsumed) || 0;
@@ -299,12 +451,20 @@ function buildGenerationWindowStats(
     if (row.status === "completed") {
       completed += 1;
       if (row.completedAt) {
-        durations.push(
-          Math.max(
-            0,
-            Math.round((row.completedAt.getTime() - row.createdAt.getTime()) / 1000)
+        const duration = Math.max(
+          0,
+          Math.round(
+            (row.completedAt.getTime() - row.createdAt.getTime()) / 1000
           )
         );
+        durations.push(duration);
+        const backendBucket = getBackendDurationBucket(row);
+        if (backendBucket) {
+          const resolutionBucket = classifyResolutionDurationBucket(
+            getRequestedGenerationSize(row)
+          );
+          durationAccumulator[resolutionBucket][backendBucket].push(duration);
+        }
       }
       continue;
     }
@@ -346,6 +506,7 @@ function buildGenerationWindowStats(
     userRequestErrors,
     avgSeconds,
     p95Seconds: percentile(durations, 0.95),
+    durationBreakdown: buildDurationBreakdown(durationAccumulator),
   };
 }
 
@@ -541,8 +702,107 @@ function SlaCard({
             {formatDuration(stats.avgSeconds, locale)}
           </span>
         </div>
+        <DurationBreakdownTable
+          breakdown={stats.durationBreakdown}
+          locale={locale}
+        />
       </CardContent>
     </Card>
+  );
+}
+
+function resolutionDurationLabel(
+  bucket: ResolutionDurationBucket,
+  locale: string
+) {
+  if (bucket === "custom") return copy(locale, "Custom", "自定义");
+  return bucket.toUpperCase();
+}
+
+function backendDurationLabel(bucket: BackendDurationBucket) {
+  return bucket === "web" ? "Web" : "Codex";
+}
+
+function DurationBucketCell({
+  stats,
+  locale,
+}: {
+  stats: DurationBucketStats;
+  locale: string;
+}) {
+  if (stats.count === 0) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        {copy(locale, "No sample", "暂无样本")}
+      </span>
+    );
+  }
+
+  return (
+    <div className="space-y-0.5">
+      <div className="font-medium">
+        P95 {formatDuration(stats.p95Seconds, locale)}
+      </div>
+      <div className="text-[11px] text-muted-foreground">
+        {copy(locale, "Avg", "平均")} {formatDuration(stats.avgSeconds, locale)}
+        {" · n="}
+        {formatNumber(stats.count, locale)}
+      </div>
+    </div>
+  );
+}
+
+function DurationBreakdownTable({
+  breakdown,
+  locale,
+}: {
+  breakdown: DurationBreakdown;
+  locale: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-medium">
+          {copy(locale, "Duration by size and backend", "按分辨率和后端耗时")}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {copy(locale, "Completed records only", "仅统计完成记录")}
+        </span>
+      </div>
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full min-w-[420px] text-left text-xs">
+          <thead className="bg-muted/40 text-muted-foreground">
+            <tr>
+              <th className="w-24 px-3 py-2 font-medium">
+                {copy(locale, "Size", "分辨率")}
+              </th>
+              {BACKEND_DURATION_BUCKETS.map((backend) => (
+                <th key={backend} className="px-3 py-2 font-medium">
+                  {backendDurationLabel(backend)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {RESOLUTION_DURATION_BUCKETS.map((bucket) => (
+              <tr key={bucket} className="border-t">
+                <td className="px-3 py-2 font-medium">
+                  {resolutionDurationLabel(bucket, locale)}
+                </td>
+                {BACKEND_DURATION_BUCKETS.map((backend) => (
+                  <td key={backend} className="px-3 py-2 align-top">
+                    <DurationBucketCell
+                      stats={breakdown[bucket][backend]}
+                      locale={locale}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -609,14 +869,18 @@ function errorCategoryLabel(
   return copy(locale, "Platform", "平台");
 }
 
-function describeErrorFilter(filters: HistoricalErrorFilters, locale: string) {
+function describeErrorFilter(
+  filters: HistoricalErrorFilters,
+  locale: string,
+  timeZone: string
+) {
   if (filters.range === "all") return copy(locale, "All history", "全部历史");
   if (filters.range === "custom") {
     const from = filters.fromDate
-      ? formatDateInput(filters.fromDate)
+      ? formatDateInput(filters.fromDate, timeZone)
       : copy(locale, "Unbounded", "不限");
     const to = filters.toDate
-      ? formatDateInput(filters.toDate)
+      ? formatDateInput(filters.toDate, timeZone)
       : copy(locale, "Unbounded", "不限");
     return `${copy(locale, "Custom", "自定义")}：${from} - ${to}`;
   }
@@ -630,10 +894,12 @@ function HistoricalErrorsCard({
   errors,
   filters,
   locale,
+  timeZone,
 }: {
   errors: Awaited<ReturnType<typeof loadHistoricalGenerationErrors>>;
   filters: HistoricalErrorFilters;
   locale: string;
+  timeZone: string;
 }) {
   const totalPages = Math.max(1, Math.ceil(errors.total / errors.pageSize));
   const page = Math.min(errors.page, totalPages);
@@ -710,7 +976,7 @@ function HistoricalErrorsCard({
 
         <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
           <div>
-            {describeErrorFilter(filters, locale)} ·{" "}
+            {describeErrorFilter(filters, locale, timeZone)} ·{" "}
             {copy(locale, "Total", "共")} {formatNumber(errors.total, locale)}{" "}
             {copy(locale, "records", "条")}
           </div>
@@ -757,12 +1023,16 @@ function HistoricalErrorsCard({
                     <tr key={item.id} className="align-top">
                       <td className="px-3 py-3">
                         <div className="font-medium">
-                          {formatDateTime(item.createdAt, locale)}
+                          {formatDateTime(item.createdAt, locale, timeZone)}
                         </div>
                         {item.completedAt && (
                           <div className="mt-1 text-xs text-muted-foreground">
                             {copy(locale, "Completed", "结束")}{" "}
-                            {formatDateTime(item.completedAt, locale)}
+                            {formatDateTime(
+                              item.completedAt,
+                              locale,
+                              timeZone
+                            )}
                           </div>
                         )}
                         <div className="mt-1 break-all text-xs text-muted-foreground">
@@ -867,6 +1137,7 @@ async function loadStatusData() {
         error: generation.error,
         creditsConsumed: generation.creditsConsumed,
         storageKey: generation.storageKey,
+        size: generation.size,
         createdAt: generation.createdAt,
         completedAt: generation.completedAt,
         metadata: generation.metadata,
@@ -1124,13 +1395,15 @@ export default async function GlobalStatusPage({
     redirect(`/${locale}/dashboard`);
   }
 
-  const params = await searchParams;
-  const errorFilters = parseHistoricalErrorFilters(params);
+  const [params, timeZone] = await Promise.all([
+    searchParams,
+    getAppTimeZone(),
+  ]);
+  const errorFilters = parseHistoricalErrorFilters(params, timeZone);
   const [data, historicalErrors] = await Promise.all([
     loadStatusData(),
     loadHistoricalGenerationErrors(errorFilters),
   ]);
-  const isZh = locale === "zh";
   const generationTotals = data.generationTotals;
   const creditBalance = data.credits.balance;
   const backendTotal = data.accounts.total + data.apis.total;
@@ -1154,10 +1427,7 @@ export default async function GlobalStatusPage({
         </div>
         <Badge variant="outline" className="w-fit">
           {copy(locale, "Updated", "更新时间")}{" "}
-          {new Intl.DateTimeFormat(isZh ? "zh-CN" : "en-US", {
-            dateStyle: "medium",
-            timeStyle: "medium",
-          }).format(data.now)}
+          {formatDateTime(data.now, locale, timeZone)}
         </Badge>
       </div>
 
@@ -1450,6 +1720,7 @@ export default async function GlobalStatusPage({
         errors={historicalErrors}
         filters={errorFilters}
         locale={locale}
+        timeZone={timeZone}
       />
     </div>
   );
