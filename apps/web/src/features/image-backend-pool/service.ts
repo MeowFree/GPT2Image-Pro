@@ -59,6 +59,8 @@ import type {
   ImageBackendRequestKind,
 } from "./types";
 
+const MANUAL_TOKEN_IMPORT_LIMIT = 10_000;
+
 type ResolveBackendOptions = {
   userId: string;
   apiKeyId?: string;
@@ -2331,7 +2333,11 @@ export async function importImageBackendWebAccountsFromAccessTokens(input: {
   const parsedTokens = parseImportTokensText(input.accessTokensText, {
     plainFallback: "access",
   });
-  const accessTokens = parsedTokens.accessTokens.slice(0, 200);
+  const parsedAccessTokenCount = parsedTokens.accessTokens.length;
+  const accessTokens = parsedTokens.accessTokens.slice(
+    0,
+    MANUAL_TOKEN_IMPORT_LIMIT
+  );
   const syncedByMode: Record<ImageBackendAccountBackend, number> = {
     web: 0,
     responses: 0,
@@ -2368,13 +2374,16 @@ export async function importImageBackendWebAccountsFromAccessTokens(input: {
   );
 
   return {
-    sourceCount: accessTokens.length,
+    sourceCount: parsedAccessTokenCount,
     syncedCount: importedIds.length,
     syncedByMode,
     skipped,
     failed: failedByMode.web + failedByMode.responses,
     failedByMode,
-    message: "已导入 Web AT。该类账号没有 RT，AT 过期后需要重新导入。",
+    message:
+      parsedAccessTokenCount > accessTokens.length
+        ? `已导入前 ${accessTokens.length} 个 Web AT，超出 ${MANUAL_TOKEN_IMPORT_LIMIT} 个的部分已跳过。该类账号没有 RT，AT 过期后需要重新导入。`
+        : "已导入 Web AT。该类账号没有 RT，AT 过期后需要重新导入。",
   };
 }
 
@@ -2393,7 +2402,11 @@ export async function importImageBackendAccountsFromRefreshTokens(input: {
   const parsedTokens = parseImportTokensText(input.refreshTokensText, {
     plainFallback: "refresh",
   });
-  const refreshTokens = parsedTokens.refreshTokens.slice(0, 200);
+  const parsedRefreshTokenCount = parsedTokens.refreshTokens.length;
+  const refreshTokens = parsedTokens.refreshTokens.slice(
+    0,
+    MANUAL_TOKEN_IMPORT_LIMIT
+  );
 
   const effectiveSyncMode = input.useMobileRt ? input.syncMode : "responses";
   const modes =
@@ -2566,14 +2579,17 @@ export async function importImageBackendAccountsFromRefreshTokens(input: {
   }
 
   return {
-    sourceCount: refreshTokens.length,
+    sourceCount: parsedRefreshTokenCount,
     syncedCount: importedIds.length,
     syncedByMode,
     skipped,
     failed: failedByMode.web + failedByMode.responses,
     failedByMode,
     refreshTokenRotatedCount,
-    message: null as string | null,
+    message:
+      parsedRefreshTokenCount > refreshTokens.length
+        ? `已导入前 ${refreshTokens.length} 个 RT，超出 ${MANUAL_TOKEN_IMPORT_LIMIT} 个的部分已跳过。`
+        : (null as string | null),
   };
 }
 

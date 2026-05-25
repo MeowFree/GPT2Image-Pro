@@ -23,7 +23,7 @@ const nextConfig = {
   experimental: {
     proxyClientMaxBodySize: "200mb",
     serverActions: {
-      bodySizeLimit: "20mb",
+      bodySizeLimit: "100mb",
     },
   },
   // Transpile monorepo packages
