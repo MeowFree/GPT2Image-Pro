@@ -618,6 +618,8 @@ export const ticketStatusEnum = pgEnum("ticket_status", [
  * @field status - 状态 (open/in_progress/resolved/closed)
  * @field userLastSeenAt - 用户最近查看工单详情时间
  * @field lastAdminActivityAt - 最近一次管理员回复或状态更新时间
+ * @field adminLastSeenAt - 管理员最近查看工单详情时间
+ * @field lastUserActivityAt - 最近一次用户新建或回复时间
  * @field createdAt - 创建时间
  * @field updatedAt - 更新时间
  */
@@ -632,6 +634,8 @@ export const ticket = pgTable("ticket", {
   status: ticketStatusEnum("status").notNull().default("open"),
   userLastSeenAt: timestamp("user_last_seen_at").notNull().defaultNow(),
   lastAdminActivityAt: timestamp("last_admin_activity_at"),
+  adminLastSeenAt: timestamp("admin_last_seen_at"),
+  lastUserActivityAt: timestamp("last_user_activity_at").defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -811,6 +815,18 @@ export const externalApiKey = pgTable("external_api_key", {
     () => imageBackendGroup.id,
     { onDelete: "set null" }
   ),
+  creditLimit: numeric("credit_limit", {
+    precision: 18,
+    scale: 2,
+    mode: "number",
+  }),
+  creditsUsed: numeric("credits_used", {
+    precision: 18,
+    scale: 2,
+    mode: "number",
+  })
+    .notNull()
+    .default(0),
   lastUsedAt: timestamp("last_used_at"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),

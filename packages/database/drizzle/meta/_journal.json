@@ -141,6 +141,20 @@
       "when": 1779696060000,
       "tag": "0019_promote_legacy_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1779711733866,
+      "tag": "0020_ticket_admin_unread",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1779713400000,
+      "tag": "0021_external_api_key_quota",
+      "breakpoints": true
     }
   ]
 }
