@@ -22,6 +22,9 @@ const nextConfig = {
   output: "standalone",
   experimental: {
     proxyClientMaxBodySize: "200mb",
+    serverActions: {
+      bodySizeLimit: "20mb",
+    },
   },
   // Transpile monorepo packages
   transpilePackages: ["@repo/ui", "@repo/database", "@repo/shared"],

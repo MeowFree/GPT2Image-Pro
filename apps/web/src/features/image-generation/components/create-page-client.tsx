@@ -5198,10 +5198,15 @@ export function CreatePageClient({
 
   const renderChatStreamBubble = (messageId?: string) => {
     if (!chatStream || chatStream.messageId !== messageId) return null;
+    const isAgentStream = chatStream.mode === "agent";
+    const hasVisibleAgentProgress =
+      isAgentStream && chatStream.agentEvents.length > 0;
     return (
       <div className="rounded-lg border border-border bg-muted/35 px-3 py-3 text-sm text-foreground">
         {renderThinkingBlock(chatStream.thinking, true)}
-        {renderAgentRoundCards(chatStream.agentEvents, chatStream.agent, true)}
+        {hasVisibleAgentProgress
+          ? renderAgentRoundCards(chatStream.agentEvents, chatStream.agent, true)
+          : null}
         {chatStream.text && (
           <p className="whitespace-pre-wrap break-words leading-relaxed">
             {chatStream.text}
@@ -5221,7 +5226,7 @@ export function CreatePageClient({
         )}
         {!chatStream.text &&
           !chatStream.imageUrl &&
-          chatStream.agentEvents.length === 0 && (
+          !hasVisibleAgentProgress && (
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               {copy("Generating...", "生成中...")}
@@ -8412,11 +8417,13 @@ export function CreatePageClient({
                                     activeVariant.responseThinking,
                                     message.mode === "agent"
                                   )}
-                                  {renderAgentRoundCards(
-                                    activeVariant.agentEvents,
-                                    activeVariant.responseAgent,
-                                    message.mode === "agent"
-                                  )}
+                                  {message.mode === "agent"
+                                    ? renderAgentRoundCards(
+                                        activeVariant.agentEvents,
+                                        activeVariant.responseAgent,
+                                        true
+                                      )
+                                    : null}
                                   {activeVariant.responseText && (
                                     <p
                                       className={`whitespace-pre-wrap break-words leading-relaxed ${
