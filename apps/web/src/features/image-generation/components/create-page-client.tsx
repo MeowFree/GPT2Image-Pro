@@ -81,6 +81,7 @@ import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_IMAGE_SIZE,
   getImageCreditCost,
+  type ImageBaseCreditPricing,
   IMAGE_1K_BASE_EDGE,
   IMAGE_DIMENSION_STEP,
   isOneKImageSize,
@@ -1036,6 +1037,7 @@ interface CreatePageClientProps {
   selectedBackendGroupId: string | null;
   customApiActive: boolean;
   moderationEnabled: boolean;
+  imageBasePricing: ImageBaseCreditPricing;
   timeZone: string;
 }
 
@@ -1674,6 +1676,7 @@ export function CreatePageClient({
   selectedBackendGroupId,
   customApiActive,
   moderationEnabled,
+  imageBasePricing,
   timeZone,
 }: CreatePageClientProps) {
   const locale = useLocale();
@@ -1692,6 +1695,14 @@ export function CreatePageClient({
     activeBillingMultiplier === 1
       ? credits
       : roundUpCreditAmount(credits * activeBillingMultiplier);
+  const getPricedImageCreditCost = (
+    requestedSize?: string | null,
+    options: Parameters<typeof getImageCreditCost>[1] = {}
+  ) =>
+    getImageCreditCost(requestedSize, {
+      ...options,
+      basePricing: imageBasePricing,
+    });
   const activeBackendType = selectedBackendGroup?.backendType || "mixed";
   const isWebOnlyBackend = activeBackendType === "web";
   const showImageModelControls = !isWebOnlyBackend;
@@ -2286,8 +2297,11 @@ export function CreatePageClient({
   );
   const size = useAutoSize ? AUTO_IMAGE_SIZE : manualSize;
   const textImageCreditCost = useMemo(
-    () => applyBillingMultiplier(getImageCreditCost(size, moderationCostOptions)),
-    [activeBillingMultiplier, moderationCostOptions, size]
+    () =>
+      applyBillingMultiplier(
+        getPricedImageCreditCost(size, moderationCostOptions)
+      ),
+    [activeBillingMultiplier, imageBasePricing, moderationCostOptions, size]
   );
   const textBatchCreditCost = textImageCreditCost * batchCount;
   const linePromptItems = useMemo(
@@ -2343,12 +2357,14 @@ export function CreatePageClient({
   }, [customEditSize, firstImageOutputSize, useEditFirstImageSize]);
   const editImageCreditCost = effectiveEditSize
     ? applyBillingMultiplier(
-        getImageCreditCost(
+        getPricedImageCreditCost(
           effectiveEditSize,
           getModerationCostOptions(editImages.length)
         )
       )
-    : applyBillingMultiplier(getImageCreditCost(undefined, moderationCostOptions));
+    : applyBillingMultiplier(
+        getPricedImageCreditCost(undefined, moderationCostOptions)
+      );
   const editBatchCreditCost = editImageCreditCost * editBatchCount;
   const chatRoundCreditCost = applyBillingMultiplier(
     capabilities.billing.chatRoundCredits
@@ -2394,7 +2410,7 @@ export function CreatePageClient({
       )
     : undefined;
   const batchSingleCreditCost = applyBillingMultiplier(
-    getImageCreditCost(
+    getPricedImageCreditCost(
       batchFallbackSize,
       getModerationCostOptions(chatImageAttachmentCount)
     )
@@ -5069,7 +5085,7 @@ export function CreatePageClient({
     if (batchStoppedRef.current && !options?.retryCardId) return;
 
     const creditsPerRequest = applyBillingMultiplier(
-      getImageCreditCost(
+      getPricedImageCreditCost(
         fallbackSize,
         getModerationCostOptions(
           attachments.filter((item) => item.kind === "image").length

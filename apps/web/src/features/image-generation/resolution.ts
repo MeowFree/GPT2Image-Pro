@@ -11,7 +11,10 @@ export const MAX_IMAGE_DIMENSION = 3840;
 export const MAX_IMAGE_ASPECT_RATIO = 3;
 export const MIN_IMAGE_PIXELS = 655360;
 export const MAX_IMAGE_PIXELS = 3840 * 2160;
-export const IMAGE_4K_BASE_CREDIT_COST = 10;
+export const IMAGE_1024_BASE_PIXELS = 1024 * 1024;
+export const DEFAULT_IMAGE_1024_BASE_CREDIT_COST = 1.27;
+export const DEFAULT_IMAGE_4K_BASE_CREDIT_COST = 10;
+export const IMAGE_4K_BASE_CREDIT_COST = DEFAULT_IMAGE_4K_BASE_CREDIT_COST;
 export const REFERENCE_CREDIT_PRICE_CNY = 0.05;
 export const TEXT_MODERATION_PRICE_CNY = 0.002;
 export const IMAGE_MODERATION_PRICE_CNY = 0.003;
@@ -61,6 +64,12 @@ export const IMAGE_RESOLUTION_PRESETS = [
 export type ImageCreditCostOptions = {
   textModerationCount?: number;
   imageModerationCount?: number;
+  basePricing?: ImageBaseCreditPricing;
+};
+
+export type ImageBaseCreditPricing = {
+  base1024Credits?: number;
+  base4kCredits?: number;
 };
 
 export function roundCreditAmount(value: number) {
@@ -77,6 +86,47 @@ export function roundUpCreditAmount(value: number) {
   );
 }
 
+function normalizeBaseCreditPrice(value: unknown, fallback: number) {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
+export function getImageBaseCreditPricing(
+  pricing?: ImageBaseCreditPricing | null
+) {
+  return {
+    base1024Credits: normalizeBaseCreditPrice(
+      pricing?.base1024Credits,
+      DEFAULT_IMAGE_1024_BASE_CREDIT_COST
+    ),
+    base4kCredits: normalizeBaseCreditPrice(
+      pricing?.base4kCredits,
+      DEFAULT_IMAGE_4K_BASE_CREDIT_COST
+    ),
+  };
+}
+
+export function getImageBaseCredits(
+  pixels: number,
+  pricing?: ImageBaseCreditPricing | null
+) {
+  const safePixels = Number.isFinite(pixels) && pixels > 0 ? pixels : MAX_IMAGE_PIXELS;
+  const { base1024Credits, base4kCredits } = getImageBaseCreditPricing(pricing);
+  if (safePixels <= IMAGE_1024_BASE_PIXELS) return base1024Credits;
+  if (safePixels >= MAX_IMAGE_PIXELS) return base4kCredits;
+
+  const progress =
+    (safePixels - IMAGE_1024_BASE_PIXELS) /
+    (MAX_IMAGE_PIXELS - IMAGE_1024_BASE_PIXELS);
+  return base1024Credits + (base4kCredits - base1024Credits) * progress;
+}
+
 export function getImageCreditCostBreakdown(
   size?: string | null,
   options: ImageCreditCostOptions = {}
@@ -87,7 +137,7 @@ export function getImageCreditCostBreakdown(
   const pixels = dimensions
     ? dimensions.width * dimensions.height
     : MAX_IMAGE_PIXELS;
-  const baseCredits = (pixels / MAX_IMAGE_PIXELS) * IMAGE_4K_BASE_CREDIT_COST;
+  const baseCredits = getImageBaseCredits(pixels, options.basePricing);
   const textModerationCount = options.textModerationCount ?? 1;
   const imageModerationCount = options.imageModerationCount ?? 0;
   const moderationCny =

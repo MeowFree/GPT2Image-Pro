@@ -9,6 +9,7 @@ import { getAppTimeZone } from "@repo/shared/time-zone/server";
 import { getLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { CreatePageClient } from "@/features/image-generation/components/create-page-client";
+import { getRuntimeImageBaseCreditPricing } from "@/features/image-generation/pricing-settings";
 import { getUserRecentGenerations } from "@/features/image-generation/queries";
 import { getUserApiConfig } from "@/features/image-generation/service";
 import {
@@ -36,7 +37,10 @@ export default async function CreatePage() {
       getUserImageBackendPreference(user.id),
       isContentModerationEnabled(),
     ]);
-  const capabilities = await getPlanCapabilitySnapshot(plan.plan);
+  const [capabilities, imageBasePricing] = await Promise.all([
+    getPlanCapabilitySnapshot(plan.plan),
+    getRuntimeImageBaseCreditPricing(),
+  ]);
 
   const balance = creditsData?.balance || 0;
 
@@ -72,6 +76,7 @@ export default async function CreatePage() {
       selectedBackendGroupId={selectedBackendGroupId}
       customApiActive={Boolean(userApiConfig)}
       moderationEnabled={moderationEnabled}
+      imageBasePricing={imageBasePricing}
       timeZone={timeZone}
     />
   );

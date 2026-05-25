@@ -34,11 +34,13 @@ import {
   getOutputFormatExtension,
   normalizeOutputFormat,
 } from "./output-format";
+import { getRuntimeImageBaseCreditPricing } from "./pricing-settings";
 import { withImageGenerationQueue } from "./queue";
 import {
   DEFAULT_IMAGE_SIZE,
   getImageCreditCostBreakdown,
   getImageModel,
+  type ImageBaseCreditPricing,
   isOneKImageSize,
   normalizeImageSize,
   roundCreditAmount,
@@ -100,8 +102,9 @@ type RunImageGenerationInput =
       requiresResponsesBackend?: boolean;
     } & ChatImageParams);
 
-const TEXT_MODERATION_ONLY_CREDITS =
-  getImageCreditCostBreakdown(DEFAULT_IMAGE_SIZE).moderationOnlyCredits;
+const TEXT_MODERATION_ONLY_CREDITS = getImageCreditCostBreakdown(
+  DEFAULT_IMAGE_SIZE
+).moderationOnlyCredits;
 
 type ImageCreditCostBreakdown = ReturnType<typeof getImageCreditCostBreakdown>;
 
@@ -973,9 +976,11 @@ export async function runImageGenerationForUser(
     moderationBlockingEnabled &&
     config.contentSafetyEnabled !== false;
   const moderationImageCount = moderationEnabled ? inputImages.length : 0;
+  const imageBasePricing = await getRuntimeImageBaseCreditPricing();
   const baseCreditCost = getImageCreditCostBreakdown(size, {
     textModerationCount: moderationEnabled ? undefined : 0,
     imageModerationCount: moderationImageCount,
+    basePricing: imageBasePricing,
   });
   const creditCost = applyBillingMultiplierToCreditCost(
     baseCreditCost,
@@ -1080,11 +1085,12 @@ export async function runImageGenerationForUser(
           bucket,
           userPlan,
           moderationBlockRiskLevel,
-          moderationFailureCredits,
-          promptOptimization,
-          apiPrompt,
-          moderationPrompt,
-          config,
+    moderationFailureCredits,
+    promptOptimization,
+    apiPrompt,
+    moderationPrompt,
+    imageBasePricing,
+    config,
           useCredits,
           billingMultiplier,
           imageModel,
@@ -1123,6 +1129,7 @@ async function runQueuedImageGenerationForUser({
   promptOptimization,
   apiPrompt,
   moderationPrompt,
+  imageBasePricing,
   config,
   useCredits,
   billingMultiplier,
@@ -1149,6 +1156,7 @@ async function runQueuedImageGenerationForUser({
   promptOptimization: boolean;
   apiPrompt: string;
   moderationPrompt: string;
+  imageBasePricing: ImageBaseCreditPricing;
   config: Awaited<ReturnType<typeof getEffectiveConfig>>["config"];
   useCredits: boolean;
   billingMultiplier: number;
@@ -1875,6 +1883,7 @@ async function runQueuedImageGenerationForUser({
           getImageCreditCostBreakdown(output.size, {
             textModerationCount: moderationEnabled ? undefined : 0,
             imageModerationCount: moderationEnabled ? inputImages.length : 0,
+            basePricing: imageBasePricing,
           }),
           billingMultiplier
         )
@@ -1884,6 +1893,7 @@ async function runQueuedImageGenerationForUser({
       getImageCreditCostBreakdown(output.size, {
         textModerationCount: moderationEnabled ? undefined : 0,
         imageModerationCount: moderationEnabled ? inputImages.length : 0,
+        basePricing: imageBasePricing,
       }),
       billingMultiplier
     )
@@ -1894,6 +1904,7 @@ async function runQueuedImageGenerationForUser({
       getImageCreditCostBreakdown(primaryOutput.size, {
         textModerationCount: moderationEnabled ? undefined : 0,
         imageModerationCount: moderationEnabled ? inputImages.length : 0,
+        basePricing: imageBasePricing,
       }),
       billingMultiplier
     );

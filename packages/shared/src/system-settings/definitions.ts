@@ -140,6 +140,8 @@ export type SettingKey =
   | "REGISTRATION_BONUS_CREDITS"
   | "FREE_CREDITS_EXPIRY_DAYS"
   | "CREDITS_EXPIRY_DAYS"
+  | "IMAGE_BASE_CREDITS_1024"
+  | "IMAGE_BASE_CREDITS_4K"
   | "NEXT_PUBLIC_GA_ID"
   | "NEXT_PUBLIC_SENTRY_DSN"
   | "SENTRY_AUTH_TOKEN"
@@ -1257,6 +1259,24 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     category: "credits",
     valueType: "number",
     defaultValue: 365,
+  },
+  {
+    key: "IMAGE_BASE_CREDITS_1024",
+    label: "1024x1024 基础生图积分",
+    description:
+      "不含文本/图片审核成本的 1024x1024 生图基础价格。其他分辨率会在该价格与 4K 基础价格之间按像素数线性推算；低于 1024x1024 按该价格封底。",
+    category: "credits",
+    valueType: "number",
+    defaultValue: 1.27,
+  },
+  {
+    key: "IMAGE_BASE_CREDITS_4K",
+    label: "4K 基础生图积分",
+    description:
+      "不含文本/图片审核成本的 3840x2160 / 2160x3840 生图基础价格。1024x1024 到 4K 之间按像素数线性推算；高于 4K 按该价格封顶。",
+    category: "credits",
+    valueType: "number",
+    defaultValue: 10,
   },
   {
     key: "CREDIT_PACKAGE_MATRIX",
