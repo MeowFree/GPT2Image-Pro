@@ -460,9 +460,10 @@ function buildGenerationWindowStats(
         durations.push(duration);
         const backendBucket = getBackendDurationBucket(row);
         if (backendBucket) {
-          const resolutionBucket = classifyResolutionDurationBucket(
-            getRequestedGenerationSize(row)
-          );
+          const resolutionBucket =
+            backendBucket === "web"
+              ? "1k"
+              : classifyResolutionDurationBucket(getRequestedGenerationSize(row));
           durationAccumulator[resolutionBucket][backendBucket].push(duration);
         }
       }
@@ -723,13 +724,30 @@ function backendDurationLabel(bucket: BackendDurationBucket) {
   return bucket === "web" ? "Web" : "Codex";
 }
 
+function isDurationBucketApplicable(
+  resolutionBucket: ResolutionDurationBucket,
+  backendBucket: BackendDurationBucket
+) {
+  return backendBucket === "codex" || resolutionBucket === "1k";
+}
+
 function DurationBucketCell({
   stats,
   locale,
+  applicable = true,
 }: {
   stats: DurationBucketStats;
   locale: string;
+  applicable?: boolean;
 }) {
+  if (!applicable) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        {copy(locale, "N/A", "不适用")}
+      </span>
+    );
+  }
+
   if (stats.count === 0) {
     return (
       <span className="text-xs text-muted-foreground">
@@ -766,7 +784,11 @@ function DurationBreakdownTable({
           {copy(locale, "Duration by size and backend", "按分辨率和后端耗时")}
         </span>
         <span className="text-xs text-muted-foreground">
-          {copy(locale, "Completed records only", "仅统计完成记录")}
+          {copy(
+            locale,
+            "Completed only. Web is counted as 1K.",
+            "仅统计完成记录；Web 统一计入 1K。"
+          )}
         </span>
       </div>
       <div className="overflow-x-auto rounded-md border">
@@ -794,6 +816,7 @@ function DurationBreakdownTable({
                     <DurationBucketCell
                       stats={breakdown[bucket][backend]}
                       locale={locale}
+                      applicable={isDurationBucketApplicable(bucket, backend)}
                     />
                   </td>
                 ))}
