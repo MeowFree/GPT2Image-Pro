@@ -3067,16 +3067,26 @@ export function CreatePageClient({
     const storedId = window.localStorage.getItem(
       chatActiveConversationStorageKey(activeConversationMode)
     );
-    const conversation =
-      currentModeConversations.find((item) => item.id === storedId) ||
-      currentModeConversations[0];
+    const conversation = currentModeConversations.find(
+      (item) => item.id === storedId
+    );
     if (conversation) {
       activateChatConversation(conversation, activeConversationMode);
+    } else if (storedId) {
+      chatMessagesConversationIdRef.current = storedId;
+      chatMessagesModeRef.current = activeConversationMode;
+      setChatConversationId(storedId);
+      setChatMessages([]);
     } else {
-      const nextId =
-        chatMessagesModeRef.current === activeConversationMode
-          ? chatConversationId
-          : createLocalId();
+      const fallbackConversation = currentModeConversations[0];
+      if (fallbackConversation) {
+        activateChatConversation(fallbackConversation, activeConversationMode);
+        setChatStream(null);
+        setRetryingChatMessageId(null);
+        clearStreamingPreview();
+        return;
+      }
+      const nextId = createLocalId();
       chatMessagesConversationIdRef.current = nextId;
       chatMessagesModeRef.current = activeConversationMode;
       setChatConversationId(nextId);
