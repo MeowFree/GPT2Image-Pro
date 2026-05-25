@@ -571,6 +571,74 @@ export type NewsletterSubscriber = typeof newsletterSubscriber.$inferSelect;
 export type NewNewsletterSubscriber = typeof newsletterSubscriber.$inferInsert;
 
 // ============================================
+// 公告系统 (Announcements)
+// ============================================
+
+/**
+ * 公告表 - 存储系统公告、维护通知和活动说明
+ *
+ * @field id - 公告唯一标识符
+ * @field title - 公告标题
+ * @field content - 公告正文，按纯文本展示
+ * @field severity - 公告等级 (info/success/warning/critical)
+ * @field isPublished - 是否发布
+ * @field isPinned - 是否置顶
+ * @field priority - 排序优先级，数字越大越靠前
+ * @field publishedAt - 生效发布时间，可为空
+ * @field expiresAt - 过期时间，可为空
+ * @field createdByUserId - 创建管理员
+ * @field updatedByUserId - 最近更新管理员
+ * @field createdAt - 创建时间
+ * @field updatedAt - 更新时间
+ */
+export const announcement = pgTable("announcement", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  severity: text("severity").notNull().default("info"),
+  isPublished: boolean("is_published").notNull().default(false),
+  isPinned: boolean("is_pinned").notNull().default(false),
+  priority: integer("priority").notNull().default(0),
+  publishedAt: timestamp("published_at"),
+  expiresAt: timestamp("expires_at"),
+  createdByUserId: text("created_by_user_id").references(() => user.id, {
+    onDelete: "set null",
+  }),
+  updatedByUserId: text("updated_by_user_id").references(() => user.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * 公告已读表 - 记录用户已读公告
+ */
+export const announcementRead = pgTable(
+  "announcement_read",
+  {
+    id: text("id").primaryKey(),
+    announcementId: text("announcement_id")
+      .notNull()
+      .references(() => announcement.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    readAt: timestamp("read_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    announcementUserUnique: uniqueIndex(
+      "announcement_read_user_announcement_unique"
+    ).on(table.userId, table.announcementId),
+  })
+);
+
+export type Announcement = typeof announcement.$inferSelect;
+export type NewAnnouncement = typeof announcement.$inferInsert;
+export type AnnouncementRead = typeof announcementRead.$inferSelect;
+export type NewAnnouncementRead = typeof announcementRead.$inferInsert;
+
+// ============================================
 // 工单系统枚举
 // ============================================
 

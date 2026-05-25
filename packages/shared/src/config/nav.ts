@@ -10,6 +10,7 @@ import {
   ImagePlus,
   Layers,
   LayoutDashboard,
+  Megaphone,
   type LucideIcon,
   Settings,
   Ticket,
@@ -183,6 +184,11 @@ export const dashboardNav: NavGroup[] = [
         title: "Billing & Usage",
         href: "/dashboard/billing",
         icon: Coins,
+      },
+      {
+        title: "Announcements",
+        href: "/dashboard/announcements",
+        icon: Megaphone,
       },
       {
         title: "Settings",

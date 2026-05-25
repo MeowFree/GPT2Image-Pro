@@ -4,6 +4,7 @@ import {
   Activity,
   ChevronsUpDown,
   LogOut,
+  Megaphone,
   Server,
   Shield,
   Settings,
@@ -33,6 +34,7 @@ import {
 } from "@repo/shared/auth/roles";
 import { useSidebar } from "@/features/dashboard/context";
 import { ModeToggle } from "@repo/shared/components";
+import { getMyUnreadAnnouncementCountAction } from "@repo/shared/announcements/actions";
 import { getMyPlanAction } from "@repo/shared/subscription/actions/get-user-plan";
 import { getMyUnreadTicketCountAction } from "@repo/shared/support/actions/ticket";
 import {
@@ -78,9 +80,17 @@ export function DashboardSidebar() {
     execute: fetchUnreadTickets,
     result: unreadTicketsResult,
   } = useAction(getMyUnreadTicketCountAction);
+  const {
+    execute: fetchUnreadAnnouncements,
+    result: unreadAnnouncementsResult,
+  } = useAction(getMyUnreadAnnouncementCountAction);
   const unreadTicketCount = Math.max(
     0,
     Number(unreadTicketsResult.data?.count ?? 0)
+  );
+  const unreadAnnouncementCount = Math.max(
+    0,
+    Number(unreadAnnouncementsResult.data?.count ?? 0)
   );
 
   // 用户登录后获取计划
@@ -93,8 +103,9 @@ export function DashboardSidebar() {
   useEffect(() => {
     if (user) {
       fetchUnreadTickets();
+      fetchUnreadAnnouncements();
     }
-  }, [user, pathname, fetchUnreadTickets]);
+  }, [user, pathname, fetchUnreadTickets, fetchUnreadAnnouncements]);
 
   /**
    * 导航项标题映射到翻译键
@@ -108,9 +119,11 @@ export function DashboardSidebar() {
       "System Docs": t("nav.backendHelp"),
       "External API": t("nav.externalApi"),
       "Billing & Usage": t("nav.billing"),
+      Announcements: t("nav.announcements"),
       Settings: t("nav.settings"),
       "System Settings": t("nav.systemSettings"),
       "Global Status": t("nav.globalStatus"),
+      "Announcement Management": t("nav.announcementManagement"),
       "Image Backend Pool": t("nav.imageBackendPool"),
       Support: t("nav.support"),
       "New Ticket": t("nav.newTicket"),
@@ -224,6 +237,11 @@ export function DashboardSidebar() {
                           icon: Users,
                         },
                         {
+                          title: "Announcement Management",
+                          href: "/dashboard/admin/announcements",
+                          icon: Megaphone,
+                        },
+                        {
                           title: "System Settings",
                           href: "/dashboard/admin/settings",
                           icon: Shield,
@@ -255,6 +273,13 @@ export function DashboardSidebar() {
                   const showSupportUnread =
                     item.href === "/dashboard/support" &&
                     unreadTicketCount > 0;
+                  const unreadCount =
+                    item.href === "/dashboard/announcements"
+                      ? unreadAnnouncementCount
+                      : showSupportUnread
+                        ? unreadTicketCount
+                        : 0;
+                  const showUnread = unreadCount > 0;
                   return (
                     <Link
                       key={item.href}
@@ -273,7 +298,7 @@ export function DashboardSidebar() {
                       {Icon && (
                         <span className="relative inline-flex shrink-0">
                           <Icon className="h-4 w-4" />
-                          {showSupportUnread && (
+                          {showUnread && (
                             <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-sidebar" />
                           )}
                         </span>
@@ -281,9 +306,9 @@ export function DashboardSidebar() {
                       {!collapsed && (
                         <>
                           <span className="flex-1">{translatedTitle}</span>
-                          {showSupportUnread && (
+                          {showUnread && (
                             <span className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
-                              {unreadTicketCount > 99 ? "99+" : unreadTicketCount}
+                              {unreadCount > 99 ? "99+" : unreadCount}
                             </span>
                           )}
                         </>
