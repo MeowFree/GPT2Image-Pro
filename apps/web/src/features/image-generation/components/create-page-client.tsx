@@ -1023,7 +1023,6 @@ const shouldOptimizeStoredImage = (imageUrl: string | undefined) =>
 
 const DEFAULT_MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const DEFAULT_MAX_EDIT_REQUEST_BYTES = 75 * 1024 * 1024;
-const CHAT_TEXT_ONLY_CREDITS = 1;
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp";
 const CHAT_FILE_ACCEPT =
   ".txt,.md,.markdown,.csv,.json,.jsonl,.yaml,.yml,.log,.xml,.html,.htm,.css,.js,.jsx,.ts,.tsx,.mjs,.cjs,.py,.java,.go,.rs,.c,.cc,.cpp,.h,.hpp,.sql,.sh,.toml,.ini,.env,.pdf,text/*,application/json,application/xml,application/pdf";
@@ -2488,7 +2487,10 @@ export function CreatePageClient({
       )
     : getImageCreditCost(undefined, moderationCostOptions);
   const editBatchCreditCost = editImageCreditCost * editBatchCount;
-  const chatSingleCreditCost = CHAT_TEXT_ONLY_CREDITS;
+  const chatRoundCreditCost = capabilities.billing.chatRoundCredits;
+  const agentRoundCreditCost = capabilities.billing.agentRoundCredits;
+  const chatSingleCreditCost =
+    activeMode === "agent" ? agentRoundCreditCost : chatRoundCreditCost;
   const batchFallbackSize = hasChatImageAttachments ? chatCustomEditSize : size;
   const textMixWebFirstActive =
     canUseMixWebFirstRouting && textMixWebFirst && isOneKImageSize(size);
@@ -5926,7 +5928,9 @@ export function CreatePageClient({
       (item) => item.kind === "image"
     );
     const fallbackSize = hasImageAttachment ? chatCustomEditSize : size;
-    const cost = CHAT_TEXT_ONLY_CREDITS;
+    const conversationMode = getConversationMode(activeMode);
+    const cost =
+      conversationMode === "agent" ? agentRoundCreditCost : chatRoundCreditCost;
     const outputSizeCheck = hasImageAttachment
       ? chatCustomEditSizeCheck
       : sizeCheck;
@@ -5964,7 +5968,6 @@ export function CreatePageClient({
         item.kind === "image" ? URL.createObjectURL(item.file) : undefined,
       kind: item.kind,
     }));
-    const conversationMode = getConversationMode(activeMode);
     const generationId = createGenerationId();
     const userMessageId = createLocalId();
     const assistantMessageId = createLocalId();

@@ -252,6 +252,19 @@ const MODERATION_ROWS = [
   },
 ] as const;
 
+const BILLING_ROWS = [
+  {
+    key: "chatRoundCredits",
+    label: "Chat 每轮积分",
+    description: "页面普通对话每次请求/每轮基础积分，不含图片输出积分",
+  },
+  {
+    key: "agentRoundCredits",
+    label: "Agent 每轮积分",
+    description: "页面 Agent 自动迭代每轮基础积分，不含图片输出积分",
+  },
+] as const;
+
 type PlanValue = (typeof PLAN_OPTIONS)[number]["value"];
 type PlanRequirementValue = (typeof PLAN_REQUIREMENT_OPTIONS)[number]["value"];
 type QueuePriorityValue = (typeof QUEUE_PRIORITY_OPTIONS)[number]["value"];
@@ -259,12 +272,14 @@ type ModerationLevelValue = (typeof MODERATION_LEVEL_OPTIONS)[number]["value"];
 type FeatureKey = (typeof FEATURE_ROWS)[number]["key"];
 type LimitKey = (typeof LIMIT_ROWS)[number]["key"];
 type ModerationKey = (typeof MODERATION_ROWS)[number]["key"];
+type BillingKey = (typeof BILLING_ROWS)[number]["key"];
 
 type CapabilityMatrixDraft = {
   version: 1;
   features: Record<FeatureKey, PlanValue>;
   limits: Record<PlanValue, Record<LimitKey, string | number>>;
   moderation: Record<PlanValue, Record<ModerationKey, ModerationLevelValue>>;
+  billing: Record<PlanValue, Record<BillingKey, number>>;
 };
 
 type CreditPackageDraft = {
@@ -406,6 +421,8 @@ function normalizeCapabilityMatrixDraft(
   const fallbackModeration = isRecord(fallback.moderation)
     ? fallback.moderation
     : {};
+  const rawBilling = isRecord(raw.billing) ? raw.billing : {};
+  const fallbackBilling = isRecord(fallback.billing) ? fallback.billing : {};
 
   const features = Object.fromEntries(
     FEATURE_ROWS.map((row) => [
@@ -470,11 +487,35 @@ function normalizeCapabilityMatrixDraft(
     })
   ) as CapabilityMatrixDraft["moderation"];
 
+  const billing = Object.fromEntries(
+    PLAN_OPTIONS.map((plan) => {
+      const rawPlanBilling = recordValue(rawBilling, plan.value);
+      const fallbackPlanBilling = recordValue(fallbackBilling, plan.value);
+
+      return [
+        plan.value,
+        Object.fromEntries(
+          BILLING_ROWS.map((row) => [
+            row.key,
+            numberValue(
+              rawPlanBilling[row.key],
+              numberValue(
+                fallbackPlanBilling[row.key],
+                row.key === "agentRoundCredits" ? 3 : 1
+              )
+            ),
+          ])
+        ),
+      ] as const;
+    })
+  ) as CapabilityMatrixDraft["billing"];
+
   return {
     version: 1,
     features,
     limits,
     moderation,
+    billing,
   };
 }
 
@@ -839,10 +880,27 @@ function PlanCapabilityMatrixInput({
     });
   };
 
+  const updateBilling = (
+    plan: PlanValue,
+    key: BillingKey,
+    nextValue: string
+  ) => {
+    updateMatrix({
+      ...matrix,
+      billing: {
+        ...matrix.billing,
+        [plan]: {
+          ...matrix.billing[plan],
+          [key]: Number(nextValue),
+        },
+      },
+    });
+  };
+
   return (
     <div className="space-y-5">
       <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-        按最低套餐配置功能门槛；Starter/Pro/Ultra/Enterprise 自动包含更低套餐能力。并发、上传大小、月积分、批量张数、参考图数量和审核等级都在这里统一配置。
+        按最低套餐配置功能门槛；Starter/Pro/Ultra/Enterprise 自动包含更低套餐能力。并发、上传大小、月积分、批量张数、参考图数量、审核等级和 Chat/Agent 每轮计费都在这里统一配置。
       </div>
 
       <section className="space-y-2">
@@ -880,6 +938,63 @@ function PlanCapabilityMatrixInput({
                       }
                     />
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div>
+          <h4 className="text-sm font-semibold">对话计费</h4>
+          <p className="text-xs text-muted-foreground">
+            配置页面 Chat/Agent 的每轮基础积分；生成图片时还会按实际成品图尺寸和数量追加图片积分。
+          </p>
+        </div>
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full min-w-[860px] text-sm">
+            <thead className="bg-muted/60 text-xs text-muted-foreground">
+              <tr>
+                <th className="w-52 px-3 py-2 text-left font-medium">计费项</th>
+                {PLAN_OPTIONS.map((plan) => (
+                  <th
+                    key={plan.value}
+                    className="w-36 px-3 py-2 text-left font-medium"
+                  >
+                    {plan.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {BILLING_ROWS.map((row) => (
+                <tr key={row.key}>
+                  <td className="px-3 py-2">
+                    <div className="font-medium">{row.label}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {row.description}
+                    </div>
+                  </td>
+                  {PLAN_OPTIONS.map((plan) => (
+                    <td key={plan.value} className="px-3 py-2 align-top">
+                      <Input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={String(matrix.billing[plan.value][row.key])}
+                        disabled={disabled}
+                        className="h-9 min-w-28"
+                        onChange={(event) =>
+                          updateBilling(
+                            plan.value,
+                            row.key,
+                            event.target.value
+                          )
+                        }
+                      />
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>

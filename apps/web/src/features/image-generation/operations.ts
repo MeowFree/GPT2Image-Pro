@@ -95,7 +95,6 @@ type RunImageGenerationInput =
       requiresResponsesBackend?: boolean;
     } & ChatImageParams);
 
-const CHAT_TEXT_ONLY_CREDITS = 1;
 const TEXT_MODERATION_ONLY_CREDITS =
   getImageCreditCostBreakdown(DEFAULT_IMAGE_SIZE).moderationOnlyCredits;
 
@@ -923,13 +922,18 @@ export async function runImageGenerationForUser(
     imageModerationCount: moderationImageCount,
   });
   const creditsPerImage = creditCost.totalCredits;
+  const chatRoundCredits = isChatInput
+    ? input.agentMode
+      ? planCapabilities.billing.agentRoundCredits
+      : planCapabilities.billing.chatRoundCredits
+    : 0;
   const initialCreditCharge = isChatInput
-    ? CHAT_TEXT_ONLY_CREDITS
+    ? chatRoundCredits
     : creditsPerImage;
   const moderationFailureCredits = moderationEnabled
     ? planCapabilities.features["moderation.onlyFailureSettlement"]
       ? isChatInput
-        ? Math.min(TEXT_MODERATION_ONLY_CREDITS, CHAT_TEXT_ONLY_CREDITS)
+        ? Math.min(TEXT_MODERATION_ONLY_CREDITS, chatRoundCredits)
         : creditCost.moderationOnlyCredits
       : initialCreditCharge
     : 0;
@@ -1003,6 +1007,7 @@ export async function runImageGenerationForUser(
           creditsPerImage,
           isChatInput,
           initialCreditCharge,
+          chatRoundCredits,
           bucket,
           userPlan,
           moderationBlockRiskLevel,
@@ -1040,6 +1045,7 @@ async function runQueuedImageGenerationForUser({
   creditsPerImage,
   isChatInput,
   initialCreditCharge,
+  chatRoundCredits,
   bucket,
   userPlan,
   moderationBlockRiskLevel,
@@ -1064,6 +1070,7 @@ async function runQueuedImageGenerationForUser({
   creditsPerImage: number;
   isChatInput: boolean;
   initialCreditCharge: number;
+  chatRoundCredits: number;
   bucket: string;
   userPlan: Awaited<ReturnType<typeof getUserPlan>>;
   moderationBlockRiskLevel: ModerationBlockRiskLevel;
@@ -1121,6 +1128,7 @@ async function runQueuedImageGenerationForUser({
             batchCount: input.n || 1,
             forceWebBackend,
             creditCost,
+            chatRoundCredits,
             moderationBlockingEnabled: moderationEnabled,
             moderationFailureCredits,
           }
@@ -1650,16 +1658,20 @@ async function runQueuedImageGenerationForUser({
 
   if (!result.imageBase64 && !result.imageUrl) {
     let finalChargedCredits = chargedCredits;
+    const textChatRoundCount = isChatInput ? getChatRoundCount(result) : 0;
+    const targetChatTextCredits = chatRoundCredits * textChatRoundCount;
     if (isChatInput) {
       try {
         await settleChargedCredits(
-          CHAT_TEXT_ONLY_CREDITS,
+          targetChatTextCredits,
           "chat-text-only",
           `${generationId}:chat-text-only`,
           `Settle chat text response: ${input.prompt.substring(0, 50)}`,
           {
             generationId,
             creditCost,
+            chatRoundCredits,
+            chatRoundCount: textChatRoundCount,
           }
         );
         finalChargedCredits = chargedCredits;
@@ -1695,7 +1707,9 @@ async function runQueuedImageGenerationForUser({
             ...(isChatInput
               ? {
                   chatTextOnlyCharge: {
-                    credits: useCredits ? CHAT_TEXT_ONLY_CREDITS : 0,
+                    credits: useCredits ? targetChatTextCredits : 0,
+                    chatRoundCredits: useCredits ? chatRoundCredits : 0,
+                    chatRoundCount: textChatRoundCount,
                   },
                 }
               : {}),
@@ -1874,7 +1888,7 @@ async function runQueuedImageGenerationForUser({
   );
   const chatRoundCount = isChatInput ? getChatRoundCount(result) : 0;
   const targetSuccessCredits = isChatInput
-    ? CHAT_TEXT_ONLY_CREDITS * chatRoundCount + actualImageCredits
+    ? chatRoundCredits * chatRoundCount + actualImageCredits
     : actualImageCredits;
   try {
     if (isAgentChatInput) {
@@ -1899,7 +1913,7 @@ async function runQueuedImageGenerationForUser({
         requestedCreditCost: creditCost,
         actualCreditCost,
         perOutputCreditCosts,
-        chatRoundCredits: isChatInput ? CHAT_TEXT_ONLY_CREDITS : 0,
+        chatRoundCredits: isChatInput ? chatRoundCredits : 0,
         chatRoundCount,
         billableImageOutputCount,
         upstreamImageOutputCount,
@@ -1984,7 +1998,7 @@ async function runQueuedImageGenerationForUser({
             requestedCreditCost: creditCost,
             actualCreditCost,
             perOutputCreditCosts,
-            chatRoundCredits: isChatInput ? CHAT_TEXT_ONLY_CREDITS : 0,
+            chatRoundCredits: isChatInput ? chatRoundCredits : 0,
             chatRoundCount,
             billableImageOutputCount,
             upstreamImageOutputCount,

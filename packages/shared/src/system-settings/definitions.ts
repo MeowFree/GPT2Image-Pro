@@ -269,6 +269,28 @@ const PLAN_CAPABILITY_MATRIX_EXAMPLE = {
       maxBlockRiskLevel: "high",
     },
   },
+  billing: {
+    free: {
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
+    },
+    starter: {
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
+    },
+    pro: {
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
+    },
+    ultra: {
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
+    },
+    enterprise: {
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
+    },
+  },
 };
 
 const CREDIT_PACKAGE_MATRIX_EXAMPLE = {
@@ -493,7 +515,7 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     key: "PLAN_CAPABILITY_MATRIX",
     label: "套餐能力矩阵",
     description:
-      "统一控制套餐功能门槛、积分配额、上传限制、批量数量、并发、队列优先级和审核能力。后台以矩阵表格编辑，保存后仍写入同一个 JSON 配置。功能门槛按最低套餐生效，高级套餐自动包含低级套餐能力。留空时使用代码默认矩阵，并兼容旧上传/月积分配置。",
+      "统一控制套餐功能门槛、积分配额、上传限制、批量数量、并发、队列优先级、审核能力和 Chat/Agent 每轮计费。后台以矩阵表格编辑，保存后仍写入同一个 JSON 配置。功能门槛按最低套餐生效，高级套餐自动包含低级套餐能力。留空时使用代码默认矩阵，并兼容旧上传/月积分配置。",
     category: "plans",
     valueType: "json",
     exampleValue: PLAN_CAPABILITY_MATRIX_EXAMPLE,

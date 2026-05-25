@@ -77,11 +77,17 @@ export type PlanModerationConfig = {
   maxBlockRiskLevel: ModerationBlockRiskLevel;
 };
 
+export type PlanBillingConfig = {
+  chatRoundCredits: number;
+  agentRoundCredits: number;
+};
+
 export type PlanCapabilityMatrix = {
   version: 1;
   features: Record<PlanCapabilityKey, SubscriptionPlan>;
   limits: Record<SubscriptionPlan, PlanLimitConfig>;
   moderation: Record<SubscriptionPlan, PlanModerationConfig>;
+  billing: Record<SubscriptionPlan, PlanBillingConfig>;
 };
 
 export type PlanCapabilitySnapshot = {
@@ -94,6 +100,7 @@ export type PlanCapabilitySnapshot = {
   moderation: PlanModerationConfig & {
     allowedBlockRiskLevels: ModerationBlockRiskLevel[];
   };
+  billing: PlanBillingConfig;
 };
 
 export const DEFAULT_PLAN_CAPABILITY_MATRIX: PlanCapabilityMatrix = {
@@ -197,6 +204,28 @@ export const DEFAULT_PLAN_CAPABILITY_MATRIX: PlanCapabilityMatrix = {
     enterprise: {
       defaultBlockRiskLevel: "high",
       maxBlockRiskLevel: "high",
+    },
+  },
+  billing: {
+    free: {
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
+    },
+    starter: {
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
+    },
+    pro: {
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
+    },
+    ultra: {
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
+    },
+    enterprise: {
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
     },
   },
 };
@@ -397,6 +426,29 @@ function normalizeModeration(value: unknown) {
   return moderation;
 }
 
+function normalizeBilling(value: unknown) {
+  const billing = structuredClone(DEFAULT_PLAN_CAPABILITY_MATRIX.billing);
+  if (!isRecord(value)) return billing;
+
+  for (const plan of SUBSCRIPTION_PLANS) {
+    const raw = value[plan];
+    if (!isRecord(raw)) continue;
+    const fallback = billing[plan];
+    billing[plan] = {
+      chatRoundCredits: parsePositiveNumber(
+        raw.chatRoundCredits,
+        fallback.chatRoundCredits
+      ),
+      agentRoundCredits: parsePositiveNumber(
+        raw.agentRoundCredits,
+        fallback.agentRoundCredits
+      ),
+    };
+  }
+
+  return billing;
+}
+
 async function applyLegacyPlanSettings(matrix: PlanCapabilityMatrix) {
   const legacy = structuredClone(matrix);
 
@@ -447,6 +499,7 @@ export function normalizePlanCapabilityMatrix(
     features: normalizeFeatureMinimums(raw.features),
     limits: normalizePlanLimits(raw.limits),
     moderation: normalizeModeration(raw.moderation),
+    billing: normalizeBilling(raw.billing),
   };
 }
 
@@ -490,6 +543,11 @@ export async function getPlanQueueSettings(plan: SubscriptionPlan) {
 export async function getPlanModerationConfig(plan: SubscriptionPlan) {
   const matrix = await getPlanCapabilityMatrix();
   return matrix.moderation[plan];
+}
+
+export async function getPlanBillingConfig(plan: SubscriptionPlan) {
+  const matrix = await getPlanCapabilityMatrix();
+  return matrix.billing[plan];
 }
 
 export async function getDefaultPlanModerationBlockRiskLevel(
@@ -536,6 +594,7 @@ export async function getPlanCapabilitySnapshot(
   const matrix = await getPlanCapabilityMatrix();
   const limits = matrix.limits[plan];
   const moderation = matrix.moderation[plan];
+  const billing = matrix.billing[plan];
   const features = Object.fromEntries(
     PLAN_CAPABILITY_KEYS.map((key) => [
       key,
@@ -554,9 +613,11 @@ export async function getPlanCapabilitySnapshot(
     moderation: {
       ...moderation,
       allowedBlockRiskLevels: MODERATION_BLOCK_RISK_LEVELS.filter(
-        (level) => MODERATION_RANK[level] <= MODERATION_RANK[moderation.maxBlockRiskLevel]
+        (level) =>
+          MODERATION_RANK[level] <= MODERATION_RANK[moderation.maxBlockRiskLevel]
       ),
     },
+    billing,
   };
 }
 

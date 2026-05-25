@@ -109,6 +109,7 @@ describe("system setting default initialization", () => {
         },
         limits: DEFAULT_PLAN_CAPABILITY_MATRIX.limits,
         moderation: DEFAULT_PLAN_CAPABILITY_MATRIX.moderation,
+        billing: DEFAULT_PLAN_CAPABILITY_MATRIX.billing,
       },
     });
 

@@ -7,6 +7,7 @@ import {
   PLAN_CAPABILITY_KEYS,
   canUsePlanCapability,
   getAllowedPlanModerationBlockRiskLevels,
+  getPlanBillingConfig,
   getPlanCapabilityMatrix,
   getPlanCapabilitySnapshot,
   getPlanLimits,
@@ -55,6 +56,14 @@ describe("plan capability matrix defaults", () => {
       queuePriority: "highest",
     });
     expect(matrix.limits.enterprise.monthlyCredits).toBe(320_000);
+    expect(matrix.billing.free).toEqual({
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
+    });
+    expect(matrix.billing.enterprise).toEqual({
+      chatRoundCredits: 1,
+      agentRoundCredits: 3,
+    });
   });
 
   it("keeps the system settings example in sync with every matrix field", () => {
@@ -245,6 +254,29 @@ describe("plan capability matrix defaults", () => {
       maxBlockRiskLevel: "high",
     });
   });
+
+  it("accepts custom chat and agent round billing per plan", () => {
+    const matrix = normalizePlanCapabilityMatrix({
+      billing: {
+        pro: {
+          chatRoundCredits: 2,
+          agentRoundCredits: 5.5,
+        },
+        ultra: {
+          chatRoundCredits: "0",
+          agentRoundCredits: "invalid",
+        },
+      },
+    });
+
+    expect(matrix.billing.pro).toEqual({
+      chatRoundCredits: 2,
+      agentRoundCredits: 5.5,
+    });
+    expect(matrix.billing.ultra).toEqual(
+      DEFAULT_PLAN_CAPABILITY_MATRIX.billing.ultra
+    );
+  });
 });
 
 describe("plan capability matrix runtime accessors", () => {
@@ -314,6 +346,12 @@ describe("plan capability matrix runtime accessors", () => {
           maxChatContextChars: 55_000,
         },
       },
+      billing: {
+        ultra: {
+          chatRoundCredits: 2,
+          agentRoundCredits: 6,
+        },
+      },
       moderation: {
         ultra: {
           defaultBlockRiskLevel: "medium",
@@ -352,6 +390,10 @@ describe("plan capability matrix runtime accessors", () => {
       priority: "highest",
       userConcurrency: 77,
     });
+    await expect(getPlanBillingConfig("ultra")).resolves.toEqual({
+      chatRoundCredits: 2,
+      agentRoundCredits: 6,
+    });
     await expect(getAllowedPlanModerationBlockRiskLevels("ultra")).resolves.toEqual(
       ["low", "medium"]
     );
@@ -364,6 +406,10 @@ describe("plan capability matrix runtime accessors", () => {
     expect(snapshot.features["models.gpt55"]).toBe(true);
     expect(snapshot.limits.maxFileSizeBytes).toBe(megabytesToBytes(150));
     expect(snapshot.limits.maxUploadBytes).toBe(megabytesToBytes(180));
+    expect(snapshot.billing).toEqual({
+      chatRoundCredits: 2,
+      agentRoundCredits: 6,
+    });
     expect(snapshot.moderation.allowedBlockRiskLevels).toEqual([
       "low",
       "medium",
