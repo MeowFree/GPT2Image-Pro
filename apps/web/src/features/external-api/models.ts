@@ -1,5 +1,7 @@
 import {
   GPT52_CHAT_MODEL,
+  GPT53_CODEX_CHAT_MODEL,
+  GPT53_CODEX_SPARK_CHAT_MODEL,
   GPT54_CHAT_MODEL,
   GPT54_MINI_CHAT_MODEL,
   GPT55_CHAT_MODEL,
@@ -36,6 +38,8 @@ export function getExternalResponsesImageModels(
     GPT54_CHAT_MODEL,
     GPT54_MINI_CHAT_MODEL,
     GPT52_CHAT_MODEL,
+    GPT53_CODEX_CHAT_MODEL,
+    GPT53_CODEX_SPARK_CHAT_MODEL,
   ];
   if (options?.gpt55Allowed ?? isPlanAtLeast(plan, "ultra")) {
     models.push(GPT55_CHAT_MODEL);

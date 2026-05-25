@@ -76,7 +76,10 @@ import {
   saveImageBackendGroupAction,
   syncImageBackendAccountsFromSub2ApiAction,
 } from "./actions";
-import type { ImageBackendGroupBackendType } from "./types";
+import type {
+  ImageBackendApiInterfaceMode,
+  ImageBackendGroupBackendType,
+} from "./types";
 
 type Group = {
   id: string;
@@ -136,6 +139,7 @@ type Api = {
   name: string;
   baseUrl: string;
   model: string | null;
+  interfaceMode: ImageBackendApiInterfaceMode;
   useStream: boolean;
   contentSafetyEnabled: boolean;
   isEnabled: boolean;
@@ -152,6 +156,7 @@ type Api = {
 type ContentSafetyFormValue = "inherit" | "enabled" | "disabled";
 type AccountBackendFormValue = "web" | "responses";
 type GroupBackendTypeFormValue = ImageBackendGroupBackendType;
+type ApiInterfaceModeFormValue = ImageBackendApiInterfaceMode;
 type TokenSyncMode = "web" | "responses" | "both";
 type Sub2ApiPlanFilter = "all" | "free" | "plus" | "pro" | "non_free";
 
@@ -212,6 +217,29 @@ const GROUP_BACKEND_TYPE_OPTIONS: Array<{
     value: "responses",
     label: "仅 Codex/Responses",
     detail: "只调度 Codex/Responses 账号，界面隐藏 Web 独有提示。",
+  },
+];
+
+const API_INTERFACE_MODE_OPTIONS: Array<{
+  value: ApiInterfaceModeFormValue;
+  label: string;
+  detail: string;
+}> = [
+  {
+    value: "mixed",
+    label: "混合 API",
+    detail:
+      "同时支持 /v1/images/* 和 /v1/responses；Chat/Agent 会走 /responses。",
+  },
+  {
+    value: "images",
+    label: "仅 Images",
+    detail: "只用于文生图和图生图，调用 /v1/images/generations 或 /edits。",
+  },
+  {
+    value: "responses",
+    label: "仅 Responses",
+    detail: "所有生图请求都转换为 /v1/responses，支持 Chat/Agent。",
   },
 ];
 
@@ -292,6 +320,13 @@ function groupBackendTypeLabel(value: ImageBackendGroupBackendType) {
   if (value === "web") return "仅 Web";
   if (value === "responses") return "仅 Codex";
   return "混合";
+}
+
+function apiInterfaceModeLabel(value: ImageBackendApiInterfaceMode) {
+  return (
+    API_INTERFACE_MODE_OPTIONS.find((option) => option.value === value)?.label ||
+    "仅 Images"
+  );
 }
 
 function childGroupNames(groups: Group[], childGroupIds: string[]) {
@@ -538,6 +573,7 @@ export function ImageBackendPoolAdminPanel() {
     baseUrl: "",
     apiKey: "",
     model: "",
+    interfaceMode: "mixed" as ApiInterfaceModeFormValue,
     useStream: false,
     contentSafetyEnabled: true,
     isEnabled: true,
@@ -769,6 +805,7 @@ export function ImageBackendPoolAdminPanel() {
       baseUrl: "",
       apiKey: "",
       model: "",
+      interfaceMode: "mixed" as ApiInterfaceModeFormValue,
       useStream: false,
       contentSafetyEnabled: true,
       isEnabled: true,
@@ -857,6 +894,7 @@ export function ImageBackendPoolAdminPanel() {
       baseUrl: api.baseUrl,
       apiKey: "",
       model: api.model || "",
+      interfaceMode: api.interfaceMode || "images",
       useStream: api.useStream,
       contentSafetyEnabled: api.contentSafetyEnabled,
       isEnabled: api.isEnabled,
@@ -2498,6 +2536,36 @@ export function ImageBackendPoolAdminPanel() {
                   }))
                 }
               />
+              <div className="space-y-2">
+                <Label>接口类型</Label>
+                <Select
+                  value={apiForm.interfaceMode}
+                  onValueChange={(value) =>
+                    setApiForm((current) => ({
+                      ...current,
+                      interfaceMode: value as ApiInterfaceModeFormValue,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {API_INTERFACE_MODE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {
+                    API_INTERFACE_MODE_OPTIONS.find(
+                      (option) => option.value === apiForm.interfaceMode
+                    )?.detail
+                  }
+                </p>
+              </div>
               <div className="space-y-1.5">
                 <Label>优先级</Label>
                 <Input
@@ -2562,7 +2630,9 @@ export function ImageBackendPoolAdminPanel() {
                     <div className="flex flex-wrap items-center gap-2">
                       <Plug className="h-4 w-4 text-muted-foreground" />
                       <span className="font-medium">{api.name}</span>
-                      <Badge variant="outline">API 直透</Badge>
+                      <Badge variant="outline">
+                        {apiInterfaceModeLabel(api.interfaceMode)}
+                      </Badge>
                       <Badge variant="secondary">{api.status}</Badge>
                       {isCoolingDown(api.cooldownUntil) && (
                         <Badge variant="secondary">冷却中</Badge>
@@ -2574,6 +2644,13 @@ export function ImageBackendPoolAdminPanel() {
                     <p className="mt-1 text-sm text-muted-foreground">
                       {api.baseUrl} · {groupName(groups, api.groupId)} · 优先级{" "}
                       {api.priority} · 并发权重 1 · {formatDate(api.lastUsedAt)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {api.interfaceMode === "mixed"
+                        ? "文生图/图生图走 Images；Chat/Agent/Responses 走 Responses。"
+                        : api.interfaceMode === "responses"
+                          ? "所有请求转换为 Responses，可用于 Chat/Agent。"
+                          : "仅用于文生图/图生图，不参与 Chat/Agent/Responses 调度。"}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       成功 {api.successCount} · 失败 {api.failCount} · 冷却至{" "}

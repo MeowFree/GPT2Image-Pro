@@ -24,6 +24,7 @@ import {
   reportImageBackendResult,
   resolveImageBackendPoolConfig,
 } from "@/features/image-backend-pool/service";
+import { imageBackendApiUsesResponsesEndpoint } from "@/features/image-backend-pool/api-interface-mode";
 import type {
   ImageBackendAccountBackend,
   ImageBackendPreferenceMode,
@@ -198,10 +199,6 @@ function getModel(config: ApiConfig, model?: string) {
   return imageModel;
 }
 
-function isPoolBackend(config: ApiConfig) {
-  return config.backend?.type === "pool-account";
-}
-
 function getHeaders(
   config: ApiConfig,
   defaults: Record<string, string>
@@ -251,18 +248,44 @@ function normalizeResponsesModel(
   return null;
 }
 
+function isPoolApiResponsesBackend(config: ApiConfig) {
+  return (
+    config.backend?.type === "pool-api" &&
+    imageBackendApiUsesResponsesEndpoint(
+      config.backend.apiInterfaceMode,
+      config.backend.requestKind,
+      config.backend.apiForceResponsesEndpoint
+    )
+  );
+}
+
 export async function getResponsesModel(
   config: ApiConfig,
   model?: string,
   options?: { allowGpt55?: boolean }
 ) {
   const requested = model?.trim();
+  const poolApiResponsesBackend = isPoolApiResponsesBackend(config);
   if (requested) {
-    const normalized = normalizeResponsesModel(requested, options, true);
-    if (normalized) return normalized;
+    if (poolApiResponsesBackend) {
+      if (!isImageModel(requested)) return requested;
+      const configured = config.model?.trim();
+      if (configured && !isImageModel(configured)) return configured;
+    } else {
+      const normalized = normalizeResponsesModel(requested, options, true);
+      if (normalized) return normalized;
+    }
   }
 
   const configured = config.model?.trim();
+  if (
+    configured &&
+    poolApiResponsesBackend &&
+    !isImageModel(configured)
+  ) {
+    return configured;
+  }
+
   if (configured) {
     const normalized = normalizeResponsesModel(configured, options);
     if (normalized) return normalized;
@@ -288,7 +311,12 @@ async function getDefaultImageGptModel(
   config: ApiConfig,
   options?: { allowGpt55?: boolean }
 ) {
-  if (!isPoolBackend(config)) return undefined;
+  if (
+    config.backend?.type !== "pool-account" &&
+    !isPoolApiResponsesBackend(config)
+  ) {
+    return undefined;
+  }
   return await getResponsesModel(config, undefined, options);
 }
 
@@ -669,7 +697,8 @@ function isPoolAccountBackend(
 }
 
 function isResponsesBackend(config: ApiConfig) {
-  return isPoolAccountBackend(config, "responses");
+  if (isPoolAccountBackend(config, "responses")) return true;
+  return isPoolApiResponsesBackend(config);
 }
 
 function isResponsesImageToolChoiceMismatch(error?: string | null) {

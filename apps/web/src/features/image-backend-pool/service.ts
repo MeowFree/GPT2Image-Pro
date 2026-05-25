@@ -43,8 +43,15 @@ import {
 } from "@/features/image-generation/chatgpt-web";
 import type { ApiConfig } from "@/features/image-generation/types";
 
+import {
+  imageBackendApiInterfaceAllowsRequest,
+  imageBackendApiUsesResponsesEndpoint,
+  normalizeImageBackendApiInterfaceMode,
+} from "./api-interface-mode";
+import { parseImportTokensText } from "./import-token-parser";
 import type {
   ContentSafetyOverride,
+  ImageBackendApiInterfaceMode,
   ImageBackendAccountBackend,
   ImageBackendGroupBackendType,
   ImageBackendGroupSummary,
@@ -72,6 +79,7 @@ type PoolMember =
       baseUrl: string;
       apiKey: string;
       model: string | null;
+      interfaceMode: ImageBackendApiInterfaceMode;
       useStream: boolean;
       contentSafetyEnabled: boolean;
       priority: number;
@@ -1208,15 +1216,28 @@ async function selectPoolMember(
       .limit(50),
   ]);
 
-  const apiMembers: PoolMember[] = effectiveAccountBackendPreference
+  const apiMembers: PoolMember[] = effectiveAccountBackendPreference === "web"
     ? []
     : apiRows
         .filter((row) => {
           const context = row.groupId ? contextMap.get(row.groupId) : null;
           const metadata = context?.metadata ?? groupMetadata;
-          return groupBackendAllowsRequest(
-            metadata,
-            requestKind || "image_generation"
+          const effectiveRequestKind = requestKind || "image_generation";
+          const requiresResponsesEndpoint =
+            effectiveAccountBackendPreference === "responses";
+          return (
+            groupBackendAllowsRequest(metadata, effectiveRequestKind) &&
+            imageBackendApiInterfaceAllowsRequest(
+              row.interfaceMode,
+              effectiveRequestKind
+            ) &&
+            (!requiresResponsesEndpoint ||
+              imageBackendApiUsesResponsesEndpoint(
+                row.interfaceMode,
+                effectiveRequestKind,
+                true
+              )
+            )
           );
         })
         .map((row) => {
@@ -1234,6 +1255,9 @@ async function selectPoolMember(
             baseUrl: row.baseUrl,
             apiKey: row.apiKey,
             model: row.model,
+            interfaceMode: normalizeImageBackendApiInterfaceMode(
+              row.interfaceMode
+            ),
             useStream: row.useStream,
             contentSafetyEnabled: row.contentSafetyEnabled,
             priority: row.priority,
@@ -1366,6 +1390,9 @@ function toResolvedPoolConfig(
           userId: options.userId,
           apiKeyId: options.apiKeyId,
           requestKind: options.requestKind,
+          apiInterfaceMode: member.interfaceMode,
+          apiForceResponsesEndpoint:
+            options.accountBackendPreference === "responses",
           reportResult: true,
         },
       },
@@ -2211,153 +2238,6 @@ export async function bulkUpdateImageBackendAccounts(
   }
 
   return { updatedCount, failedCount };
-}
-
-function normalizeImportedToken(value: string | null | undefined) {
-  return value?.trim().replace(/^Bearer\s+/i, "") || "";
-}
-
-function addToken(tokens: Set<string>, value: string | null | undefined) {
-  const token = normalizeImportedToken(value);
-  if (token) tokens.add(token);
-}
-
-function addAccessToken(tokens: Set<string>, value: string | null | undefined) {
-  const token = normalizeImportedToken(value);
-  if (token && token.length >= 40 && !token.startsWith("rt_")) {
-    tokens.add(token);
-  }
-}
-
-function collectTokensFromJson(
-  value: unknown,
-  tokens: { refreshTokens: Set<string>; accessTokens: Set<string> },
-  allowBareString = false
-) {
-  if (!value) return;
-  if (typeof value === "string") {
-    const token = value.trim();
-    if (allowBareString && /^rt_[A-Za-z0-9._~+/=-]+$/.test(token)) {
-      tokens.refreshTokens.add(token);
-    }
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) collectTokensFromJson(item, tokens, true);
-    return;
-  }
-  if (typeof value !== "object") return;
-
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    const normalizedKey = key.toLowerCase().replace(/[-_\s]/g, "");
-    if (typeof item === "string") {
-      if (["refreshtoken", "rt", "refresh"].includes(normalizedKey)) {
-        addToken(tokens.refreshTokens, item);
-        continue;
-      }
-      if (["accesstoken", "at", "access"].includes(normalizedKey)) {
-        addAccessToken(tokens.accessTokens, item);
-        continue;
-      }
-    }
-    collectTokensFromJson(item, tokens);
-  }
-}
-
-function isLikelyPlainAccessToken(value: string) {
-  const token = normalizeImportedToken(value);
-  if (!token || token.startsWith("rt_")) return false;
-  if (/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) {
-    return true;
-  }
-  return token.length >= 80 && !/\s/.test(token);
-}
-
-function parseImportTokensText(
-  value: string,
-  options: { plainFallback: "refresh" | "access" | "none" } = {
-    plainFallback: "refresh",
-  }
-) {
-  const tokens = {
-    refreshTokens: new Set<string>(),
-    accessTokens: new Set<string>(),
-  };
-
-  try {
-    collectTokensFromJson(JSON.parse(value), tokens);
-    return {
-      refreshTokens: Array.from(tokens.refreshTokens),
-      accessTokens: Array.from(tokens.accessTokens),
-    };
-  } catch {
-    // Plain RT lists and copied pages are handled by the text parser below.
-  }
-
-  for (const match of value.matchAll(/\brt_[A-Za-z0-9._~+/=-]+/g)) {
-    tokens.refreshTokens.add(match[0]);
-  }
-
-  for (const token of extractNamedTokens(value, [
-    "refresh_token",
-    "refreshToken",
-    "rt",
-  ])) {
-    addToken(tokens.refreshTokens, token);
-  }
-  for (const token of extractNamedTokens(value, [
-    "access_token",
-    "accessToken",
-    "at",
-  ])) {
-    addAccessToken(tokens.accessTokens, token);
-  }
-
-  const looksStructured =
-    /(?:^|[\s{,])["']?(?:access[_-]?token|accessToken|refresh[_-]?token|refreshToken)["']?\s*[:=]/i.test(
-      value
-    );
-  if (
-    !tokens.refreshTokens.size &&
-    !tokens.accessTokens.size &&
-    !looksStructured
-  ) {
-    for (const item of value.split(/[\s,;]+/g)) {
-      const token = item.trim();
-      if (options.plainFallback === "refresh" && token) {
-        tokens.refreshTokens.add(token);
-      }
-      if (
-        options.plainFallback === "access" &&
-        isLikelyPlainAccessToken(token)
-      ) {
-        tokens.accessTokens.add(normalizeImportedToken(token));
-      }
-    }
-  }
-
-  return {
-    refreshTokens: Array.from(tokens.refreshTokens),
-    accessTokens: Array.from(tokens.accessTokens),
-  };
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function extractNamedTokens(value: string, names: string[]) {
-  const namePattern = names.map(escapeRegExp).join("|");
-  const pattern = new RegExp(
-    `(?:^|[\\s,{\\[])(?:"(?:${namePattern})"|'(?:${namePattern})'|(?:${namePattern}))\\s*[:=]\\s*(?:"([^"]+)"|'([^']+)'|([^"',}\\]\\s;]+))`,
-    "gi"
-  );
-  const results: string[] = [];
-  for (const match of value.matchAll(pattern)) {
-    const token = match[1] || match[2] || match[3];
-    if (token) results.push(token);
-  }
-  return results;
 }
 
 async function importAccessTokens(
@@ -4122,6 +4002,7 @@ type UpsertApiInput = {
   baseUrl: string;
   apiKey?: string;
   model?: string | null;
+  interfaceMode?: ImageBackendApiInterfaceMode;
   useStream: boolean;
   contentSafetyEnabled: boolean;
   isEnabled: boolean;
@@ -4135,6 +4016,7 @@ export async function upsertImageBackendApi(input: UpsertApiInput) {
     name: input.name,
     baseUrl: stripTrailingSlash(input.baseUrl),
     model: input.model || null,
+    interfaceMode: normalizeImageBackendApiInterfaceMode(input.interfaceMode),
     useStream: input.useStream,
     contentSafetyEnabled: input.contentSafetyEnabled,
     isEnabled: input.isEnabled,

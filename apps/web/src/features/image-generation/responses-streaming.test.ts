@@ -19,6 +19,52 @@ describe("Responses streaming parser", () => {
     vi.unstubAllGlobals();
   });
 
+  it("passes custom chat model names through for pool API responses backends", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { getResponsesModel } = await import("./service");
+    const config: ApiConfig = {
+      baseUrl: "https://api.example.test/v1",
+      apiKey: "test-key",
+      model: "gpt-image-2",
+      backend: {
+        type: "pool-api",
+        id: "api_1",
+        groupId: "group_1",
+        requestKind: "chat",
+        apiInterfaceMode: "mixed",
+        reportResult: false,
+      },
+    };
+
+    await expect(
+      getResponsesModel(config, "platform-codex-model")
+    ).resolves.toBe("platform-codex-model");
+  });
+
+  it("ignores image model names as chat models for pool API responses backends", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { getResponsesModel } = await import("./service");
+    const config: ApiConfig = {
+      baseUrl: "https://api.example.test/v1",
+      apiKey: "test-key",
+      model: "gpt-image-2",
+      backend: {
+        type: "pool-api",
+        id: "api_1",
+        groupId: "group_1",
+        requestKind: "chat",
+        apiInterfaceMode: "mixed",
+        reportResult: false,
+      },
+    };
+
+    await expect(getResponsesModel(config, "gpt-image-2")).resolves.toBe(
+      "gpt-5.4"
+    );
+  });
+
   it("parses stream=true Responses bodies incrementally even when content-type is wrong", async () => {
     process.env.DATABASE_URL =
       process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";

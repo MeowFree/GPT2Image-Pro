@@ -51,12 +51,16 @@ const MODERATION_BLOCK_RISK_LEVEL_RANK: Record<
 export const GPT54_CHAT_MODEL = "gpt-5.4";
 export const GPT54_MINI_CHAT_MODEL = "gpt-5.4-mini";
 export const GPT52_CHAT_MODEL = "gpt-5.2";
+export const GPT53_CODEX_CHAT_MODEL = "gpt-5.3-codex";
+export const GPT53_CODEX_SPARK_CHAT_MODEL = "gpt-5.3-codex-spark";
 export const GPT55_CHAT_MODEL = "gpt-5.5";
 
 export const RESPONSES_IMAGE_MODELS = [
   GPT54_CHAT_MODEL,
   GPT54_MINI_CHAT_MODEL,
   GPT52_CHAT_MODEL,
+  GPT53_CODEX_CHAT_MODEL,
+  GPT53_CODEX_SPARK_CHAT_MODEL,
   GPT55_CHAT_MODEL,
 ] as const;
 

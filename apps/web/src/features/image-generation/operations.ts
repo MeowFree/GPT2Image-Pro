@@ -650,6 +650,8 @@ function buildBackendExecutionMetadata(params: {
       groupId: backend.groupId,
       requestKind: backend.requestKind,
       accountBackend: backend.accountBackend,
+      apiInterfaceMode: backend.apiInterfaceMode,
+      apiForceResponsesEndpoint: backend.apiForceResponsesEndpoint,
       useCredits: params.useCredits,
       baseUrl: params.config.baseUrl,
       model: params.config.model,

@@ -2,6 +2,8 @@
 
 import {
   GPT52_CHAT_MODEL,
+  GPT53_CODEX_CHAT_MODEL,
+  GPT53_CODEX_SPARK_CHAT_MODEL,
   GPT54_CHAT_MODEL,
   GPT54_MINI_CHAT_MODEL,
   GPT55_CHAT_MODEL,
@@ -1091,6 +1093,8 @@ const CHAT_MODEL_OPTIONS: Array<{
   { value: GPT54_CHAT_MODEL, label: "GPT-5.4" },
   { value: GPT54_MINI_CHAT_MODEL, label: "GPT-5.4 Mini" },
   { value: GPT52_CHAT_MODEL, label: "GPT-5.2" },
+  { value: GPT53_CODEX_CHAT_MODEL, label: "GPT-5.3 Codex" },
+  { value: GPT53_CODEX_SPARK_CHAT_MODEL, label: "GPT-5.3 Codex Spark" },
   { value: GPT55_CHAT_MODEL, label: "GPT-5.5", ultraOnly: true },
 ];
 const CHAT_THINKING_OPTIONS: Array<{

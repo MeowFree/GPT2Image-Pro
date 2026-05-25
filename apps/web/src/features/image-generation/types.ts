@@ -248,6 +248,8 @@ export interface ApiConfig {
     apiKeyId?: string;
     requestKind?: "image_generation" | "image_edit" | "chat" | "responses";
     accountBackend?: "web" | "responses";
+    apiInterfaceMode?: "images" | "responses" | "mixed";
+    apiForceResponsesEndpoint?: boolean;
     reportResult?: boolean;
   };
 }
