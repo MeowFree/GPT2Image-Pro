@@ -1331,104 +1331,6 @@ async function runQueuedImageGenerationForUser({
       };
     };
 
-  let pendingResponseText = "";
-  let pendingResponseThinking = "";
-  let pendingResponseAgent = "";
-  let pendingAgentEvents: NonNullable<GenerateImageResult["agentEvents"]> = [];
-  let lastPendingStatusUpdateAt = 0;
-  const persistPendingOutput = async (force = false) => {
-    if (!force && Date.now() - lastPendingStatusUpdateAt < 1000) return;
-    lastPendingStatusUpdateAt = Date.now();
-    await db
-      .update(generation)
-      .set({
-        metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
-          {
-            pendingOutput: {
-              responseText: pendingResponseText || undefined,
-              responseThinking: pendingResponseThinking || undefined,
-              responseAgent: pendingResponseAgent || undefined,
-              agentEvents: sanitizeAgentEventsForMetadata(pendingAgentEvents),
-              updatedAt: new Date().toISOString(),
-            },
-          }
-        )}::jsonb`,
-      })
-      .where(isPendingGeneration(generationId));
-  };
-  const mergePendingAgentEvent = (
-    event: NonNullable<GenerateImageResult["agentEvents"]>[number]
-  ) => {
-    const key =
-      event.id ||
-      `${event.kind}:${event.toolType || ""}:${event.index ?? ""}:${
-        event.partialImageIndex ?? ""
-      }:${event.title}`;
-    const existingIndex = pendingAgentEvents.findIndex(
-      (item) =>
-        (item.id ||
-          `${item.kind}:${item.toolType || ""}:${item.index ?? ""}:${
-            item.partialImageIndex ?? ""
-          }:${item.title}`) === key
-    );
-    if (existingIndex >= 0) {
-      pendingAgentEvents = pendingAgentEvents.map((item, index) =>
-        index === existingIndex ? { ...item, ...event } : item
-      );
-      return;
-    }
-    pendingAgentEvents = [...pendingAgentEvents, event];
-  };
-  const wrappedCallbacks: ImageGenerationCallbacks | undefined = callbacks
-    ? {
-        ...callbacks,
-        onTextDelta: async (delta) => {
-          pendingResponseText += delta;
-          await callbacks.onTextDelta?.(delta);
-          await callbacks.onStatusUpdate?.({
-            responseText: pendingResponseText,
-            responseThinking: pendingResponseThinking || undefined,
-            responseAgent: pendingResponseAgent || undefined,
-            agentEvents: pendingAgentEvents,
-          });
-          await persistPendingOutput();
-        },
-        onThinkingDelta: async (delta) => {
-          pendingResponseThinking += delta;
-          await callbacks.onThinkingDelta?.(delta);
-          await callbacks.onStatusUpdate?.({
-            responseText: pendingResponseText || undefined,
-            responseThinking: pendingResponseThinking,
-            responseAgent: pendingResponseAgent || undefined,
-            agentEvents: pendingAgentEvents,
-          });
-          await persistPendingOutput();
-        },
-        onAgentDelta: async (delta) => {
-          pendingResponseAgent += delta;
-          await callbacks.onAgentDelta?.(delta);
-          await callbacks.onStatusUpdate?.({
-            responseText: pendingResponseText || undefined,
-            responseThinking: pendingResponseThinking || undefined,
-            responseAgent: pendingResponseAgent,
-            agentEvents: pendingAgentEvents,
-          });
-          await persistPendingOutput();
-        },
-        onAgentEvent: async (event) => {
-          mergePendingAgentEvent(event);
-          await callbacks.onAgentEvent?.(event);
-          await callbacks.onStatusUpdate?.({
-            responseText: pendingResponseText || undefined,
-            responseThinking: pendingResponseThinking || undefined,
-            responseAgent: pendingResponseAgent || undefined,
-            agentEvents: pendingAgentEvents,
-          });
-          await persistPendingOutput();
-        },
-      }
-    : undefined;
-
   const moderation = !moderationEnabled
     ? ({ decision: "skipped" } as const)
     : await moderateContent({
@@ -1515,7 +1417,7 @@ async function runQueuedImageGenerationForUser({
               forceWebBackend,
               requiresResponsesBackend: input.requiresResponsesBackend,
             },
-            wrappedCallbacks
+            callbacks
           )
         : input.mode === "chat"
           ? await generateChatImage(
@@ -1549,7 +1451,7 @@ async function runQueuedImageGenerationForUser({
                 mixWebFirst,
                 requiresResponsesBackend: input.requiresResponsesBackend,
               },
-              wrappedCallbacks
+              callbacks
             )
           : await generateImage(
               config,
@@ -1573,7 +1475,7 @@ async function runQueuedImageGenerationForUser({
                 forceWebBackend,
                 requiresResponsesBackend: input.requiresResponsesBackend,
               },
-              wrappedCallbacks
+              callbacks
             );
   } catch (error) {
     const message =
@@ -1616,8 +1518,6 @@ async function runQueuedImageGenerationForUser({
   if (isTimedOut()) {
     return failTimedOutGeneration();
   }
-
-  await persistPendingOutput(true);
 
   if (result.error) {
     const failureTargetCredits = getFailedGenerationTargetCredits({
@@ -1754,7 +1654,7 @@ async function runQueuedImageGenerationForUser({
       throw new Error("Missing image data");
     }
     if (isAgentChatInput) {
-      await emitAgentOperationEvent(wrappedCallbacks, {
+      await emitAgentOperationEvent(callbacks, {
         kind: "tool",
         status: "running",
         title: "保存生成图片",
@@ -1780,7 +1680,7 @@ async function runQueuedImageGenerationForUser({
         })
       );
       if (isAgentChatInput) {
-        await emitAgentOperationEvent(wrappedCallbacks, {
+        await emitAgentOperationEvent(callbacks, {
           kind: "tool",
           status:
             index === imageOutputs.length - 1 ? "completed" : "running",
@@ -1892,7 +1792,7 @@ async function runQueuedImageGenerationForUser({
     : actualImageCredits;
   try {
     if (isAgentChatInput) {
-      await emitAgentOperationEvent(wrappedCallbacks, {
+      await emitAgentOperationEvent(callbacks, {
         kind: "tool",
         status: "running",
         title: "结算本次生成",
@@ -1920,7 +1820,7 @@ async function runQueuedImageGenerationForUser({
       }
     );
     if (isAgentChatInput) {
-      await emitAgentOperationEvent(wrappedCallbacks, {
+      await emitAgentOperationEvent(callbacks, {
         kind: "tool",
         status: "completed",
         title: "结算完成",

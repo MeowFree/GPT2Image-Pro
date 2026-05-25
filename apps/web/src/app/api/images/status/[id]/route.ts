@@ -57,18 +57,6 @@ function getImageOutputs(metadata: unknown, bucket: string | null) {
   });
 }
 
-function getPendingOutput(metadata: unknown) {
-  const output = asRecord(asRecord(metadata).pendingOutput);
-  return {
-    responseText: stringValue(output.responseText),
-    responseThinking: stringValue(output.responseThinking),
-    responseAgent: stringValue(output.responseAgent),
-    agentEvents: Array.isArray(output.agentEvents)
-      ? output.agentEvents
-      : undefined,
-  };
-}
-
 function getResponseOutput(metadata: unknown) {
   const output = asRecord(asRecord(metadata).responseOutput);
   return {
@@ -119,7 +107,6 @@ export const GET = withApiLogging(
 
     const imageUrl = buildStorageUrl(row.storageBucket, row.storageKey);
     const imageOutputs = getImageOutputs(row.metadata, row.storageBucket);
-    const pendingOutput = getPendingOutput(row.metadata);
     const responseOutput = getResponseOutput(row.metadata);
 
     return NextResponse.json({
@@ -133,7 +120,6 @@ export const GET = withApiLogging(
       creditsConsumed: row.creditsConsumed,
       imageUrl,
       imageOutputs,
-      ...pendingOutput,
       ...responseOutput,
       createdAt: row.createdAt.toISOString(),
       completedAt: row.completedAt?.toISOString(),

@@ -149,8 +149,8 @@ export function createImageStreamResponse(
       },
       cancel() {
         // The browser closed the fetch stream. Stop writing bytes, but let the
-        // route's async work continue so pending generations can finish and be
-        // restored from the status API after navigation.
+        // route's async work continue; dashboard tab switches keep UI state in
+        // the create runtime store.
         closed = true;
         if (keepAlive) {
           clearInterval(keepAlive);

@@ -2075,7 +2075,6 @@ function createAgentRoundRequestTracker(
         }
         await callbacks.onAgentEvent?.(event);
       },
-      onStatusUpdate: callbacks.onStatusUpdate,
     };
   };
 
