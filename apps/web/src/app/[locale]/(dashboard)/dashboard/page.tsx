@@ -15,8 +15,13 @@ import { Coins, Image as ImageIcon, ImagePlus } from "lucide-react";
 import { headers } from "next/headers";
 import { getLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
+import { ImagePricingChartCard } from "@/features/dashboard/components/image-pricing-chart-card";
 import { RecentCreationsClient } from "@/features/image-generation/components/recent-creations-client";
+import { getRuntimeImageBaseCreditPricing } from "@/features/image-generation/pricing-settings";
+import { getImageBaseCreditPricing } from "@/features/image-generation/resolution";
 import { Link } from "@/i18n/routing";
+import { getPlanCapabilitySnapshot } from "@repo/shared/subscription/services/plan-capabilities";
+import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -30,8 +35,14 @@ export default async function DashboardPage() {
   const isZh = locale === "zh";
   const copy = (en: string, zh: string) => (isZh ? zh : en);
 
-  const [balanceData, recentGenerations, totalGenerationsResult, timeZone] =
-    await Promise.all([
+  const [
+    balanceData,
+    recentGenerations,
+    totalGenerationsResult,
+    timeZone,
+    imageBasePricing,
+    userPlanInfo,
+  ] = await Promise.all([
       db.query.creditsBalance.findFirst({
         where: eq(creditsBalance.userId, userId),
       }),
@@ -48,10 +59,14 @@ export default async function DashboardPage() {
         .from(generation)
         .where(eq(generation.userId, userId)),
       getAppTimeZone(),
+      getRuntimeImageBaseCreditPricing(),
+      getUserPlan(userId),
     ]);
 
   const balance = formatCredits(balanceData?.balance ?? 0);
   const totalGenerations = totalGenerationsResult[0]?.count ?? 0;
+  const normalizedImageBasePricing = getImageBaseCreditPricing(imageBasePricing);
+  const capabilities = await getPlanCapabilitySnapshot(userPlanInfo.plan);
 
   const generationsWithUrls = recentGenerations.map((gen) => ({
     id: gen.id,
@@ -96,8 +111,16 @@ export default async function DashboardPage() {
               <div className="text-2xl font-bold">{balance}</div>
               <p className="text-xs text-muted-foreground">
                 {copy(
-                  "Pixel-based pricing, 4K base 10 credits",
-                  "按像素计价，4K 基础价 10 积分"
+                  `Base price: ${formatCredits(
+                    normalizedImageBasePricing.base1024Credits
+                  )} at 1024x1024 · ${formatCredits(
+                    normalizedImageBasePricing.base4kCredits
+                  )} at 4K`,
+                  `基础价：1024x1024 为 ${formatCredits(
+                    normalizedImageBasePricing.base1024Credits
+                  )} · 4K 为 ${formatCredits(
+                    normalizedImageBasePricing.base4kCredits
+                  )}`
                 )}
               </p>
             </CardContent>
@@ -131,6 +154,19 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        <ImagePricingChartCard
+          billing={{
+            agentRoundCredits: capabilities.billing.agentRoundCredits,
+            chatRoundCredits: capabilities.billing.chatRoundCredits,
+            moderationBlockingEnabled:
+              capabilities.features["moderation.blocking"],
+            monthlyCredits: capabilities.limits.monthlyCredits,
+            planName: userPlanInfo.planName,
+          }}
+          isZh={isZh}
+          pricing={normalizedImageBasePricing}
+        />
 
         {/* Recent Generations */}
         {generationsWithUrls.length > 0 && (
