@@ -2,13 +2,26 @@ import { DocsBody, DocsPage, DocsTitle } from "fumadocs-ui/page";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import {
+  getSystemDocsMetadata,
+  SystemDocsContent,
+} from "@/features/docs/system-docs";
 import { docsSource } from "@/lib/source";
+
+function isSystemDocsSlug(slug?: string[]) {
+  if (!slug?.length) {
+    return true;
+  }
+
+  const path = slug.join("/");
+  return path === "system" || path === "backend-help";
+}
 
 /**
  * 生成静态参数
  */
 export function generateStaticParams() {
-  return docsSource.generateParams();
+  return [...docsSource.generateParams(), { slug: ["system"] }];
 }
 
 /**
@@ -17,9 +30,14 @@ export function generateStaticParams() {
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ slug?: string[] }>;
+  params: Promise<{ locale?: string; slug?: string[] }>;
 }): Promise<Metadata> {
-  const { slug } = await params;
+  const { locale, slug } = await params;
+
+  if (isSystemDocsSlug(slug)) {
+    return getSystemDocsMetadata(locale);
+  }
+
   const page = docsSource.getPage(slug);
 
   if (!page) {
@@ -43,9 +61,23 @@ export async function generateMetadata({
 export default async function Page({
   params,
 }: {
-  params: Promise<{ slug?: string[] }>;
+  params: Promise<{ locale?: string; slug?: string[] }>;
 }) {
-  const { slug } = await params;
+  const { locale, slug } = await params;
+
+  if (isSystemDocsSlug(slug)) {
+    return (
+      <DocsPage toc={[]}>
+        <DocsBody>
+          <SystemDocsContent
+            className="space-y-6 py-6"
+            locale={locale}
+          />
+        </DocsBody>
+      </DocsPage>
+    );
+  }
+
   const page = docsSource.getPage(slug);
 
   if (!page) {
