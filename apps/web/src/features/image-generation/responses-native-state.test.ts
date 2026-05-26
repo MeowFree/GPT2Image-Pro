@@ -297,6 +297,68 @@ describe("Responses native state cache observation", () => {
       previous_response_id: "resp_first",
     });
   });
+
+  it("falls back to store:false for Agent when upstream rejects native state", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateChatImage } = await import("./service");
+    const bodies: Array<Record<string, unknown>> = [];
+    const imageBase64 = Buffer.from("agent-store-fallback-image").toString(
+      "base64"
+    );
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || "{}")) as Record<
+        string,
+        unknown
+      >;
+      bodies.push(body);
+      if (bodies.length === 1) {
+        return new Response(
+          JSON.stringify({
+            error: { message: "Store must be set to false" },
+          }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          id: "resp_store_false",
+          output: [
+            {
+              type: "image_generation_call",
+              status: "completed",
+              result: imageBase64,
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateChatImage(responsesConfig(), {
+      prompt: "继续上一版做一张海报",
+      model: "gpt-5.4",
+      history: [assistantWithNativeState],
+      agentMode: true,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.imageBase64).toBe(imageBase64);
+    expect(result.responsesPreviousResponse).toBeUndefined();
+    expect(bodies[0]).toMatchObject({
+      store: true,
+      previous_response_id: "resp_previous",
+    });
+    expect(bodies[1]?.store).toBe(false);
+    expect(bodies[1]).not.toHaveProperty("previous_response_id");
+  });
 });
 
 describe("Responses image output compatibility", () => {

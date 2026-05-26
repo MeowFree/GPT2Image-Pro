@@ -175,6 +175,7 @@ type ResponsesPayload = {
 type ResponsesResultWithOutput = GenerateImageResult & {
   responseId?: string;
   outputItems?: ResponsesOutputItem[];
+  responsesStoreDisabledFallback?: boolean;
 };
 
 type ReasoningConfig = {
@@ -851,15 +852,23 @@ function attachResponsesPreviousResponseState(
   result: ResponsesResultWithOutput,
   enabled: boolean
 ): ResponsesResultWithOutput {
-  if (!enabled || result.error || !result.responseId) return result;
+  const { responsesStoreDisabledFallback, ...publicResult } = result;
+  if (
+    !enabled ||
+    responsesStoreDisabledFallback ||
+    publicResult.error ||
+    !publicResult.responseId
+  ) {
+    return publicResult;
+  }
   const backendMember = getStickyBackendMember(config);
   if (!backendMember || backendMember.accountBackend !== "responses") {
-    return result;
+    return publicResult;
   }
   return {
-    ...result,
+    ...publicResult,
     responsesPreviousResponse: {
-      responseId: result.responseId,
+      responseId: publicResult.responseId,
       backendMember,
       store: true,
       createdAt: new Date().toISOString(),
@@ -888,7 +897,7 @@ async function fetchResponsesWithPreviousResponseFallback(
     callbacks
   );
   if (result.error && isResponsesStoreUnsupportedError(result.error)) {
-    return await fetchResponses(
+    const fallbackResult = await fetchResponses(
       config,
       {
         ...buildResponsesStoreFalseFallbackRequestBody(requestBody),
@@ -900,6 +909,10 @@ async function fetchResponsesWithPreviousResponseFallback(
       },
       callbacks
     );
+    return {
+      ...fallbackResult,
+      responsesStoreDisabledFallback: true,
+    };
   }
   if (
     !options.previousResponseUsed ||
@@ -908,15 +921,38 @@ async function fetchResponsesWithPreviousResponseFallback(
   ) {
     return result;
   }
-  return await fetchResponses(
+  const previousResponseFallbackBody = buildPreviousResponseFallbackRequestBody(
+    requestBody,
+    fallbackInput
+  );
+  const previousResponseFallbackResult = await fetchResponses(
     config,
-    buildPreviousResponseFallbackRequestBody(requestBody, fallbackInput),
+    previousResponseFallbackBody,
     {
       signal: options.signal,
       stream: options.stream,
     },
     callbacks
   );
+  if (
+    previousResponseFallbackResult.error &&
+    isResponsesStoreUnsupportedError(previousResponseFallbackResult.error)
+  ) {
+    const storeFalseResult = await fetchResponses(
+      config,
+      buildResponsesStoreFalseFallbackRequestBody(previousResponseFallbackBody),
+      {
+        signal: options.signal,
+        stream: options.stream,
+      },
+      callbacks
+    );
+    return {
+      ...storeFalseResult,
+      responsesStoreDisabledFallback: true,
+    };
+  }
+  return previousResponseFallbackResult;
 }
 
 async function retryPoolBackendResult(
@@ -1136,22 +1172,71 @@ function stripToolTypes(
   };
 }
 
-async function fetchAgentRoundResponses(params: {
+async function fetchAgentResponsesAttempt(params: {
   config: ApiConfig;
   requestBody: ResponsesStreamRequestBody;
   signal?: AbortSignal;
   stream: boolean;
   callbacks?: ImageGenerationCallbacks;
+  storeFalseFallbackInput?: ResponsesRequestInputItem[];
+  onStoreDisabledFallback?: () => void;
 }) {
+  let requestBody = params.requestBody;
   let result = await fetchResponses(
     params.config,
-    params.requestBody,
+    requestBody,
     {
       signal: params.signal,
       stream: params.stream,
     },
     params.callbacks
   );
+
+  if (
+    requestBody.store !== false &&
+    result.error &&
+    isResponsesStoreUnsupportedError(result.error)
+  ) {
+    requestBody = {
+      ...buildResponsesStoreFalseFallbackRequestBody(requestBody),
+      ...(params.storeFalseFallbackInput
+        ? { input: params.storeFalseFallbackInput }
+        : {}),
+    };
+    params.onStoreDisabledFallback?.();
+    await emitAgentDecision(params.callbacks, {
+      status: "completed",
+      title: "Agent 上下文重试",
+      detail: "上游要求关闭 Responses store，已改用手动历史重试",
+    });
+    result = await fetchResponses(
+      params.config,
+      requestBody,
+      {
+        signal: params.signal,
+        stream: params.stream,
+      },
+      params.callbacks
+    );
+    result = {
+      ...result,
+      responsesStoreDisabledFallback: true,
+    };
+  }
+
+  return { requestBody, result };
+}
+
+async function fetchAgentRoundResponses(params: {
+  config: ApiConfig;
+  requestBody: ResponsesStreamRequestBody;
+  signal?: AbortSignal;
+  stream: boolean;
+  callbacks?: ImageGenerationCallbacks;
+  storeFalseFallbackInput?: ResponsesRequestInputItem[];
+  onStoreDisabledFallback?: () => void;
+}) {
+  let { requestBody, result } = await fetchAgentResponsesAttempt(params);
 
   const unsupportedTools = getUnsupportedToolTypes(result);
   if (unsupportedTools.size > 0) {
@@ -1163,15 +1248,10 @@ async function fetchAgentRoundResponses(params: {
       timestamp: new Date().toISOString(),
       toolType: "agent_tool_compat",
     });
-    result = await fetchResponses(
-      params.config,
-      stripToolTypes(params.requestBody, unsupportedTools),
-      {
-        signal: params.signal,
-        stream: params.stream,
-      },
-      params.callbacks
-    );
+    ({ requestBody, result } = await fetchAgentResponsesAttempt({
+      ...params,
+      requestBody: stripToolTypes(requestBody, unsupportedTools),
+    }));
 
     const secondUnsupportedTools = getUnsupportedToolTypes(result);
     if (secondUnsupportedTools.size > 0) {
@@ -1183,18 +1263,13 @@ async function fetchAgentRoundResponses(params: {
         timestamp: new Date().toISOString(),
         toolType: "agent_tool_compat",
       });
-      result = await fetchResponses(
-        params.config,
-        stripToolTypes(
-          params.requestBody,
+      ({ result } = await fetchAgentResponsesAttempt({
+        ...params,
+        requestBody: stripToolTypes(
+          requestBody,
           new Set(["web_search", "code_interpreter", "function"])
         ),
-        {
-          signal: params.signal,
-          stream: params.stream,
-        },
-        params.callbacks
-      );
+      }));
     }
   }
 
@@ -1893,6 +1968,9 @@ function mergeGenerateImageResults(
 
   return {
     ...last,
+    responsesStoreDisabledFallback: results.some(
+      (result) => result.responsesStoreDisabledFallback
+    ),
     imageBase64,
     imageUrl,
     imageOutputs: imageOutputs.length
@@ -3387,17 +3465,23 @@ export async function generateChatImage(
         params.agentForceMaxRounds ?? (await getAgentForceMaxRounds());
       const roundResults: ResponsesResultWithOutput[] = [];
       let nextInput = input;
-      const agentPreviousResponseEnabled = responsesPreviousResponseEnabled;
+      let agentPreviousResponseEnabled = responsesPreviousResponseEnabled;
       let agentPreviousResponseId = canUsePreviousResponseId
         ? previousResponsesState?.responseId
         : undefined;
+      const disableAgentNativeState = () => {
+        agentPreviousResponseEnabled = false;
+        agentPreviousResponseId = undefined;
+      };
 
       for (let round = 1; round <= maxRounds; round += 1) {
         const roundRequestBody: ResponsesStreamRequestBody = {
           ...requestBody,
           input: nextInput,
           store: agentPreviousResponseEnabled,
-          previous_response_id: agentPreviousResponseId,
+          previous_response_id: agentPreviousResponseEnabled
+            ? agentPreviousResponseId
+            : undefined,
           instructions:
             round === 1
               ? requestBody.instructions
@@ -3432,6 +3516,8 @@ export async function generateChatImage(
             signal: params.signal,
             stream,
             callbacks: roundCallbacks,
+            storeFalseFallbackInput: manualHistoryInput,
+            onStoreDisabledFallback: disableAgentNativeState,
           });
           if (
             round === 1 &&
@@ -3450,6 +3536,8 @@ export async function generateChatImage(
               signal: params.signal,
               stream,
               callbacks: roundCallbacks,
+              storeFalseFallbackInput: manualHistoryInput,
+              onStoreDisabledFallback: disableAgentNativeState,
             });
           }
           if (
@@ -3458,7 +3546,7 @@ export async function generateChatImage(
             roundResult.error &&
             isResponsesStoreUnsupportedError(roundResult.error)
           ) {
-            agentPreviousResponseId = undefined;
+            disableAgentNativeState();
             roundResult = await fetchAgentRoundResponses({
               config,
               requestBody: {
@@ -3470,6 +3558,8 @@ export async function generateChatImage(
               signal: params.signal,
               stream,
               callbacks: roundCallbacks,
+              storeFalseFallbackInput: manualHistoryInput,
+              onStoreDisabledFallback: disableAgentNativeState,
             });
           }
           if (
@@ -3484,7 +3574,7 @@ export async function generateChatImage(
               detail:
                 "上游原生会话状态返回异常，已改用手动历史和上一版图片重试当前轮",
             });
-            agentPreviousResponseId = undefined;
+            disableAgentNativeState();
             roundResult = await fetchAgentRoundResponses({
               config,
               requestBody: {
@@ -3504,6 +3594,7 @@ export async function generateChatImage(
               signal: params.signal,
               stream,
               callbacks: roundCallbacks,
+              onStoreDisabledFallback: disableAgentNativeState,
             });
           }
         } catch (error) {
@@ -3514,7 +3605,14 @@ export async function generateChatImage(
         }
         await roundRequestTracker.finish({ error: roundResult.error });
         roundResults.push(roundResult);
-        if (agentPreviousResponseEnabled && roundResult.responseId) {
+        if (roundResult.responsesStoreDisabledFallback) {
+          disableAgentNativeState();
+        }
+        if (
+          agentPreviousResponseEnabled &&
+          !roundResult.responsesStoreDisabledFallback &&
+          roundResult.responseId
+        ) {
           agentPreviousResponseId = roundResult.responseId;
         }
 

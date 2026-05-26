@@ -4567,6 +4567,87 @@ async function runSub2ApiSyncConfig(input: {
   return aggregate;
 }
 
+async function getSub2ApiSyncBatchLimit() {
+  const configuredLimit = await getRuntimeSettingNumber(
+    "SUB2API_POSTGRES_SYNC_LIMIT",
+    100,
+    {
+      positive: true,
+    }
+  );
+  return Math.max(1, Math.min(500, Math.trunc(configuredLimit)));
+}
+
+async function runSub2ApiAutoSyncTaskConfig(
+  task: Sub2ApiAutoSyncTask,
+  limit: number
+) {
+  const effectiveSyncMode = task.allowMobileRtImport
+    ? task.syncMode
+    : "responses";
+  const [webGroupId, responsesGroupId] = await Promise.all([
+    effectiveSyncMode === "web" || effectiveSyncMode === "both"
+      ? task.webGroupId || getDefaultGroupIdForBackend("web")
+      : Promise.resolve(null),
+    effectiveSyncMode === "responses" || effectiveSyncMode === "both"
+      ? task.responsesGroupId || getDefaultGroupIdForBackend("responses")
+      : Promise.resolve(null),
+  ]);
+
+  return runSub2ApiSyncConfig({
+    webGroupId,
+    responsesGroupId,
+    sourceGroupId: task.sourceGroupId,
+    sourceGroupName: task.sourceGroupName,
+    syncMode: effectiveSyncMode,
+    allowMobileRtImport: task.allowMobileRtImport,
+    contentSafetyEnabled: task.contentSafetyEnabled,
+    planFilter: task.planFilter,
+    limit,
+    syncTaskId: task.id,
+    cleanupManagedAccounts: true,
+    overwriteLocalUnavailableState: task.overwriteLocalUnavailableState,
+  });
+}
+
+function toSub2ApiAutoSyncTaskLastResult(
+  result: Awaited<ReturnType<typeof runSub2ApiSyncConfig>>
+): NonNullable<Sub2ApiAutoSyncTask["lastResult"]> {
+  return {
+    sourceCount: result.sourceCount,
+    totalSourceCount: result.totalSourceCount,
+    syncedCount: result.syncedCount,
+    syncedByMode: result.syncedByMode,
+    skipped: result.skipped,
+    failed: result.failed,
+    failedByMode: result.failedByMode,
+    deletedCount: result.deletedCount,
+  };
+}
+
+export async function runSub2ApiAutoSyncTaskNow(taskIdInput: string) {
+  if (!(await getOptionalSub2ApiPostgresConnectionString())) {
+    throw new Error("请先配置 SUB2API_POSTGRES_URL");
+  }
+
+  const taskId = taskIdInput.trim();
+  const tasks = await getSub2ApiAutoSyncTasks();
+  const task = tasks.find((item) => item.id === taskId);
+  if (!task) throw new Error("自动同步任务不存在");
+
+  const limit = await getSub2ApiSyncBatchLimit();
+  const result = await runSub2ApiAutoSyncTaskConfig(task, limit);
+  const lastResult = toSub2ApiAutoSyncTaskLastResult(result);
+  await updateSub2ApiAutoSyncTaskResult(task.id, lastResult);
+
+  return {
+    success: true,
+    taskId: task.id,
+    ...result,
+    timestamp: new Date().toISOString(),
+  };
+}
+
 export async function runAutoSub2ApiAccessTokenSync(options?: {
   force?: boolean;
 }) {
@@ -4642,13 +4723,10 @@ export async function runAutoSub2ApiAccessTokenSync(options?: {
   });
 
   try {
-    const [configuredLimit, configuredTasks] = await Promise.all([
-      getRuntimeSettingNumber("SUB2API_POSTGRES_SYNC_LIMIT", 100, {
-        positive: true,
-      }),
+    const [limit, configuredTasks] = await Promise.all([
+      getSub2ApiSyncBatchLimit(),
       getSub2ApiAutoSyncTasks(),
     ]);
-    const limit = Math.max(1, Math.min(500, Math.trunc(configuredLimit)));
     const enabledTasks = configuredTasks.filter((task) => task.enabled);
     const aggregate = createSub2ApiSyncAggregate();
     const taskResults: NonNullable<
@@ -4657,31 +4735,7 @@ export async function runAutoSub2ApiAccessTokenSync(options?: {
 
     if (enabledTasks.length) {
       for (const task of enabledTasks) {
-        const effectiveSyncMode = task.allowMobileRtImport
-          ? task.syncMode
-          : "responses";
-        const [webGroupId, responsesGroupId] = await Promise.all([
-          effectiveSyncMode === "web" || effectiveSyncMode === "both"
-            ? task.webGroupId || getDefaultGroupIdForBackend("web")
-            : Promise.resolve(null),
-          effectiveSyncMode === "responses" || effectiveSyncMode === "both"
-            ? task.responsesGroupId || getDefaultGroupIdForBackend("responses")
-            : Promise.resolve(null),
-        ]);
-        const result = await runSub2ApiSyncConfig({
-          webGroupId,
-          responsesGroupId,
-          sourceGroupId: task.sourceGroupId,
-          sourceGroupName: task.sourceGroupName,
-          syncMode: effectiveSyncMode,
-          allowMobileRtImport: task.allowMobileRtImport,
-          contentSafetyEnabled: task.contentSafetyEnabled,
-          planFilter: task.planFilter,
-          limit,
-          syncTaskId: task.id,
-          cleanupManagedAccounts: true,
-          overwriteLocalUnavailableState: task.overwriteLocalUnavailableState,
-        });
+        const result = await runSub2ApiAutoSyncTaskConfig(task, limit);
         aggregate.sourceCount += result.sourceCount;
         aggregate.totalSourceCount += result.totalSourceCount;
         aggregate.syncedCount += result.syncedCount;
@@ -4706,16 +4760,10 @@ export async function runAutoSub2ApiAccessTokenSync(options?: {
           failed: result.failed,
           deletedCount: result.deletedCount,
         });
-        await updateSub2ApiAutoSyncTaskResult(task.id, {
-          sourceCount: result.sourceCount,
-          totalSourceCount: result.totalSourceCount,
-          syncedCount: result.syncedCount,
-          syncedByMode: result.syncedByMode,
-          skipped: result.skipped,
-          failed: result.failed,
-          failedByMode: result.failedByMode,
-          deletedCount: result.deletedCount,
-        });
+        await updateSub2ApiAutoSyncTaskResult(
+          task.id,
+          toSub2ApiAutoSyncTaskLastResult(result)
+        );
       }
     } else {
       const [sourceGroupId, syncMode, allowMobileRtImport, planFilter] =

@@ -74,6 +74,7 @@ import {
   importImageBackendWebAccountsFromAccessTokensAction,
   refreshImageBackendAccountInfoAction,
   refreshImageBackendAccountsInfoAction,
+  runSub2ApiAutoSyncTaskNowAction,
   saveImageBackendAccountAction,
   saveImageBackendApiAction,
   saveImageBackendGroupAction,
@@ -744,6 +745,9 @@ export function ImageBackendPoolAdminPanel({
     contentSafetyEnabled: true,
     overwriteLocalUnavailableState: true,
   });
+  const [runningSub2ApiSyncTaskId, setRunningSub2ApiSyncTaskId] = useState<
+    string | null
+  >(null);
   const [syncProgress, setSyncProgress] = useState<SyncProgressState>({
     status: "idle",
     value: 0,
@@ -1219,6 +1223,28 @@ export function ImageBackendPoolAdminPanel({
   );
   const [isSyncingSub2Api, setIsSyncingSub2Api] = useState(false);
 
+  const {
+    execute: runSub2ApiAutoSyncTaskNow,
+    isPending: isRunningSub2ApiSyncTask,
+  } = useAction(runSub2ApiAutoSyncTaskNowAction, {
+    onSuccess: ({ data }) => {
+      toast.success(
+        `立即同步完成：写入 ${data?.syncedCount || 0} 个，失败 ${
+          data?.failed || 0
+        } 个${
+          data?.deletedCount ? `，删除 ${data.deletedCount} 个` : ""
+        }`
+      );
+      setRunningSub2ApiSyncTaskId(null);
+      loadSub2ApiSyncTasks();
+      reload();
+    },
+    onError: ({ error }) => {
+      setRunningSub2ApiSyncTaskId(null);
+      toast.error(error.serverError || "立即运行自动同步任务失败");
+    },
+  });
+
   const { execute: setSub2ApiTaskEnabled, isPending: isUpdatingSyncTask } =
     useAction(setSub2ApiAutoSyncTaskEnabledAction, {
       onSuccess: () => {
@@ -1660,6 +1686,16 @@ export function ImageBackendPoolAdminPanel({
       return;
     }
     deleteSub2ApiTask({ taskId: task.id });
+  };
+
+  const runSub2ApiSyncTaskNow = (task: Sub2ApiAutoSyncTask) => {
+    if (sub2ApiConfigured === false) {
+      toast.error("未配置 SUB2API_POSTGRES_URL，不能运行自动同步任务");
+      return;
+    }
+    if (isRunningSub2ApiSyncTask) return;
+    setRunningSub2ApiSyncTaskId(task.id);
+    runSub2ApiAutoSyncTaskNow({ taskId: task.id });
   };
 
   useEffect(() => {
@@ -3522,6 +3558,9 @@ export function ImageBackendPoolAdminPanel({
                       task.sourceGroupName ||
                       task.sourceGroupId ||
                       "全部 Sub2API OpenAI 账号";
+                    const isTaskRunning =
+                      runningSub2ApiSyncTaskId === task.id &&
+                      isRunningSub2ApiSyncTask;
                     return (
                       <div
                         key={task.id}
@@ -3598,6 +3637,23 @@ export function ImageBackendPoolAdminPanel({
                                 }
                               />
                             </Label>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={
+                                isSub2ApiSyncUnavailable ||
+                                isRunningSub2ApiSyncTask
+                              }
+                              onClick={() => runSub2ApiSyncTaskNow(task)}
+                            >
+                              {isTaskRunning ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                              )}
+                              立即运行
+                            </Button>
                             <Button
                               type="button"
                               variant="outline"

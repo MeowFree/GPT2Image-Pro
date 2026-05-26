@@ -30,6 +30,7 @@ import {
   listSub2ApiSourceGroups,
   refreshImageBackendAccountInfo,
   refreshImageBackendAccountsInfo,
+  runSub2ApiAutoSyncTaskNow,
   setSub2ApiAutoSyncTaskEnabled,
   setSub2ApiAutoSyncTaskOverwriteLocalUnavailableState,
   setUserImageBackendPreference,
@@ -140,6 +141,17 @@ export const getSub2ApiAutoSyncTasksAction = withImageBackendPoolAdminAction(
   const tasks = await listSub2ApiAutoSyncTasksForAdmin();
   return { tasks };
 });
+
+export const runSub2ApiAutoSyncTaskNowAction =
+  withImageBackendPoolAdminAction("runSub2ApiAutoSyncTaskNow")
+    .schema(
+      z.object({
+        taskId: z.string().trim().min(1),
+      })
+    )
+    .action(async ({ parsedInput }) => {
+      return runSub2ApiAutoSyncTaskNow(parsedInput.taskId);
+    });
 
 export const setSub2ApiAutoSyncTaskEnabledAction =
   withImageBackendPoolAdminAction("setSub2ApiAutoSyncTaskEnabled")
