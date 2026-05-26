@@ -16,6 +16,10 @@ import { headers } from "next/headers";
 import { getLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { ImagePricingChartCard } from "@/features/dashboard/components/image-pricing-chart-card";
+import {
+  getUserImageBackendPreference,
+  listImageBackendGroupOptions,
+} from "@/features/image-backend-pool/service";
 import { RecentCreationsClient } from "@/features/image-generation/components/recent-creations-client";
 import { getRuntimeImageBaseCreditPricing } from "@/features/image-generation/pricing-settings";
 import { getImageBaseCreditPricing } from "@/features/image-generation/resolution";
@@ -66,7 +70,17 @@ export default async function DashboardPage() {
   const balance = formatCredits(balanceData?.balance ?? 0);
   const totalGenerations = totalGenerationsResult[0]?.count ?? 0;
   const normalizedImageBasePricing = getImageBaseCreditPricing(imageBasePricing);
-  const capabilities = await getPlanCapabilitySnapshot(userPlanInfo.plan);
+  const [capabilities, backendGroups, selectedBackendGroupId] =
+    await Promise.all([
+      getPlanCapabilitySnapshot(userPlanInfo.plan),
+      listImageBackendGroupOptions({ plan: userPlanInfo.plan }),
+      getUserImageBackendPreference(userId),
+    ]);
+  const activeBackendGroup =
+    backendGroups.find((group) => group.id === selectedBackendGroupId) ||
+    backendGroups.find((group) => group.isDefault) ||
+    backendGroups[0] ||
+    null;
 
   const generationsWithUrls = recentGenerations.map((gen) => ({
     id: gen.id,
@@ -159,6 +173,8 @@ export default async function DashboardPage() {
           billing={{
             agentRoundCredits: capabilities.billing.agentRoundCredits,
             chatRoundCredits: capabilities.billing.chatRoundCredits,
+            groupMultiplier: activeBackendGroup?.billingMultiplier ?? 1,
+            groupName: activeBackendGroup?.name ?? null,
             moderationBlockingEnabled:
               capabilities.features["moderation.blocking"],
             monthlyCredits: capabilities.limits.monthlyCredits,

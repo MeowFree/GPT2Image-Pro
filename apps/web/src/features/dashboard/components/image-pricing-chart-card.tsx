@@ -36,6 +36,8 @@ type ImagePricingChartCardProps = {
   billing: {
     agentRoundCredits: number;
     chatRoundCredits: number;
+    groupMultiplier: number;
+    groupName: string | null;
     moderationBlockingEnabled: boolean;
     monthlyCredits: number;
     planName: string;
@@ -80,6 +82,10 @@ function buildChartData(pricing: ImageBaseCreditPricing): PricingPoint[] {
 
 function formatPrice(value: number) {
   return formatCredits(value);
+}
+
+function roundUpTwoDecimals(value: number) {
+  return Math.ceil((value - 1e-9) * 100) / 100;
 }
 
 function formatPixels(value: number) {
@@ -166,6 +172,24 @@ export function ImagePricingChartCard({
     TEXT_MODERATION_PRICE_CNY / REFERENCE_CREDIT_PRICE_CNY;
   const imageModerationCredits =
     IMAGE_MODERATION_PRICE_CNY / REFERENCE_CREDIT_PRICE_CNY;
+  const groupMultiplier = Number.isFinite(billing.groupMultiplier)
+    ? Math.max(0.01, billing.groupMultiplier)
+    : 1;
+  const multiplierExamplePoint =
+    data.find((point) => point.size === DEFAULT_IMAGE_SIZE) ?? data[0]!;
+  const multiplierExampleBase = getImageBaseCredits(
+    multiplierExamplePoint.pixels,
+    normalizedPricing
+  );
+  const multiplierExampleReviewAddOn = billing.moderationBlockingEnabled
+    ? textModerationCredits
+    : 0;
+  const multiplierExampleBeforeMultiplier = roundUpTwoDecimals(
+    multiplierExampleBase + multiplierExampleReviewAddOn
+  );
+  const multiplierExampleFinal = roundUpTwoDecimals(
+    multiplierExampleBeforeMultiplier * groupMultiplier
+  );
 
   const pricingItems = [
     {
@@ -186,6 +210,12 @@ export function ImagePricingChartCard({
       value: `${formatCredits(billing.agentRoundCredits)} ${copy(
         "credits / round",
         "积分/轮"
+      )}`,
+    },
+    {
+      label: copy("Backend group", "后端分组"),
+      value: `${billing.groupName || copy("Default group", "默认分组")} · x${Number(
+        groupMultiplier.toFixed(4)
       )}`,
     },
     {
@@ -285,7 +315,7 @@ export function ImagePricingChartCard({
             <div className="h-full w-full rounded-md bg-muted/30" />
           )}
         </div>
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {pricingItems.map((item) => (
             <div
               className="rounded-lg border bg-muted/30 p-3"
@@ -377,6 +407,34 @@ export function ImagePricingChartCard({
                   </div>
                 );
               })}
+            </div>
+            <div className="mt-3 rounded-md border bg-background/70 p-2">
+              <div className="font-medium text-foreground">
+                {copy("With group multiplier", "含分组倍率示例")}
+              </div>
+              <div className="mt-1 text-muted-foreground">
+                {multiplierExamplePoint.size} ·{" "}
+                {billing.groupName || copy("Default group", "默认分组")} · x
+                {Number(groupMultiplier.toFixed(4))}
+              </div>
+              <div className="mt-1 text-muted-foreground">
+                {copy(
+                  `ceil2(ceil2(${formatPrice(
+                    multiplierExampleBase
+                  )} base + ${formatPrice(
+                    multiplierExampleReviewAddOn
+                  )} review) x ${Number(groupMultiplier.toFixed(4))})`,
+                  `向上保留两位(向上保留两位(${formatPrice(
+                    multiplierExampleBase
+                  )} 基础价 + ${formatPrice(
+                    multiplierExampleReviewAddOn
+                  )} 审核附加) x ${Number(groupMultiplier.toFixed(4))})`
+                )}
+              </div>
+              <div className="mt-1 font-medium text-foreground">
+                = {formatPrice(multiplierExampleFinal)}{" "}
+                {copy("credits / image", "积分/张")}
+              </div>
             </div>
           </div>
         </div>
