@@ -3019,6 +3019,7 @@ type Sub2ApiTokenAccount = {
   sourceOverloadUntil: Date | null;
   sourceTempUnschedulableUntil: Date | null;
   sourceCooldownUntil: Date | null;
+  sourceUpdatedAt: Date | null;
 };
 
 type Sub2ApiPlanFilter = "all" | "free" | "plus" | "pro" | "non_free";
@@ -3318,6 +3319,10 @@ function mapSub2ApiAccountRow(
     sourceOverloadUntil ||
     sourceTempUnschedulableUntil ||
     sourceGenericCooldownUntil;
+  const sourceUpdatedAt = credentialDate(sourceData, [
+    "updated_at",
+    "updatedAt",
+  ]);
   const sourceId = String(row.id);
   const name = row.name?.trim() || email || `Sub2API 账号 ${sourceId}`;
 
@@ -3343,6 +3348,7 @@ function mapSub2ApiAccountRow(
     sourceOverloadUntil,
     sourceTempUnschedulableUntil,
     sourceCooldownUntil,
+    sourceUpdatedAt,
   };
 }
 
@@ -3663,11 +3669,30 @@ async function resolveSyncedAccountHealth(
   const sourceHealth = await getSub2ApiHealthOverride(account);
   const overwriteLocalUnavailableState =
     options?.overwriteLocalUnavailableState !== false;
-  const preserveLocalUnavailable =
-    !overwriteLocalUnavailableState &&
-    !sourceHealth.status &&
-    (await shouldPreserveLocalUnavailableState(existing));
   const now = new Date();
+  const existingUnavailable = Boolean(
+    existing &&
+      (!existing.isEnabled ||
+        existing.status === "error" ||
+        existing.status === "limited" ||
+        (existing.cooldownUntil &&
+          existing.cooldownUntil.getTime() > now.getTime()))
+  );
+  const localErrorIsNewerThanSource = Boolean(
+    existing?.lastErrorAt &&
+      (!account.sourceUpdatedAt ||
+        existing.lastErrorAt.getTime() > account.sourceUpdatedAt.getTime())
+  );
+  const preserveNewerLocalInvalidCredential =
+    !sourceHealth.status &&
+    existingUnavailable &&
+    localErrorIsNewerThanSource &&
+    isInvalidBackendCredentialError(existing?.lastError);
+  const preserveLocalUnavailable =
+    !sourceHealth.status &&
+    (preserveNewerLocalInvalidCredential ||
+      (!overwriteLocalUnavailableState &&
+        (await shouldPreserveLocalUnavailableState(existing))));
   const rawUpdate = sourceHealth.status
     ? {
         status: sourceHealth.status,
@@ -3725,6 +3750,9 @@ function buildSub2ApiAccountMetadata(
       : null,
     sub2apiCooldownUntil: account.sourceCooldownUntil
       ? account.sourceCooldownUntil.toISOString()
+      : null,
+    sub2apiUpdatedAt: account.sourceUpdatedAt
+      ? account.sourceUpdatedAt.toISOString()
       : null,
     localUnavailablePreserved: preserveLocalUnavailable,
     tokenSource,
