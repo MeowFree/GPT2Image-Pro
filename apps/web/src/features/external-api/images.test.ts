@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createExternalImageStreamResponse,
   toExternalGenerationUsage,
+  toOpenAIErrorPayload,
 } from "./images";
 
 async function readFirstChunk(response: Response) {
@@ -60,6 +61,37 @@ describe("external generation usage payload", () => {
       generation_ids: ["gen_1", "gen_2"],
       generationIds: ["gen_1", "gen_2"],
       credits_consumed: 3.28,
+    });
+  });
+});
+
+describe("external API error classification", () => {
+  it("maps plan limit errors to explicit request errors", () => {
+    expect(
+      toOpenAIErrorPayload("Batch image generation is not enabled for this plan.")
+        .error
+    ).toMatchObject({
+      type: "invalid_request_error",
+      code: "insufficient_plan",
+      status: 403,
+    });
+
+    expect(toOpenAIErrorPayload("n must be between 1 and 10.").error).toMatchObject({
+      type: "invalid_request_error",
+      code: "plan_limit_exceeded",
+      status: 400,
+    });
+  });
+
+  it("maps queue and concurrency failures to rate limit errors", () => {
+    expect(
+      toOpenAIErrorPayload(
+        "Image generation concurrency limit reached for this plan. Your plan allows 2 concurrent image generation task(s)."
+      ).error
+    ).toMatchObject({
+      type: "rate_limit_error",
+      code: "image_generation_queue_busy",
+      status: 429,
     });
   });
 });

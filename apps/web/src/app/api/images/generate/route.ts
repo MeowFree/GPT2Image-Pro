@@ -1,6 +1,9 @@
 import { withApiLogging } from "@repo/shared/api-logger";
 import { auth } from "@repo/shared/auth";
-import { getPlanLimits } from "@repo/shared/subscription/services/plan-capabilities";
+import {
+  canUsePlanCapability,
+  getPlanLimits,
+} from "@repo/shared/subscription/services/plan-capabilities";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -91,6 +94,15 @@ export const POST = withApiLogging(async (request: NextRequest) => {
   const plan = await getUserPlan(session.user.id);
   const planLimits = await getPlanLimits(plan.plan);
   const count = parsed.data.count || 1;
+  if (
+    count > 1 &&
+    !(await canUsePlanCapability(plan.plan, "imageGeneration.batch"))
+  ) {
+    return errorResponse(
+      "Batch image generation is not enabled for this plan.",
+      403
+    );
+  }
   if (count > planLimits.maxBatchCount) {
     return errorResponse(
       `count must be between 1 and ${planLimits.maxBatchCount}.`
@@ -145,6 +157,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       return createImageStreamResponse(async (emit) => {
         await runBatchImageGeneration({
           count,
+          concurrency: planLimits.imageGenerationConcurrency,
           generationIds: batchGenerationIds,
           run: (generationId, callbacks) =>
             runImageGenerationForUser({ ...input, generationId }, callbacks),
@@ -189,6 +202,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
 
     const results = await runBatchImageGeneration({
       count,
+      concurrency: planLimits.imageGenerationConcurrency,
       generationIds: batchGenerationIds,
       run: (generationId) =>
         runImageGenerationForUser({ ...input, generationId }),

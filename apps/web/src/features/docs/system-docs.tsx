@@ -579,7 +579,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
           notes: [
             "该接口不会调用页面 /api/images/generate，而是直接进入共享 service 层。",
             "如果命中 Responses 账号池，内部会把图片请求转换成 Responses image_generation tool 请求。",
-            "n/count 批量张数属于一次 HTTP 请求，但当前按单张任务串行执行；一次 10 张会创建 10 条生成记录并按 10 张计费，同一批内同一时间只占 1 个用户生图并发槽。",
+            "n/count 批量张数属于一次 HTTP 请求；一次 10 张会创建 10 条生成记录并按 10 张计费。运行时按套餐的生图并发受限并行，超过并发上限的图片会在本批次内排队等待。",
             "Web 后端无法严格控制输出尺寸和输出格式；本站保存时会按实际图片头识别扩展名和 MIME。",
             "如果实际生成尺寸与请求尺寸不一致，本站会按检测到的实际尺寸修正记录和计费。",
             "官方 Images API 可能返回 usage；本站当前 usage 通常为 null，但会通过顶层 credits_consumed、错误对象或流式完成事件返回实际积分。",
@@ -1910,7 +1910,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
           notes: [
             "This endpoint does not call page /api/images/generate; it directly enters the shared service layer.",
             "When routed to a Responses account, the image request is converted into a Responses image_generation tool request.",
-            "n/count is one HTTP request, but GPT2IMAGE currently runs each image sequentially. A 10-image request creates 10 generation records and bills 10 outputs, while using only one user generation concurrency slot at a time inside that batch.",
+            "n/count is one HTTP request. A 10-image request creates 10 generation records and bills 10 outputs. GPT2IMAGE runs batch items with bounded parallelism based on the plan image-generation concurrency; items beyond that concurrency wait inside the same batch.",
             "Web backends cannot strictly control output dimensions or output format. GPT2IMAGE labels stored files by the detected image header and MIME.",
             "If the actual generated dimensions differ from the requested size, GPT2IMAGE records and bills using the detected actual size.",
             "The official Images API may return usage. GPT2IMAGE usually returns usage: null, but actual credits are returned through top-level credits_consumed, error payloads, or streaming completion events.",

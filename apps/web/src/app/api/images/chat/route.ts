@@ -829,6 +829,15 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       error instanceof Error ? error.message : "Invalid count."
     );
   }
+  if (
+    count > 1 &&
+    !(await canUsePlanCapability(plan.plan, "imageGeneration.batch"))
+  ) {
+    return errorResponse(
+      "Batch image generation is not enabled for this plan.",
+      403
+    );
+  }
 
   const model = getText(formData, "model") || undefined;
   const imageModel =
@@ -909,6 +918,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           try {
             await runBatchImageGeneration({
               count,
+              concurrency: planLimits.imageGenerationConcurrency,
               generationIds:
                 count === 1 && requestedGenerationId
                   ? [requestedGenerationId]
@@ -967,6 +977,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
 
       const results = await runBatchImageGeneration({
         count,
+        concurrency: planLimits.imageGenerationConcurrency,
         generationIds:
           count === 1 && requestedGenerationId
             ? [requestedGenerationId]

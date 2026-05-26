@@ -153,6 +153,16 @@ export const postExternalImageGenerations = withApiLogging(
     const plan = await getUserPlan(auth.userId);
     const limits = await getPlanLimits(plan.plan);
     const count = parsed.data.n || 1;
+    if (
+      count > 1 &&
+      !(await canUsePlanCapability(plan.plan, "imageGeneration.batch"))
+    ) {
+      return openAIImageError(
+        "Batch image generation is not enabled for this plan.",
+        403,
+        "insufficient_plan"
+      );
+    }
     if (count > limits.maxBatchCount) {
       return openAIImageError(
         `n must be between 1 and ${limits.maxBatchCount}.`
@@ -196,6 +206,7 @@ export const postExternalImageGenerations = withApiLogging(
       return createExternalImageStreamResponse(async (emit) => {
         await runBatchImageGeneration({
           count,
+          concurrency: limits.imageGenerationConcurrency,
           run: (generationId, callbacks) =>
             runImageGenerationForUser(
               { ...input, generationId },
@@ -248,6 +259,7 @@ export const postExternalImageGenerations = withApiLogging(
 
       const results = await runBatchImageGeneration({
         count,
+        concurrency: limits.imageGenerationConcurrency,
         run: () => runImageGenerationForUser(input),
       });
       for (const result of results) {

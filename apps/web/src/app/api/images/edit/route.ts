@@ -1,6 +1,9 @@
 import { withApiLogging } from "@repo/shared/api-logger";
 import { auth } from "@repo/shared/auth";
-import { getPlanLimits } from "@repo/shared/subscription/services/plan-capabilities";
+import {
+  canUsePlanCapability,
+  getPlanLimits,
+} from "@repo/shared/subscription/services/plan-capabilities";
 import { getPlanUploadLimits } from "@repo/shared/subscription/services/upload-limits";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import { randomUUID } from "node:crypto";
@@ -235,6 +238,15 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       error instanceof Error ? error.message : "Invalid count."
     );
   }
+  if (
+    count > 1 &&
+    !(await canUsePlanCapability(plan.plan, "imageGeneration.batch"))
+  ) {
+    return errorResponse(
+      "Batch image editing is not enabled for this plan.",
+      403
+    );
+  }
   let requestedGenerationIds: string[] | undefined;
   try {
     requestedGenerationIds = getGenerationIds(formData, count);
@@ -344,6 +356,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           try {
             await runBatchImageGeneration({
               count,
+              concurrency: planLimits.imageGenerationConcurrency,
               generationIds:
                 requestedGenerationIds ||
                 (count === 1 && requestedGenerationId
@@ -393,6 +406,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
 
       const results = await runBatchImageGeneration({
         count,
+        concurrency: planLimits.imageGenerationConcurrency,
         generationIds:
           requestedGenerationIds ||
           (count === 1 && requestedGenerationId

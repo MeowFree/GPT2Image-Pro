@@ -290,11 +290,50 @@ function classifyExternalApiError(message: string) {
     };
   }
 
+  if (
+    normalized.includes("not enabled for this plan") ||
+    normalized.includes("requires pro plan") ||
+    normalized.includes("requires ultra plan") ||
+    normalized.includes("requires enterprise plan")
+  ) {
+    return {
+      type: "invalid_request_error",
+      code: "insufficient_plan",
+      status: 403,
+    };
+  }
+
+  if (
+    normalized.includes("must be between") ||
+    normalized.includes("must be no more than") ||
+    normalized.includes("no more than") ||
+    normalized.includes("exceeds the") ||
+    normalized.includes("character limit") ||
+    normalized.includes("context must be")
+  ) {
+    return {
+      type: "invalid_request_error",
+      code: "plan_limit_exceeded",
+      status: 400,
+    };
+  }
+
   if (normalized.includes("unsupported model")) {
     return {
       type: "invalid_request_error",
       code: "unsupported_model",
       status: 400,
+    };
+  }
+
+  if (
+    normalized.includes("concurrency limit reached") ||
+    normalized.includes("queue is busy")
+  ) {
+    return {
+      type: "rate_limit_error",
+      code: "image_generation_queue_busy",
+      status: 429,
     };
   }
 

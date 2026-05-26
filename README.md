@@ -191,7 +191,7 @@ curl https://your-domain.com/v1/images/generations \
 
 `force_web`/`forceWeb` 是本站扩展字段，仅对 `/v1/images/generations` 和 `/v1/images/edits` 生效。用户已启用“接入其他站 API”时仍优先使用用户自接 API，并忽略该字段；进入平台账号池后，只有命中的后端分组为 `mixed` 时才会强制本次 image 请求只调度 Web 账号。非 mixed 分组也会忽略该字段并按原分组规则调度。Web 后端仍不能严格保证输出分辨率或 4K。
 
-`n`/`count` 批量张数是一次 HTTP 发送，但当前后端按单张任务串行执行：一次生成 10 张会创建 10 条 generation 记录、按 10 张结算，但同一批内同一时间只占 1 个用户生图并发槽，不会一次吃掉 10 个并发。
+`n`/`count` 批量张数是一次 HTTP 发送；一次生成 10 张会创建 10 条 generation 记录并按 10 张结算。运行时按套餐的“生图并发”受限并行，超过并发上限的图片会在本批次内排队等待，不会一次性吃掉 10 个并发。
 
 流式文生图示例：
 

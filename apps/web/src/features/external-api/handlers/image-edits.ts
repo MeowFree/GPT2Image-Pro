@@ -592,6 +592,16 @@ export const postExternalImageEdits = withApiLogging(
         error instanceof Error ? error.message : "Invalid n."
       );
     }
+    if (
+      count > 1 &&
+      !(await canUsePlanCapability(plan.plan, "imageGeneration.batch"))
+    ) {
+      return openAIImageError(
+        "Batch image editing is not enabled for this plan.",
+        403,
+        "insufficient_plan"
+      );
+    }
     if (count > planLimits.maxBatchCount) {
       return openAIImageError(
         `n must be between 1 and ${planLimits.maxBatchCount}.`
@@ -711,6 +721,7 @@ export const postExternalImageEdits = withApiLogging(
           try {
             await runBatchImageGeneration({
               count,
+              concurrency: planLimits.imageGenerationConcurrency,
               run: runEdit,
               callbacks: (index) => ({
                 onPartialImage: async (image) => {
@@ -763,6 +774,7 @@ export const postExternalImageEdits = withApiLogging(
 
           const results = await runBatchImageGeneration({
             count,
+            concurrency: planLimits.imageGenerationConcurrency,
             run: runEdit,
           });
           for (const result of results) {

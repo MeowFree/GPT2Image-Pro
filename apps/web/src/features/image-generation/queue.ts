@@ -35,6 +35,28 @@ function getQueueTimeoutMs() {
   return getPositiveIntegerEnv("IMAGE_GENERATION_QUEUE_TIMEOUT_MS", 60_000);
 }
 
+function formatDuration(seconds: number) {
+  if (seconds % 60 === 0) return `${seconds / 60} minute(s)`;
+  return `${seconds} second(s)`;
+}
+
+function getQueuedTaskTimeoutError(
+  task: Pick<QueueTask<unknown>, "userId" | "userConcurrency">,
+  timeoutMs: number
+) {
+  const timeoutSeconds = Math.ceil(timeoutMs / 1000);
+  const userRunning = runningByUser.get(task.userId) || 0;
+  if (userRunning >= task.userConcurrency) {
+    return new Error(
+      `Image generation concurrency limit reached for this plan. Your plan allows ${task.userConcurrency} concurrent image generation task(s); this queued request waited ${formatDuration(timeoutSeconds)} without a free slot.`
+    );
+  }
+
+  return new Error(
+    `Image generation queue is busy. This queued request waited ${formatDuration(timeoutSeconds)} without a free global slot. Please retry shortly.`
+  );
+}
+
 function canStartTask(
   task: Pick<QueueTask<unknown>, "userId" | "userConcurrency">
 ) {
@@ -119,6 +141,7 @@ export function withImageGenerationQueue<T>(
   }
 
   return new Promise<T>((resolve, reject) => {
+    const timeoutMs = options.timeoutMs || getQueueTimeoutMs();
     let task: QueueTask<T>;
     task = {
       id: nextTaskId++,
@@ -130,11 +153,9 @@ export function withImageGenerationQueue<T>(
       run,
       timeout: setTimeout(() => {
         if (removeQueuedTask(task as QueueTask<unknown>)) {
-          reject(
-            new Error("Image generation queue is busy. Please retry shortly.")
-          );
+          reject(getQueuedTaskTimeoutError(task, timeoutMs));
         }
-      }, options.timeoutMs || getQueueTimeoutMs()),
+      }, timeoutMs),
     };
 
     queue.push(task as QueueTask<unknown>);
