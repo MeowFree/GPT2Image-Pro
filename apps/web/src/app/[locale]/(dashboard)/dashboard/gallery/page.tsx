@@ -41,6 +41,7 @@ function extractAgentDraftGenerations(
       if (output.role !== "agent_draft" && output.primary !== false) return [];
       const storageKey =
         typeof output.storageKey === "string" ? output.storageKey : null;
+      const storedImageUrl = toStoredImageUrl(g.storageBucket, storageKey);
       const generationId =
         typeof output.generationId === "string"
           ? output.generationId
@@ -61,9 +62,8 @@ function extractAgentDraftGenerations(
           storageKey,
           storageBucket: g.storageBucket,
           imageUrl:
-            typeof output.imageUrl === "string"
-              ? output.imageUrl
-              : toStoredImageUrl(g.storageBucket, storageKey),
+            storedImageUrl ||
+            (typeof output.imageUrl === "string" ? output.imageUrl : null),
           createdAt: g.createdAt.toISOString(),
           outputRole: "agent_draft" as GalleryOutputRole,
         },

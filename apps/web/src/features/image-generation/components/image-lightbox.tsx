@@ -16,8 +16,8 @@ import {
   Trash2,
 } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
 import { useLocale } from "next-intl";
+import { useRouter } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
 import { type PointerEvent, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -85,6 +85,7 @@ export function ImageLightbox({
   onDelete,
 }: ImageLightboxProps) {
   const locale = useLocale();
+  const router = useRouter();
   const isZh = locale === "zh";
   const copy = (en: string, zh: string) => (isZh ? zh : en);
   const statusLabel = (status: string) =>
@@ -187,15 +188,29 @@ export function ImageLightbox({
     containerWidth: number;
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const createReferenceHref = (mode: "image" | "chat") => {
+  const createReferenceHref = (mode: "image" | "chat", intent: string) => {
     if (!imageUrl) return `/${locale}/dashboard/create`;
     const params = new URLSearchParams({
       mode,
       ref: imageUrl,
       sourceId: generation.id,
       sourceName: `gpt2image-${generation.id}`,
+      intent,
     });
     return `/${locale}/dashboard/create?${params.toString()}`;
+  };
+
+  const createReferenceIntent = () => {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  };
+
+  const handleSendReference = (mode: "image" | "chat") => {
+    if (!imageUrl) return;
+    router.push(createReferenceHref(mode, createReferenceIntent()));
+    onClose();
   };
 
   const { execute: executeDelete, isExecuting: isDeleting } = useAction(
@@ -436,21 +451,22 @@ export function ImageLightbox({
             <div className="flex flex-col gap-2 border-t border-border bg-background p-6">
               {imageUrl && generation.status === "completed" && (
                 <>
-                  <Button asChild className="w-full justify-center">
-                    <Link href={createReferenceHref("image")}>
-                      <Send className="mr-2 h-4 w-4" />
-                      {copy("Send to image edit", "发送到图生图")}
-                    </Link>
+                  <Button
+                    type="button"
+                    className="w-full justify-center"
+                    onClick={() => handleSendReference("image")}
+                  >
+                    <Send className="mr-2 h-4 w-4" />
+                    {copy("Send to image edit", "发送到图生图")}
                   </Button>
                   <Button
-                    asChild
+                    type="button"
                     variant="outline"
                     className="w-full justify-center"
+                    onClick={() => handleSendReference("chat")}
                   >
-                    <Link href={createReferenceHref("chat")}>
-                      <MessageSquare className="mr-2 h-4 w-4" />
-                      {copy("Send to chat", "发送到 Chat")}
-                    </Link>
+                    <MessageSquare className="mr-2 h-4 w-4" />
+                    {copy("Send to chat", "发送到 Chat")}
                   </Button>
                   <Button
                     asChild
