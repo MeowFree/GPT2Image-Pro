@@ -74,13 +74,13 @@ import {
   importImageBackendWebAccountsFromAccessTokensAction,
   refreshImageBackendAccountInfoAction,
   refreshImageBackendAccountsInfoAction,
+  runSub2ApiManualSyncAction,
   runSub2ApiAutoSyncTaskNowAction,
   saveImageBackendAccountAction,
   saveImageBackendApiAction,
   saveImageBackendGroupAction,
   setSub2ApiAutoSyncTaskEnabledAction,
   setSub2ApiAutoSyncTaskOverwriteLocalUnavailableStateAction,
-  syncImageBackendAccountsFromSub2ApiAction,
   updateSub2ApiAutoSyncTaskOptionsAction,
 } from "./actions";
 import { parseImportTokensText } from "./import-token-parser";
@@ -1218,8 +1218,8 @@ export function ImageBackendPoolAdminPanel({
     }
   );
 
-  const { executeAsync: syncSub2ApiAccountsBatch } = useAction(
-    syncImageBackendAccountsFromSub2ApiAction
+  const { executeAsync: runSub2ApiManualSync } = useAction(
+    runSub2ApiManualSyncAction
   );
   const [isSyncingSub2Api, setIsSyncingSub2Api] = useState(false);
 
@@ -1465,116 +1465,69 @@ export function ImageBackendPoolAdminPanel({
     }
     setIsSyncingSub2Api(true);
 
-    const batchSize = Math.max(
-      1,
-      Math.min(100, Math.trunc(importForm.limit || 100))
-    );
-    let offset = 0;
-    let totalSourceCount = 0;
-    let processedCount = 0;
-    let syncedCount = 0;
-    let failedCount = 0;
-    let deletedCount = 0;
-    const synced = { web: 0, responses: 0 };
-    const skipped = { web: 0, responses: 0 };
-    const failed = { web: 0, responses: 0 };
-
     setSyncProgress({
       status: "running",
       value: 5,
-      message: "正在读取 Sub2API 账号",
+      message: "正在按任务配置全量同步 Sub2API 账号",
     });
 
     try {
-      for (;;) {
-        const sourceGroupName =
-          sub2ApiSourceGroups.find(
-            (group) => group.id === importForm.sourceGroupId
-          )?.name || undefined;
-        const result = await syncSub2ApiAccountsBatch({
-          sourceGroupId: importForm.sourceGroupId,
-          sourceGroupName,
-          webGroupId: importForm.webGroupId,
-          responsesGroupId: importForm.responsesGroupId,
-          syncMode: effectiveImportSyncMode,
-          allowMobileRtImport: importForm.allowMobileRtImport,
-          planFilter: importForm.planFilter,
-          createSyncTask: importForm.createSyncTask,
-          contentSafetyEnabled: importForm.contentSafetyEnabled,
-          overwriteLocalUnavailableState:
-            importForm.overwriteLocalUnavailableState,
-          limit: batchSize,
-          offset,
-        });
+      const sourceGroupName =
+        sub2ApiSourceGroups.find(
+          (group) => group.id === importForm.sourceGroupId
+        )?.name || undefined;
+      const result = await runSub2ApiManualSync({
+        sourceGroupId: importForm.sourceGroupId,
+        sourceGroupName,
+        webGroupId: importForm.webGroupId,
+        responsesGroupId: importForm.responsesGroupId,
+        syncMode: effectiveImportSyncMode,
+        allowMobileRtImport: importForm.allowMobileRtImport,
+        planFilter: importForm.planFilter,
+        createSyncTask: importForm.createSyncTask,
+        contentSafetyEnabled: importForm.contentSafetyEnabled,
+        overwriteLocalUnavailableState:
+          importForm.overwriteLocalUnavailableState,
+        limit: importForm.limit,
+      });
 
-        if (result?.serverError) {
-          throw new Error(result.serverError);
-        }
-        if (!result?.data?.success) {
-          throw new Error("从 Sub2API 同步账号失败");
-        }
-
-        const data = result.data;
-        totalSourceCount = data.totalSourceCount || totalSourceCount;
-        processedCount = data.nextOffset || processedCount + data.sourceCount;
-        syncedCount += data.syncedCount || 0;
-        failedCount += data.failed || 0;
-        synced.web += data.syncedByMode?.web || 0;
-        synced.responses += data.syncedByMode?.responses || 0;
-        skipped.web += data.skipped?.web || 0;
-        skipped.responses += data.skipped?.responses || 0;
-        failed.web += data.failedByMode?.web || 0;
-        failed.responses += data.failedByMode?.responses || 0;
-        deletedCount += data.deletedCount || 0;
-
-        const progressBase = totalSourceCount
-          ? Math.min(100, Math.round((processedCount / totalSourceCount) * 100))
-          : data.hasMore
-            ? 50
-            : 100;
-        const progressValue = Math.max(5, Math.min(99, progressBase));
-        const codexText = formatModeStats("Codex", {
-          synced: synced.responses,
-          skipped: skipped.responses,
-          failed: failed.responses,
-        });
-        const webText = formatModeStats("Web", {
-          synced: synced.web,
-          skipped: skipped.web,
-          failed: failed.web,
-        });
-        setSyncProgress({
-          status: "running",
-          value: data.hasMore ? progressValue : 100,
-          message: `来源账号 ${processedCount}/${totalSourceCount || "?"}；${codexText}；${webText}${
-            deletedCount ? `；删除 ${deletedCount}` : ""
-          }`,
-        });
-
-        if (!data.hasMore || data.sourceCount === 0) break;
-        offset = data.nextOffset || offset + data.sourceCount;
+      if (result?.serverError) {
+        throw new Error(result.serverError);
+      }
+      if (!result?.data?.success) {
+        throw new Error("从 Sub2API 同步账号失败");
       }
 
-      const skippedCount = skipped.web + skipped.responses;
+      const data = result.data;
+      const skippedCount =
+        (data.skipped?.web || 0) + (data.skipped?.responses || 0);
+      const codexText = formatModeStats("Codex", {
+        synced: data.syncedByMode?.responses || 0,
+        skipped: data.skipped?.responses || 0,
+        failed: data.failedByMode?.responses || 0,
+      });
+      const webText = formatModeStats("Web", {
+        synced: data.syncedByMode?.web || 0,
+        skipped: data.skipped?.web || 0,
+        failed: data.failedByMode?.web || 0,
+      });
+      const sourceText =
+        data.sourceCount === data.totalSourceCount
+          ? `${data.sourceCount}`
+          : `${data.sourceCount}/${data.totalSourceCount}`;
+
       setSyncProgress({
         status: "success",
         value: 100,
-        message: `完成：来源账号 ${processedCount} 个；${formatModeStats(
-          "Codex",
-          {
-            synced: synced.responses,
-            skipped: skipped.responses,
-            failed: failed.responses,
-          }
-        )}；${formatModeStats("Web", {
-          synced: synced.web,
-          skipped: skipped.web,
-          failed: failed.web,
-        })}${deletedCount ? `；删除 ${deletedCount}` : ""}`,
+        message: `完成：来源账号 ${sourceText} 个；${codexText}；${webText}${
+          data.deletedCount ? `；删除 ${data.deletedCount}` : ""
+        }`,
       });
       toast.success(
-        `同步完成：写入 ${syncedCount} 个，跳过 ${skippedCount} 个，失败 ${failedCount} 个${
-          deletedCount ? `，删除 ${deletedCount} 个` : ""
+        `同步完成：写入 ${data.syncedCount || 0} 个，跳过 ${skippedCount} 个，失败 ${
+          data.failed || 0
+        } 个${
+          data.deletedCount ? `，删除 ${data.deletedCount} 个` : ""
         }`
       );
       loadSub2ApiSyncTasks();
@@ -3416,8 +3369,8 @@ export function ImageBackendPoolAdminPanel({
                 <div>
                   <Label>创建自动同步任务</Label>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Cron 会按本次选择的 Sub2API 来源分组、套餐筛选、目标分组和接口类型继续同步；Sub
-                    中新增、状态变化、移出分组或删除的账号都会同步到本站。
+                    开启后，本次手动同步会先创建或更新任务，再按任务 runner
+                    全量执行；Cron 和“立即运行”使用同一配置同步新增、状态变化、移出分组或删除的账号。
                   </p>
                 </div>
                 <Switch
@@ -3481,19 +3434,25 @@ export function ImageBackendPoolAdminPanel({
                   </SelectContent>
                 </Select>
               </div>
-              <Input
-                type="number"
-                min={1}
-                max={500}
-                value={importForm.limit}
-                disabled={isSub2ApiSyncUnavailable}
-                onChange={(event) =>
-                  setImportForm((current) => ({
-                    ...current,
-                    limit: Number(event.target.value),
-                  }))
-                }
-              />
+              <div className="space-y-1">
+                <Label>每批扫描数量</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={importForm.limit}
+                  disabled={isSub2ApiSyncUnavailable}
+                  onChange={(event) =>
+                    setImportForm((current) => ({
+                      ...current,
+                      limit: Number(event.target.value),
+                    }))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  这是服务端分页扫描批大小，不是同步总数上限；手动同步和定时任务都会扫描完整来源范围。
+                </p>
+              </div>
               <div className="space-y-3">
                 <Button
                   onClick={runSub2ApiSync}

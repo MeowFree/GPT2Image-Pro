@@ -151,7 +151,9 @@ SUB2API_AUTO_SYNC_PLAN_FILTER=non_free
 - 默认只同步 Sub2API OpenAI OAuth 账号到 Codex/Responses。
 - 默认排除 `plan_type=free`。
 - 手工同步可选择来源分组、目标 Web 分组、目标 Responses 分组、同步模式和套餐过滤。
-- 同步是去重导入/更新本站后端池记录，不会删除 Sub2API 源库账号。
+- 开启“创建自动同步任务”时，手工同步会先创建或更新任务，再立即按同一任务 runner 全量执行；Cron 和后台“立即运行”使用同一套任务配置。
+- 每次任务运行都会重新扫描当前 Sub2API 来源范围，导入新增账号、更新已有账号状态，并删除本站中由该任务管理但已从来源范围移出或在 Sub 中删除的账号；不会删除 Sub2API 源库账号。
+- “每批扫描数量”只是服务端分页批大小，不是同步总数上限。
 - Sub2API 标记错误的账号不会被当成正常可调度账号继续使用。
 - Mobile RT 只有在启用 `allowMobileRtImport` 或 `SUB2API_AUTO_SYNC_ALLOW_MOBILE_RT=true` 后才会参与 Web 同步。
 

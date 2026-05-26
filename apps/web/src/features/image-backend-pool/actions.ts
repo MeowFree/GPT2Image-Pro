@@ -30,6 +30,7 @@ import {
   listSub2ApiSourceGroups,
   refreshImageBackendAccountInfo,
   refreshImageBackendAccountsInfo,
+  runSub2ApiManualSync,
   runSub2ApiAutoSyncTaskNow,
   setSub2ApiAutoSyncTaskEnabled,
   setSub2ApiAutoSyncTaskOverwriteLocalUnavailableState,
@@ -458,6 +459,43 @@ export const syncImageBackendAccountsFromSub2ApiAction =
           parsedInput.overwriteLocalUnavailableState,
       });
       return { success: true, ...result };
+    });
+
+export const runSub2ApiManualSyncAction =
+  withImageBackendPoolAdminAction("runSub2ApiManualSync")
+    .schema(
+      z.object({
+        webGroupId: nullableGroupIdSchema,
+        responsesGroupId: nullableGroupIdSchema,
+        sourceGroupId: nullableGroupIdSchema,
+        sourceGroupName: z.string().trim().max(120).optional(),
+        syncMode: sub2ApiTokenSyncModeSchema.default("responses"),
+        allowMobileRtImport: z.boolean().default(false),
+        contentSafetyEnabled: z.boolean().default(true),
+        limit: z.coerce.number().int().min(1).max(500).optional(),
+        planFilter: sub2ApiPlanFilterSchema.default("non_free"),
+        createSyncTask: z.boolean().default(true),
+        overwriteLocalUnavailableState: z.boolean().default(true),
+      })
+    )
+    .action(async ({ parsedInput }) => {
+      const result = await runSub2ApiManualSync({
+        webGroupId: parsedInput.webGroupId,
+        responsesGroupId: parsedInput.responsesGroupId,
+        sourceGroupId: parsedInput.sourceGroupId,
+        sourceGroupName: parsedInput.sourceGroupName || null,
+        syncMode: parsedInput.allowMobileRtImport
+          ? parsedInput.syncMode
+          : "responses",
+        allowMobileRtImport: parsedInput.allowMobileRtImport,
+        contentSafetyEnabled: parsedInput.contentSafetyEnabled,
+        limit: parsedInput.limit,
+        planFilter: parsedInput.planFilter,
+        createSyncTask: parsedInput.createSyncTask,
+        overwriteLocalUnavailableState:
+          parsedInput.overwriteLocalUnavailableState,
+      });
+      return result;
     });
 
 export const saveImageBackendApiAction = withImageBackendPoolAdminAction(

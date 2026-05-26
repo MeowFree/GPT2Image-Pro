@@ -4775,6 +4775,78 @@ export async function runSub2ApiAutoSyncTaskNow(taskIdInput: string) {
   };
 }
 
+export async function runSub2ApiManualSync(input: {
+  sourceGroupId?: string | null;
+  sourceGroupName?: string | null;
+  webGroupId?: string | null;
+  responsesGroupId?: string | null;
+  syncMode: Sub2ApiTokenSyncMode;
+  allowMobileRtImport?: boolean;
+  contentSafetyEnabled: boolean;
+  planFilter: Sub2ApiPlanFilter;
+  limit?: number | null;
+  createSyncTask?: boolean;
+  overwriteLocalUnavailableState?: boolean;
+}) {
+  if (!(await getOptionalSub2ApiPostgresConnectionString())) {
+    throw new Error("请先配置 SUB2API_POSTGRES_URL");
+  }
+
+  const configuredLimit = await getSub2ApiSyncBatchLimit();
+  const limit = Math.max(
+    1,
+    Math.min(500, Math.trunc(input.limit || configuredLimit))
+  );
+  const effectiveSyncMode = input.allowMobileRtImport
+    ? input.syncMode
+    : "responses";
+  const planFilter = normalizeSub2ApiPlanFilter(input.planFilter);
+
+  if (input.createSyncTask) {
+    const task = await upsertSub2ApiAutoSyncTask({
+      sourceGroupId: input.sourceGroupId,
+      sourceGroupName: input.sourceGroupName,
+      webGroupId: input.webGroupId,
+      responsesGroupId: input.responsesGroupId,
+      syncMode: effectiveSyncMode,
+      allowMobileRtImport: input.allowMobileRtImport,
+      contentSafetyEnabled: input.contentSafetyEnabled,
+      overwriteLocalUnavailableState: input.overwriteLocalUnavailableState,
+      planFilter,
+    });
+    const result = await runSub2ApiAutoSyncTaskConfig(task, limit);
+    const lastResult = toSub2ApiAutoSyncTaskLastResult(result);
+    await updateSub2ApiAutoSyncTaskResult(task.id, lastResult);
+    return {
+      success: true,
+      taskId: task.id,
+      ...result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  const result = await runSub2ApiSyncConfig({
+    webGroupId: input.webGroupId,
+    responsesGroupId: input.responsesGroupId,
+    sourceGroupId: input.sourceGroupId,
+    sourceGroupName: input.sourceGroupName,
+    syncMode: effectiveSyncMode,
+    allowMobileRtImport: input.allowMobileRtImport,
+    contentSafetyEnabled: input.contentSafetyEnabled,
+    planFilter,
+    limit,
+    cleanupManagedAccounts: false,
+    overwriteLocalUnavailableState: input.overwriteLocalUnavailableState,
+  });
+
+  return {
+    success: true,
+    taskId: null,
+    ...result,
+    timestamp: new Date().toISOString(),
+  };
+}
+
 export async function runAutoSub2ApiAccessTokenSync(options?: {
   force?: boolean;
 }) {
