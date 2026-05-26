@@ -53,6 +53,8 @@ const generateImageSchema = z.object({
   mix_web_first: z.boolean().optional(),
   requiresResponsesBackend: z.boolean().optional(),
   requires_responses_backend: z.boolean().optional(),
+  fastMode: z.boolean().optional(),
+  fast_mode: z.boolean().optional(),
 });
 
 function errorResponse(message: string, status = 400) {
@@ -136,6 +138,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     requiresResponsesBackend:
       parsed.data.requiresResponsesBackend ??
       parsed.data.requires_responses_backend,
+    fastMode: parsed.data.fastMode ?? parsed.data.fast_mode ?? true,
   };
   const requestedGenerationIds =
     parsed.data.generationIds || parsed.data.generation_ids;

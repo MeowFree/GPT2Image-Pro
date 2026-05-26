@@ -390,6 +390,213 @@ describe("Responses image output compatibility", () => {
   });
 });
 
+describe("Codex Images fast mode", () => {
+  it("uses ChatGPT Codex Images generation by default for Responses pool accounts", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateImage } = await import("./service");
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ data: [{ b64_json: "ZmFzdA==" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateImage(
+      {
+        ...responsesConfig(),
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+      },
+      {
+        prompt: "draw a cat",
+        model: "gpt-image-2",
+      }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.imageBase64).toBe("ZmFzdA==");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://chatgpt.com/backend-api/codex/images/generation",
+      expect.objectContaining({
+        body: expect.stringContaining('"response_format":"b64_json"'),
+      })
+    );
+  });
+
+  it("falls back to Responses image_generation when fast mode is disabled", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateImage } = await import("./service");
+    const imageBase64 = Buffer.from("responses-image").toString("base64");
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          id: "resp_image",
+          output: [
+            {
+              type: "image_generation_call",
+              status: "completed",
+              result: imageBase64,
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateImage(
+      {
+        ...responsesConfig(),
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+      },
+      {
+        prompt: "draw a cat",
+        model: "gpt-image-2",
+        fastMode: false,
+      }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.imageBase64).toBe(imageBase64);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://chatgpt.com/backend-api/codex/responses",
+      expect.objectContaining({
+        body: expect.stringContaining('"type":"image_generation"'),
+      })
+    );
+  });
+
+  it("uses ChatGPT Codex Images edit by default for Responses pool accounts", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { editImage } = await import("./service");
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ data: [{ b64_json: "ZWRpdA==" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await editImage(
+      {
+        ...responsesConfig(),
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+      },
+      {
+        prompt: "edit it",
+        model: "gpt-image-2",
+        images: [testImage],
+      }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.imageBase64).toBe("ZWRpdA==");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://chatgpt.com/backend-api/codex/images/edit",
+      expect.objectContaining({
+        body: expect.any(FormData),
+      })
+    );
+  });
+
+  it("falls back to plural Codex Images paths when singular paths are unavailable", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateImage } = await import("./service");
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/images/generation")) {
+        return new Response(JSON.stringify({ error: { message: "not found" } }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ data: [{ b64_json: "cGx1cmFs" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateImage(
+      {
+        ...responsesConfig(),
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+      },
+      {
+        prompt: "draw a cat",
+        model: "gpt-image-2",
+      }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.imageBase64).toBe("cGx1cmFs");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://chatgpt.com/backend-api/codex/images/generation",
+      expect.any(Object)
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://chatgpt.com/backend-api/codex/images/generations",
+      expect.any(Object)
+    );
+  });
+
+  it("keeps image-reference edits on the Responses route", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { editImage } = await import("./service");
+    const imageBase64 = Buffer.from("responses-edit").toString("base64");
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          id: "resp_edit",
+          output: [
+            {
+              type: "image_generation_call",
+              status: "completed",
+              result: imageBase64,
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await editImage(
+      {
+        ...responsesConfig(),
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+      },
+      {
+        prompt: "use @图1 as reference",
+        model: "gpt-image-2",
+        images: [testImage],
+        requiresResponsesBackend: true,
+      }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.imageBase64).toBe(imageBase64);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://chatgpt.com/backend-api/codex/responses",
+      expect.objectContaining({
+        body: expect.stringContaining('"type":"input_image"'),
+      })
+    );
+  });
+});
+
 describe("Responses image references", () => {
   it("turns current <ref id> references into real input_image content", () => {
     const content = buildCurrentResponsesContent("use this <ref id=\"hero\" />", [

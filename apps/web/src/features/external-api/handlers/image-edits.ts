@@ -553,6 +553,8 @@ export const postExternalImageEdits = withApiLogging(
       "promptOptimization",
       "prompt_optimization"
     );
+    const fastMode =
+      getOptionalBoolean(formData, "fastMode", "fast_mode") ?? true;
 
     const size = getText(formData, "size") || undefined;
     if (size) {
@@ -705,6 +707,7 @@ export const postExternalImageEdits = withApiLogging(
             outputCompression,
             n: 1,
             forceWebBackend,
+            fastMode,
             images: await buildImages(),
             mask: await buildMask(),
           },

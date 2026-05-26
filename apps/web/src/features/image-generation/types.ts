@@ -18,6 +18,7 @@ export interface GenerateImageParams {
   mixWebFirst?: boolean;
   forceWebBackend?: boolean;
   requiresResponsesBackend?: boolean;
+  fastMode?: boolean;
 }
 
 export interface GenerateImageResult {
@@ -157,6 +158,7 @@ export interface EditImageParams {
   mixWebFirst?: boolean;
   forceWebBackend?: boolean;
   requiresResponsesBackend?: boolean;
+  fastMode?: boolean;
 }
 
 export interface ChatImageParams {

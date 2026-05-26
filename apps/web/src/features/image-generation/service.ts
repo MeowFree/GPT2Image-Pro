@@ -706,6 +706,36 @@ function isResponsesBackend(config: ApiConfig) {
   return isPoolApiResponsesBackend(config);
 }
 
+function shouldUseCodexImagesFastMode(
+  config: ApiConfig,
+  params: { fastMode?: boolean; requiresResponsesBackend?: boolean }
+) {
+  return (
+    isPoolAccountBackend(config, "responses") &&
+    params.fastMode !== false &&
+    params.requiresResponsesBackend !== true
+  );
+}
+
+function getCodexImagesFastModePath(
+  config: ApiConfig,
+  params: { fastMode?: boolean; requiresResponsesBackend?: boolean },
+  operation: "generate" | "edit"
+) {
+  if (!shouldUseCodexImagesFastMode(config, params)) return null;
+  return operation === "generate" ? "/images/generation" : "/images/edit";
+}
+
+function getCodexImagesFastModeFallbackPath(path: string | null) {
+  if (path === "/images/generation") return "/images/generations";
+  if (path === "/images/edit") return "/images/edits";
+  return null;
+}
+
+async function cancelResponseBody(response: Response) {
+  await response.body?.cancel().catch(() => undefined);
+}
+
 function isResponsesImageToolChoiceMismatch(error?: string | null) {
   const normalized = (error || "").toLowerCase();
   return (
@@ -3045,7 +3075,7 @@ export async function generateImage(
       gptModel: params.gptModel,
     });
   }
-  if (isResponsesBackend(config)) {
+  if (isResponsesBackend(config) && !shouldUseCodexImagesFastMode(config, params)) {
     try {
       return applyPromptOptimizationResultVisibility(
         await postResponsesImageRequestWithToolChoiceFallback(
@@ -3078,44 +3108,66 @@ export async function generateImage(
     }
   }
 
+  let imageRequestPath = "/images/generations";
   try {
     const prompt = getEffectivePrompt(params);
     const size = params.size || DEFAULT_IMAGE_SIZE;
     const dimensions = parseImageSize(size);
-    const response = await fetch(`${config.baseUrl}/images/generations`, {
+    const requestBody = JSON.stringify({
+      model,
+      prompt,
+      n: params.n || 1,
+      size,
+      ...(dimensions
+        ? { width: dimensions.width, height: dimensions.height }
+        : {}),
+      ...(normalizeQuality(params.quality)
+        ? { quality: normalizeQuality(params.quality) }
+        : {}),
+      ...(normalizeModeration(params.moderation)
+        ? { moderation: normalizeModeration(params.moderation) }
+        : {}),
+      ...(normalizeOutputFormat(params.outputFormat)
+        ? { output_format: normalizeOutputFormat(params.outputFormat) }
+        : {}),
+      ...(normalizeOutputCompression(params.outputCompression) !== undefined
+        ? {
+            output_compression: normalizeOutputCompression(
+              params.outputCompression
+            ),
+          }
+        : {}),
+      ...(config.useStream ? { stream: true, partial_images: 2 } : {}),
+      response_format: "b64_json",
+    });
+    const codexFastPath = getCodexImagesFastModePath(
+      config,
+      params,
+      "generate"
+    );
+    const path = codexFastPath || "/images/generations";
+    imageRequestPath = path;
+    let response = await fetch(`${config.baseUrl}${path}`, {
       method: "POST",
       signal: params.signal,
       headers: getHeaders(config, {
         "Content-Type": "application/json",
       }),
-      body: JSON.stringify({
-        model,
-        prompt,
-        n: params.n || 1,
-        size,
-        ...(dimensions
-          ? { width: dimensions.width, height: dimensions.height }
-          : {}),
-        ...(normalizeQuality(params.quality)
-          ? { quality: normalizeQuality(params.quality) }
-          : {}),
-        ...(normalizeModeration(params.moderation)
-          ? { moderation: normalizeModeration(params.moderation) }
-          : {}),
-        ...(normalizeOutputFormat(params.outputFormat)
-          ? { output_format: normalizeOutputFormat(params.outputFormat) }
-          : {}),
-        ...(normalizeOutputCompression(params.outputCompression) !== undefined
-          ? {
-              output_compression: normalizeOutputCompression(
-                params.outputCompression
-              ),
-            }
-          : {}),
-        ...(config.useStream ? { stream: true, partial_images: 2 } : {}),
-        response_format: "b64_json",
-      }),
+      body: requestBody,
     });
+    const fallbackPath = getCodexImagesFastModeFallbackPath(codexFastPath);
+    if (fallbackPath && (response.status === 404 || response.status === 405)) {
+      await cancelResponseBody(response);
+      imageRequestPath = fallbackPath;
+      response = await fetch(`${config.baseUrl}${fallbackPath}`, {
+        method: "POST",
+        signal: params.signal,
+        headers: getHeaders(config, {
+          "Content-Type": "application/json",
+        }),
+        body: requestBody,
+      });
+    }
 
     return applyPromptOptimizationResultVisibility(
       await parseImageResponse(response, callbacks)
@@ -3124,7 +3176,7 @@ export async function generateImage(
     logImageRequestError(error, {
       operation: "generate",
       baseUrl: config.baseUrl,
-      path: "/images/generations",
+      path: imageRequestPath,
       model,
       useStream: config.useStream,
     });
@@ -3178,7 +3230,7 @@ export async function editImage(
       gptModel: params.gptModel,
     });
   }
-  if (isResponsesBackend(config)) {
+  if (isResponsesBackend(config) && !shouldUseCodexImagesFastMode(config, params)) {
     try {
       return applyPromptOptimizationResultVisibility(
         await postResponsesImageRequestWithToolChoiceFallback(
@@ -3211,43 +3263,60 @@ export async function editImage(
     }
   }
 
+  let imageRequestPath = "/images/edits";
   try {
     const prompt = effectiveEditPrompt;
-    const formData = new FormData();
-    appendImageParams(formData, config, {
-      prompt,
-      model,
-      n: params.n,
-      size: params.size,
-      quality: params.quality,
-      moderation: params.moderation,
-      outputFormat: params.outputFormat,
-      outputCompression: params.outputCompression,
-      promptOptimization: params.promptOptimization,
-    });
+    const buildFormData = () => {
+      const formData = new FormData();
+      appendImageParams(formData, config, {
+        prompt,
+        model,
+        n: params.n,
+        size: params.size,
+        quality: params.quality,
+        moderation: params.moderation,
+        outputFormat: params.outputFormat,
+        outputCompression: params.outputCompression,
+        promptOptimization: params.promptOptimization,
+      });
 
-    for (const image of params.images) {
-      formData.append(
-        params.images.length === 1 ? "image" : "image[]",
-        new Blob([toBlobPart(image.data)], { type: image.type }),
-        image.name
-      );
-    }
+      for (const image of params.images) {
+        formData.append(
+          params.images.length === 1 ? "image" : "image[]",
+          new Blob([toBlobPart(image.data)], { type: image.type }),
+          image.name
+        );
+      }
 
-    if (params.mask) {
-      formData.append(
-        "mask",
-        new Blob([toBlobPart(params.mask.data)], { type: params.mask.type }),
-        params.mask.name
-      );
-    }
-
-    const response = await fetch(`${config.baseUrl}/images/edits`, {
+      if (params.mask) {
+        formData.append(
+          "mask",
+          new Blob([toBlobPart(params.mask.data)], { type: params.mask.type }),
+          params.mask.name
+        );
+      }
+      return formData;
+    };
+    const codexFastPath = getCodexImagesFastModePath(config, params, "edit");
+    const path = codexFastPath || "/images/edits";
+    imageRequestPath = path;
+    let response = await fetch(`${config.baseUrl}${path}`, {
       method: "POST",
       signal: params.signal,
       headers: getHeaders(config, {}),
-      body: formData,
+      body: buildFormData(),
     });
+    const fallbackPath = getCodexImagesFastModeFallbackPath(codexFastPath);
+    if (fallbackPath && (response.status === 404 || response.status === 405)) {
+      await cancelResponseBody(response);
+      imageRequestPath = fallbackPath;
+      response = await fetch(`${config.baseUrl}${fallbackPath}`, {
+        method: "POST",
+        signal: params.signal,
+        headers: getHeaders(config, {}),
+        body: buildFormData(),
+      });
+    }
 
     return applyPromptOptimizationResultVisibility(
       await parseImageResponse(response, callbacks)
@@ -3256,7 +3325,7 @@ export async function editImage(
     logImageRequestError(error, {
       operation: "edit",
       baseUrl: config.baseUrl,
-      path: "/images/edits",
+      path: imageRequestPath,
       model,
       useStream: config.useStream,
     });

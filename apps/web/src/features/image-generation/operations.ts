@@ -1255,6 +1255,7 @@ async function runQueuedImageGenerationForUser({
             outputCompression: input.outputCompression ?? null,
             batchCount: input.n || 1,
             forceWebBackend,
+            fastMode: input.fastMode !== false,
             creditCost,
             ...billingMetadata,
             chatRoundCredits,
@@ -1296,6 +1297,7 @@ async function runQueuedImageGenerationForUser({
               outputCompression: input.outputCompression ?? null,
               batchCount: input.n || 1,
               forceWebBackend,
+              fastMode: input.fastMode !== false,
               creditCost,
               ...billingMetadata,
               moderationBlockingEnabled: moderationEnabled,
@@ -1574,6 +1576,7 @@ async function runQueuedImageGenerationForUser({
               mixWebFirst,
               forceWebBackend,
               requiresResponsesBackend: input.requiresResponsesBackend,
+              fastMode: input.fastMode,
             },
             callbacks
           )
@@ -1632,6 +1635,7 @@ async function runQueuedImageGenerationForUser({
                 mixWebFirst,
                 forceWebBackend,
                 requiresResponsesBackend: input.requiresResponsesBackend,
+                fastMode: input.fastMode,
               },
               callbacks
             );
