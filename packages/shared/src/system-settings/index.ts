@@ -128,8 +128,14 @@ export async function getRuntimeSettingBoolean(
 export async function getRuntimeSettingNumber(
   key: SettingKey,
   fallback: number,
-  options?: { positive?: boolean }
+  options?: { positive?: boolean; nonNegative?: boolean }
 ) {
+  const isAllowedNumber = (candidate: number) => {
+    if (!Number.isFinite(candidate)) return false;
+    if (options?.positive) return candidate > 0;
+    if (options?.nonNegative) return candidate >= 0;
+    return true;
+  };
   const value = await getSystemSettingValue(key);
   const numericValue =
     typeof value === "number"
@@ -137,16 +143,16 @@ export async function getRuntimeSettingNumber(
       : typeof value === "string"
         ? Number(value)
         : Number.NaN;
-  if (
-    Number.isFinite(numericValue) &&
-    (!options?.positive || numericValue > 0)
-  ) {
+  if (isAllowedNumber(numericValue)) {
     return numericValue;
   }
 
-  const envValue = Number(process.env[key]);
-  if (Number.isFinite(envValue) && (!options?.positive || envValue > 0)) {
-    return envValue;
+  const envRawValue = process.env[key]?.trim();
+  if (envRawValue) {
+    const envValue = Number(envRawValue);
+    if (isAllowedNumber(envValue)) {
+      return envValue;
+    }
   }
 
   return fallback;

@@ -51,9 +51,9 @@ async function getCreditPackExpiresAt() {
   const expiryDays = await getRuntimeSettingNumber(
     "CREDITS_EXPIRY_DAYS",
     CREDIT_CONFIG_DEFAULTS.creditsExpiryDays,
-    { positive: true }
+    { nonNegative: true }
   );
-  return expiryDays
+  return expiryDays > 0
     ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000)
     : null;
 }

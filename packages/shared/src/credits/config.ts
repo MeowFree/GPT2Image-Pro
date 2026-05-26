@@ -17,10 +17,11 @@ export const REGISTRATION_BONUS_CREDITS = 100;
 
 /**
  * 非订阅付费积分默认过期天数（从发放日起）。
+ * 0 表示永不过期。
  * 免费积分默认 7 天过期。
  * 订阅积分应由调用方按套餐周期传入 expiresAt。
  */
-export const CREDITS_EXPIRY_DAYS = 365;
+export const CREDITS_EXPIRY_DAYS = 0;
 export const FREE_CREDITS_EXPIRY_DAYS = 7;
 
 export const CREDIT_CONFIG_DEFAULTS = {

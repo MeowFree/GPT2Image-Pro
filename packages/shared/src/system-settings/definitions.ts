@@ -1255,10 +1255,11 @@ export const SYSTEM_SETTING_DEFINITIONS = [
   {
     key: "CREDITS_EXPIRY_DAYS",
     label: "积分包有效期天数",
-    description: "按量购买积分默认有效期。免费积分和订阅积分使用各自规则。",
+    description:
+      "按量购买积分默认有效期；填 0 表示永不过期。免费积分和订阅积分使用各自规则。",
     category: "credits",
     valueType: "number",
-    defaultValue: 365,
+    defaultValue: 0,
   },
   {
     key: "IMAGE_BASE_CREDITS_1024",

@@ -7,6 +7,7 @@ import {
 } from "../credits/packages";
 import {
   clearSystemSettingsCache,
+  getRuntimeSettingNumber,
   initializeMissingSystemSettingsDefaults,
 } from "./index";
 
@@ -93,6 +94,7 @@ describe("system setting default initialization", () => {
     );
     expect(store.get("BILLING_YEARLY_ENABLED")?.value).toBe(true);
     expect(store.get("APP_TIME_ZONE")?.value).toBe("UTC");
+    expect(store.get("CREDITS_EXPIRY_DAYS")?.value).toBe(0);
     expect(store.get("IMAGE_BASE_CREDITS_1024")?.value).toBe(1.27);
     expect(store.get("IMAGE_BASE_CREDITS_4K")?.value).toBe(10);
     expect(store.get("PLAN_STARTER_MONTHLY_AMOUNT")?.value).toBe(20);
@@ -162,5 +164,34 @@ describe("system setting default initialization", () => {
       },
     });
     expect(enterprise?.creemProductId).toBeUndefined();
+  });
+
+  it("allows zero for non-negative runtime number settings", async () => {
+    const previousEnvValue = process.env.CREDITS_EXPIRY_DAYS;
+    delete process.env.CREDITS_EXPIRY_DAYS;
+    store.set("CREDITS_EXPIRY_DAYS", {
+      key: "CREDITS_EXPIRY_DAYS",
+      value: 0,
+    });
+
+    try {
+      await expect(
+        getRuntimeSettingNumber("CREDITS_EXPIRY_DAYS", 365, {
+          nonNegative: true,
+        })
+      ).resolves.toBe(0);
+
+      await expect(
+        getRuntimeSettingNumber("CREDITS_EXPIRY_DAYS", 365, {
+          positive: true,
+        })
+      ).resolves.toBe(365);
+    } finally {
+      if (previousEnvValue === undefined) {
+        delete process.env.CREDITS_EXPIRY_DAYS;
+      } else {
+        process.env.CREDITS_EXPIRY_DAYS = previousEnvValue;
+      }
+    }
   });
 });

@@ -72,7 +72,7 @@ async function getRuntimeCreditsExpiryDays() {
   return getRuntimeSettingNumber(
     "CREDITS_EXPIRY_DAYS",
     CREDIT_CONFIG_DEFAULTS.creditsExpiryDays,
-    { positive: true }
+    { nonNegative: true }
   );
 }
 
@@ -402,7 +402,7 @@ export const purchaseCredits = withProtectedCreditsAction("purchaseCredits")
     z.object({
       amount: z.number().positive(),
       paymentId: z.string().min(1),
-      expiresInDays: z.number().optional(),
+      expiresInDays: z.number().nonnegative().optional(),
     })
   )
   .action(async ({ parsedInput, ctx }) => {
