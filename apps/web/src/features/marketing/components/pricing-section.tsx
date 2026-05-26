@@ -3,9 +3,15 @@
 import { getPlanPrice, paymentConfig } from "@repo/shared/config/payment";
 import {
   PLAN_RANK,
+  SUBSCRIPTION_PLANS,
   type SubscriptionPlan,
 } from "@repo/shared/config/subscription-plan";
+import type { RuntimeCreditPackage } from "@repo/shared/credits/packages";
 import type { PaymentConfig } from "@repo/shared/payment/types";
+import type {
+  PlanCapabilityKey,
+  PlanCapabilityMatrix,
+} from "@repo/shared/subscription/services/plan-capabilities";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import {
@@ -15,8 +21,8 @@ import {
   CardTitle,
 } from "@repo/ui/components/card";
 import { cn } from "@repo/ui/utils";
-import { Check, Coins, ImageIcon, Loader2 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { Check, Coins, ImageIcon, Loader2, ShoppingCart } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState, useTransition } from "react";
 import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 import {
@@ -51,84 +57,14 @@ function submitEpayForm(url: string, params: Record<string, string>) {
  * 计划配置（用于获取价格等非翻译数据）
  */
 const PLAN_IDS = ["free", "starter", "pro", "ultra", "enterprise"] as const;
-function parsePlanNumber(value: string) {
-  return Number.parseInt(value.replace(/,/g, ""), 10);
-}
+type PricingPlanId = (typeof PLAN_IDS)[number];
 
-/**
- * 计划功能 keys（按顺序显示，credits 单独突出显示）
- */
-const PLAN_FEATURE_KEYS: Record<string, string[]> = {
-  free: [
-    "creditsValidity",
-    "input",
-    "batch",
-    "fileSize",
-    "queue",
-    "export",
-    "history",
-  ],
-  starter: [
-    "creditsValidity",
-    "input",
-    "batch",
-    "fileSize",
-    "queue",
-    "externalApi",
-    "customApi",
-    "export",
-    "history",
-    "support",
-  ],
-  pro: [
-    "creditsValidity",
-    "input",
-    "batch",
-    "fileSize",
-    "chat",
-    "promptOptimization",
-    "queue",
-    "export",
-    "history",
-    "externalApi",
-    "customApi",
-    "support",
-  ],
-  ultra: [
-    "creditsValidity",
-    "input",
-    "batch",
-    "fileSize",
-    "chatGpt55",
-    "moderationSettlement",
-    "moderationLowControl",
-    "promptOptimization",
-    "queue",
-    "export",
-    "history",
-    "externalApi",
-    "customApi",
-    "support",
-  ],
-  enterprise: [
-    "creditsValidity",
-    "input",
-    "batch",
-    "fileSize",
-    "chatGpt55",
-    "moderationSettlement",
-    "moderationMediumControl",
-    "promptOptimization",
-    "queue",
-    "enterpriseResourcePack",
-    "enterpriseResourcePackUnlimited",
-    "export",
-    "history",
-    "externalApi",
-    "customApi",
-    "support",
-  ],
-};
+const PLAN_ID_SET: ReadonlySet<string> = new Set(PLAN_IDS);
+const TEXT_TO_4K_CREDITS = 10.04;
+
+function isPricingPlanId(value: string): value is PricingPlanId {
+  return PLAN_ID_SET.has(value);
+}
 
 /**
  * 价格计划组件属性
@@ -137,15 +73,9 @@ interface PricingSectionProps {
   /** 用户当前订阅的价格 ID */
   currentPriceId?: string | null;
   payment?: PaymentConfig & { yearlyEnabled?: boolean };
-  uploadLimits?: Partial<
-    Record<
-      SubscriptionPlan,
-      {
-        maxFileSizeBytes: number;
-        maxUploadBytes: number;
-      }
-    >
-  >;
+  capabilityMatrix: PlanCapabilityMatrix;
+  creditPackages?: RuntimeCreditPackage[];
+  creditPackageExpiryDays?: number;
 }
 
 /**
@@ -154,9 +84,13 @@ interface PricingSectionProps {
 export function PricingSection({
   currentPriceId,
   payment,
-  uploadLimits,
+  capabilityMatrix,
+  creditPackages = [],
+  creditPackageExpiryDays,
 }: PricingSectionProps) {
   const t = useTranslations("Pricing");
+  const locale = useLocale();
+  const isZh = locale.startsWith("zh");
   const [isPending, startTransition] = useTransition();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const router = useRouter();
@@ -269,6 +203,7 @@ export function PricingSection({
    * 检查用户是否有活跃订阅（任意计划）
    */
   const hasSubscription = !!activePriceId;
+  const activePlanId = getPlanIdByPriceId(activePriceId);
 
   /**
    * 检查是否为热门计划
@@ -278,21 +213,247 @@ export function PricingSection({
     return config && "popular" in config && config.popular;
   };
 
-  const formatMegabytes = (bytes: number) =>
-    `${Math.round(bytes / 1024 / 1024)}MB`;
+  const copy = (en: string, zh: string) => (isZh ? zh : en);
+  const formatNumber = (
+    value: number,
+    options?: Intl.NumberFormatOptions
+  ) => new Intl.NumberFormat(locale, options).format(value);
+  const formatCredits = (value: number) =>
+    formatNumber(value, { maximumFractionDigits: 0 });
+  const formatMoney = (value: number) =>
+    `¥${formatNumber(value, { maximumFractionDigits: 2 })}`;
+  const formatMegabytes = (value: number) =>
+    `${formatNumber(value, { maximumFractionDigits: 0 })}MB`;
+  const getPlanLimits = (planId: string) =>
+    capabilityMatrix.limits[planId as SubscriptionPlan];
+  const canUseCapability = (
+    planId: string,
+    capability: PlanCapabilityKey
+  ) => {
+    if (!isPricingPlanId(planId)) return false;
+    return (
+      PLAN_RANK[planId] >= PLAN_RANK[capabilityMatrix.features[capability]]
+    );
+  };
+  const getPlanCredits = (planId: string) =>
+    getPlanLimits(planId).monthlyCredits;
+  const getEstimated4kCount = (credits: number) =>
+    Math.max(0, Math.floor(credits / TEXT_TO_4K_CREDITS));
 
-  const getFeatureText = (planId: string, featureKey: string) => {
-    if (featureKey !== "fileSize") {
-      return t(`plans.${planId}.features.${featureKey}`);
+  const getPlanDescription = (planId: string) => {
+    const credits = formatCredits(getPlanCredits(planId));
+    const apiEnabled = canUseCapability(planId, "externalApi.keys.manage");
+    const chatEnabled = canUseCapability(planId, "imageGeneration.chat");
+    const agentEnabled = canUseCapability(planId, "imageGeneration.agent");
+    const gpt55Enabled = canUseCapability(planId, "models.gpt55");
+
+    if (planId === "free") {
+      return copy(
+        `Basic image generation with ${credits} one-time credits`,
+        `基础创作体验，含 ${credits} 一次性积分`
+      );
     }
 
-    const limits = uploadLimits?.[planId as SubscriptionPlan];
-    if (!limits) return t(`plans.${planId}.features.${featureKey}`);
+    const highlights = [
+      copy(`${credits} credits/month`, `每月 ${credits} 积分`),
+    ];
+    if (apiEnabled) highlights.push(copy("API access", "开放 API"));
+    if (chatEnabled) highlights.push(copy("Chat creation", "对话创作"));
+    if (agentEnabled) highlights.push(copy("Agent iteration", "Agent 迭代"));
+    if (gpt55Enabled) highlights.push("GPT-5.5");
 
-    return t("uploadLimitFeature", {
-      file: formatMegabytes(limits.maxFileSizeBytes),
-      total: formatMegabytes(limits.maxUploadBytes),
-    });
+    return highlights.join(copy(", ", "，"));
+  };
+
+  const getGeneratedFeatureTexts = (planId: string) => {
+    const limits = getPlanLimits(planId);
+    const plan = planId as SubscriptionPlan;
+    const items: string[] = [];
+
+    items.push(
+      planId === "free"
+        ? copy(
+            "One-time credits follow the issued batch expiry",
+            "一次性积分按发放批次有效期计算"
+          )
+        : copy(
+            "Subscription credits are valid for the current plan period",
+            "订阅积分按当前套餐周期有效"
+          )
+    );
+
+    const modes = [
+      canUseCapability(planId, "imageGeneration.text") &&
+        copy("text-to-image", "文生图"),
+      canUseCapability(planId, "imageGeneration.edit") &&
+        copy("image editing", "图生图"),
+      canUseCapability(planId, "imageGeneration.chat") &&
+        copy("chat-to-image", "对话生图"),
+      canUseCapability(planId, "imageGeneration.waterfall") &&
+        copy("waterfall", "瀑布流"),
+      canUseCapability(planId, "imageGeneration.agent") && "Agent",
+    ].filter(Boolean);
+    if (modes.length > 0) {
+      items.push(
+        copy(
+          `Creation modes: ${modes.join(", ")}`,
+          `创作模式：${modes.join("、")}`
+        )
+      );
+    }
+
+    if (canUseCapability(planId, "imageGeneration.batch")) {
+      items.push(
+        copy(
+          `Batch generation up to ${limits.maxBatchCount} images`,
+          `批量生成最多 ${limits.maxBatchCount} 张图`
+        )
+      );
+    }
+
+    items.push(
+      copy(
+        `Uploads: ${formatMegabytes(limits.maxFileMb)} per image, ${formatMegabytes(
+          limits.maxUploadMb
+        )} total`,
+        `上传：单图 ${formatMegabytes(limits.maxFileMb)}，总量 ${formatMegabytes(
+          limits.maxUploadMb
+        )}`
+      )
+    );
+    items.push(
+      copy(
+        `References: ${limits.maxEditImages} edit images, ${limits.maxChatImages} chat images`,
+        `参考图：编辑最多 ${limits.maxEditImages} 张，对话最多 ${limits.maxChatImages} 张`
+      )
+    );
+
+    const priorityLabel =
+      limits.queuePriority === "highest"
+        ? copy("highest priority", "最高优先级")
+        : limits.queuePriority === "priority"
+          ? copy("priority queue", "优先队列")
+          : copy("normal queue", "普通队列");
+    items.push(
+      copy(
+        `${priorityLabel}, up to ${limits.imageGenerationConcurrency} concurrent generations`,
+        `${priorityLabel}，最多 ${limits.imageGenerationConcurrency} 并发`
+      )
+    );
+
+    const externalApiParts = [
+      canUseCapability(planId, "externalApi.chat.completions") && "Chat",
+      (canUseCapability(planId, "externalApi.images.generate") ||
+        canUseCapability(planId, "externalApi.images.edit")) &&
+        "Images",
+      canUseCapability(planId, "externalApi.responses") && "Responses",
+      canUseCapability(planId, "externalApi.streaming") &&
+        copy("streaming", "流式"),
+    ].filter(Boolean);
+    if (
+      canUseCapability(planId, "externalApi.keys.manage") ||
+      externalApiParts.length > 0
+    ) {
+      items.push(
+        copy(
+          `External API: ${externalApiParts.join(", ") || "API keys"}`,
+          `外接 API：${externalApiParts.join("、") || "API Key 管理"}`
+        )
+      );
+    }
+
+    if (canUseCapability(planId, "customApi.configure")) {
+      items.push(
+        copy(
+          "Connect your own OpenAI-compatible API",
+          "可接入自己的 OpenAI 兼容 API"
+        )
+      );
+    }
+    if (canUseCapability(planId, "backendGroups.select")) {
+      items.push(copy("Selectable backend groups", "可选择后端分组"));
+    }
+    if (canUseCapability(planId, "promptOptimization.control")) {
+      items.push(copy("Can minimize prompt changes", "可尽量减少提示词改动"));
+    }
+    if (canUseCapability(planId, "models.gpt55")) {
+      items.push(
+        copy(
+          "GPT-5.5 available for supported chat backends",
+          "支持后端可使用 GPT-5.5"
+        )
+      );
+    }
+    if (canUseCapability(planId, "moderation.onlyFailureSettlement")) {
+      items.push(
+        copy(
+          "Moderation failures only charge review credits",
+          "审核失败只扣审核积分"
+        )
+      );
+    }
+
+    const moderation = capabilityMatrix.moderation[plan];
+    items.push(
+      copy(
+        `Moderation control up to ${moderation.maxBlockRiskLevel} risk`,
+        `审核拦截最高可配置到 ${moderation.maxBlockRiskLevel}`
+      )
+    );
+
+    const billing = capabilityMatrix.billing[plan];
+    if (
+      canUseCapability(planId, "imageGeneration.chat") ||
+      canUseCapability(planId, "imageGeneration.agent")
+    ) {
+      items.push(
+        copy(
+          `Chat ${billing.chatRoundCredits} credits/round, Agent ${billing.agentRoundCredits} credits/round before image output fees`,
+          `Chat ${billing.chatRoundCredits} 积分/轮，Agent ${billing.agentRoundCredits} 积分/轮，另计出图费用`
+        )
+      );
+    }
+
+    items.push(
+      copy("Download, share, and saved gallery history", "下载、分享与画廊历史保存")
+    );
+    return items;
+  };
+
+  const getPackagePriceForPlan = (
+    pkg: RuntimeCreditPackage,
+    plan: SubscriptionPlan
+  ) => {
+    for (let i = PLAN_RANK[plan]; i >= 0; i -= 1) {
+      const candidate = SUBSCRIPTION_PLANS.find((item) => PLAN_RANK[item] === i);
+      if (candidate && pkg.pricesByPlan?.[candidate]) {
+        return pkg.pricesByPlan[candidate]!;
+      }
+    }
+    return pkg.price;
+  };
+
+  const getPackagePlanPrices = (pkg: RuntimeCreditPackage) =>
+    PLAN_IDS.filter(
+      (planId) =>
+        !pkg.requiresPlan ||
+        PLAN_RANK[planId as SubscriptionPlan] >= PLAN_RANK[pkg.requiresPlan]
+    ).map((planId) => ({
+      planId,
+      price: getPackagePriceForPlan(pkg, planId as SubscriptionPlan),
+    }));
+
+  const getPackageExpiryText = () => {
+    if (creditPackageExpiryDays === 0) {
+      return copy("Credits never expire", "积分永不过期");
+    }
+    if (typeof creditPackageExpiryDays === "number") {
+      return copy(
+        `Valid for ${creditPackageExpiryDays} days`,
+        `有效期 ${creditPackageExpiryDays} 天`
+      );
+    }
+    return copy("Expiry follows the issued batch", "有效期按发放批次记录");
   };
 
   /**
@@ -342,6 +503,14 @@ export function PricingSection({
     router.push("/dashboard/settings");
   };
 
+  const handleBuyCredits = () => {
+    router.push(
+      session?.user
+        ? "/dashboard/credits/buy"
+        : "/sign-in?redirect=/dashboard/credits/buy"
+    );
+  };
+
   return (
     <section id="pricing" className="container py-24">
       <div className="mx-auto max-w-6xl">
@@ -369,7 +538,8 @@ export function PricingSection({
             const canUpgrade = canUpgradeToPlan(planId);
             const isLoading = loadingPlan === planId;
             const popular = isPopular(planId);
-            const featureKeys = PLAN_FEATURE_KEYS[planId] || [];
+            const planCredits = getPlanCredits(planId);
+            const features = getGeneratedFeatureTexts(planId);
 
             return (
               <Card
@@ -397,7 +567,7 @@ export function PricingSection({
                     {t(`plans.${planId}.name`)}
                   </CardTitle>
                   <p className="text-sm text-muted-foreground">
-                    {t(`plans.${planId}.description`)}
+                    {getPlanDescription(planId)}
                   </p>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col">
@@ -416,12 +586,10 @@ export function PricingSection({
                       <Coins className="size-4 text-foreground" />
                       <span className="text-lg font-bold">
                         {planId === "free" ? (
-                          t(`plans.${planId}.creditsAmount`)
+                          formatCredits(planCredits)
                         ) : (
                           <AnimatedPrice
-                            value={parsePlanNumber(
-                              t(`plans.${planId}.creditsAmount`)
-                            )}
+                            value={planCredits}
                             formatOptions={{
                               useGrouping: true,
                               maximumFractionDigits: 0,
@@ -430,36 +598,34 @@ export function PricingSection({
                         )}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {t(`plans.${planId}.creditsLabel`)}
+                        {planId === "free"
+                          ? copy("credits", "积分")
+                          : copy("credits / month", "积分 / 月")}
                       </span>
                     </div>
-                    {t.has(`plans.${planId}.booksCount`) && (
-                      <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                        <ImageIcon className="size-3" />
-                        <span>
-                          {t("booksNote", {
-                            count: String(
-                              parsePlanNumber(
-                                t(`plans.${planId}.booksCount`)
-                              ).toLocaleString("en-US")
-                            ),
-                          })}
-                        </span>
-                      </div>
-                    )}
-                    {t.has(`plans.${planId}.creditsNote`) && (
+                    <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <ImageIcon className="size-3" />
+                      <span>
+                        {t("booksNote", {
+                          count: formatCredits(
+                            getEstimated4kCount(planCredits)
+                          ),
+                        })}
+                      </span>
+                    </div>
+                    {planId === "free" && (
                       <div className="mt-1 text-xs text-muted-foreground">
-                        {t(`plans.${planId}.creditsNote`)}
+                        {copy("one-time", "一次性")}
                       </div>
                     )}
                   </div>
 
                   <ul className="mb-6 flex-1 space-y-3">
-                    {featureKeys.map((featureKey) => (
-                      <li key={featureKey} className="flex items-center gap-2">
+                    {features.map((feature) => (
+                      <li key={feature} className="flex items-center gap-2">
                         <Check className="h-4 w-4 shrink-0 text-foreground" />
                         <span className="text-sm text-muted-foreground">
-                          {getFeatureText(planId, featureKey)}
+                          {feature}
                         </span>
                       </li>
                     ))}
@@ -499,6 +665,145 @@ export function PricingSection({
             );
           })}
         </div>
+
+        {creditPackages.length > 0 && (
+          <div className="mt-10">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="text-xl font-semibold">
+                  {copy("Extra Credit Packages", "额外积分包")}
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {copy(
+                    "Top up without changing your subscription. Package names, credits, prices, and plan restrictions come from the admin credit package matrix.",
+                    "无需更换订阅即可补充积分。积分包名称、额度、价格和套餐限制均读取后台积分包矩阵。"
+                  )}
+                </p>
+              </div>
+              <Button variant="outline" onClick={handleBuyCredits}>
+                <ShoppingCart className="mr-2 h-4 w-4" />
+                {copy("View packages", "查看积分包")}
+              </Button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {creditPackages.map((pkg) => {
+                const planPrices = getPackagePlanPrices(pkg);
+                const prices = planPrices.map((item) => item.price);
+                const minPrice = Math.min(...prices);
+                const maxPrice = Math.max(...prices);
+                const activePackagePrice =
+                  activePlanId && isPricingPlanId(activePlanId)
+                    ? getPackagePriceForPlan(
+                        pkg,
+                        activePlanId as SubscriptionPlan
+                      )
+                    : null;
+                const displayPrice =
+                  minPrice === maxPrice
+                    ? formatMoney(minPrice)
+                    : `${formatMoney(minPrice)} - ${formatMoney(maxPrice)}`;
+
+                return (
+                  <Card
+                    key={pkg.id}
+                    className={cn(
+                      "flex flex-col rounded-xl",
+                      pkg.popular && "border-foreground/70"
+                    )}
+                  >
+                    <CardHeader className="space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <CardTitle className="text-base font-semibold">
+                          {pkg.name}
+                        </CardTitle>
+                        {pkg.popular && (
+                          <Badge variant="secondary">
+                            {copy("Best value", "最划算")}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {pkg.description ||
+                          copy("One-time credit package", "一次性积分包")}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="flex flex-1 flex-col gap-4">
+                      <div>
+                        <div className="flex items-end gap-2">
+                          <span className="text-3xl font-bold">
+                            {displayPrice}
+                          </span>
+                          <span className="pb-1 text-sm text-muted-foreground">
+                            {copy("CNY", "元")}
+                          </span>
+                        </div>
+                        {activePackagePrice !== null && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {copy(
+                              `Your plan price: ${formatMoney(activePackagePrice)}`,
+                              `当前套餐价：${formatMoney(activePackagePrice)}`
+                            )}
+                          </p>
+                        )}
+                      </div>
+
+                      <ul className="space-y-2 text-sm text-muted-foreground">
+                        <li className="flex gap-2">
+                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
+                          <span>
+                            {copy(
+                              `${formatCredits(pkg.credits)} credits per pack`,
+                              `每份 ${formatCredits(pkg.credits)} 积分`
+                            )}
+                          </span>
+                        </li>
+                        <li className="flex gap-2">
+                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
+                          <span>{getPackageExpiryText()}</span>
+                        </li>
+                        {pkg.allowQuantity && (
+                          <li className="flex gap-2">
+                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
+                            <span>
+                              {copy(
+                                `Quantity purchase, up to ${pkg.maxQuantity ?? 999} packs`,
+                                `可按数量购买，最多 ${pkg.maxQuantity ?? 999} 份`
+                              )}
+                            </span>
+                          </li>
+                        )}
+                        {pkg.requiresPlan && (
+                          <li className="flex gap-2">
+                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
+                            <span>
+                              {copy(
+                                `Available from ${t(`plans.${pkg.requiresPlan}.name`)}`,
+                                `${t(`plans.${pkg.requiresPlan}.name`)}及以上可购买`
+                              )}
+                            </span>
+                          </li>
+                        )}
+                      </ul>
+
+                      <div className="flex flex-wrap gap-2">
+                        {planPrices.map(({ planId, price }) => (
+                          <Badge
+                            key={`${pkg.id}-${planId}`}
+                            variant="outline"
+                            className="rounded-md"
+                          >
+                            {t(`plans.${planId}.name`)} {formatMoney(price)}
+                          </Badge>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="mt-8 rounded-lg border bg-muted/30 px-4 py-4">
           <h3 className="text-sm font-semibold">{t("billingRules.title")}</h3>

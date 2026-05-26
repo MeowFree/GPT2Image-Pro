@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { SiteJsonLd, SoftwareAppJsonLd } from "@/components/seo/json-ld";
 import { siteConfig } from "@repo/shared/config";
 import { getRuntimePaymentConfig } from "@repo/shared/config/payment-runtime";
-import { getAllPlanUploadLimits } from "@repo/shared/subscription/services/upload-limits";
+import { CREDIT_CONFIG_DEFAULTS } from "@repo/shared/credits/config";
+import { getRuntimeCreditPackages } from "@repo/shared/credits/packages";
+import { getRuntimeSettingNumber } from "@repo/shared/system-settings";
+import { getPlanCapabilityMatrix } from "@repo/shared/subscription/services/plan-capabilities";
 import {
   CTASection,
   FAQSection,
@@ -81,9 +84,21 @@ export default async function HomePage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const [runtimePaymentConfig, uploadLimits, slaStats] = await Promise.all([
+  const [
+    runtimePaymentConfig,
+    capabilityMatrix,
+    creditPackages,
+    creditPackageExpiryDays,
+    slaStats,
+  ] = await Promise.all([
     getRuntimePaymentConfig(),
-    getAllPlanUploadLimits(),
+    getPlanCapabilityMatrix(),
+    getRuntimeCreditPackages(),
+    getRuntimeSettingNumber(
+      "CREDITS_EXPIRY_DAYS",
+      CREDIT_CONFIG_DEFAULTS.creditsExpiryDays,
+      { nonNegative: true }
+    ),
     getRecentGenerationSlaStats(1000),
   ]);
 
@@ -100,7 +115,12 @@ export default async function HomePage({
       <UseCasesSection />
       <Testimonials />
       <SlaStatusSection locale={locale} stats={slaStats} />
-      <PricingSection payment={runtimePaymentConfig} uploadLimits={uploadLimits} />
+      <PricingSection
+        payment={runtimePaymentConfig}
+        capabilityMatrix={capabilityMatrix}
+        creditPackages={creditPackages}
+        creditPackageExpiryDays={creditPackageExpiryDays}
+      />
       <FAQSection />
       <CTASection />
     </>
