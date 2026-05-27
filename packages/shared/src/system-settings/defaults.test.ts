@@ -90,6 +90,7 @@ describe("system setting default initialization", () => {
     expect(initializedKeys).toContain("IMAGE_GENERATION_GLOBAL_CONCURRENCY");
     expect(initializedKeys).toContain("IMAGE_BASE_CREDITS_1024");
     expect(initializedKeys).toContain("IMAGE_BASE_CREDITS_4K");
+    expect(initializedKeys).toContain("RATE_LIMIT_AI_REQUESTS_PER_MINUTE");
     expect(initializedKeys).not.toContain("BETTER_AUTH_SECRET");
     expect(initializedKeys).not.toContain("CREEM_API_KEY");
 
@@ -105,6 +106,12 @@ describe("system setting default initialization", () => {
     expect(store.get("IMAGE_GENERATION_GLOBAL_CONCURRENCY")?.value).toBe(500);
     expect(store.get("IMAGE_BASE_CREDITS_1024")?.value).toBe(1.27);
     expect(store.get("IMAGE_BASE_CREDITS_4K")?.value).toBe(10);
+    expect(store.get("RATE_LIMIT_GLOBAL_REQUESTS_PER_MINUTE")?.value).toBe(100);
+    expect(store.get("RATE_LIMIT_AUTH_REQUESTS_PER_MINUTE")?.value).toBe(5);
+    expect(store.get("RATE_LIMIT_AI_REQUESTS_PER_MINUTE")?.value).toBe(20);
+    expect(store.get("RATE_LIMIT_PAYMENT_REQUESTS_PER_MINUTE")?.value).toBe(10);
+    expect(store.get("RATE_LIMIT_UPLOAD_REQUESTS_PER_MINUTE")?.value).toBe(30);
+    expect(store.get("RATE_LIMIT_STRICT_REQUESTS_PER_MINUTE")?.value).toBe(3);
     expect(store.get("PLAN_STARTER_MONTHLY_AMOUNT")?.value).toBe(20);
     expect(store.get("BETTER_AUTH_SECRET")).toBeUndefined();
     expect(store.get("CREEM_API_KEY")).toBeUndefined();

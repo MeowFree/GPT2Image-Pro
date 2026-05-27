@@ -160,7 +160,13 @@ export type SettingKey =
   | "INTERNAL_JOB_WEB_ACCOUNTS_REFRESH_INTERVAL_MINUTES"
   | "INTERNAL_JOB_SUB2API_SYNC_INTERVAL_MINUTES"
   | "UPSTASH_REDIS_REST_URL"
-  | "UPSTASH_REDIS_REST_TOKEN";
+  | "UPSTASH_REDIS_REST_TOKEN"
+  | "RATE_LIMIT_GLOBAL_REQUESTS_PER_MINUTE"
+  | "RATE_LIMIT_AUTH_REQUESTS_PER_MINUTE"
+  | "RATE_LIMIT_AI_REQUESTS_PER_MINUTE"
+  | "RATE_LIMIT_PAYMENT_REQUESTS_PER_MINUTE"
+  | "RATE_LIMIT_UPLOAD_REQUESTS_PER_MINUTE"
+  | "RATE_LIMIT_STRICT_REQUESTS_PER_MINUTE";
 
 export interface SettingDefinition {
   key: SettingKey;
@@ -1466,6 +1472,66 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     category: "general",
     valueType: "string",
     secret: true,
+  },
+  {
+    key: "RATE_LIMIT_GLOBAL_REQUESTS_PER_MINUTE",
+    label: "全局限流（次/分钟）",
+    description:
+      "全局请求限流阈值。配置 Upstash Redis 后生效；未配置 Upstash 时跳过限流。",
+    category: "general",
+    valueType: "number",
+    defaultValue: 100,
+    requiresRestart: true,
+  },
+  {
+    key: "RATE_LIMIT_AUTH_REQUESTS_PER_MINUTE",
+    label: "认证限流（次/分钟）",
+    description:
+      "登录、注册、找回密码等认证接口的每分钟请求阈值。配置 Upstash Redis 后生效。",
+    category: "general",
+    valueType: "number",
+    defaultValue: 5,
+    requiresRestart: true,
+  },
+  {
+    key: "RATE_LIMIT_AI_REQUESTS_PER_MINUTE",
+    label: "AI 与生图限流（次/分钟）",
+    description:
+      "页面生图、图生图、Chat/Agent 以及外接 /v1 图片、Responses、Chat 接口的每分钟请求阈值。配置 Upstash Redis 后生效。",
+    category: "general",
+    valueType: "number",
+    defaultValue: 20,
+    requiresRestart: true,
+  },
+  {
+    key: "RATE_LIMIT_PAYMENT_REQUESTS_PER_MINUTE",
+    label: "支付限流（次/分钟）",
+    description:
+      "支付相关接口的每分钟请求阈值。配置 Upstash Redis 后生效。",
+    category: "general",
+    valueType: "number",
+    defaultValue: 10,
+    requiresRestart: true,
+  },
+  {
+    key: "RATE_LIMIT_UPLOAD_REQUESTS_PER_MINUTE",
+    label: "上传限流（次/分钟）",
+    description:
+      "文件上传接口的每分钟请求阈值。配置 Upstash Redis 后生效。",
+    category: "general",
+    valueType: "number",
+    defaultValue: 30,
+    requiresRestart: true,
+  },
+  {
+    key: "RATE_LIMIT_STRICT_REQUESTS_PER_MINUTE",
+    label: "严格限流（次/分钟）",
+    description:
+      "敏感操作的严格每分钟请求阈值。配置 Upstash Redis 后生效。",
+    category: "general",
+    valueType: "number",
+    defaultValue: 3,
+    requiresRestart: true,
   },
 ] as const satisfies readonly SettingDefinition[];
 

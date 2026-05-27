@@ -7,6 +7,7 @@
  * 环境变量:
  * - UPSTASH_REDIS_REST_URL: Upstash Redis REST URL
  * - UPSTASH_REDIS_REST_TOKEN: Upstash Redis REST Token
+ * - RATE_LIMIT_*_REQUESTS_PER_MINUTE: 各类限流阈值
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
@@ -59,19 +60,60 @@ const limiters = new Map<string, Ratelimit>();
 /**
  * 预定义的限流配置
  */
+function getPositiveIntegerEnv(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return Math.trunc(value);
+}
+
 export const RateLimitConfig = {
-  /** 全局 API 限流: 100 请求/分钟 */
-  global: { requests: 100, window: "1m" as const },
-  /** 认证 API 限流: 5 请求/分钟（防暴力破解）*/
-  auth: { requests: 5, window: "1m" as const },
-  /** AI API 限流: 20 请求/分钟 */
-  ai: { requests: 20, window: "1m" as const },
-  /** 支付 API 限流: 10 请求/分钟 */
-  payment: { requests: 10, window: "1m" as const },
-  /** 上传 API 限流: 30 请求/分钟 */
-  upload: { requests: 30, window: "1m" as const },
-  /** 严格限流: 3 请求/分钟（用于敏感操作）*/
-  strict: { requests: 3, window: "1m" as const },
+  /** 全局 API 限流 */
+  global: {
+    requests: getPositiveIntegerEnv(
+      "RATE_LIMIT_GLOBAL_REQUESTS_PER_MINUTE",
+      100
+    ),
+    window: "1m" as const,
+  },
+  /** 认证 API 限流（防暴力破解）*/
+  auth: {
+    requests: getPositiveIntegerEnv(
+      "RATE_LIMIT_AUTH_REQUESTS_PER_MINUTE",
+      5
+    ),
+    window: "1m" as const,
+  },
+  /** AI / 生图 API 限流 */
+  ai: {
+    requests: getPositiveIntegerEnv("RATE_LIMIT_AI_REQUESTS_PER_MINUTE", 20),
+    window: "1m" as const,
+  },
+  /** 支付 API 限流 */
+  payment: {
+    requests: getPositiveIntegerEnv(
+      "RATE_LIMIT_PAYMENT_REQUESTS_PER_MINUTE",
+      10
+    ),
+    window: "1m" as const,
+  },
+  /** 上传 API 限流 */
+  upload: {
+    requests: getPositiveIntegerEnv(
+      "RATE_LIMIT_UPLOAD_REQUESTS_PER_MINUTE",
+      30
+    ),
+    window: "1m" as const,
+  },
+  /** 严格限流（用于敏感操作）*/
+  strict: {
+    requests: getPositiveIntegerEnv(
+      "RATE_LIMIT_STRICT_REQUESTS_PER_MINUTE",
+      3
+    ),
+    window: "1m" as const,
+  },
 } as const;
 
 export type RateLimitType = keyof typeof RateLimitConfig;
