@@ -187,12 +187,9 @@ curl https://your-domain.com/v1/images/generations \
     "n": 1,
     "size": "1024x1024",
     "response_format": "url",
-    "fast_mode": true,
     "force_web": true
   }'
 ```
-
-`fast_mode`/`fastMode` 是本站扩展字段，仅对平台内部 Codex/Responses 账号池生效，默认开启。开启时，普通文生图和图生图会调用 ChatGPT Codex 的 `/backend-api/codex/images/generation` 或 `/backend-api/codex/images/edit`；显式传 `false` 时才回退到 Responses `image_generation` tool 转换链路。Web 账号、用户自接 API、平台外接 API 后端会忽略该字段。
 
 `force_web`/`forceWeb` 是本站扩展字段，仅对 `/v1/images/generations` 和 `/v1/images/edits` 生效。用户已启用“接入其他站 API”时仍优先使用用户自接 API，并忽略该字段；进入平台账号池后，只有命中的后端分组为 `mixed` 时才会强制本次 image 请求只调度 Web 账号。非 mixed 分组也会忽略该字段并按原分组规则调度。Web 后端仍不能严格保证输出分辨率或 4K。
 

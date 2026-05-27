@@ -180,8 +180,6 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     "promptOptimization",
     "prompt_optimization"
   );
-  const fastMode =
-    getOptionalBoolean(formData, "fastMode", "fast_mode") ?? true;
   const requestedGenerationId =
     getText(formData, "generationId") || getText(formData, "generation_id");
   if (requestedGenerationId.length > 128) {
@@ -343,7 +341,6 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           n: 1,
           mixWebFirst: requiresResponsesBackend ? false : mixWebFirst,
           requiresResponsesBackend,
-          fastMode,
           images: await filesToImageInputs(sourceFiles, sourceImageUrls),
           mask:
             maskFile instanceof File

@@ -1807,10 +1807,6 @@ export function CreatePageClient({
     "Turning this off is best effort: the platform sends the original prompt and uses instant on Web, but an upstream backend may still internally revise or interpret the prompt.",
     "关闭后是尽量少改动：平台会发送原始提示词，并让 Web 使用 instant；但上游后端仍可能在内部改写或理解提示词。"
   );
-  const fastModeHelpText = copy(
-    "On by default. Codex/Responses accounts use the ChatGPT Codex /backend-api/codex/images endpoint for text-to-image and image edits. Turn it off to use the slower Responses image_generation tool route. Web and external Images APIs ignore this setting.",
-    "默认开启。Codex/Responses 账号的文生图和图生图会走 ChatGPT Codex 的 /backend-api/codex/images 接口；关闭后使用较慢的 Responses image_generation tool 转换链路。Web 和外接 Images API 会忽略该设置。"
-  );
   const resolutionHelpText = copy(
     "Auto lets the backend decide the output size. Reference images can use their original pixels for preview and masks. The requested output size must still be valid, so non-step reference sizes are rounded to the nearest supported size. Web backend treats resolution as best-effort aspect-ratio guidance and cannot guarantee exact pixels or native 4K. After generation, the actual output size is recorded and credits are settled against the actual size.",
     "Auto 会让后端决定输出尺寸。参考图预览和蒙版仍使用原始像素。请求的输出尺寸必须合法，所以非步进参考图尺寸会贴近到支持的尺寸。Web 后端只能把分辨率作为尽量遵循的画幅提示，不能保证精确像素或原生 4K。生成完成后会记录实际输出尺寸，并按实际尺寸修正计费。"
@@ -1868,7 +1864,6 @@ export function CreatePageClient({
   const [editPrompt, setEditPrompt] = useCreateRuntimeState("editPrompt", "");
   const [promptOptimization, setPromptOptimization] =
     useCreateRuntimeState("promptOptimization", true);
-  const [fastMode, setFastMode] = useCreateRuntimeState("fastMode", true);
   const [chatPrompt, setChatPrompt] = useCreateRuntimeState("chatPrompt", "");
   const [editMention, setEditMention] =
     useCreateRuntimeState<MentionState | null>("editMention", null);
@@ -2654,33 +2649,6 @@ export function CreatePageClient({
                 "Pro plan or higher can reduce prompt changes.",
                 "专业版或更高套餐可尽量减少提示词改动。"
               )}
-        </span>
-      </span>
-    </label>
-  );
-  const fastModeField = (id: string, disabled = false) => (
-    <label
-      htmlFor={id}
-      className={`flex items-start gap-2 rounded-md border border-border bg-muted/30 p-3 text-sm ${
-        disabled
-          ? "cursor-not-allowed text-muted-foreground"
-          : "cursor-pointer text-foreground"
-      }`}
-    >
-      <Checkbox
-        id={id}
-        checked={fastMode}
-        onCheckedChange={(checked) => setFastMode(checked === true)}
-        disabled={disabled}
-        className="mt-0.5"
-      />
-      <span>
-        {labelWithHelp(copy("Fast mode", "快速模式"), fastModeHelpText)}
-        <span className="mt-1 block text-xs font-normal text-muted-foreground">
-          {copy(
-            "Use the native Codex Images endpoint when available.",
-            "可用时使用 Codex 原生 Images 接口。"
-          )}
         </span>
       </span>
     </label>
@@ -5742,7 +5710,6 @@ export function CreatePageClient({
         ...(imageGptModel !== "default" ? { gptModel: imageGptModel } : {}),
         ...(showThinkingControls ? { thinking: imageThinking } : {}),
         ...(promptOptimizationAllowed ? { promptOptimization } : {}),
-        fastMode,
         ...(textMixWebFirstActive ? { mix_web_first: true } : {}),
       }),
     });
@@ -5933,7 +5900,6 @@ export function CreatePageClient({
     if (promptOptimizationAllowed) {
       formData.append("prompt_optimization", String(promptOptimization));
     }
-    formData.append("fast_mode", String(fastMode));
     if (hasPromptImageReference(editPrompt)) {
       formData.append("requires_responses_backend", "true");
     } else if (editMixWebFirstActive) {
@@ -6968,8 +6934,6 @@ export function CreatePageClient({
                   "text-prompt-optimization",
                   isTextSingleGenerating
                 )}
-                {!isWebOnlyBackend &&
-                  fastModeField("text-fast-mode", isTextSingleGenerating)}
                 {textSettingsPanel("single")}
                 <div className="flex justify-end">
                   <Button
@@ -7024,8 +6988,6 @@ export function CreatePageClient({
                   "text-line-prompt-optimization",
                   isTextLinesGenerating
                 )}
-                {!isWebOnlyBackend &&
-                  fastModeField("text-line-fast-mode", isTextLinesGenerating)}
                 {textSettingsPanel("lines")}
                 <div className="flex justify-end">
                   <Button
@@ -7113,7 +7075,6 @@ export function CreatePageClient({
               {editReferenceMentionStatusText}
             </p>
             {promptOptimizationField("edit-prompt-optimization", isEditing)}
-            {!isWebOnlyBackend && fastModeField("edit-fast-mode", isEditing)}
 
             <div className="space-y-4 rounded-lg border border-border bg-background p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
