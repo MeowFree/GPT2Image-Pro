@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { withApiLogging } from "@repo/shared/api-logger";
 import { getRuntimeSettingString } from "@repo/shared/system-settings";
 
-import { runAutoSub2ApiAccessTokenSync } from "@/features/image-backend-pool/service";
+import { runSub2ApiSyncJob } from "@/server/scheduled-jobs";
 
 async function validateCronSecret(authHeader: string | null) {
   if (!authHeader) return false;
@@ -34,7 +34,7 @@ export const POST = withApiLogging(async (request: Request) => {
   const force = ["1", "true", "yes"].includes(
     (url.searchParams.get("force") || "").toLowerCase()
   );
-  const result = await runAutoSub2ApiAccessTokenSync({ force });
+  const result = await runSub2ApiSyncJob({ force });
 
   return NextResponse.json({
     ...result,

@@ -16,6 +16,10 @@ export async function register() {
       "@repo/shared/auth/bootstrap-super-admin"
     );
     await bootstrapSelfUseSuperAdmin();
+    const { startInternalJobScheduler } = await import(
+      "./server/internal-job-scheduler"
+    );
+    await startInternalJobScheduler();
     // Sentry 服务端初始化
     await import("../sentry.server.config");
   }

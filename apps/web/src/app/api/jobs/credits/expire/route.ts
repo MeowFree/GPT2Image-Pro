@@ -2,8 +2,9 @@ import crypto from "node:crypto";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { processExpiredBatches } from "@repo/shared/credits/core";
 import { withApiLogging } from "@repo/shared/api-logger";
+
+import { runCreditsExpireJob } from "@/server/scheduled-jobs";
 
 /**
  * 积分过期处理 Cron Job API
@@ -62,20 +63,7 @@ export const POST = withApiLogging(async () => {
   }
 
   try {
-    // 执行过期处理
-    const results = await processExpiredBatches();
-
-    // 返回处理结果
-    return NextResponse.json({
-      success: true,
-      processed: results.length,
-      details: results.map((r) => ({
-        batchId: r.batchId,
-        userId: r.userId,
-        expiredAmount: r.expiredAmount,
-      })),
-      timestamp: new Date().toISOString(),
-    });
+    return NextResponse.json(await runCreditsExpireJob());
   } catch (error) {
     console.error("Failed to process expired batches:", error);
 

@@ -154,6 +154,11 @@ export type SettingKey =
   | "AXIOM_TOKEN"
   | "AXIOM_DATASET"
   | "CRON_SECRET"
+  | "INTERNAL_JOB_SCHEDULER_ENABLED"
+  | "INTERNAL_JOB_IMAGES_MAINTENANCE_INTERVAL_MINUTES"
+  | "INTERNAL_JOB_CREDITS_EXPIRE_INTERVAL_MINUTES"
+  | "INTERNAL_JOB_WEB_ACCOUNTS_REFRESH_INTERVAL_MINUTES"
+  | "INTERNAL_JOB_SUB2API_SYNC_INTERVAL_MINUTES"
   | "UPSTASH_REDIS_REST_URL"
   | "UPSTASH_REDIS_REST_TOKEN"
   | "INNGEST_EVENT_KEY"
@@ -1403,10 +1408,52 @@ export const SYSTEM_SETTING_DEFINITIONS = [
   {
     key: "CRON_SECRET",
     label: "Cron 密钥",
-    description: "定时任务鉴权密钥。",
+    description: "外部定时任务调用 HTTP Job 接口时使用的鉴权密钥。",
     category: "general",
     valueType: "string",
     secret: true,
+  },
+  {
+    key: "INTERNAL_JOB_SCHEDULER_ENABLED",
+    label: "内置定时任务",
+    description:
+      "启用后 Web 进程会自动执行 pending 超时、照片清理、积分过期、Web 账号刷新和 Sub2API 同步任务；多实例会用数据库锁避免重复执行。",
+    category: "general",
+    valueType: "boolean",
+    defaultValue: true,
+  },
+  {
+    key: "INTERNAL_JOB_IMAGES_MAINTENANCE_INTERVAL_MINUTES",
+    label: "图片维护任务间隔（分钟）",
+    description: "pending 超时退款和照片销毁清理的内置执行间隔。",
+    category: "general",
+    valueType: "number",
+    defaultValue: 5,
+  },
+  {
+    key: "INTERNAL_JOB_CREDITS_EXPIRE_INTERVAL_MINUTES",
+    label: "积分过期任务间隔（分钟）",
+    description: "过期积分批次处理的内置执行间隔。",
+    category: "general",
+    valueType: "number",
+    defaultValue: 1440,
+  },
+  {
+    key: "INTERNAL_JOB_WEB_ACCOUNTS_REFRESH_INTERVAL_MINUTES",
+    label: "Web 账号刷新任务间隔（分钟）",
+    description: "ChatGPT Web 账号状态刷新的内置执行间隔。",
+    category: "general",
+    valueType: "number",
+    defaultValue: 10,
+  },
+  {
+    key: "INTERNAL_JOB_SUB2API_SYNC_INTERVAL_MINUTES",
+    label: "Sub2API 同步检查间隔（分钟）",
+    description:
+      "内置调度器检查 Sub2API 自动同步任务的间隔；实际是否同步仍受 Sub2API 自动同步任务自身间隔控制。",
+    category: "general",
+    valueType: "number",
+    defaultValue: 10,
   },
   {
     key: "UPSTASH_REDIS_REST_URL",

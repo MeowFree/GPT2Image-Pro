@@ -3,12 +3,9 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { withApiLogging } from "@repo/shared/api-logger";
-import {
-  getRuntimeSettingNumber,
-  getRuntimeSettingString,
-} from "@repo/shared/system-settings";
+import { getRuntimeSettingString } from "@repo/shared/system-settings";
 
-import { refreshStaleWebBackendAccounts } from "@/features/image-backend-pool/service";
+import { runWebAccountsRefreshJob } from "@/server/scheduled-jobs";
 
 async function validateCronSecret(authHeader: string | null) {
   if (!authHeader) return false;
@@ -33,26 +30,7 @@ export const POST = withApiLogging(async () => {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const staleMinutes = await getRuntimeSettingNumber(
-    "CHATGPT_WEB_ACCOUNT_REFRESH_STALE_MINUTES",
-    30,
-    { positive: true }
-  );
-  const limit = await getRuntimeSettingNumber(
-    "CHATGPT_WEB_ACCOUNT_REFRESH_LIMIT",
-    20,
-    { positive: true }
-  );
-  const result = await refreshStaleWebBackendAccounts({
-    staleMinutes,
-    limit,
-  });
-
-  return NextResponse.json({
-    success: true,
-    ...result,
-    timestamp: new Date().toISOString(),
-  });
+  return NextResponse.json(await runWebAccountsRefreshJob());
 });
 
 export const GET = withApiLogging(async () =>

@@ -3,10 +3,7 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { withApiLogging } from "@repo/shared/api-logger";
-import {
-  destroyExpiredGenerationPhotos,
-  expireStalePendingGenerations,
-} from "@repo/shared/generation-maintenance";
+import { runImageMaintenanceJob } from "@/server/scheduled-jobs";
 
 function validateCronSecret(authHeader: string | null): boolean {
   if (!authHeader) return false;
@@ -43,22 +40,7 @@ export const POST = withApiLogging(async () => {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [pendingResults, photoRetention] = await Promise.all([
-    expireStalePendingGenerations({ limit: 500 }),
-    destroyExpiredGenerationPhotos({ limit: 500 }),
-  ]);
-
-  return NextResponse.json({
-    success: true,
-    expired: pendingResults.length,
-    creditsRefunded: pendingResults.reduce(
-      (total, item) => total + item.creditsRefunded,
-      0
-    ),
-    details: pendingResults,
-    photoRetention,
-    timestamp: new Date().toISOString(),
-  });
+  return NextResponse.json(await runImageMaintenanceJob());
 });
 
 export const GET = withApiLogging(async () => {
