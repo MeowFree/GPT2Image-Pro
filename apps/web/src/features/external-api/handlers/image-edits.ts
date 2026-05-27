@@ -554,7 +554,7 @@ export const postExternalImageEdits = withApiLogging(
       "prompt_optimization"
     );
     const fastMode =
-      getOptionalBoolean(formData, "fastMode", "fast_mode") ?? false;
+      getOptionalBoolean(formData, "fastMode", "fast_mode") ?? true;
 
     const size = getText(formData, "size") || undefined;
     if (size) {

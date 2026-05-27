@@ -138,7 +138,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     requiresResponsesBackend:
       parsed.data.requiresResponsesBackend ??
       parsed.data.requires_responses_backend,
-    fastMode: parsed.data.fastMode ?? parsed.data.fast_mode ?? false,
+    fastMode: parsed.data.fastMode ?? parsed.data.fast_mode ?? true,
   };
   const requestedGenerationIds =
     parsed.data.generationIds || parsed.data.generation_ids;

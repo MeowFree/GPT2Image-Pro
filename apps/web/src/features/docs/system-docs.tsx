@@ -523,7 +523,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
               requirement: "可选",
               custom: true,
               description:
-                "本站扩展字段，默认 false。仅平台内部 Codex/Responses 账号池生效：显式 true 时实际调用 ChatGPT Codex 的 /backend-api/codex/images/generation；默认和显式 false 均使用 Responses image_generation tool。Web、用户自接 API 和平台外接 API 后端会忽略该字段。",
+                "本站扩展字段，默认 true。仅平台内部 Codex/Responses 账号池生效：开启时实际调用 ChatGPT Codex 的 /backend-api/codex/images/generation；显式 false 时回退到 Responses image_generation tool。Web、用户自接 API 和平台外接 API 后端会忽略该字段。",
             },
             {
               name: "promptOptimization / prompt_optimization",
@@ -537,14 +537,14 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
               requirement: "可选",
               custom: true,
               description:
-                "当命中 Codex/Responses 账号池且走 Responses 链路时，作为顶层 GPT 模型；fast_mode 显式 true 时走 Codex Images 原生接口，该字段不会作为 Responses model 使用。普通 Images API 后端可能忽略。",
+                "当命中 Codex/Responses 账号池且走 Responses 链路时，作为顶层 GPT 模型；fast_mode 默认开启时走 Codex Images 原生接口，该字段不会作为 Responses model 使用。普通 Images API 后端可能忽略。",
             },
             {
               name: "thinking",
               requirement: "可选",
               custom: true,
               description:
-                "minimal、none、low、medium、high、xhigh。仅针对 Codex/Responses 的 Responses 链路；fast_mode 显式 true 时可能不生效，Web 或普通 Images API 后端也可能忽略。",
+                "minimal、none、low、medium、high、xhigh。仅针对 Codex/Responses 的 Responses 链路；fast_mode 默认开启时可能不生效，Web 或普通 Images API 后端也可能忽略。",
             },
             {
               name: "force_web / forceWeb",
@@ -586,7 +586,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
           ],
           notes: [
             "该接口不会调用页面 /api/images/generate，而是直接进入共享 service 层。",
-            "如果命中平台内部 Codex/Responses 账号池，默认会转换成 Responses image_generation tool 请求；只有显式 fast_mode:true 且本次请求不要求 Responses 语义时，才会调用 ChatGPT Codex 的 /backend-api/codex/images/generation。",
+            "如果命中平台内部 Codex/Responses 账号池，默认 fast_mode 会调用 ChatGPT Codex 的 /backend-api/codex/images/generation；显式 fast_mode:false 或本次请求必须使用 Responses 语义时，才会转换成 Responses image_generation tool 请求。",
             "n/count 批量张数属于一次 HTTP 请求；一次 10 张会创建 10 条生成记录并按 10 张计费。运行时按套餐的生图并发受限并行，超过并发上限的图片会在本批次内排队等待。",
             "并发与排队：底层只有一条进程内生图队列，任务按套餐队列优先级排序，同优先级先进先出；队列同时受全局并发和单用户生图并发限制。全局并发可在后台「系统设置 > 模型 > 全局生图并发」配置，环境变量 IMAGE_GENERATION_GLOBAL_CONCURRENCY 只作为兜底默认值。批量请求额外有请求内 runner，只启动套餐允许的并发数，剩余图片留在本批次内等待，不会一次性塞满底层队列。",
             "排队等待阶段不会创建 generation，也不会扣图像生成积分；底层队列排队超过 IMAGE_GENERATION_QUEUE_TIMEOUT_MS 会返回 429 类错误。单张任务开始执行后才进入 20 分钟运行超时，运行超时按失败结算规则处理积分。",
@@ -778,7 +778,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               requirement: "可选",
               custom: true,
               description:
-                "本站扩展字段，默认 false。仅平台内部 Codex/Responses 账号池生效：显式 true 时实际调用 ChatGPT Codex 的 /backend-api/codex/images/edit；默认和显式 false 均使用 Responses image_generation tool。Web、用户自接 API 和平台外接 API 后端会忽略该字段。",
+                "本站扩展字段，默认 true。仅平台内部 Codex/Responses 账号池生效：开启时实际调用 ChatGPT Codex 的 /backend-api/codex/images/edit；显式 false 时回退到 Responses image_generation tool。Web、用户自接 API 和平台外接 API 后端会忽略该字段。",
             },
             {
               name: "image_url / image_urls",
@@ -811,7 +811,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               requirement: "可选",
               custom: true,
               description:
-                "minimal、none、low、medium、high、xhigh。同文生图接口；fast_mode 显式 true 时可能不生效。",
+                "minimal、none、low、medium、high、xhigh。同文生图接口；fast_mode 默认开启时可能不生效。",
             },
             {
               name: "force_web / forceWeb",
@@ -1872,7 +1872,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
               requirement: "Optional",
               custom: true,
               description:
-                "GPT2IMAGE extension, default false. Only affects internal Codex/Responses account-pool backends: explicit true calls ChatGPT Codex /backend-api/codex/images/generation; the default and explicit false use the Responses image_generation tool. Web, user custom APIs, and platform external API backends ignore it.",
+                "GPT2IMAGE extension, default true. Only affects internal Codex/Responses account-pool backends: when enabled, GPT2IMAGE calls ChatGPT Codex /backend-api/codex/images/generation; explicit false falls back to the Responses image_generation tool. Web, user custom APIs, and platform external API backends ignore it.",
             },
             {
               name: "promptOptimization / prompt_optimization",
@@ -1886,14 +1886,14 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
               requirement: "Optional",
               custom: true,
               description:
-                "When routed to Codex/Responses accounts through the Responses route, this is the top-level GPT model. With fast_mode explicitly true, Codex Images native requests do not use it as the Responses model. Plain Images API backends may ignore it.",
+                "When routed to Codex/Responses accounts through the Responses route, this is the top-level GPT model. With fast_mode enabled by default, Codex Images native requests do not use it as the Responses model. Plain Images API backends may ignore it.",
             },
             {
               name: "thinking",
               requirement: "Optional",
               custom: true,
               description:
-                "minimal, none, low, medium, high, or xhigh. Only applies to the Codex/Responses Responses route; it may not apply with explicit fast_mode:true, and Web or plain Images API backends may ignore it.",
+                "minimal, none, low, medium, high, or xhigh. Only applies to the Codex/Responses Responses route; it may not apply with default fast_mode, and Web or plain Images API backends may ignore it.",
             },
             {
               name: "force_web / forceWeb",
@@ -1936,7 +1936,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
           ],
           notes: [
             "This endpoint does not call page /api/images/generate; it directly enters the shared service layer.",
-            "If routed to an internal Codex/Responses account-pool backend, the default is a Responses image_generation tool request; only explicit fast_mode:true and requests that do not require Responses semantics call ChatGPT Codex /backend-api/codex/images/generation.",
+            "If routed to an internal Codex/Responses account-pool backend, fast_mode defaults to ChatGPT Codex /backend-api/codex/images/generation; explicit fast_mode:false or requests that require Responses semantics fall back to a Responses image_generation tool request.",
             "n/count is one HTTP request. A 10-image request creates 10 generation records and bills 10 outputs. GPT2IMAGE runs batch items with bounded parallelism based on the plan image-generation concurrency; items beyond that concurrency wait inside the same batch.",
             "Concurrency and queueing: the runtime uses one in-process image queue. Tasks are sorted by plan queue priority, then FIFO within the same priority, and are started only when both the global concurrency and per-user image-generation concurrency allow it. Global concurrency is configurable in Admin System Settings > Models > Global image generation concurrency; IMAGE_GENERATION_GLOBAL_CONCURRENCY is only the fallback default. Batch requests add a request-local bounded runner, so only the allowed number of batch items are started and the rest wait inside that batch instead of flooding the shared queue.",
             "Waiting in a queue does not create a generation record or charge image credits. If the shared queue wait exceeds IMAGE_GENERATION_QUEUE_TIMEOUT_MS, the API returns a 429-style error. The 20-minute runtime timeout starts only after an individual image task begins execution, and timeout settlement follows the failed-generation credit rules.",
@@ -2130,7 +2130,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               requirement: "Optional",
               custom: true,
               description:
-                "GPT2IMAGE extension, default false. Only affects internal Codex/Responses account-pool backends: explicit true calls ChatGPT Codex /backend-api/codex/images/edit; the default and explicit false use the Responses image_generation tool. Web, user custom APIs, and platform external API backends ignore it.",
+                "GPT2IMAGE extension, default true. Only affects internal Codex/Responses account-pool backends: when enabled, GPT2IMAGE calls ChatGPT Codex /backend-api/codex/images/edit; explicit false falls back to the Responses image_generation tool. Web, user custom APIs, and platform external API backends ignore it.",
             },
             {
               name: "image_url / image_urls",
@@ -2163,7 +2163,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               requirement: "Optional",
               custom: true,
               description:
-                "minimal, none, low, medium, high, or xhigh. Same as Create image; it may not apply with explicit fast_mode:true.",
+                "minimal, none, low, medium, high, or xhigh. Same as Create image; it may not apply with default fast_mode.",
             },
             {
               name: "force_web / forceWeb",

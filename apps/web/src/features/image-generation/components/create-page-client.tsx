@@ -1808,8 +1808,8 @@ export function CreatePageClient({
     "关闭后是尽量少改动：平台会发送原始提示词，并让 Web 使用 instant；但上游后端仍可能在内部改写或理解提示词。"
   );
   const fastModeHelpText = copy(
-    "Off by default. When enabled, Codex/Responses accounts use the ChatGPT Codex /backend-api/codex/images endpoint for text-to-image and image edits. Keep it off to use the Responses image_generation tool route. Web and external Images APIs ignore this setting.",
-    "默认关闭。开启后 Codex/Responses 账号的文生图和图生图会走 ChatGPT Codex 的 /backend-api/codex/images 接口；保持关闭则使用 Responses image_generation tool 转换链路。Web 和外接 Images API 会忽略该设置。"
+    "On by default. Codex/Responses accounts use the ChatGPT Codex /backend-api/codex/images endpoint for text-to-image and image edits. Turn it off to use the slower Responses image_generation tool route. Web and external Images APIs ignore this setting.",
+    "默认开启。Codex/Responses 账号的文生图和图生图会走 ChatGPT Codex 的 /backend-api/codex/images 接口；关闭后使用较慢的 Responses image_generation tool 转换链路。Web 和外接 Images API 会忽略该设置。"
   );
   const resolutionHelpText = copy(
     "Auto lets the backend decide the output size. Reference images can use their original pixels for preview and masks. The requested output size must still be valid, so non-step reference sizes are rounded to the nearest supported size. Web backend treats resolution as best-effort aspect-ratio guidance and cannot guarantee exact pixels or native 4K. After generation, the actual output size is recorded and credits are settled against the actual size.",
@@ -1868,7 +1868,7 @@ export function CreatePageClient({
   const [editPrompt, setEditPrompt] = useCreateRuntimeState("editPrompt", "");
   const [promptOptimization, setPromptOptimization] =
     useCreateRuntimeState("promptOptimization", true);
-  const [fastMode, setFastMode] = useCreateRuntimeState("fastMode", false);
+  const [fastMode, setFastMode] = useCreateRuntimeState("fastMode", true);
   const [chatPrompt, setChatPrompt] = useCreateRuntimeState("chatPrompt", "");
   const [editMention, setEditMention] =
     useCreateRuntimeState<MentionState | null>("editMention", null);

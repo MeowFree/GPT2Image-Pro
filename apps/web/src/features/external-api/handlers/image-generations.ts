@@ -201,7 +201,7 @@ export const postExternalImageGenerations = withApiLogging(
         parsed.data.output_compression
       ),
       forceWebBackend: parsed.data.force_web ?? parsed.data.forceWeb,
-      fastMode: parsed.data.fast_mode ?? parsed.data.fastMode ?? false,
+      fastMode: parsed.data.fast_mode ?? parsed.data.fastMode ?? true,
     };
     const responseFormat = parsed.data.response_format || "b64_json";
 

@@ -181,7 +181,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     "prompt_optimization"
   );
   const fastMode =
-    getOptionalBoolean(formData, "fastMode", "fast_mode") ?? false;
+    getOptionalBoolean(formData, "fastMode", "fast_mode") ?? true;
   const requestedGenerationId =
     getText(formData, "generationId") || getText(formData, "generation_id");
   if (requestedGenerationId.length > 128) {

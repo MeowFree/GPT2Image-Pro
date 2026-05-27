@@ -391,7 +391,7 @@ describe("Responses image output compatibility", () => {
 });
 
 describe("Codex Images fast mode", () => {
-  it("uses ChatGPT Codex Images generation when fast mode is explicitly enabled for Responses pool accounts", async () => {
+  it("uses ChatGPT Codex Images generation by default for Responses pool accounts", async () => {
     process.env.DATABASE_URL =
       process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
     const { generateImage } = await import("./service");
@@ -411,7 +411,6 @@ describe("Codex Images fast mode", () => {
       {
         prompt: "draw a cat",
         model: "gpt-image-2",
-        fastMode: true,
       }
     );
 
@@ -472,7 +471,7 @@ describe("Codex Images fast mode", () => {
     );
   });
 
-  it("uses ChatGPT Codex Images edit when fast mode is explicitly enabled for Responses pool accounts", async () => {
+  it("uses ChatGPT Codex Images edit by default for Responses pool accounts", async () => {
     process.env.DATABASE_URL =
       process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
     const { editImage } = await import("./service");
@@ -492,7 +491,6 @@ describe("Codex Images fast mode", () => {
       {
         prompt: "edit it",
         model: "gpt-image-2",
-        fastMode: true,
         images: [testImage],
       }
     );
@@ -533,7 +531,6 @@ describe("Codex Images fast mode", () => {
       {
         prompt: "draw a cat",
         model: "gpt-image-2",
-        fastMode: true,
       }
     );
 

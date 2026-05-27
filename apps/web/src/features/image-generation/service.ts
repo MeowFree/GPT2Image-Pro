@@ -712,7 +712,7 @@ function shouldUseCodexImagesFastMode(
 ) {
   return (
     isPoolAccountBackend(config, "responses") &&
-    params.fastMode === true &&
+    params.fastMode !== false &&
     params.requiresResponsesBackend !== true
   );
 }
