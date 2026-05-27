@@ -81,7 +81,6 @@ export async function uploadTemporaryImageUrls(
 
   try {
     const publicBaseUrl =
-      (await getRuntimeSettingString("ALIYUN_MODERATION_PUBLIC_BASE_URL")) ||
       (await getRuntimeSettingString("CONTENT_MODERATION_PUBLIC_BASE_URL")) ||
       (await getRuntimeSettingString("NEXT_PUBLIC_APP_URL")) ||
       (await getRuntimeSettingString("BETTER_AUTH_URL"));

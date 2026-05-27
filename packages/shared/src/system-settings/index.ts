@@ -292,6 +292,9 @@ export async function importSystemSettingsFromEnv(options?: {
 export async function initializeMissingSystemSettingsDefaults(options?: {
   updatedBy?: string;
 }) {
+  const now = new Date();
+  await migrateLegacyModerationSettings(now, options?.updatedBy);
+
   const rows = await db
     .select({
       key: systemSetting.key,
@@ -304,7 +307,6 @@ export async function initializeMissingSystemSettingsDefaults(options?: {
       .filter((row) => normalizeStoredValue(row.value) !== undefined)
       .map((row) => row.key)
   );
-  const now = new Date();
   const values = SYSTEM_SETTING_DEFINITIONS.flatMap((definition) => {
     if (storedKeys.has(definition.key)) return [];
 
@@ -333,6 +335,56 @@ export async function initializeMissingSystemSettingsDefaults(options?: {
 
   clearSystemSettingsCache();
   return values.map((value) => value.key);
+}
+
+async function migrateLegacyModerationSettings(now: Date, updatedBy?: string) {
+  const legacyKeys = [
+    "ALIYUN_MODERATION_PUBLIC_BASE_URL",
+    "ALIYUN_MODERATION_BLOCK_RISK_LEVEL",
+  ];
+  const rows = await db
+    .select({
+      key: systemSetting.key,
+      value: systemSetting.value,
+    })
+    .from(systemSetting)
+    .where(
+      inArray(systemSetting.key, [
+        "CONTENT_MODERATION_PUBLIC_BASE_URL",
+        ...legacyKeys,
+      ])
+    );
+
+  const stored = new Map(
+    rows
+      .map((row) => [row.key, normalizeStoredValue(row.value)] as const)
+      .filter(([, value]) => value !== undefined)
+  );
+  const legacyPublicBaseUrl = stored.get("ALIYUN_MODERATION_PUBLIC_BASE_URL");
+  const hasPublicBaseUrl = stored.has("CONTENT_MODERATION_PUBLIC_BASE_URL");
+
+  await db.transaction(async (tx) => {
+    if (!hasPublicBaseUrl && legacyPublicBaseUrl !== undefined) {
+      await tx
+        .insert(systemSetting)
+        .values({
+          key: "CONTENT_MODERATION_PUBLIC_BASE_URL",
+          value: legacyPublicBaseUrl,
+          isSecret: false,
+          ...(updatedBy ? { updatedBy } : {}),
+          updatedAt: now,
+        })
+        .onConflictDoNothing({
+          target: systemSetting.key,
+        });
+    }
+
+    await tx
+      .delete(systemSetting)
+      .where(inArray(systemSetting.key, legacyKeys));
+  });
+
+  clearSystemSettingsCache();
 }
 
 export async function importMissingSystemSettingsFromEnv(updatedBy?: string) {

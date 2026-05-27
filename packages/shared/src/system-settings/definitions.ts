@@ -90,10 +90,8 @@ export type SettingKey =
   | "ALIYUN_MODERATION_IMAGE_REGION_ID"
   | "ALIYUN_MODERATION_IMAGE_ENDPOINT"
   | "ALIYUN_MODERATION_IMAGE_SERVICE"
-  | "ALIYUN_MODERATION_BLOCK_RISK_LEVEL"
   | "ALIYUN_MODERATION_TEXT_APP_ID"
   | "ALIYUN_MODERATION_IMAGE_APP_ID"
-  | "ALIYUN_MODERATION_PUBLIC_BASE_URL"
   | "OPENAI_MODERATION_API_KEY"
   | "OPENAI_MODERATION_MODEL"
   | "PLATFORM_RESPONSES_MODEL"
@@ -764,8 +762,9 @@ export const SYSTEM_SETTING_DEFINITIONS = [
   },
   {
     key: "CONTENT_MODERATION_PUBLIC_BASE_URL",
-    label: "旧审核图片公开地址",
-    description: "兼容旧配置。优先使用审核图片公开地址。",
+    label: "审核图片公开地址",
+    description:
+      "图片审核临时文件公开基础地址。使用本地存储且审核服务需要公网图片 URL 时，用它拼接 /api/storage/...；对象存储签名 URL 已是公网地址时可留空。",
     category: "moderation",
     valueType: "string",
   },
@@ -824,27 +823,6 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     key: "ALIYUN_MODERATION_IMAGE_SERVICE",
     label: "阿里云图片服务",
     description: "图片审核服务 code。",
-    category: "moderation",
-    valueType: "string",
-  },
-  {
-    key: "ALIYUN_MODERATION_BLOCK_RISK_LEVEL",
-    label: "阿里云拦截风险等级",
-    description:
-      "达到该风险等级即拦截。low 表示更严格，只允许 none；medium 表示兼容旧逻辑，允许 none/low。",
-    category: "moderation",
-    valueType: "select",
-    options: [
-      { label: "严格：拦截 low 及以上", value: "low" },
-      { label: "默认：拦截 medium 及以上", value: "medium" },
-      { label: "宽松：仅拦截 high", value: "high" },
-    ],
-    defaultValue: "medium",
-  },
-  {
-    key: "ALIYUN_MODERATION_PUBLIC_BASE_URL",
-    label: "审核图片公开地址",
-    description: "图片审核临时文件公开基础地址。",
     category: "moderation",
     valueType: "string",
   },

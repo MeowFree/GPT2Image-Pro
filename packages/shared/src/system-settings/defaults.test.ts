@@ -22,17 +22,19 @@ type StoredSetting = {
 const store = vi.hoisted(() => new Map<string, StoredSetting>());
 
 const dbMock = vi.hoisted(() => {
+  const readRows = () =>
+    [...store.values()].map((row) => ({
+      key: row.key,
+      value: row.value,
+    }));
   const selectBuilder = {
-    from: vi.fn(async () =>
-      [...store.values()].map((row) => ({
-        key: row.key,
-        value: row.value,
-      }))
-    ),
+    from: vi.fn(() => selectBuilder),
+    where: vi.fn(async () => readRows()),
+    then: vi.fn((resolve, reject) => Promise.resolve(readRows()).then(resolve, reject)),
   };
   const insertBuilder = {
-    values: vi.fn((values: StoredSetting[]) => {
-      for (const value of values) {
+    values: vi.fn((values: StoredSetting | StoredSetting[]) => {
+      for (const value of Array.isArray(values) ? values : [values]) {
         if (!store.has(value.key)) {
           store.set(value.key, { ...value });
         }
@@ -40,13 +42,30 @@ const dbMock = vi.hoisted(() => {
       return insertBuilder;
     }),
     onConflictDoNothing: vi.fn(async () => undefined),
+    onConflictDoUpdate: vi.fn(async () => undefined),
+  };
+  const deleteBuilder = {
+    where: vi.fn(async (keys: unknown) => {
+      if (!Array.isArray(keys)) return;
+      for (const key of keys) {
+        store.delete(String(key));
+      }
+    }),
   };
 
   return {
     select: vi.fn(() => selectBuilder),
     insert: vi.fn(() => insertBuilder),
+    delete: vi.fn(() => deleteBuilder),
+    transaction: vi.fn(async (callback: (tx: unknown) => Promise<void>) =>
+      callback({
+        insert: vi.fn(() => insertBuilder),
+        delete: vi.fn(() => deleteBuilder),
+      })
+    ),
     selectBuilder,
     insertBuilder,
+    deleteBuilder,
   };
 });
 
@@ -64,15 +83,30 @@ vi.mock("@repo/database/schema", () => ({
   },
 }));
 
+vi.mock("drizzle-orm", () => ({
+  eq: vi.fn(() => ({})),
+  inArray: vi.fn((_field: unknown, values: unknown[]) => values),
+  sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({
+    strings,
+    values,
+  })),
+}));
+
 describe("system setting default initialization", () => {
   beforeEach(() => {
     store.clear();
     clearSystemSettingsCache();
     dbMock.select.mockClear();
     dbMock.insert.mockClear();
+    dbMock.delete.mockClear();
+    dbMock.transaction.mockClear();
     dbMock.selectBuilder.from.mockClear();
+    dbMock.selectBuilder.where.mockClear();
+    dbMock.selectBuilder.then.mockClear();
     dbMock.insertBuilder.values.mockClear();
     dbMock.insertBuilder.onConflictDoNothing.mockClear();
+    dbMock.insertBuilder.onConflictDoUpdate.mockClear();
+    dbMock.deleteBuilder.where.mockClear();
   });
 
   it("persists missing non-secret defaults for a fresh database", async () => {
@@ -115,6 +149,25 @@ describe("system setting default initialization", () => {
     expect(store.get("PLAN_STARTER_MONTHLY_AMOUNT")?.value).toBe(20);
     expect(store.get("BETTER_AUTH_SECRET")).toBeUndefined();
     expect(store.get("CREEM_API_KEY")).toBeUndefined();
+  });
+
+  it("migrates legacy moderation public URL and removes legacy Aliyun controls", async () => {
+    store.set("ALIYUN_MODERATION_PUBLIC_BASE_URL", {
+      key: "ALIYUN_MODERATION_PUBLIC_BASE_URL",
+      value: "https://images.example.com",
+    });
+    store.set("ALIYUN_MODERATION_BLOCK_RISK_LEVEL", {
+      key: "ALIYUN_MODERATION_BLOCK_RISK_LEVEL",
+      value: "medium",
+    });
+
+    await initializeMissingSystemSettingsDefaults();
+
+    expect(store.get("CONTENT_MODERATION_PUBLIC_BASE_URL")?.value).toBe(
+      "https://images.example.com"
+    );
+    expect(store.get("ALIYUN_MODERATION_PUBLIC_BASE_URL")).toBeUndefined();
+    expect(store.get("ALIYUN_MODERATION_BLOCK_RISK_LEVEL")).toBeUndefined();
   });
 
   it("does not overwrite existing stored settings", async () => {

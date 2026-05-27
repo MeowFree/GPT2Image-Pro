@@ -30,6 +30,7 @@ const ALIYUN_RISK_ORDER: Record<AliyunRiskLevel, number> = {
   medium: 2,
   high: 3,
 };
+const DEFAULT_MODERATION_BLOCK_RISK_LEVEL: AliyunRiskLevel = "low";
 const Green20220302 =
   (
     Green20220302Module as typeof Green20220302Module & {
@@ -173,30 +174,18 @@ async function getProviderTimeoutMs() {
   );
 }
 
-async function getAliyunBlockRiskLevel(): Promise<AliyunRiskLevel> {
-  const value = await runtimeValue("ALIYUN_MODERATION_BLOCK_RISK_LEVEL");
-  return value === "low" || value === "medium" || value === "high"
-    ? value
-    : "medium";
-}
-
 async function getEffectiveAliyunBlockRiskLevel(
-  blockRiskLevel: AliyunRiskLevel,
   userPlan?: SubscriptionPlan,
   userModerationBlockRiskLevel?: ModerationBlockRiskLevel
 ): Promise<AliyunRiskLevel> {
   if (!userPlan) {
-    return blockRiskLevel;
+    return DEFAULT_MODERATION_BLOCK_RISK_LEVEL;
   }
 
-  const planLevel = await normalizePlanModerationBlockRiskLevel(
+  return await normalizePlanModerationBlockRiskLevel(
     userPlan,
     userModerationBlockRiskLevel
   );
-
-  return ALIYUN_RISK_ORDER[planLevel] > ALIYUN_RISK_ORDER[blockRiskLevel]
-    ? planLevel
-    : blockRiskLevel;
 }
 
 function shouldBlockAliyunRisk(
@@ -562,7 +551,6 @@ async function moderateWithAliyun(
 
   const isImageMode = input.mode === "image" || Boolean(input.images?.length);
   const blockRiskLevel = await getEffectiveAliyunBlockRiskLevel(
-    await getAliyunBlockRiskLevel(),
     input.userPlan,
     input.userModerationBlockRiskLevel
   );
