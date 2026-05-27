@@ -21,7 +21,7 @@ const sections = {
       "这里按当前代码真实链路说明：页面入口和外接入口都是协议适配层，不互相 HTTP 调用，最终统一进入同一套生成、扣费、调度和存储链路。默认部署启用自用模式：关闭公开注册，首次启动补本地随机密码超管。",
     flow: {
       title: "请求路由图",
-      note: "用户自接 API 目前仍保留最高优先级；没有可用的用户自接 API 时，才进入平台后端池。外接接口不会反向请求站内 /api/images/*。",
+      note: "普通 image/responses 请求中，用户自接 API 目前仍保留最高优先级；命中用户自接 API 时不扣本站积分，也不占用本站外接 API Key 额度。Agent 或明确要求 Codex/Responses 的入口会忽略用户自接 API。外接接口不会反向请求站内 /api/images/*。",
       entryTitle: "入口",
       resolverTitle: "统一处理",
       groupTitle: "分组选择",
@@ -84,7 +84,7 @@ const sections = {
         {
           title: "用户自接 API",
           description:
-            "如果用户设置了自己的 OpenAI 兼容 API，会先直接使用它；这是过渡保留逻辑。",
+            "如果用户设置了自己的 OpenAI 兼容 API，普通 image/responses 请求会先直接使用它；命中时 useCredits=false，不扣本站余额，也不增加本站 API Key 已用额度。",
         },
         {
           title: "Web 账号池",
@@ -152,7 +152,7 @@ const sections = {
           "OpenAI Responses",
           "/v1/responses",
           "responses",
-          "无 tools 时平台补 image_generation；显式传 tools 时必须包含 image_generation。按 responses 类型只调度 Codex/Responses 分组或外接 /responses API。",
+          "无 tools 时平台补 image_generation；显式传 tools 时必须包含 image_generation。用户自接 API 可用时仍优先；否则按 responses 类型调度 Codex/Responses 分组或外接 /responses API。",
         ],
         [
           "GPT2IMAGE Agent image run",
@@ -241,7 +241,9 @@ const sections = {
         "外接 API Key 绑定的后端分组优先；未绑定时使用用户默认分组，再回退默认启用分组。",
         "分组计费倍率会参与预扣、结算、退款和用量记录；mixed 父分组命中子分组成员时，父分组倍率与子分组倍率相乘生效。",
         "外接 API Key 可设置独立积分限额；GET /v1/credits 可查询 Key 限额、已用额度和账户余额。",
-        "用户已启用“接入其他站 API”时仍优先使用用户自接 API；image 接口的 force_web / forceWeb 不会覆盖用户自接 API。",
+        "用户已启用“接入其他站 API”时，普通 /v1/images/generations、/v1/images/edits 和 /v1/responses 仍优先使用用户自接 API；命中时 credits_consumed 为 0，不扣本站余额，也不增加本站 API Key 已用额度。",
+        "/v1/agents/images 和需要 Codex/Responses 能力的页面功能会忽略用户自接 API，按平台后端池或外接后端池结算本站积分。",
+        "image 接口的 force_web / forceWeb 只在进入平台 mixed 后端池后生效，不会覆盖用户自接 API。",
       ],
       officialRefsTitle: "官方参考",
       officialRefs: [
@@ -359,7 +361,8 @@ const sections = {
             },
           ],
           notes: [
-            "API Key 限额只限制该 Key 自身；实际调用仍必须有足够账户积分。",
+            "API Key 限额只限制该 Key 自身；走本站平台计费路径时仍必须有足够账户积分。",
+            "命中用户自接 API 时不扣本站账户积分，也不增加 Key 已用额度。",
             "生成失败退款、审核拦截结算和实际尺寸后修正会同步修正 Key 已用额度。",
           ],
         },
@@ -562,7 +565,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
             {
               name: "generation_id / generationId / credits_consumed",
               description:
-                "本站扩展字段。非流式成功响应会在顶层返回本次生成记录 ID 和实际扣费；批量请求会返回 generation_ids / generationIds 以及合计 credits_consumed。",
+                "本站扩展字段。非流式成功响应会在顶层返回本次生成记录 ID 和本站结算积分；批量请求会返回 generation_ids / generationIds 以及合计 credits_consumed。命中用户自接 API 时为 0。",
               custom: true,
             },
             {
@@ -584,7 +587,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
             "排队等待阶段不会创建 generation，也不会扣图像生成积分；底层队列排队超过 IMAGE_GENERATION_QUEUE_TIMEOUT_MS 会返回 429 类错误。单张任务开始执行后才进入 20 分钟运行超时，运行超时按失败结算规则处理积分。",
             "Web 后端无法严格控制输出尺寸和输出格式；本站保存时会按实际图片头识别扩展名和 MIME。",
             "如果实际生成尺寸与请求尺寸不一致，本站会按检测到的实际尺寸修正记录和计费。",
-            "官方 Images API 可能返回 usage；本站当前 usage 通常为 null，但会通过顶层 credits_consumed、错误对象或流式完成事件返回实际积分。",
+            "官方 Images API 可能返回 usage；本站当前 usage 通常为 null，但会通过顶层 credits_consumed、错误对象或流式完成事件返回本站结算积分。命中用户自接 API 时不扣本站积分。",
           ],
         },
         {
@@ -812,7 +815,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             {
               name: "generation_id / generationId / credits_consumed",
               description:
-                "本站扩展字段。非流式成功响应会在顶层返回本次生成记录 ID 和实际扣费；批量请求会返回 generation_ids / generationIds 以及合计 credits_consumed。",
+                "本站扩展字段。非流式成功响应会在顶层返回本次生成记录 ID 和本站结算积分；批量请求会返回 generation_ids / generationIds 以及合计 credits_consumed。命中用户自接 API 时为 0。",
               custom: true,
             },
             {
@@ -1032,7 +1035,7 @@ data: {"type":"agent.completed","generation_id":"...","generationId":"...","agen
             {
               name: "credits_consumed / agent_round_count",
               description:
-                "实际扣费和 Agent 轮数。计费 = Agent 每轮基础积分 + 最终图片输出积分 + 审核积分，并叠加分组倍率。",
+                "本站结算积分和 Agent 轮数。Agent 接口固定走 Codex/Responses 能力，不使用用户自接 API；计费 = Agent 每轮基础积分 + 最终图片输出积分 + 审核积分，并叠加分组倍率。",
               custom: true,
             },
             {
@@ -1244,7 +1247,8 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
             },
             {
               name: "metadata.generation_id / credits_consumed / size",
-              description: "本站生成记录、扣费和尺寸信息。",
+              description:
+                "本站生成记录、结算积分和尺寸信息；命中用户自接 API 时 credits_consumed 为 0。",
               custom: true,
             },
             {
@@ -1353,7 +1357,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       "Page endpoints and external endpoints are protocol adapters. They do not call each other over HTTP; they enter the same generation, billing, scheduling, and storage path. Default deployments enable self-use mode: public registration is closed and the first startup creates a local super admin with a random password.",
     flow: {
       title: "Request Routing Diagram",
-      note: "User custom API keeps the highest priority for now; when unavailable, the request enters the platform backend pool. External endpoints do not call internal /api/images/* routes.",
+      note: "For ordinary image/responses requests, user custom API keeps the highest priority for now. When it wins, GPT2IMAGE does not charge account credits or external API key quota. Agent and explicitly Codex/Responses-only entries ignore user custom API. External endpoints do not call internal /api/images/* routes.",
       entryTitle: "Entry",
       resolverTitle: "Unified Handler",
       groupTitle: "Group Selection",
@@ -1416,7 +1420,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         {
           title: "User Custom API",
           description:
-            "If the user configured an OpenAI-compatible API, it is used first; this is kept as transition behavior.",
+            "If the user configured an OpenAI-compatible API, ordinary image/responses requests use it first. When it wins, useCredits=false, so GPT2IMAGE account balance and API key quota are not charged.",
         },
         {
           title: "Web Account Pool",
@@ -1494,7 +1498,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
           "OpenAI Responses",
           "/v1/responses",
           "responses",
-          "Adds the image_generation tool when tools are omitted; explicit tools must include image_generation. Responses routing selects Codex/Responses groups or external /responses API backends.",
+          "Adds the image_generation tool when tools are omitted; explicit tools must include image_generation. User custom API still wins when available; otherwise responses routing selects Codex/Responses groups or external /responses API backends.",
         ],
         [
           "GPT2IMAGE Agent image run",
@@ -1583,7 +1587,9 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         "A backend group bound to the external API key wins first. Otherwise the user's default group is used, then the enabled platform default group.",
         "Backend group billing multipliers are applied to pre-charge, settlement, refunds, and usage records. When a mixed parent group dispatches to a child group member, the parent and child multipliers are multiplied.",
         "External API keys can have independent credit limits. GET /v1/credits returns key quota, used credits, and account balance.",
-        "If the user has enabled a custom upstream API, GPT2IMAGE still uses that custom API first; image endpoint force_web / forceWeb does not override it.",
+        "If the user has enabled a custom upstream API, ordinary /v1/images/generations, /v1/images/edits, and /v1/responses still use that custom API first. When it wins, credits_consumed is 0 and GPT2IMAGE does not charge account credits or API key quota.",
+        "/v1/agents/images and page features that require Codex/Responses capability ignore user custom API and are billed through the platform or external backend pool.",
+        "Image endpoint force_web / forceWeb only applies after routing enters a platform mixed backend group; it does not override user custom API.",
       ],
       officialRefsTitle: "Official References",
       officialRefs: [
@@ -1701,7 +1707,8 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
             },
           ],
           notes: [
-            "The API key quota only limits this key. Calls still require enough account credits.",
+            "The API key quota only limits this key. Calls through the GPT2IMAGE-billed platform path still require enough account credits.",
+            "When a user custom upstream API wins, GPT2IMAGE does not charge account credits or key quota.",
             "Failed-generation refunds, moderation settlement, and actual-size corrections also update key usage.",
           ],
         },
@@ -1905,7 +1912,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
             {
               name: "generation_id / generationId / credits_consumed",
               description:
-                "GPT2IMAGE extension. Non-stream success responses return the generation record ID and actual charged credits at the top level; batch requests return generation_ids / generationIds and total credits_consumed.",
+                "GPT2IMAGE extension. Non-stream success responses return the generation record ID and GPT2IMAGE-billed credits at the top level; batch requests return generation_ids / generationIds and total credits_consumed. This is 0 when a user custom upstream API wins.",
               custom: true,
             },
             {
@@ -1927,7 +1934,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
             "Waiting in a queue does not create a generation record or charge image credits. If the shared queue wait exceeds IMAGE_GENERATION_QUEUE_TIMEOUT_MS, the API returns a 429-style error. The 20-minute runtime timeout starts only after an individual image task begins execution, and timeout settlement follows the failed-generation credit rules.",
             "Web backends cannot strictly control output dimensions or output format. GPT2IMAGE labels stored files by the detected image header and MIME.",
             "If the actual generated dimensions differ from the requested size, GPT2IMAGE records and bills using the detected actual size.",
-            "The official Images API may return usage. GPT2IMAGE usually returns usage: null, but actual credits are returned through top-level credits_consumed, error payloads, or streaming completion events.",
+            "The official Images API may return usage. GPT2IMAGE usually returns usage: null, but GPT2IMAGE-billed credits are returned through top-level credits_consumed, error payloads, or streaming completion events. When a user custom upstream API wins, GPT2IMAGE does not charge credits.",
           ],
         },
         {
@@ -2157,7 +2164,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             {
               name: "generation_id / generationId / credits_consumed",
               description:
-                "GPT2IMAGE extension. Non-stream success responses return the generation record ID and actual charged credits at the top level; batch requests return generation_ids / generationIds and total credits_consumed.",
+                "GPT2IMAGE extension. Non-stream success responses return the generation record ID and GPT2IMAGE-billed credits at the top level; batch requests return generation_ids / generationIds and total credits_consumed. This is 0 when a user custom upstream API wins.",
               custom: true,
             },
             {
@@ -2380,7 +2387,7 @@ data: {"type":"agent.completed","generation_id":"...","generationId":"...","agen
               name: "credits_consumed / agent_round_count",
               custom: true,
               description:
-                "Actual charge and Agent rounds. Billing = Agent base round credits + final image output credits + moderation credits, with backend group multipliers applied.",
+                "GPT2IMAGE-billed credits and Agent rounds. Agent always requires Codex/Responses capability and does not use user custom API. Billing = Agent base round credits + final image output credits + moderation credits, with backend group multipliers applied.",
             },
             {
               name: "SSE agent.event / agent.partial_image / agent.completed",
@@ -2595,7 +2602,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
             {
               name: "metadata.generation_id / credits_consumed / size",
               description:
-                "GPT2IMAGE generation record, billing, and size metadata.",
+                "GPT2IMAGE generation record, billed credits, and size metadata. credits_consumed is 0 when a user custom upstream API wins.",
               custom: true,
             },
             {
