@@ -1,6 +1,6 @@
 # Superapi 生图站部署 Runbook
 
-本文档记录 `https://gpt2image.superapi.buzz` 当前线上部署方式。下次部署按这里执行，避免静态资源、release 路径和 systemd drop-in 不一致。
+本文档记录 `https://gpt2image.superapi.buzz` 当前线上部署方式，只适用于本站这套 Nginx 静态 alias、systemd release 和 AB 切换环境。普通部署不需要照这个 runbook 手动处理静态资源；按 README 的生产部署即可。
 
 ## 当前拓扑
 
