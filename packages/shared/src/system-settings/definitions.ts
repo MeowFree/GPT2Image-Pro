@@ -795,21 +795,6 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     secret: true,
   },
   {
-    key: "ALIYUN_MODERATION_REGION_ID",
-    label: "阿里云默认 Region",
-    description: "默认 cn-shanghai。",
-    category: "moderation",
-    valueType: "string",
-    defaultValue: "cn-shanghai",
-  },
-  {
-    key: "ALIYUN_MODERATION_ENDPOINT",
-    label: "阿里云默认 Endpoint",
-    description: "可选。",
-    category: "moderation",
-    valueType: "string",
-  },
-  {
     key: "ALIYUN_MODERATION_TEXT_REGION_ID",
     label: "阿里云文本 Region",
     description: "文本审核专用 Region。",
@@ -865,20 +850,6 @@ export const SYSTEM_SETTING_DEFINITIONS = [
       { label: "宽松：仅拦截 high", value: "high" },
     ],
     defaultValue: "medium",
-  },
-  {
-    key: "ALIYUN_MODERATION_TEXT_APP_ID",
-    label: "阿里云文本 App ID",
-    description: "多模态 Agent 文本 App ID。",
-    category: "moderation",
-    valueType: "string",
-  },
-  {
-    key: "ALIYUN_MODERATION_IMAGE_APP_ID",
-    label: "阿里云图片 App ID",
-    description: "多模态 Agent 图片 App ID。",
-    category: "moderation",
-    valueType: "string",
   },
   {
     key: "ALIYUN_MODERATION_PUBLIC_BASE_URL",
