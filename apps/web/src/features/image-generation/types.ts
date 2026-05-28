@@ -15,6 +15,7 @@ export interface GenerateImageParams {
   moderation?: ImageModeration;
   outputFormat?: ImageOutputFormat;
   outputCompression?: number;
+  background?: ImageBackground;
   mixWebFirst?: boolean;
   forceWebBackend?: boolean;
   requiresResponsesBackend?: boolean;
@@ -111,6 +112,7 @@ export interface ImageGenerationCallbacks {
 export type ImageQuality = "auto" | "low" | "medium" | "high";
 export type ImageModeration = "auto" | "low";
 export type ImageOutputFormat = "png" | "jpeg" | "webp";
+export type ImageBackground = "transparent" | "opaque" | "auto";
 export type ModerationBlockRiskLevel = "low" | "medium" | "high";
 
 export interface ImageInputFile {
@@ -156,6 +158,7 @@ export interface EditImageParams {
   moderation?: ImageModeration;
   outputFormat?: ImageOutputFormat;
   outputCompression?: number;
+  background?: ImageBackground;
   mixWebFirst?: boolean;
   forceWebBackend?: boolean;
   requiresResponsesBackend?: boolean;
@@ -180,6 +183,7 @@ export interface ChatImageParams {
   moderation?: ImageModeration;
   outputFormat?: ImageOutputFormat;
   outputCompression?: number;
+  background?: ImageBackground;
   stream?: boolean;
   thinking?: ThinkingLevel;
   agentMode?: boolean;

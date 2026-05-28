@@ -27,12 +27,15 @@ import {
 } from "@/features/image-generation/request-utils";
 import { createImageStreamResponse } from "@/features/image-generation/streaming";
 import {
+  normalizeImageBackground,
   normalizeOutputCompression,
   normalizeOutputFormat,
+  VALID_IMAGE_BACKGROUNDS,
   VALID_OUTPUT_FORMATS,
 } from "@/features/image-generation/output-format";
 import type {
   ChatHistoryMessage,
+  ImageBackground,
   ImageModeration,
   ImageOutputFormat,
   ImageQuality,
@@ -813,6 +816,14 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     getText(formData, "output_compression") ||
       getText(formData, "outputCompression")
   );
+  const backgroundValue = getText(formData, "background");
+  const background = normalizeImageBackground(backgroundValue);
+  if (
+    backgroundValue &&
+    !VALID_IMAGE_BACKGROUNDS.has(background as ImageBackground)
+  ) {
+    return errorResponse("Invalid background.");
+  }
 
   const thinkingValue = getText(formData, "thinking") || "low";
   if (!VALID_THINKING.has(thinkingValue as ThinkingLevel)) {
@@ -899,6 +910,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           moderation,
           outputFormat,
           outputCompression,
+          background,
           stream: useStreamResponse,
           thinking,
           agentMode,

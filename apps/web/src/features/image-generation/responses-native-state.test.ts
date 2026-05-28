@@ -1,17 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { extractResponsesTokenUsage } from "./responses-usage";
 import {
   buildResponsesImageEditRequest,
   buildResponsesImageGenerationRequest,
 } from "./responses-image";
 import {
-  buildResponsesStoreFalseFallbackRequestBody,
   buildAgentContinuationInput,
-  buildPreviousResponseFallbackRequestBody,
-  buildCurrentResponsesContent,
   buildContinueGenerationFunctionCallItems,
+  buildCurrentResponsesContent,
   buildGeneratedImageReferenceInstruction,
+  buildPreviousResponseFallbackRequestBody,
   buildResponsesInput,
+  buildResponsesStoreFalseFallbackRequestBody,
   getContinueGenerationFunctionCalls,
   isPreviousResponseStateError,
   isResponsesStoreUnsupportedError,
@@ -21,8 +20,9 @@ import {
   shouldEnableResponsesPreviousResponse,
   withResponsesImageReferenceInstructions,
 } from "./responses-native-state";
-import { normalizeResponsesImageRequestBody } from "./responses-request-normalizer";
 import { extractResponsesImageCallBase64 } from "./responses-output";
+import { normalizeResponsesImageRequestBody } from "./responses-request-normalizer";
+import { extractResponsesTokenUsage } from "./responses-usage";
 import type {
   ApiConfig,
   ChatHistoryMessage,
@@ -34,7 +34,9 @@ vi.mock("@repo/shared/system-settings", () => ({
   getRuntimeSettingBoolean: vi.fn(async (key: string, fallback = false) =>
     key === "IMAGE_RESPONSES_PREVIOUS_RESPONSE_ENABLED" ? true : fallback
   ),
-  getRuntimeSettingNumber: vi.fn(async (_key: string, fallback: number) => fallback),
+  getRuntimeSettingNumber: vi.fn(async (_key: string, fallback: number) =>
+    fallback
+  ),
   getRuntimeSettingString: vi.fn(async () => ""),
 }));
 
@@ -850,6 +852,24 @@ describe("backend isolation", () => {
     expect(request.instructions).not.toContain(
       RESPONSES_IMAGE_REFERENCE_INSTRUCTIONS
     );
+  });
+
+  it("passes image background to direct Responses image tool requests", () => {
+    const generationRequest = buildResponsesImageGenerationRequest(
+      responsesConfig(),
+      {
+        prompt: "draw a sticker",
+        background: "transparent",
+      }
+    );
+    const editRequest = buildResponsesImageEditRequest(responsesConfig(), {
+      prompt: "make the background transparent",
+      images: [testImage],
+      background: "transparent",
+    });
+
+    expect(generationRequest.tools[0]?.background).toBe("transparent");
+    expect(editRequest.tools[0]?.background).toBe("transparent");
   });
 
   it("recognizes store=false upstream errors and builds a store-disabled retry body", () => {

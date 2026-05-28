@@ -1,4 +1,10 @@
-import type { ImageOutputFormat } from "./types";
+import type { ImageBackground, ImageOutputFormat } from "./types";
+
+export const VALID_IMAGE_BACKGROUNDS = new Set<ImageBackground>([
+  "transparent",
+  "opaque",
+  "auto",
+]);
 
 export const VALID_OUTPUT_FORMATS = new Set<ImageOutputFormat>([
   "png",
@@ -25,6 +31,16 @@ export function normalizeOutputCompression(
     typeof value === "number" ? value : Number.parseInt(String(value), 10);
   if (!Number.isFinite(numeric)) return undefined;
   return Math.min(100, Math.max(0, Math.round(numeric)));
+}
+
+export function normalizeImageBackground(
+  value?: string | null
+): ImageBackground | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  return VALID_IMAGE_BACKGROUNDS.has(normalized as ImageBackground)
+    ? (normalized as ImageBackground)
+    : undefined;
 }
 
 export function getOutputFormatContentType(format: ImageOutputFormat) {

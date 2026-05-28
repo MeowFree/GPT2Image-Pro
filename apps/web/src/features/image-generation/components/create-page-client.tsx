@@ -490,6 +490,7 @@ type MaskPoint = {
 type ImageQuality = "auto" | "low" | "medium" | "high";
 type ImageModeration = "auto" | "low";
 type ImageOutputFormat = "png" | "jpeg" | "webp";
+type ImageBackground = "auto" | "opaque" | "transparent";
 type ImageSizeMode = "auto" | "ratio" | "custom";
 type ImageSizeBase = "1k" | "2k" | "4k";
 type ImageAspectRatio =
@@ -940,6 +941,14 @@ const OUTPUT_FORMAT_OPTIONS: Array<{
   { value: "png", label: "PNG" },
   { value: "jpeg", label: "JPEG" },
   { value: "webp", label: "WebP" },
+];
+const BACKGROUND_OPTIONS: Array<{
+  value: ImageBackground;
+  label: string;
+}> = [
+  { value: "auto", label: "Auto" },
+  { value: "opaque", label: "Opaque" },
+  { value: "transparent", label: "Transparent" },
 ];
 const IMAGE_SIZE_BASES: Array<{
   value: ImageSizeBase;
@@ -1766,9 +1775,23 @@ export function CreatePageClient({
   const outputFormatLabel = (format: ImageOutputFormat) =>
     OUTPUT_FORMAT_OPTIONS.find((option) => option.value === format)?.label ||
     format.toUpperCase();
+  const backgroundLabel = (backgroundValue: ImageBackground) =>
+    copy(
+      BACKGROUND_OPTIONS.find((option) => option.value === backgroundValue)
+        ?.label || backgroundValue,
+      {
+        auto: "自动",
+        opaque: "不透明",
+        transparent: "透明",
+      }[backgroundValue]
+    );
   const outputFormatHelpText = copy(
     "Controls the requested output file format for Codex/Responses and compatible API backends. Web backends may ignore it; stored files are still labeled by the actual detected format.",
     "指定 Codex/Responses 和兼容 API 后端的输出文件格式。Web 后端可能忽略；本站保存时仍会按实际识别到的格式标记。"
+  );
+  const backgroundHelpText = copy(
+    "Requests transparent, opaque, or automatic background handling for Codex/Responses and compatible image APIs. Transparent output is only reliable with PNG/WebP and may be ignored by Web backends.",
+    "为 Codex/Responses 和兼容 image API 请求透明、不透明或自动背景。透明输出仅在 PNG/WebP 下更可靠，Web 后端可能忽略。"
   );
   const outputCompressionHelpText = copy(
     "Only applies to JPEG/WebP. 0 is smallest file, 100 is highest quality.",
@@ -1992,6 +2015,10 @@ export function CreatePageClient({
   );
   const [outputFormat, setOutputFormat] =
     useCreateRuntimeState<ImageOutputFormat>("outputFormat", "png");
+  const [background, setBackground] = useCreateRuntimeState<ImageBackground>(
+    "background",
+    "auto"
+  );
   const [outputCompression, setOutputCompression] = useCreateRuntimeState(
     "outputCompression",
     100
@@ -2868,6 +2895,35 @@ export function CreatePageClient({
     return control;
   };
 
+  const renderBackgroundSelect = (params: {
+    id: string;
+    disabled?: boolean;
+    compact?: boolean;
+  }) => (
+    <Select
+      value={background}
+      onValueChange={(value) => setBackground(value as ImageBackground)}
+      disabled={params.disabled}
+    >
+      <SelectTrigger
+        id={params.id}
+        className={params.compact ? "h-8 w-[126px]" : "w-full"}
+        title={backgroundHelpText}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {BACKGROUND_OPTIONS.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {params.compact
+              ? `${copy("BG", "背景")} ${backgroundLabel(option.value)}`
+              : backgroundLabel(option.value)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
   const renderReferenceMentionMenu = (params: {
     open: boolean;
     options: ImageReferenceMentionOption[];
@@ -3291,6 +3347,7 @@ export function CreatePageClient({
       formData.append("quality", quality);
       formData.append("moderation", moderation);
       formData.append("output_format", outputFormat);
+      formData.append("background", background);
       if (outputFormat !== "png") {
         formData.append("output_compression", String(outputCompression));
       }
@@ -4966,6 +5023,22 @@ export function CreatePageClient({
               disabled: isChatGenerating,
               compact: true,
             })}
+          {!isWebOnlyBackend && (
+            <div
+              className={chatMixWebFirstActive ? "opacity-55" : ""}
+              title={
+                chatMixWebFirstActive
+                  ? responsesOnlyDisabledReason
+                  : backgroundHelpText
+              }
+            >
+              {renderBackgroundSelect({
+                id: "chat-background",
+                disabled: isChatGenerating || chatMixWebFirstActive,
+                compact: true,
+              })}
+            </div>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -5814,6 +5887,7 @@ export function CreatePageClient({
         quality,
         moderation,
         output_format: outputFormat,
+        background,
         ...(outputFormat !== "png"
           ? { output_compression: outputCompression }
           : {}),
@@ -5983,6 +6057,7 @@ export function CreatePageClient({
     formData.append("quality", quality);
     formData.append("moderation", moderation);
     formData.append("output_format", outputFormat);
+    formData.append("background", background);
     if (outputFormat !== "png") {
       formData.append("output_compression", String(outputCompression));
     }
@@ -6735,6 +6810,21 @@ export function CreatePageClient({
                     />
                   </div>
                 )}
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor={`image-background-${mode}`}
+                    className="text-xs font-medium text-muted-foreground"
+                  >
+                    {labelWithHelp(
+                      copy("Background", "背景"),
+                      backgroundHelpText
+                    )}
+                  </label>
+                  {renderBackgroundSelect({
+                    id: `image-background-${mode}`,
+                    disabled: modeBusy || disableResponsesOnlyControls,
+                  })}
+                </div>
                 <div className="space-y-1.5">
                   <label
                     htmlFor={`image-oai-moderation-${mode}`}
@@ -7643,6 +7733,31 @@ export function CreatePageClient({
                       title={
                         editMixWebFirstActive
                           ? responsesOnlyDisabledReason
+                          : backgroundHelpText
+                      }
+                    >
+                      <label
+                        htmlFor="edit-background"
+                        className="text-sm font-medium text-foreground"
+                      >
+                        {labelWithHelp(
+                          copy("Background", "背景"),
+                          backgroundHelpText
+                        )}
+                      </label>
+                      {renderBackgroundSelect({
+                        id: "edit-background",
+                        disabled: isEditing || editMixWebFirstActive,
+                      })}
+                    </div>
+
+                    <div
+                      className={`space-y-2 ${
+                        editMixWebFirstActive ? "opacity-55" : ""
+                      }`}
+                      title={
+                        editMixWebFirstActive
+                          ? responsesOnlyDisabledReason
                           : undefined
                       }
                     >
@@ -8321,6 +8436,22 @@ export function CreatePageClient({
                   onChange: setChatThinking,
                   compact: true,
                 })}
+                {!isWebOnlyBackend && (
+                  <div
+                    className={chatMixWebFirstActive ? "opacity-55" : ""}
+                    title={
+                      chatMixWebFirstActive
+                        ? responsesOnlyDisabledReason
+                        : backgroundHelpText
+                    }
+                  >
+                    {renderBackgroundSelect({
+                      id: "batch-background",
+                      disabled: isBatchActive || chatMixWebFirstActive,
+                      compact: true,
+                    })}
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap items-center justify-end gap-3">
                 {promptOptimizationField(

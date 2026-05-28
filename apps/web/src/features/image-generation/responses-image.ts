@@ -1,4 +1,5 @@
 import {
+  normalizeImageBackground,
   normalizeOutputCompression,
   normalizeOutputFormat,
 } from "./output-format";
@@ -16,6 +17,7 @@ import type {
   ApiConfig,
   EditImageParams,
   GenerateImageParams,
+  ImageBackground,
   ImageInputFile,
   ImageModeration,
   ImageOutputFormat,
@@ -44,6 +46,7 @@ type ResponsesImageRequest = {
     moderation?: ImageModeration;
     output_format?: ImageOutputFormat;
     output_compression?: number;
+    background?: ImageBackground;
     input_image_mask?: { image_url: string };
   }>;
   tool_choice: { type: "image_generation" };
@@ -90,7 +93,11 @@ function referenceTag(refId: string, prompt?: string) {
     : `<ref id="${refId}" />`;
 }
 
-function getEditReferenceLabel(refId: string, imageNumber: number, prompt?: string) {
+function getEditReferenceLabel(
+  refId: string,
+  imageNumber: number,
+  prompt?: string
+) {
   return `@图${imageNumber} / ${referenceTag(refId, prompt)}`;
 }
 
@@ -192,10 +199,14 @@ export function buildResponsesImageGenerationRequest(
   if (moderation) tool.moderation = moderation;
   const outputFormat = normalizeOutputFormat(params.outputFormat);
   if (outputFormat) tool.output_format = outputFormat;
-  const outputCompression = normalizeOutputCompression(params.outputCompression);
+  const outputCompression = normalizeOutputCompression(
+    params.outputCompression
+  );
   if (outputCompression !== undefined) {
     tool.output_compression = outputCompression;
   }
+  const background = normalizeImageBackground(params.background);
+  if (background) tool.background = background;
 
   const instructions = getInstructions(params) || RESPONSES_IMAGE_INSTRUCTIONS;
 
@@ -244,10 +255,14 @@ export function buildResponsesImageEditRequest(
   if (moderation) tool.moderation = moderation;
   const outputFormat = normalizeOutputFormat(params.outputFormat);
   if (outputFormat) tool.output_format = outputFormat;
-  const outputCompression = normalizeOutputCompression(params.outputCompression);
+  const outputCompression = normalizeOutputCompression(
+    params.outputCompression
+  );
   if (outputCompression !== undefined) {
     tool.output_compression = outputCompression;
   }
+  const background = normalizeImageBackground(params.background);
+  if (background) tool.background = background;
   if (params.mask) {
     tool.input_image_mask = { image_url: getDataUrl(params.mask) };
   }

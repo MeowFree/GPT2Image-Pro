@@ -42,6 +42,7 @@ import {
   generateImageWithChatGptWeb,
 } from "./chatgpt-web";
 import {
+  normalizeImageBackground,
   normalizeOutputCompression,
   normalizeOutputFormat,
 } from "./output-format";
@@ -1402,6 +1403,7 @@ function appendImageParams(
     promptOptimization?: boolean;
     outputFormat?: ImageOutputFormat;
     outputCompression?: number;
+    background?: string;
   }
 ) {
   formData.append("model", getModel(config, params.model));
@@ -1438,6 +1440,11 @@ function appendImageParams(
   );
   if (outputCompression !== undefined) {
     formData.append("output_compression", String(outputCompression));
+  }
+
+  const background = normalizeImageBackground(params.background);
+  if (background) {
+    formData.append("background", background);
   }
 
   if (config.useStream) {
@@ -3082,6 +3089,7 @@ export async function generateImage(
     const prompt = getEffectivePrompt(params);
     const size = params.size || DEFAULT_IMAGE_SIZE;
     const dimensions = parseImageSize(size);
+    const background = normalizeImageBackground(params.background);
     const response = await fetch(`${config.baseUrl}/images/generations`, {
       method: "POST",
       signal: params.signal,
@@ -3112,6 +3120,7 @@ export async function generateImage(
               ),
             }
           : {}),
+        ...(background ? { background } : {}),
         ...(config.useStream ? { stream: true, partial_images: 2 } : {}),
         response_format: "b64_json",
       }),
@@ -3223,6 +3232,7 @@ export async function editImage(
       moderation: params.moderation,
       outputFormat: params.outputFormat,
       outputCompression: params.outputCompression,
+      background: params.background,
       promptOptimization: params.promptOptimization,
     });
 
@@ -3309,6 +3319,7 @@ export async function generateChatImage(
       moderation: params.moderation,
       outputFormat: params.outputFormat,
       outputCompression: params.outputCompression,
+      background: params.background,
       files: params.files,
     };
     if (params.images?.length) {
@@ -3400,6 +3411,7 @@ export async function generateChatImage(
       moderation?: ImageModeration;
       output_format?: ImageOutputFormat;
       output_compression?: number;
+      background?: string;
     } = {
       type: "image_generation",
       action: "auto",
@@ -3425,6 +3437,8 @@ export async function generateChatImage(
     if (outputCompression !== undefined) {
       tool.output_compression = outputCompression;
     }
+    const background = normalizeImageBackground(params.background);
+    if (background) tool.background = background;
 
     const thinking = normalizeThinking(params.thinking);
     const reasoning: ReasoningConfig | undefined = thinking
