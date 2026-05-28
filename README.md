@@ -2,6 +2,8 @@
 
 GPT2Image-Pro 是一个面向生图业务的 SaaS 平台，主应用位于 `apps/web`，共享能力位于 `packages/*`。
 
+免费体验：https://gpt2image.superapi.buzz
+
 README 只保留项目入口和部署骨架。接口字段、后端调度、计费、Agent、队列、Sub2API、管理员权限等细节以站内系统文档为准：
 
 - 公开系统文档：`/docs/system`
