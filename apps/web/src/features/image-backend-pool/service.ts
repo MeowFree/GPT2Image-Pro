@@ -458,6 +458,7 @@ function isRecoverableBackendError(error?: string | null) {
     normalized.includes("quota_exhausted") ||
     normalized.includes("daily quota exceeded") ||
     normalized.includes("account quota exceeded") ||
+    normalized.includes("quota has been exceeded") ||
     normalized.includes("quota exceeded") ||
     normalized.includes("quota_exceeded") ||
     normalized.includes("insufficient_quota") ||
@@ -599,6 +600,7 @@ function isUsageLimitBackendError(error?: string | null) {
     normalized.includes("daily quota exceeded") ||
     normalized.includes("account quota exceeded") ||
     normalized.includes("insufficient_quota") ||
+    normalized.includes("quota has been exceeded") ||
     normalized.includes("quota exceeded") ||
     normalized.includes("quota_exceeded") ||
     normalized.includes("insufficient credit") ||

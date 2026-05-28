@@ -14,6 +14,12 @@ describe("ChatGPT Web image choices", () => {
     ).toBe("Too many requests");
   });
 
+  it("extracts quota errors from Web HTTP 200 plain text streams", () => {
+    expect(
+      __testing__.extractWebStreamError("The quota has been exceeded.")
+    ).toBe("The quota has been exceeded.");
+  });
+
   it("extracts sibling image candidates after a request message", () => {
     const conversation = {
       current_node: "choice_b",

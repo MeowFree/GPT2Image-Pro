@@ -28,6 +28,14 @@ describe("image backend error classification", () => {
     ).toBe(false);
   });
 
+  it("switches accounts for Web quota exhaustion text returned with HTTP 200", async () => {
+    const isImageBackendSwitchableError = await loadClassifier();
+
+    expect(isImageBackendSwitchableError("The quota has been exceeded.")).toBe(
+      true
+    );
+  });
+
   it("does not switch accounts for user safety rejections", async () => {
     const isImageBackendSwitchableError = await loadClassifier();
 

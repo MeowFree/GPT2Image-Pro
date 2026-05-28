@@ -1484,7 +1484,7 @@ function extractWebStreamError(text: string) {
     }
   }
   const match = text.match(
-    /(usage limit[^"\n]*|usage_limit[^"\n]*|limit has been reached[^"\n]*|limit_reached[^"\n]*|rate limit[^"\n]*|rate_limit[^"\n]*|too many requests[^"\n]*|quota exceeded[^"\n]*|billing_hard_limit[^"\n]*)/i
+    /(usage limit[^"\n]*|usage_limit[^"\n]*|limit has been reached[^"\n]*|limit_reached[^"\n]*|rate limit[^"\n]*|rate_limit[^"\n]*|too many requests[^"\n]*|(?:the )?quota (?:has been )?exceeded[^"\n]*|billing_hard_limit[^"\n]*)/i
   );
   return match?.[1] || "";
 }
@@ -1981,6 +1981,7 @@ export async function selectChatGptWebImageCandidate(params: {
 
 export const __testing__ = {
   extractWebErrorPayloadMessage,
+  extractWebStreamError,
   imageCandidatesAfterMessage,
   imageSelectionAfterMessage,
   conversationNodesAfterMessage,
