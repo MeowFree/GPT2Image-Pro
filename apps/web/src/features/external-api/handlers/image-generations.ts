@@ -1,22 +1,29 @@
+import { randomUUID } from "node:crypto";
 import { withApiLogging } from "@repo/shared/api-logger";
-import type { NextRequest } from "next/server";
-import { z } from "zod";
-
-import { authenticateExternalApiRequest } from "@/features/external-api/auth";
 import {
   canUsePlanCapability,
   getPlanLimits,
 } from "@repo/shared/subscription/services/plan-capabilities";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
+
+import {
+  completeAsyncImageTask,
+  createAsyncImageTask,
+  postAsyncImageCallback,
+  toAsyncImageTaskResponse,
+  validateCallbackUrl,
+} from "@/features/external-api/async-image-tasks";
+import { authenticateExternalApiRequest } from "@/features/external-api/auth";
 import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
   getImageBase64,
   getPublicImageUrl,
   openAIImageError,
-  toExternalGenerationUsage,
-  toOpenAIImageData,
   toOpenAIErrorPayload,
+  toOpenAIImagesResponse,
   wantsImageStreamResponse,
 } from "@/features/external-api/images";
 import { runBatchImageGeneration } from "@/features/image-generation/batch-runner";
@@ -54,9 +61,12 @@ const externalImageGenerationSchema = z.object({
   response_format: z.enum(["url", "b64_json"]).optional(),
   output_format: z.enum(["png", "jpeg", "webp"]).optional(),
   output_compression: z.number().int().min(0).max(100).optional(),
+  background: z.enum(["transparent", "opaque", "auto"]).optional(),
   force_web: z.boolean().optional(),
   forceWeb: z.boolean().optional(),
   stream: z.boolean().optional(),
+  async: z.boolean().optional(),
+  callback_url: z.string().url().optional(),
 });
 
 async function toStreamCompletedPayload(
@@ -178,6 +188,27 @@ export const postExternalImageGenerations = withApiLogging(
         "insufficient_plan"
       );
     }
+    const useAsync =
+      parsed.data.async === true ||
+      request.nextUrl.searchParams.get("async") === "true";
+    const useStreamResponse = wantsImageStreamResponse(
+      request,
+      parsed.data.stream
+    );
+    if (useAsync && useStreamResponse) {
+      return openAIImageError("async cannot be used with stream.");
+    }
+    let callbackUrl: string | undefined;
+    if (parsed.data.callback_url) {
+      try {
+        callbackUrl = await validateCallbackUrl(parsed.data.callback_url);
+      } catch (error) {
+        return openAIImageError(
+          error instanceof Error ? error.message : "Invalid callback_url."
+        );
+      }
+    }
+    const background = parsed.data.background;
 
     const input = {
       mode: "generate" as const,
@@ -198,20 +229,18 @@ export const postExternalImageGenerations = withApiLogging(
       outputCompression: normalizeOutputCompression(
         parsed.data.output_compression
       ),
+      background,
       forceWebBackend: parsed.data.force_web ?? parsed.data.forceWeb,
     };
     const responseFormat = parsed.data.response_format || "b64_json";
 
-    if (wantsImageStreamResponse(request, parsed.data.stream)) {
+    if (useStreamResponse) {
       return createExternalImageStreamResponse(async (emit) => {
         await runBatchImageGeneration({
           count,
           concurrency: limits.imageGenerationConcurrency,
           run: (generationId, callbacks) =>
-            runImageGenerationForUser(
-              { ...input, generationId },
-              callbacks
-            ),
+            runImageGenerationForUser({ ...input, generationId }, callbacks),
           callbacks: (index) => ({
             onPartialImage: async (image) => {
               await emit({
@@ -253,8 +282,60 @@ export const postExternalImageGenerations = withApiLogging(
       });
     }
 
+    if (useAsync) {
+      const created = Math.floor(Date.now() / 1000);
+      const generationIds = Array.from({ length: count }, () => randomUUID());
+      const task = createAsyncImageTask({
+        userId: auth.userId,
+        apiKeyId: auth.apiKeyId,
+        model: imageModel,
+        generationIds,
+      });
+
+      void (async () => {
+        const results = await runBatchImageGeneration({
+          count,
+          concurrency: limits.imageGenerationConcurrency,
+          generationIds,
+          run: (generationId) =>
+            runImageGenerationForUser({ ...input, generationId }),
+        });
+        const resultPayload = await toOpenAIImagesResponse(
+          request,
+          results,
+          responseFormat,
+          created
+        );
+        const completedTask = completeAsyncImageTask(task.id, {
+          error:
+            resultPayload &&
+            typeof resultPayload === "object" &&
+            "error" in resultPayload
+              ? resultPayload
+              : undefined,
+          result: resultPayload,
+        });
+        if (completedTask && callbackUrl) {
+          await postAsyncImageCallback(callbackUrl, completedTask);
+        }
+      })().catch(async (error) => {
+        const errorPayload = toOpenAIErrorPayload(
+          error instanceof Error
+            ? error.message
+            : "Async image generation failed"
+        );
+        const completedTask = completeAsyncImageTask(task.id, {
+          error: errorPayload,
+        });
+        if (completedTask && callbackUrl) {
+          await postAsyncImageCallback(callbackUrl, completedTask);
+        }
+      });
+
+      return Response.json(toAsyncImageTaskResponse(task));
+    }
+
     return createJsonKeepAliveResponse(async () => {
-      const data = [];
       const created = Math.floor(Date.now() / 1000);
 
       const results = await runBatchImageGeneration({
@@ -262,38 +343,12 @@ export const postExternalImageGenerations = withApiLogging(
         concurrency: limits.imageGenerationConcurrency,
         run: () => runImageGenerationForUser(input),
       });
-      for (const result of results) {
-        if (result.error) {
-          return toOpenAIErrorPayload(result.error, {
-            generationId: result.generationId,
-            creditsConsumed: result.creditsConsumed,
-          });
-        }
-        if (result.imageOutputs?.length) {
-          for (const output of result.imageOutputs) {
-            data.push(
-              await toOpenAIImageData(
-                request,
-                {
-                  ...result,
-                  imageUrl: output.imageUrl,
-                  revisedPrompt: output.revisedPrompt || result.revisedPrompt,
-                },
-                responseFormat
-              )
-            );
-          }
-        } else {
-          data.push(await toOpenAIImageData(request, result, responseFormat));
-        }
-      }
-
-      return {
-        created,
-        data,
-        ...toExternalGenerationUsage(results),
-        usage: null,
-      };
+      return await toOpenAIImagesResponse(
+        request,
+        results,
+        responseFormat,
+        created
+      );
     });
   }
 );

@@ -337,9 +337,12 @@ export function ExternalApiKeySection({ timeZone }: { timeZone?: string }) {
           )}
           <div className="space-y-1 font-mono text-xs text-muted-foreground">
             <p>GET /v1/models</p>
+            <p>POST /v1/chat/completions</p>
             <p>POST /v1/responses</p>
+            <p>POST /v1/agents/images</p>
             <p>POST /v1/images/generations</p>
             <p>POST /v1/images/edits</p>
+            <p>GET /v1/images/{"{task_id}"}</p>
             <p>GET /v1/credits</p>
           </div>
           <Link

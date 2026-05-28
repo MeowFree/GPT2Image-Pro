@@ -89,6 +89,48 @@ export async function toOpenAIImageData(
   return data;
 }
 
+export async function toOpenAIImagesResponse(
+  request: Request,
+  results: readonly ImageGenerationOperationResult[],
+  responseFormat: "url" | "b64_json",
+  created = Math.floor(Date.now() / 1000)
+) {
+  const data = [];
+
+  for (const result of results) {
+    if (result.error) {
+      return toOpenAIErrorPayload(result.error, {
+        generationId: result.generationId,
+        creditsConsumed: result.creditsConsumed,
+      });
+    }
+    if (result.imageOutputs?.length) {
+      for (const output of result.imageOutputs) {
+        data.push(
+          await toOpenAIImageData(
+            request,
+            {
+              ...result,
+              imageUrl: output.imageUrl,
+              revisedPrompt: output.revisedPrompt || result.revisedPrompt,
+            },
+            responseFormat
+          )
+        );
+      }
+    } else {
+      data.push(await toOpenAIImageData(request, result, responseFormat));
+    }
+  }
+
+  return {
+    created,
+    data,
+    ...toExternalGenerationUsage(results),
+    usage: null,
+  };
+}
+
 export function toExternalGenerationUsage(
   results: readonly GenerationBillingResult[]
 ) {

@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { withApiLogging } from "@repo/shared/api-logger";
 import {
   canUsePlanCapability,
@@ -5,11 +8,15 @@ import {
 } from "@repo/shared/subscription/services/plan-capabilities";
 import { getPlanUploadLimits } from "@repo/shared/subscription/services/upload-limits";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
-import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
-import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 
+import {
+  completeAsyncImageTask,
+  createAsyncImageTask,
+  postAsyncImageCallback,
+  toAsyncImageTaskResponse,
+  validateCallbackUrl,
+} from "@/features/external-api/async-image-tasks";
 import { authenticateExternalApiRequest } from "@/features/external-api/auth";
 import {
   createExternalImageStreamResponse,
@@ -17,22 +24,18 @@ import {
   getImageBase64,
   getPublicImageUrl,
   openAIImageError,
-  toExternalGenerationUsage,
-  toOpenAIImageData,
   toOpenAIErrorPayload,
+  toOpenAIImagesResponse,
   wantsImageStreamResponse,
 } from "@/features/external-api/images";
 import { runBatchImageGeneration } from "@/features/image-generation/batch-runner";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
+  normalizeImageBackground,
   normalizeOutputCompression,
   normalizeOutputFormat,
   VALID_OUTPUT_FORMATS,
 } from "@/features/image-generation/output-format";
-import {
-  getImageModel,
-  validateImageSize,
-} from "@/features/image-generation/resolution";
 import {
   DEFAULT_MAX_IMAGE_BYTES,
   filesToImageInputs,
@@ -41,6 +44,10 @@ import {
   uploadModerationImages,
   validateImageFile,
 } from "@/features/image-generation/request-utils";
+import {
+  getImageModel,
+  validateImageSize,
+} from "@/features/image-generation/resolution";
 import type {
   ImageModeration,
   ImageOutputFormat,
@@ -74,6 +81,7 @@ const JSON_SCALAR_FIELDS = [
   "moderation",
   "output_format",
   "output_compression",
+  "background",
   "n",
   "response_format",
   "model",
@@ -83,6 +91,8 @@ const JSON_SCALAR_FIELDS = [
   "force_web",
   "forceWeb",
   "stream",
+  "async",
+  "callback_url",
 ] as const;
 
 type ImageReference =
@@ -585,6 +595,11 @@ export const postExternalImageEdits = withApiLogging(
     const outputCompression = normalizeOutputCompression(
       getText(formData, "output_compression")
     );
+    const backgroundValue = getText(formData, "background");
+    const background = normalizeImageBackground(backgroundValue);
+    if (backgroundValue && !background) {
+      return openAIImageError("Invalid background.");
+    }
 
     let count = 1;
     try {
@@ -651,6 +666,27 @@ export const postExternalImageEdits = withApiLogging(
         "insufficient_plan"
       );
     }
+    const useStreamResponse = wantsImageStreamResponse(
+      request,
+      getBoolean(formData, "stream")
+    );
+    const useAsync =
+      getOptionalBoolean(formData, "async") === true ||
+      request.nextUrl.searchParams.get("async") === "true";
+    if (useAsync && useStreamResponse) {
+      return openAIImageError("async cannot be used with stream.");
+    }
+    let callbackUrl: string | undefined;
+    const callbackUrlValue = getText(formData, "callback_url");
+    if (callbackUrlValue) {
+      try {
+        callbackUrl = await validateCallbackUrl(callbackUrlValue);
+      } catch (error) {
+        return openAIImageError(
+          error instanceof Error ? error.message : "Invalid callback_url."
+        );
+      }
+    }
 
     try {
       const sourceFiles = await resolveImageReferences(
@@ -708,6 +744,7 @@ export const postExternalImageEdits = withApiLogging(
             moderation,
             outputFormat,
             outputCompression,
+            background,
             n: 1,
             forceWebBackend,
             images: await buildImages(),
@@ -715,11 +752,6 @@ export const postExternalImageEdits = withApiLogging(
           },
           onPartialImage
         );
-
-      const useStreamResponse = wantsImageStreamResponse(
-        request,
-        getBoolean(formData, "stream")
-      );
 
       if (useStreamResponse) {
         return createExternalImageStreamResponse(async (emit) => {
@@ -768,8 +800,57 @@ export const postExternalImageEdits = withApiLogging(
         });
       }
 
+      if (useAsync) {
+        const created = Math.floor(Date.now() / 1000);
+        const generationIds = Array.from({ length: count }, () => randomUUID());
+        const task = createAsyncImageTask({
+          userId: auth.userId,
+          apiKeyId: auth.apiKeyId,
+          model,
+          generationIds,
+        });
+
+        void (async () => {
+          const results = await runBatchImageGeneration({
+            count,
+            concurrency: planLimits.imageGenerationConcurrency,
+            generationIds,
+            run: runEdit,
+          });
+          const resultPayload = await toOpenAIImagesResponse(
+            request,
+            results,
+            responseFormat,
+            created
+          );
+          const completedTask = completeAsyncImageTask(task.id, {
+            error:
+              resultPayload &&
+              typeof resultPayload === "object" &&
+              "error" in resultPayload
+                ? resultPayload
+                : undefined,
+            result: resultPayload,
+          });
+          if (completedTask && callbackUrl) {
+            await postAsyncImageCallback(callbackUrl, completedTask);
+          }
+        })().catch(async (error) => {
+          const errorPayload = toOpenAIErrorPayload(
+            error instanceof Error ? error.message : "Async image edit failed"
+          );
+          const completedTask = completeAsyncImageTask(task.id, {
+            error: errorPayload,
+          });
+          if (completedTask && callbackUrl) {
+            await postAsyncImageCallback(callbackUrl, completedTask);
+          }
+        });
+
+        return Response.json(toAsyncImageTaskResponse(task));
+      }
+
       return createJsonKeepAliveResponse(async () => {
-        const data = [];
         const created = Math.floor(Date.now() / 1000);
 
         const results = await runBatchImageGeneration({
@@ -777,38 +858,12 @@ export const postExternalImageEdits = withApiLogging(
           concurrency: planLimits.imageGenerationConcurrency,
           run: runEdit,
         });
-        for (const result of results) {
-          if (result.error) {
-            return toOpenAIErrorPayload(result.error, {
-              generationId: result.generationId,
-              creditsConsumed: result.creditsConsumed,
-            });
-          }
-          if (result.imageOutputs?.length) {
-            for (const output of result.imageOutputs) {
-              data.push(
-                await toOpenAIImageData(
-                  request,
-                  {
-                    ...result,
-                    imageUrl: output.imageUrl,
-                    revisedPrompt: output.revisedPrompt || result.revisedPrompt,
-                  },
-                  responseFormat
-                )
-              );
-            }
-          } else {
-            data.push(await toOpenAIImageData(request, result, responseFormat));
-          }
-        }
-
-        return {
-          created,
-          data,
-          ...toExternalGenerationUsage(results),
-          usage: null,
-        };
+        return await toOpenAIImagesResponse(
+          request,
+          results,
+          responseFormat,
+          created
+        );
       });
     } catch (error) {
       if (error instanceof ImageReferenceError) {

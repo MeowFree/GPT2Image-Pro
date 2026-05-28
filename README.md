@@ -9,7 +9,7 @@
   <a href="https://github.com/MeowFree/GPT2Image-Pro/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/MeowFree/GPT2Image-Pro?style=social" /></a>
   <a href="https://github.com/MeowFree/GPT2Image-Pro/blob/dev/LICENSE"><img alt="License" src="https://img.shields.io/github/license/MeowFree/GPT2Image-Pro" /></a>
   <a href="https://github.com/MeowFree/GPT2Image-Pro/releases"><img alt="Release" src="https://img.shields.io/github/v/release/MeowFree/GPT2Image-Pro?include_prereleases" /></a>
-  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-black?logo=nextdotjs" />
+  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" />
   <img alt="Docker" src="https://img.shields.io/badge/Docker-GHCR-2496ED?logo=docker&logoColor=white" />
 </p>
@@ -42,7 +42,7 @@ GPT2Image-Pro 主应用位于 `apps/web`，共享能力位于 `packages/*`。REA
 ## 能力概览
 
 - 文生图、图生图、逐行批量、瀑布流、Chat 生图和 Codex 风格 Agent 自动迭代。
-- OpenAI 兼容外接接口：`/v1/images/generations`、`/v1/images/edits`、`/v1/responses`、`/v1/agents/images`、`/v1/models`、`/v1/credits`。
+- OpenAI 兼容外接接口：`/v1/chat/completions`、`/v1/images/generations`、`/v1/images/edits`、`/v1/images/{task_id}`、`/v1/responses`、`/v1/agents/images`、`/v1/models`、`/v1/credits`。
 - 后端池支持 Web 账号、Codex/Responses 账号、OpenAI 兼容外接 API、mixed 分组、优先级、权重、并发、冷却、错误标记和分组倍率。
 - 套餐能力矩阵可配置功能权限、上传限制、批量数量、并发、月积分、审核策略、Chat/Agent 轮次计费和外接 API 权限。
 - 支持订阅、按量积分包、API Key 独立额度、积分流水、工单、公告、状态监控、SLA 和三级管理员。
