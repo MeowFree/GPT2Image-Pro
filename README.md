@@ -255,6 +255,13 @@ pnpm db:push
 pnpm db:studio
 ```
 
+## TODO
+
+- **Sub2API 非数据库接口**：当前同步优先面向已有数据库接入方式，后续适配 Sub2API 管理员 API，减少部署时对 Sub2API 数据库直连的依赖。
+- **Agent 分支能力**：补充类似 playground 的多轮分支/回退/重选路径，用于保留不同图片迭代方向，并处理历史图引用重映射。
+- **Agent 批量图片工具**：评估 `generate_image_batch` 类工具接入，同时解决粘性会话、计费、任务卡展示和多图引用的一致性。
+- **PSD 生成接口**：预留 PSD 生成/导出接口适配，方便后续对接分层设计图、海报编辑和素材交付场景。
+
 ## License
 
 AGPL-3.0-only
