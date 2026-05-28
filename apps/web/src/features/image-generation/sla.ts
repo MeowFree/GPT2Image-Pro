@@ -3,11 +3,11 @@ import "server-only";
 import { db } from "@repo/database";
 import { generation } from "@repo/database/schema";
 import { desc } from "drizzle-orm";
-
-export type GenerationErrorCategory =
-  | "platform"
-  | "moderation"
-  | "user_request";
+export {
+  classifyGenerationError,
+  type GenerationErrorCategory,
+} from "./sla-classification";
+import { classifyGenerationError } from "./sla-classification";
 
 export type GenerationSlaStats = {
   sampleSize: number;
@@ -18,64 +18,6 @@ export type GenerationSlaStats = {
   moderationErrors: number;
   userRequestErrors: number;
 };
-
-const USER_REQUEST_PATTERNS = [
-  "insufficient credits",
-  "requires pro plan",
-  "requires starter",
-  "requires ultra",
-  "requires enterprise",
-  "invalid model",
-  "unsupported model",
-  "prompt exceeds",
-  "context prompt exceeds",
-  "chat input context",
-  "invalid quality",
-  "invalid moderation",
-  "invalid thinking",
-  "invalid display size",
-  "invalid resolution",
-  "use widthxheight",
-  "must be between",
-  "total pixels",
-  "no more than",
-  "at least one source image",
-  "source images must be",
-  "reference images must be",
-  "mask must be",
-  "is empty",
-  "exceeds the",
-  "total upload size",
-  "upload is too large",
-  "invalid or missing api key",
-  "unauthorized",
-  "account frozen",
-];
-
-const MODERATION_PATTERNS = [
-  "moderation",
-  "content failed moderation",
-  "content blocked",
-  "content moderation",
-  "aliyun",
-  "omni-moderation",
-  "risklevel",
-];
-
-function includesAny(value: string, patterns: string[]) {
-  return patterns.some((pattern) => value.includes(pattern));
-}
-
-export function classifyGenerationError(error: string | null | undefined) {
-  const normalized = (error || "").toLowerCase();
-  if (includesAny(normalized, MODERATION_PATTERNS)) {
-    return "moderation" satisfies GenerationErrorCategory;
-  }
-  if (includesAny(normalized, USER_REQUEST_PATTERNS)) {
-    return "user_request" satisfies GenerationErrorCategory;
-  }
-  return "platform" satisfies GenerationErrorCategory;
-}
 
 export async function getRecentGenerationSlaStats(
   limit = 1000
