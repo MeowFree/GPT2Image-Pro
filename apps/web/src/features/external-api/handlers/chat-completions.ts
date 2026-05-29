@@ -434,6 +434,7 @@ export const postExternalChatCompletions = withApiLogging(
       mode: "chat" as const,
       userId: auth.userId,
       apiKeyId: auth.apiKeyId,
+      relayOnly: auth.relayOnly,
       backendRequestKind: "chat" as const,
       prompt,
       apiPrompt,

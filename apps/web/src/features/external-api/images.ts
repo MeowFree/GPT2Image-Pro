@@ -77,9 +77,17 @@ export async function toOpenAIImageData(
   const data: OpenAIImageData = {};
 
   if (responseFormat === "b64_json") {
-    data.b64_json = await getImageBase64(request, result.imageUrl);
+    // 纯中转：优先用内联 base64，避免回源我方存储 / 转发客户端凭证到上游。
+    data.b64_json =
+      result.imageBase64 ?? (await getImageBase64(request, result.imageUrl));
   } else {
-    data.url = getPublicImageUrl(request, result.imageUrl);
+    // url 模式：直返绝对 URL（上游或我方存储均兼容）。
+    // 纯中转若上游仅给 base64（无 URL），退化为 data: URI 以保证可用。
+    data.url =
+      getPublicImageUrl(request, result.imageUrl) ??
+      (result.imageBase64
+        ? `data:image/png;base64,${result.imageBase64}`
+        : undefined);
   }
 
   if (result.revisedPrompt) {
@@ -112,6 +120,7 @@ export async function toOpenAIImagesResponse(
             {
               ...result,
               imageUrl: output.imageUrl,
+              imageBase64: output.imageBase64,
               revisedPrompt: output.revisedPrompt || result.revisedPrompt,
             },
             responseFormat

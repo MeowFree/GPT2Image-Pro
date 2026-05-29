@@ -713,6 +713,7 @@ export const postExternalResponses = withApiLogging(
       mode: "chat" as const,
       userId: auth.userId,
       apiKeyId: auth.apiKeyId,
+      relayOnly: auth.relayOnly,
       backendRequestKind: "responses" as const,
       preferredBackendMemberId,
       prompt,
@@ -789,16 +790,20 @@ export const postExternalResponses = withApiLogging(
           return;
         }
 
-        const imageBase64 = result.imageUrl
-          ? await getImageBase64(request, result.imageUrl)
-          : undefined;
+        const imageBase64 =
+          result.imageBase64 ??
+          (result.imageUrl
+            ? await getImageBase64(request, result.imageUrl)
+            : undefined);
         const imageOutputs = result.imageOutputs?.length
           ? await Promise.all(
               result.imageOutputs.map(async (output) => ({
                 ...output,
-                imageBase64: output.imageUrl
-                  ? await getImageBase64(request, output.imageUrl)
-                  : output.imageBase64,
+                imageBase64:
+                  output.imageBase64 ??
+                  (output.imageUrl
+                    ? await getImageBase64(request, output.imageUrl)
+                    : undefined),
               }))
             )
           : undefined;
@@ -811,14 +816,17 @@ export const postExternalResponses = withApiLogging(
           promptImageUrls,
           result,
         });
-        await storeResponsesContinuation({
-          userId: auth.userId,
-          apiKeyId: auth.apiKeyId,
-          responseId: requestId,
-          previousResponseId,
-          result,
-          fallbackHistory,
-        });
+        // 纯中转：不持久化续承（不写 generation.metadata / 不入会话缓存）。
+        if (!auth.relayOnly) {
+          await storeResponsesContinuation({
+            userId: auth.userId,
+            apiKeyId: auth.apiKeyId,
+            responseId: requestId,
+            previousResponseId,
+            result,
+            fallbackHistory,
+          });
+        }
         const response = toResponsePayload({
           requestId,
           model: parsed.data.model,
@@ -863,16 +871,20 @@ export const postExternalResponses = withApiLogging(
         };
       }
 
-      const imageBase64 = result.imageUrl
-        ? await getImageBase64(request, result.imageUrl)
-        : undefined;
+      const imageBase64 =
+        result.imageBase64 ??
+        (result.imageUrl
+          ? await getImageBase64(request, result.imageUrl)
+          : undefined);
       const imageOutputs = result.imageOutputs?.length
         ? await Promise.all(
             result.imageOutputs.map(async (output) => ({
               ...output,
-              imageBase64: output.imageUrl
-                ? await getImageBase64(request, output.imageUrl)
-                : output.imageBase64,
+              imageBase64:
+                output.imageBase64 ??
+                (output.imageUrl
+                  ? await getImageBase64(request, output.imageUrl)
+                  : undefined),
             }))
           )
         : undefined;
@@ -885,14 +897,17 @@ export const postExternalResponses = withApiLogging(
         promptImageUrls,
         result,
       });
-      await storeResponsesContinuation({
-        userId: auth.userId,
-        apiKeyId: auth.apiKeyId,
-        responseId: requestId,
-        previousResponseId,
-        result,
-        fallbackHistory,
-      });
+      // 纯中转：不持久化续承（不写 generation.metadata / 不入会话缓存）。
+      if (!auth.relayOnly) {
+        await storeResponsesContinuation({
+          userId: auth.userId,
+          apiKeyId: auth.apiKeyId,
+          responseId: requestId,
+          previousResponseId,
+          result,
+          fallbackHistory,
+        });
+      }
 
       return toResponsePayload({
         requestId,

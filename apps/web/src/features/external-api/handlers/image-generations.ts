@@ -77,13 +77,29 @@ async function toStreamCompletedPayload(
 ) {
   const outputs = result.imageOutputs?.length
     ? result.imageOutputs
-    : [{ imageUrl: result.imageUrl, revisedPrompt: result.revisedPrompt }];
+    : [
+        {
+          imageUrl: result.imageUrl,
+          imageBase64: result.imageBase64,
+          revisedPrompt: result.revisedPrompt,
+        },
+      ];
   const images = [];
   for (const output of outputs) {
     const image =
       responseFormat === "b64_json"
-        ? { b64_json: await getImageBase64(request, output.imageUrl) }
-        : { url: getPublicImageUrl(request, output.imageUrl) };
+        ? {
+            b64_json:
+              output.imageBase64 ??
+              (await getImageBase64(request, output.imageUrl)),
+          }
+        : {
+            url:
+              getPublicImageUrl(request, output.imageUrl) ??
+              (output.imageBase64
+                ? `data:image/png;base64,${output.imageBase64}`
+                : undefined),
+          };
     images.push({
       ...image,
       revised_prompt: output.revisedPrompt || result.revisedPrompt,
@@ -214,6 +230,7 @@ export const postExternalImageGenerations = withApiLogging(
       mode: "generate" as const,
       userId: auth.userId,
       apiKeyId: auth.apiKeyId,
+      relayOnly: auth.relayOnly,
       backendRequestKind: "image_generation" as const,
       prompt: parsed.data.prompt,
       promptOptimization:

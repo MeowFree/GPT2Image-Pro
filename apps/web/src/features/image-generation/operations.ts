@@ -221,6 +221,8 @@ export type ImageGenerationOperationResult = {
   error?: string;
   generationId?: string;
   imageUrl?: string;
+  /** 纯中转模式下携带的内联 base64，使响应层无需回源即可产出 b64_json。 */
+  imageBase64?: string;
   imageFileId?: string;
   imageOutputs?: GenerateImageResult["imageOutputs"];
   model?: string;
@@ -2178,6 +2180,7 @@ async function runQueuedImageGenerationForUser({
   return {
     generationId,
     imageUrl: primaryOutput.imageUrl,
+    imageBase64: primaryOutput.imageBase64,
     imageFileId: primaryOutput.imageFileId,
     imageOutputs: storedOutputs.map((output, index) => ({
       generationId: output.generationId,

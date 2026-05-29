@@ -1107,6 +1107,7 @@ export const postExternalAgentImages = withApiLogging(
             userId: auth.userId,
             generationId: randomUUID(),
             apiKeyId: auth.apiKeyId,
+            relayOnly: auth.relayOnly,
             prompt,
             apiPrompt,
             fileContext,
