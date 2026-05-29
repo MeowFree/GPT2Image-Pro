@@ -12,6 +12,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { authenticateExternalApiRequest } from "@/features/external-api/auth";
+import { fetchPublicImage } from "@/features/external-api/safe-image-fetch";
 import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
@@ -460,7 +461,7 @@ async function imageUrlToInputFile(
     return null;
   }
 
-  const response = await fetch(imageUrl);
+  const response = await fetchPublicImage(imageUrl);
   if (!response.ok) {
     throw new Error(`Failed to load input image: ${response.status}`);
   }

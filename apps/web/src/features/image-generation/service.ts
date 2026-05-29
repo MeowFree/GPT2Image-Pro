@@ -25,6 +25,7 @@ import {
   resolveImageBackendPoolConfig,
 } from "@/features/image-backend-pool/service";
 import { imageBackendApiUsesResponsesEndpoint } from "@/features/image-backend-pool/api-interface-mode";
+import { assertPublicApiBaseUrl } from "@/features/external-api/safe-image-fetch";
 import type {
   ImageBackendAccountBackend,
   ImageBackendPreferenceMode,
@@ -748,6 +749,7 @@ async function postResponsesImageRequest(
     `${stripTrailingSlash(config.baseUrl)}/responses`,
     {
       method: "POST",
+      redirect: "manual",
       signal: params.signal,
       cache: "no-store",
       headers: getHeaders(config, {
@@ -1460,6 +1462,7 @@ async function generateChatImageWithChatCompletions(
   try {
     const response = await fetch(`${stripTrailingSlash(config.baseUrl)}/chat/completions`, {
       method: "POST",
+      redirect: "manual",
       signal: params.signal,
       cache: stream ? "no-store" : "default",
       headers: getHeaders(config, {
@@ -1695,6 +1698,7 @@ async function fetchResponses(
     `${stripTrailingSlash(config.baseUrl)}/responses`,
     {
       method: "POST",
+      redirect: "manual",
       signal: options.signal,
       cache: options.stream ? "no-store" : "default",
       headers: getHeaders(config, {
@@ -3325,6 +3329,18 @@ export async function getUserApiConfig(
     return null;
   }
 
+  // 请求时复检自定义 baseUrl 指向公网（弥补"仅保存时校验"的 TOCTOU：
+  // 例如保存后 DNS 变更 / 指向内网）。指向内网或不可解析则丢弃该配置、回落平台后端。
+  try {
+    await assertPublicApiBaseUrl(row.baseUrl);
+  } catch (error) {
+    logWarn("Rejected user API base URL failing SSRF re-check", {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+
   const result: ApiConfig = { baseUrl: row.baseUrl, apiKey: row.apiKey };
   const normalizedModel = normalizeImageModel(row.model);
   if (normalizedModel) result.model = normalizedModel;
@@ -3454,6 +3470,7 @@ export async function generateImage(
     const background = normalizeImageBackground(params.background);
     const response = await fetch(`${config.baseUrl}/images/generations`, {
       method: "POST",
+      redirect: "manual",
       signal: params.signal,
       headers: getHeaders(config, {
         "Content-Type": "application/json",
@@ -3616,6 +3633,7 @@ export async function editImage(
 
     const response = await fetch(`${config.baseUrl}/images/edits`, {
       method: "POST",
+      redirect: "manual",
       signal: params.signal,
       headers: getHeaders(config, {}),
       body: formData,

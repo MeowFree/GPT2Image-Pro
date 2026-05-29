@@ -30,6 +30,7 @@ import {
 } from "@/features/external-api/images";
 import { runBatchImageGeneration } from "@/features/image-generation/batch-runner";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
+import { fetchPublicImage } from "@/features/external-api/safe-image-fetch";
 import {
   normalizeImageBackground,
   normalizeOutputCompression,
@@ -384,11 +385,10 @@ async function fetchImageReference(
   }
   await assertPublicImageUrl(url);
 
-  const response = await fetch(url, {
+  const response = await fetchPublicImage(url.toString(), {
     headers: {
       Accept: options?.mask ? "image/png" : "image/png,image/jpeg,image/webp",
     },
-    redirect: "follow",
   });
   if (!response.ok) {
     throw new ImageReferenceError(

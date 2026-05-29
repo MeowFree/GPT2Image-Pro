@@ -11,6 +11,7 @@ import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import type { NextRequest } from "next/server";
 
 import { authenticateExternalApiRequest } from "@/features/external-api/auth";
+import { fetchPublicImage } from "@/features/external-api/safe-image-fetch";
 import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
@@ -529,9 +530,8 @@ async function fetchImageReference(
   }
   await assertPublicImageUrl(url);
 
-  const response = await fetch(url, {
+  const response = await fetchPublicImage(url.toString(), {
     headers: { Accept: "image/png,image/jpeg,image/webp" },
-    redirect: "follow",
   });
   if (!response.ok) {
     throw new AgentReferenceError(
