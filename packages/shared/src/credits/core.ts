@@ -17,6 +17,10 @@ import {
 import { logEvent } from "../logger/index";
 import { getRuntimeSettingNumber } from "../system-settings";
 import { CREDIT_CONFIG_DEFAULTS } from "./config";
+import {
+  isUniqueConstraintViolation,
+  readConsumedBatchesFromMetadata,
+} from "./idempotency";
 
 const CREDIT_DECIMAL_PLACES = 2;
 const CREDIT_DECIMAL_FACTOR = 10 ** CREDIT_DECIMAL_PLACES;
@@ -107,6 +111,12 @@ export interface ConsumeCreditsParams {
   serviceName: string;
   /** 描述 */
   description?: string;
+  /**
+   * 来源引用（幂等键）。传入后，同一 (consumption, sourceRef) 只扣费一次：
+   * 重试/并发的重复扣费会被偏唯一索引拒绝并安全跳过，返回首次扣费结果。
+   * 不传则行为与历史一致（不幂等）。
+   */
+  sourceRef?: string;
   /** 元数据 */
   metadata?: Record<string, unknown>;
 }
@@ -128,6 +138,8 @@ export interface ConsumeCreditsResult {
     batchId: string;
     consumedFromBatch: number;
   }>;
+  /** 是否为幂等命中（重复 sourceRef，未实际再次扣费） */
+  alreadyConsumed?: boolean;
 }
 
 /**
@@ -463,7 +475,7 @@ export async function grantCredits(params: GrantCreditsParams) {
 export async function consumeCredits(
   params: ConsumeCreditsParams
 ): Promise<ConsumeCreditsResult> {
-  const { userId, serviceName, description, metadata } = params;
+  const { userId, serviceName, description, metadata, sourceRef } = params;
   const amount = normalizeCreditAmount(params.amount);
 
   if (amount <= 0) {
@@ -472,142 +484,216 @@ export async function consumeCredits(
 
   await processExpiredBatches({ userId });
 
-  return await db.transaction(async (tx) => {
-    const [balanceRecord] = await tx
-      .select()
-      .from(creditsBalance)
-      .where(eq(creditsBalance.userId, userId))
-      .limit(1);
-
-    if (!balanceRecord) {
-      throw new InsufficientCreditsError(amount, 0);
-    }
-
-    if (balanceRecord.status === "frozen") {
-      throw new AccountFrozenError(userId);
-    }
-
-    if (balanceRecord.balance < amount) {
-      throw new InsufficientCreditsError(amount, balanceRecord.balance);
-    }
-
-    let remainingToConsume = amount;
-    const consumedBatches: Array<{
-      batchId: string;
-      consumedFromBatch: number;
-    }> = [];
-
-    while (remainingToConsume > 0) {
-      const now = new Date();
-      const [batch] = await tx
-        .select()
-        .from(creditsBatch)
-        .where(
-          and(
-            eq(creditsBatch.userId, userId),
-            eq(creditsBatch.status, "active"),
-            gt(creditsBatch.remaining, 0),
-            or(isNull(creditsBatch.expiresAt), gt(creditsBatch.expiresAt, now))
+  try {
+    return await db.transaction(async (tx) => {
+      // 幂等快路：已存在相同 (consumption, sourceRef) 的交易 → 不重复扣费。
+      // 覆盖串行重试场景；并发场景由下方偏唯一索引兜底。
+      if (sourceRef) {
+        const [existing] = await tx
+          .select({
+            id: creditsTransaction.id,
+            amount: creditsTransaction.amount,
+            metadata: creditsTransaction.metadata,
+          })
+          .from(creditsTransaction)
+          .where(
+            and(
+              eq(creditsTransaction.type, "consumption"),
+              eq(creditsTransaction.sourceRef, sourceRef)
+            )
           )
-        )
-        .orderBy(
-          creditBatchSourcePriorityOrder(),
-          creditBatchExpiryOrder(),
-          asc(creditsBatch.expiresAt),
-          asc(creditsBatch.issuedAt)
-        )
-        .limit(1);
-
-      if (!batch) {
-        break;
+          .limit(1);
+        if (existing) {
+          const [balance] = await tx
+            .select({ balance: creditsBalance.balance })
+            .from(creditsBalance)
+            .where(eq(creditsBalance.userId, userId))
+            .limit(1);
+          return {
+            success: true,
+            consumedAmount: existing.amount,
+            remainingBalance: balance?.balance ?? 0,
+            transactionId: existing.id,
+            consumedBatches: readConsumedBatchesFromMetadata(existing.metadata),
+            alreadyConsumed: true,
+          };
+        }
       }
 
-      const consumeFromThisBatch = Math.min(
-        batch.remaining,
-        remainingToConsume
-      );
-      const newRemainingSql = sql`${creditsBatch.remaining} - ${consumeFromThisBatch}`;
-      const nextStatusSql = sql`(CASE WHEN ${newRemainingSql} <= 0 THEN 'consumed' ELSE 'active' END)::credits_batch_status`;
+      const [balanceRecord] = await tx
+        .select()
+        .from(creditsBalance)
+        .where(eq(creditsBalance.userId, userId))
+        .limit(1);
 
-      const [updatedBatch] = await tx
-        .update(creditsBatch)
+      if (!balanceRecord) {
+        throw new InsufficientCreditsError(amount, 0);
+      }
+
+      if (balanceRecord.status === "frozen") {
+        throw new AccountFrozenError(userId);
+      }
+
+      if (balanceRecord.balance < amount) {
+        throw new InsufficientCreditsError(amount, balanceRecord.balance);
+      }
+
+      let remainingToConsume = amount;
+      const consumedBatches: Array<{
+        batchId: string;
+        consumedFromBatch: number;
+      }> = [];
+
+      while (remainingToConsume > 0) {
+        const now = new Date();
+        const [batch] = await tx
+          .select()
+          .from(creditsBatch)
+          .where(
+            and(
+              eq(creditsBatch.userId, userId),
+              eq(creditsBatch.status, "active"),
+              gt(creditsBatch.remaining, 0),
+              or(isNull(creditsBatch.expiresAt), gt(creditsBatch.expiresAt, now))
+            )
+          )
+          .orderBy(
+            creditBatchSourcePriorityOrder(),
+            creditBatchExpiryOrder(),
+            asc(creditsBatch.expiresAt),
+            asc(creditsBatch.issuedAt)
+          )
+          .limit(1);
+
+        if (!batch) {
+          break;
+        }
+
+        const consumeFromThisBatch = Math.min(
+          batch.remaining,
+          remainingToConsume
+        );
+        const newRemainingSql = sql`${creditsBatch.remaining} - ${consumeFromThisBatch}`;
+        const nextStatusSql = sql`(CASE WHEN ${newRemainingSql} <= 0 THEN 'consumed' ELSE 'active' END)::credits_batch_status`;
+
+        const [updatedBatch] = await tx
+          .update(creditsBatch)
+          .set({
+            remaining: newRemainingSql,
+            status: nextStatusSql,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(creditsBatch.id, batch.id),
+              eq(creditsBatch.status, "active"),
+              gte(creditsBatch.remaining, consumeFromThisBatch),
+              or(isNull(creditsBatch.expiresAt), gt(creditsBatch.expiresAt, now))
+            )
+          )
+          .returning({ id: creditsBatch.id });
+
+        if (!updatedBatch) {
+          continue;
+        }
+
+        consumedBatches.push({
+          batchId: batch.id,
+          consumedFromBatch: consumeFromThisBatch,
+        });
+
+        remainingToConsume -= consumeFromThisBatch;
+      }
+
+      if (remainingToConsume > 0) {
+        throw new InsufficientCreditsError(amount, amount - remainingToConsume);
+      }
+
+      const transactionId = crypto.randomUUID();
+      const debitAccount = `WALLET:${userId}`;
+      const creditAccount = `SERVICE:${serviceName}`;
+
+      // 带 sourceRef 写入：偏唯一索引 (type, source_ref) 使并发重复扣费的第二次
+      // INSERT 触发唯一冲突，整个事务回滚（批次扣减一并撤销），由外层 catch 重查兜底。
+      await tx.insert(creditsTransaction).values({
+        id: transactionId,
+        userId,
+        type: "consumption",
+        amount,
+        debitAccount,
+        creditAccount,
+        description: description ?? `消费于 ${serviceName}`,
+        sourceRef,
+        metadata: {
+          ...metadata,
+          serviceName,
+          consumedBatches,
+        },
+      });
+
+      const [updatedBalance] = await tx
+        .update(creditsBalance)
         .set({
-          remaining: newRemainingSql,
-          status: nextStatusSql,
+          balance: sql`${creditsBalance.balance} - ${amount}`,
+          totalSpent: sql`${creditsBalance.totalSpent} + ${amount}`,
           updatedAt: new Date(),
         })
         .where(
           and(
-            eq(creditsBatch.id, batch.id),
-            eq(creditsBatch.status, "active"),
-            gte(creditsBatch.remaining, consumeFromThisBatch),
-            or(isNull(creditsBatch.expiresAt), gt(creditsBatch.expiresAt, now))
+            eq(creditsBalance.userId, userId),
+            gte(creditsBalance.balance, amount)
           )
         )
-        .returning({ id: creditsBatch.id });
+        .returning({ newBalance: creditsBalance.balance });
 
-      if (!updatedBatch) {
-        continue;
+      if (!updatedBalance) {
+        throw new InsufficientCreditsError(amount, balanceRecord.balance);
       }
 
-      consumedBatches.push({
-        batchId: batch.id,
-        consumedFromBatch: consumeFromThisBatch,
-      });
-
-      remainingToConsume -= consumeFromThisBatch;
-    }
-
-    if (remainingToConsume > 0) {
-      throw new InsufficientCreditsError(amount, amount - remainingToConsume);
-    }
-
-    const transactionId = crypto.randomUUID();
-    const debitAccount = `WALLET:${userId}`;
-    const creditAccount = `SERVICE:${serviceName}`;
-
-    await tx.insert(creditsTransaction).values({
-      id: transactionId,
-      userId,
-      type: "consumption",
-      amount,
-      debitAccount,
-      creditAccount,
-      description: description ?? `消费于 ${serviceName}`,
-      metadata: {
-        ...metadata,
-        serviceName,
+      return {
+        success: true,
+        consumedAmount: amount,
+        remainingBalance: updatedBalance.newBalance,
+        transactionId,
         consumedBatches,
-      },
+      };
     });
-
-    const [updatedBalance] = await tx
-      .update(creditsBalance)
-      .set({
-        balance: sql`${creditsBalance.balance} - ${amount}`,
-        totalSpent: sql`${creditsBalance.totalSpent} + ${amount}`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(creditsBalance.userId, userId),
-          gte(creditsBalance.balance, amount)
+  } catch (error) {
+    // 并发兜底：唯一索引冲突表示已被另一并发请求以相同 sourceRef 扣过 →
+    // 重查该交易返回幂等结果，避免双重扣费。
+    if (sourceRef && isUniqueConstraintViolation(error)) {
+      const [existing] = await db
+        .select({
+          id: creditsTransaction.id,
+          amount: creditsTransaction.amount,
+          metadata: creditsTransaction.metadata,
+        })
+        .from(creditsTransaction)
+        .where(
+          and(
+            eq(creditsTransaction.type, "consumption"),
+            eq(creditsTransaction.sourceRef, sourceRef)
+          )
         )
-      )
-      .returning({ newBalance: creditsBalance.balance });
-
-    if (!updatedBalance) {
-      throw new InsufficientCreditsError(amount, balanceRecord.balance);
+        .limit(1);
+      if (existing) {
+        const [balance] = await db
+          .select({ balance: creditsBalance.balance })
+          .from(creditsBalance)
+          .where(eq(creditsBalance.userId, userId))
+          .limit(1);
+        return {
+          success: true,
+          consumedAmount: existing.amount,
+          remainingBalance: balance?.balance ?? 0,
+          transactionId: existing.id,
+          consumedBatches: readConsumedBatchesFromMetadata(existing.metadata),
+          alreadyConsumed: true,
+        };
+      }
     }
-
-    return {
-      success: true,
-      consumedAmount: amount,
-      remainingBalance: updatedBalance.newBalance,
-      transactionId,
-      consumedBatches,
-    };
-  });
+    throw error;
+  }
 }
 
 /**
