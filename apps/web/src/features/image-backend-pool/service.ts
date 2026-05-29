@@ -1539,6 +1539,7 @@ function toResolvedPoolConfig(
         : "https://chatgpt.com",
       apiKey: member.accessToken,
       model: member.model || undefined,
+      useStream: isResponsesBackend ? true : undefined,
       contentSafetyEnabled,
       headers: isResponsesBackend
         ? {

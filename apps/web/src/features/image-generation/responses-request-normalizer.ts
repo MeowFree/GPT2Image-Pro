@@ -50,7 +50,7 @@ export function normalizeResponsesImageRequestBody(
       typeof rawBody.instructions === "string" && rawBody.instructions
         ? rawBody.instructions
         : options.instructions,
-    ...(options.stream ? { stream: true } : {}),
+    stream: options.stream,
   };
   if (
     body.tool_choice === undefined &&

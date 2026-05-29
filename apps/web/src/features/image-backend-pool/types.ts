@@ -8,6 +8,7 @@ export type ImageBackendRequestKind =
 export type ImageBackendAccountBackend = "web" | "responses";
 export type ImageBackendGroupBackendType = "mixed" | "web" | "responses";
 export type ImageBackendApiInterfaceMode = "images" | "responses" | "mixed";
+export type ChatCompletionsUpstreamMode = "responses" | "chat_completions";
 export type ImageBackendPreferenceMode = "always" | "mixed-only";
 export type ImageBackendMemberType = "api" | "account";
 export type ContentSafetyOverride = "inherit" | "enabled" | "disabled";

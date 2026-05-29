@@ -21,13 +21,13 @@ describe("image backend API interface mode", () => {
     );
   });
 
-  it("allows responses-only API backends to serve converted image and chat requests", () => {
+  it("keeps responses-only API backends on responses and chat requests", () => {
     expect(
       imageBackendApiInterfaceAllowsRequest("responses", "image_generation")
-    ).toBe(true);
+    ).toBe(false);
     expect(
       imageBackendApiInterfaceAllowsRequest("responses", "image_edit")
-    ).toBe(true);
+    ).toBe(false);
     expect(imageBackendApiInterfaceAllowsRequest("responses", "chat")).toBe(
       true
     );
@@ -35,6 +35,12 @@ describe("image backend API interface mode", () => {
       imageBackendApiInterfaceAllowsRequest("responses", "responses")
     ).toBe(true);
     expect(imageBackendApiUsesResponsesEndpoint("responses", "image_edit")).toBe(
+      false
+    );
+    expect(
+      imageBackendApiUsesResponsesEndpoint("responses", "image_generation")
+    ).toBe(false);
+    expect(imageBackendApiUsesResponsesEndpoint("responses", "chat")).toBe(
       true
     );
   });
@@ -52,7 +58,7 @@ describe("image backend API interface mode", () => {
     );
     expect(
       imageBackendApiUsesResponsesEndpoint("mixed", "image_edit", true)
-    ).toBe(true);
+    ).toBe(false);
     expect(
       imageBackendApiUsesResponsesEndpoint("images", "image_edit", true)
     ).toBe(false);

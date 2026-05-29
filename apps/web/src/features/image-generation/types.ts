@@ -26,9 +26,11 @@ export interface GenerateImageResult {
   imageUrl?: string;
   imageOutputs?: GeneratedImageOutput[];
   imageOutputCount?: number;
+  generationId?: string;
   revisedPrompt?: string;
   upstreamRevisedPrompt?: string;
   responseText?: string;
+  model?: string;
   responseThinking?: string;
   responseAgent?: string;
   agentEvents?: AgentRunEvent[];
@@ -191,6 +193,8 @@ export interface ChatImageParams {
   agentForceMaxRounds?: boolean;
   waterfallMode?: boolean;
   rawResponsesBody?: unknown;
+  rawChatCompletionsBody?: unknown;
+  chatCompletionsUpstreamMode?: "responses" | "chat_completions";
   mixWebFirst?: boolean;
   requiresResponsesBackend?: boolean;
 }

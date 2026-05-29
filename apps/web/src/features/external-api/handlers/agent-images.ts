@@ -1124,7 +1124,7 @@ export const postExternalAgentImages = withApiLogging(
             moderation,
             outputFormat,
             outputCompression,
-            stream: useStreamResponse,
+            stream: undefined,
             thinking,
             agentMode: true,
             agentMaxRounds,

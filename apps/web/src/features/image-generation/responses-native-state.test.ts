@@ -834,12 +834,31 @@ describe("backend isolation", () => {
     );
 
     expect(body.store).toBe(false);
+    expect(body.stream).toBe(false);
     expect(body.previous_response_id).toBe("resp_external");
     expect(body.size).toBeUndefined();
     expect(body.tools).toEqual([
       { type: "web_search" },
       { type: "image_generation", model: "gpt-image-2" },
     ]);
+  });
+
+  it("does not let raw Responses stream override the selected upstream mode", () => {
+    const body = normalizeResponsesImageRequestBody(
+      {
+        model: "gpt-5.4",
+        input: "draw",
+        stream: true,
+        tools: [],
+      },
+      {
+        fallbackTool: { type: "image_generation", model: "gpt-image-2" },
+        instructions: "test",
+        stream: false,
+      }
+    );
+
+    expect(body.stream).toBe(false);
   });
 
   it("keeps ordinary single image generation store disabled", () => {

@@ -91,6 +91,7 @@ import type {
   GenerateImageResult,
   AgentRunEvent,
   AgentRunEventStatus,
+  ImageInputFile,
   ImageGenerationCallbacks,
   ImageModeration,
   ImageOutputFormat,
@@ -625,6 +626,23 @@ function looksLikeEventStreamText(text: string) {
   return /(?:^|\n)(?:event|data):/.test(text.replace(/\r\n/g, "\n"));
 }
 
+function tryParseJsonPayloadError(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+    return null;
+  }
+  return getPayloadError(safeParseJson(trimmed));
+}
+
+function withStreamJsonErrorFallback<T extends { error?: string }>(
+  result: T,
+  rawText: string
+): T {
+  if (result.error !== "API returned no image data") return result;
+  const jsonError = tryParseJsonPayloadError(rawText);
+  return jsonError ? ({ ...result, error: jsonError } as T) : result;
+}
+
 function normalizeQuality(quality?: string): ImageQuality | undefined {
   if (!quality || quality === "auto") return undefined;
   return VALID_QUALITIES.has(quality as ImageQuality)
@@ -1148,6 +1166,327 @@ function applyPromptOptimizationResultVisibility(
     revisedPrompt: result.revisedPrompt || upstreamRevisedPrompt,
     upstreamRevisedPrompt,
   };
+}
+
+type ChatCompletionImageItem = {
+  url?: unknown;
+  b64_json?: unknown;
+  revised_prompt?: unknown;
+  generation_id?: unknown;
+  generationId?: unknown;
+};
+
+function imageInputToDataUrl(image: ImageInputFile) {
+  if (image.url) return image.url;
+  return `data:${image.type || "image/png"};base64,${image.data.toString(
+    "base64"
+  )}`;
+}
+
+function buildChatCompletionContent(text?: string, images?: ImageInputFile[]) {
+  const parts: Array<Record<string, unknown>> = [];
+  if (text?.trim()) {
+    parts.push({ type: "text", text: text.trim() });
+  }
+  for (const image of images || []) {
+    parts.push({
+      type: "image_url",
+      image_url: { url: imageInputToDataUrl(image) },
+    });
+  }
+  if (parts.length === 1 && parts[0]?.type === "text") {
+    return parts[0].text as string;
+  }
+  return parts;
+}
+
+function buildChatCompletionsMessages(params: ChatImageParams) {
+  const messages: Array<Record<string, unknown>> = [];
+  if (params.apiPrompt?.trim()) {
+    messages.push({ role: "system", content: params.apiPrompt.trim() });
+  }
+  for (const item of params.history || []) {
+    const historyImages = (item.imageUrls || []).map((url, index) => ({
+      data: Buffer.alloc(0),
+      name: `history-image-${index + 1}.png`,
+      type: "image/png",
+      url,
+    }));
+    messages.push({
+      role: item.role,
+      content: buildChatCompletionContent(item.text, historyImages),
+    });
+  }
+  messages.push({
+    role: "user",
+    content: buildChatCompletionContent(getEffectivePrompt(params), params.images),
+  });
+  return messages;
+}
+
+function extractChatCompletionText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) =>
+      isPlainRecord(part) && typeof part.text === "string" ? part.text : ""
+    )
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function extractChatCompletionImages(payload: unknown): ChatCompletionImageItem[] {
+  const images: ChatCompletionImageItem[] = [];
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (isPlainRecord(item) && (item.url || item.b64_json)) {
+        images.push(item);
+      }
+    }
+  };
+
+  if (isPlainRecord(payload)) {
+    collect(payload.images);
+    const choices = Array.isArray(payload.choices) ? payload.choices : [];
+    for (const choice of choices) {
+      if (!isPlainRecord(choice)) continue;
+      collect(choice.images);
+      if (isPlainRecord(choice.message)) collect(choice.message.images);
+    }
+  }
+  return images;
+}
+
+function chatCompletionPayloadToResult(
+  payload: Record<string, unknown>
+): GenerateImageResult {
+  const choices = Array.isArray(payload.choices) ? payload.choices : [];
+  const firstChoice = choices.find(isPlainRecord);
+  const message = isPlainRecord(firstChoice?.message)
+    ? firstChoice.message
+    : undefined;
+  const text = extractChatCompletionText(message?.content);
+  const images = extractChatCompletionImages(payload);
+  const imageOutputs = images.map((image, index) => ({
+    imageBase64:
+      typeof image.b64_json === "string" ? image.b64_json : undefined,
+    imageUrl: typeof image.url === "string" ? image.url : undefined,
+    revisedPrompt:
+      typeof image.revised_prompt === "string" ? image.revised_prompt : undefined,
+    generationId:
+      typeof image.generation_id === "string"
+        ? image.generation_id
+        : typeof image.generationId === "string"
+          ? image.generationId
+          : undefined,
+    index,
+  }));
+  const firstImage = imageOutputs.find((item) => item.imageBase64 || item.imageUrl);
+
+  return {
+    responseText: text || undefined,
+    model: typeof payload.model === "string" ? payload.model : undefined,
+    imageBase64: firstImage?.imageBase64,
+    imageUrl: firstImage?.imageUrl,
+    revisedPrompt: firstImage?.revisedPrompt,
+    imageOutputs: imageOutputs.length ? imageOutputs : undefined,
+    imageOutputCount: imageOutputs.length || undefined,
+    generationId: firstImage?.generationId,
+  };
+}
+
+async function parseChatCompletionsResponse(
+  response: Response,
+  callbacks?: ImageGenerationCallbacks
+): Promise<GenerateImageResult> {
+  const responseRetryMetadata = getResponseRetryMetadata(response);
+  if (!response.ok) {
+    const rawBody = await response.text().catch(() => "");
+    return {
+      error: getHttpErrorMessage(response, rawBody, "Responses API"),
+      ...responseRetryMetadata,
+      ...extractPayloadRetryMetadata(safeParseJson(rawBody)),
+    };
+  }
+
+  const parseSseText = async (text: string) => {
+    let responseText = "";
+    let finalPayload: Record<string, unknown> | null = null;
+    const parseBlock = async (block: string) => {
+      const dataLines = block
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim());
+      if (!dataLines.length) return null;
+      const data = dataLines.join("\n").trim();
+      if (!data || data === "[DONE]") return null;
+      const payload = safeParseJson(data);
+      if (!isPlainRecord(payload)) return null;
+      const apiError = getPayloadError(payload);
+      if (apiError) return apiError;
+      finalPayload = payload;
+      const choices = Array.isArray(payload.choices) ? payload.choices : [];
+      const choice = choices.find(isPlainRecord);
+      const delta = isPlainRecord(choice?.delta) ? choice.delta : undefined;
+      const deltaText = extractChatCompletionText(delta?.content);
+      if (deltaText) {
+        responseText += deltaText;
+        await callbacks?.onTextDelta?.(deltaText);
+      }
+      return null;
+    };
+
+    for (const block of text.replace(/\r\n/g, "\n").split("\n\n")) {
+      const error = await parseBlock(block);
+      if (error) return { error, ...responseRetryMetadata };
+    }
+    if (finalPayload) {
+      const result = chatCompletionPayloadToResult(finalPayload);
+      return {
+        ...result,
+        responseText: result.responseText || responseText || undefined,
+        ...responseRetryMetadata,
+      };
+    }
+    const jsonError = tryParseJsonPayloadError(text);
+    return {
+      error: jsonError || "API returned no image data",
+      ...responseRetryMetadata,
+    };
+  };
+
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("text/event-stream") && response.body) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let rawText = "";
+    let buffer = "";
+    let responseText = "";
+    let finalPayload: Record<string, unknown> | null = null;
+    while (true) {
+      const { value, done } = await reader.read();
+      const chunk = decoder.decode(value, { stream: !done });
+      rawText += chunk;
+      buffer += chunk;
+      const blocks = buffer.split(/\r?\n\r?\n/);
+      buffer = blocks.pop() || "";
+      for (const block of blocks) {
+        const dataLines = block
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trim());
+        if (!dataLines.length) continue;
+        const data = dataLines.join("\n").trim();
+        if (!data || data === "[DONE]") continue;
+        const payload = safeParseJson(data);
+        if (!isPlainRecord(payload)) continue;
+        const apiError = getPayloadError(payload);
+        if (apiError) {
+          await reader.cancel().catch(() => undefined);
+          return { error: apiError, ...responseRetryMetadata };
+        }
+        finalPayload = payload;
+        const choices = Array.isArray(payload.choices) ? payload.choices : [];
+        const choice = choices.find(isPlainRecord);
+        const delta = isPlainRecord(choice?.delta) ? choice.delta : undefined;
+        const deltaText = extractChatCompletionText(delta?.content);
+        if (deltaText) {
+          responseText += deltaText;
+          await callbacks?.onTextDelta?.(deltaText);
+        }
+      }
+      if (done) break;
+    }
+    if (buffer.trim()) {
+      return await parseSseText(`${rawText}\n\n${buffer}`);
+    }
+    if (finalPayload) {
+      const result = chatCompletionPayloadToResult(finalPayload);
+      return {
+        ...result,
+        responseText: result.responseText || responseText || undefined,
+        ...responseRetryMetadata,
+      };
+    }
+    const jsonError = tryParseJsonPayloadError(rawText);
+    return {
+      error: jsonError || "API returned no image data",
+      ...responseRetryMetadata,
+    };
+  }
+
+  const text = await response.text().catch(() => "");
+  if (looksLikeEventStreamText(text)) {
+    return await parseSseText(text);
+  }
+
+  const payload = safeParseJson(text);
+  if (!isPlainRecord(payload)) {
+    return {
+      error: getNonJsonErrorMessage(text, "Responses API", response),
+      ...responseRetryMetadata,
+    };
+  }
+  const apiError = getPayloadError(payload);
+  if (apiError) return { error: apiError, ...responseRetryMetadata };
+  return { ...chatCompletionPayloadToResult(payload), ...responseRetryMetadata };
+}
+
+async function generateChatImageWithChatCompletions(
+  config: ApiConfig,
+  params: ChatImageParams,
+  callbacks?: ImageGenerationCallbacks
+): Promise<GenerateImageResult> {
+  const model = params.model || config.model || GPT54_CHAT_MODEL;
+  const stream = Boolean(params.stream || config.useStream);
+  const rawBody =
+    params.rawChatCompletionsBody && isPlainRecord(params.rawChatCompletionsBody)
+      ? params.rawChatCompletionsBody
+      : null;
+  const body = {
+    ...(rawBody || {}),
+    model,
+    messages: rawBody?.messages || buildChatCompletionsMessages(params),
+    ...(stream ? { stream: true } : {}),
+  };
+  delete (body as Record<string, unknown>).size;
+  delete (body as Record<string, unknown>).quality;
+  delete (body as Record<string, unknown>).moderation;
+  delete (body as Record<string, unknown>).output_format;
+  delete (body as Record<string, unknown>).output_compression;
+
+  try {
+    const response = await fetch(`${stripTrailingSlash(config.baseUrl)}/chat/completions`, {
+      method: "POST",
+      signal: params.signal,
+      cache: stream ? "no-store" : "default",
+      headers: getHeaders(config, {
+        "Content-Type": "application/json",
+        Accept: stream ? "text/event-stream" : "application/json",
+        ...(stream
+          ? {
+              "Accept-Encoding": "identity",
+              "Cache-Control": "no-cache",
+            }
+          : {}),
+      }),
+      body: JSON.stringify(body),
+    });
+    return await parseChatCompletionsResponse(response, callbacks);
+  } catch (error) {
+    logImageRequestError(error, {
+      operation: "chat",
+      baseUrl: config.baseUrl,
+      path: "/chat/completions",
+      model,
+      useStream: stream,
+    });
+    return {
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+    };
+  }
 }
 
 function stripToolTypes(
@@ -2636,10 +2975,13 @@ async function parseResponsesEventStreamResponse(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let rawText = "";
 
   while (true) {
     const { value, done } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done });
+    const chunk = decoder.decode(value, { stream: !done });
+    rawText += chunk;
+    buffer += chunk;
     const blocks = buffer.split(/\r?\n\r?\n/);
     buffer = blocks.pop() || "";
 
@@ -2660,13 +3002,16 @@ async function parseResponsesEventStreamResponse(
     if (error) return { error };
   }
 
-  return finishEventStream(state);
+  return withStreamJsonErrorFallback(finishEventStream(state), rawText);
 }
 
 async function parseResponsesEventStreamText(
   text: string,
   callbacks?: ImageGenerationCallbacks
 ): Promise<ResponsesResultWithOutput> {
+  const jsonError = tryParseJsonPayloadError(text);
+  if (jsonError) return { error: jsonError };
+
   const state: EventStreamParseState = {
     completedResult: null,
     fallbackResult: null,
@@ -2849,6 +3194,9 @@ async function parseEventStreamText(
   text: string,
   callbacks?: ImageGenerationCallbacks
 ): Promise<GenerateImageResult> {
+  const jsonError = tryParseJsonPayloadError(text);
+  if (jsonError) return { error: jsonError };
+
   const state: EventStreamParseState = {
     completedResult: null,
     fallbackResult: null,
@@ -2879,10 +3227,13 @@ async function parseEventStreamResponse(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let rawText = "";
 
   while (true) {
     const { value, done } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done });
+    const chunk = decoder.decode(value, { stream: !done });
+    rawText += chunk;
+    buffer += chunk;
     const blocks = buffer.split(/\r?\n\r?\n/);
     buffer = blocks.pop() || "";
 
@@ -2903,7 +3254,7 @@ async function parseEventStreamResponse(
     if (error) return { error };
   }
 
-  return finishEventStream(state);
+  return withStreamJsonErrorFallback(finishEventStream(state), rawText);
 }
 
 async function parseImageResponse(
@@ -2930,6 +3281,12 @@ async function parseImageResponse(
 
   if (!contentType.includes("application/json")) {
     const text = await response.text().catch(() => "");
+    if (looksLikeEventStreamText(text)) {
+      return withRetryMetadata(
+        await parseEventStreamText(text, callbacks),
+        responseRetryMetadata
+      );
+    }
     return {
       error: getNonJsonErrorMessage(text, "Images API", response),
       ...responseRetryMetadata,
@@ -3329,6 +3686,17 @@ export async function generateChatImage(
       });
     }
     return generateImageWithChatGptWeb(config, webParams);
+  }
+  if (
+    params.chatCompletionsUpstreamMode === "chat_completions" &&
+    !params.agentMode &&
+    !params.rawResponsesBody
+  ) {
+    return await generateChatImageWithChatCompletions(
+      config,
+      params,
+      callbacks
+    );
   }
   try {
     const currentBackendMember = getStickyBackendMember(config);

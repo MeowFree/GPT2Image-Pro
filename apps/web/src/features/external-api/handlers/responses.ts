@@ -732,7 +732,7 @@ export const postExternalResponses = withApiLogging(
         normalizeOutputCompression(parsed.data.output_compression) ??
         getRequestedToolOutputCompression(parsed.data.tools),
       thinking: normalizeThinking(parsed.data.reasoning?.effort),
-      stream: wantsImageStreamResponse(request, parsed.data.stream),
+      stream: undefined,
       rawResponsesBody: parsed.data,
     };
 

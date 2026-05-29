@@ -141,6 +141,236 @@ describe("Responses streaming parser", () => {
     );
   });
 
+  it("parses streamed Images API bodies for non-stream callers when content-type is wrong", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateImage } = await import("./service");
+    const imageBase64 = Buffer.from("image-result").toString("base64");
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        sseBlock("image_generation.completed", {
+          type: "image_generation.completed",
+          b64_json: imageBase64,
+          revised_prompt: "a small test icon",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "text/plain" },
+        }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateImage(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "test-key",
+        useStream: true,
+      },
+      {
+        prompt: "make an icon",
+        model: "gpt-image-2",
+        size: "1024x1024",
+      }
+    );
+
+    expect(result.imageBase64).toBe(imageBase64);
+    expect(result.revisedPrompt).toBe("a small test icon");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/v1/images/generations",
+      expect.objectContaining({
+        body: expect.stringContaining('"stream":true'),
+      })
+    );
+  });
+
+  it("surfaces JSON Images API errors returned to an upstream stream request", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateImage } = await import("./service");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "The quota has been exceeded.",
+              type: "image_generation_user_error",
+              code: "quota_exceeded",
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          }
+        );
+      })
+    );
+
+    const result = await generateImage(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "test-key",
+        useStream: true,
+      },
+      {
+        prompt: "make an icon",
+        model: "gpt-image-2",
+        size: "1024x1024",
+      }
+    );
+
+    expect(result.error).toContain("The quota has been exceeded.");
+    expect(result.error).toContain("quota_exceeded");
+  });
+
+  it("surfaces JSON Responses API errors returned to an upstream stream request", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateChatImage } = await import("./service");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "Store must be set to false",
+              type: "invalid_request_error",
+              code: "invalid_value",
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          }
+        );
+      })
+    );
+
+    const result = await generateChatImage(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "test-key",
+        useStream: true,
+      },
+      {
+        prompt: "make an image",
+        model: "gpt-5.4",
+      }
+    );
+
+    expect(result.error).toContain("Store must be set to false");
+    expect(result.error).toContain("invalid_value");
+  });
+
+  it("can route Chat mode to native upstream Chat Completions when configured", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateChatImage } = await import("./service");
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          id: "chatcmpl_test",
+          model: "gpt-5.4",
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: "native chat result",
+                images: [
+                  {
+                    b64_json: Buffer.from("native-image").toString("base64"),
+                    revised_prompt: "native image",
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateChatImage(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "test-key",
+        backend: {
+          type: "pool-api",
+          apiInterfaceMode: "mixed",
+        },
+      },
+      {
+        prompt: "hello",
+        model: "gpt-5.4",
+        chatCompletionsUpstreamMode: "chat_completions",
+      }
+    );
+
+    expect(result.responseText).toBe("native chat result");
+    expect(result.imageBase64).toBe(Buffer.from("native-image").toString("base64"));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/v1/chat/completions",
+      expect.objectContaining({
+        body: expect.not.stringContaining('"stream":true'),
+      })
+    );
+  });
+
+  it("streams native upstream Chat Completions only when backend streaming is enabled", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateChatImage } = await import("./service");
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        sseBlock("chat.completion.chunk", {
+          choices: [{ delta: { content: "hello" } }],
+        }) + "data: [DONE]\n\n",
+        {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const deltas: string[] = [];
+
+    const result = await generateChatImage(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "test-key",
+        useStream: true,
+        backend: {
+          type: "pool-api",
+          apiInterfaceMode: "mixed",
+        },
+      },
+      {
+        prompt: "hello",
+        model: "gpt-5.4",
+        chatCompletionsUpstreamMode: "chat_completions",
+      },
+      {
+        onTextDelta: (delta) => {
+          deltas.push(delta);
+        },
+      }
+    );
+
+    expect(result.responseText).toBe("hello");
+    expect(deltas).toEqual(["hello"]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/v1/chat/completions",
+      expect.objectContaining({
+        body: expect.stringContaining('"stream":true'),
+      })
+    );
+  });
+
   it("closes streamed image generation task when final image only arrives in response.completed", async () => {
     process.env.DATABASE_URL =
       process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
