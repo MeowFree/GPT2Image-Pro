@@ -948,7 +948,7 @@ describe("backend isolation", () => {
     });
   });
 
-  it("uses uploaded image URLs before base64 for direct Responses edit inputs", () => {
+  it("uses base64 content for direct Responses edit inputs even when uploaded URLs exist", () => {
     const request = buildResponsesImageEditRequest(responsesConfig(), {
       prompt: "改这张图",
       images: [{ ...testImage, url: "https://cdn.example.com/source.png" }],
@@ -957,10 +957,10 @@ describe("backend isolation", () => {
 
     expect(request.input[0]?.content).toContainEqual({
       type: "input_image",
-      image_url: "https://cdn.example.com/source.png",
+      image_url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=",
     });
     expect(request.tools[0]?.input_image_mask).toEqual({
-      image_url: "https://cdn.example.com/mask.png",
+      image_url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=",
     });
   });
 

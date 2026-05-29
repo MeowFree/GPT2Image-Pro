@@ -67,10 +67,7 @@ const RESPONSES_IMAGE_INSTRUCTIONS =
 const RESPONSES_IMAGE_ORIGINAL_PROMPT_INSTRUCTIONS =
   "Use the user's original image prompt exactly as written for image generation. Do not rewrite, expand, translate, polish, or optimize the prompt before calling the image_generation tool.";
 
-function getDataUrl(image: ImageInputFile) {
-  if (image.url?.startsWith("http://") || image.url?.startsWith("https://")) {
-    return image.url;
-  }
+function getInputImageUrl(image: ImageInputFile) {
   return `data:${image.type || "image/png"};base64,${image.data.toString("base64")}`;
 }
 
@@ -78,7 +75,7 @@ function getInputImageContent(image: ImageInputFile) {
   if (image.imageFileId?.trim()) {
     return { type: "input_image" as const, file_id: image.imageFileId.trim() };
   }
-  return { type: "input_image" as const, image_url: getDataUrl(image) };
+  return { type: "input_image" as const, image_url: getInputImageUrl(image) };
 }
 
 function referenceTag(refId: string, prompt?: string) {
@@ -264,7 +261,7 @@ export function buildResponsesImageEditRequest(
   const background = normalizeImageBackground(params.background);
   if (background) tool.background = background;
   if (params.mask) {
-    tool.input_image_mask = { image_url: getDataUrl(params.mask) };
+    tool.input_image_mask = { image_url: getInputImageUrl(params.mask) };
   }
 
   const instructions = withResponsesImageReferenceInstructions(
