@@ -30,7 +30,9 @@ async function getProxySecrets() {
 
 async function verifyProxySecret(request: NextRequest) {
   const secrets = await getProxySecrets();
-  if (secrets.length === 0) return true;
+  // Fail-closed：未配置代理密钥时，该端点保持关闭（401），
+  // 避免成为未鉴权的审核 oracle / 成本放大入口。
+  if (secrets.length === 0) return false;
 
   const authorization = request.headers.get("authorization") || "";
   const bearer = authorization.startsWith("Bearer ")

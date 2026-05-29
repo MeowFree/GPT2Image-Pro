@@ -255,7 +255,7 @@ function toBlockResult(
 }
 
 function formatModerationErrors(
-  errors: Array<{ provider: ModerationProvider; error: string }>
+  errors: Array<{ provider: string; error: string }>
 ) {
   return errors.map(({ provider, error }) => `${provider}: ${error}`).join("; ");
 }
@@ -715,7 +715,7 @@ export async function moderateContent(
     return { decision: "skipped" };
   }
 
-  const errors: Array<{ provider: ModerationProvider; error: string }> = [];
+  const errors: Array<{ provider: string; error: string }> = [];
 
   if (proxyUrl && !input.skipProxy) {
     try {
@@ -727,6 +727,10 @@ export async function moderateContent(
         return result;
       }
     } catch (error) {
+      // 代理失败必须计入 errors：否则在"仅配置代理"时，代理抛错会落到
+      // 末尾的 skipped 分支被当作放行（fail-open），使 fail-closed 形同虚设。
+      const message = error instanceof Error ? error.message : "Unknown error";
+      errors.push({ provider: "proxy", error: message });
       logError(error, {
         userId: input.userId,
         generationId: input.generationId,

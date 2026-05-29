@@ -46,13 +46,13 @@ async function persistInitialCredentials(input: {
     await mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
     await writeFile(filePath, body, { encoding: "utf8", mode: 0o600 });
     console.warn(
-      `[GPT2IMAGE] Self-use super admin initialized. Email: ${input.email}. Password: ${input.password}. Credentials file: ${filePath}`
+      `[GPT2IMAGE] Self-use super admin initialized. Email: ${input.email}. Password written to credentials file: ${filePath}`
     );
   } catch (error) {
     console.warn(
-      `[GPT2IMAGE] Self-use super admin initialized. Email: ${input.email}. Password: ${input.password}. Failed to write credentials file: ${
+      `[GPT2IMAGE] Self-use super admin initialized. Email: ${input.email}. Failed to write credentials file (${
         error instanceof Error ? error.message : String(error)
-      }`
+      }); re-run after fixing file permissions to capture the generated password.`
     );
   }
 }

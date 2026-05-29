@@ -49,6 +49,29 @@ function createLogger(): pino.Logger {
       service: "gpt2image",
     },
     timestamp: pino.stdTimeFunctions.isoTime,
+    // 纵深防御：即便未来误传敏感字段，也在日志层做脱敏。
+    redact: {
+      paths: [
+        "password",
+        "*.password",
+        "token",
+        "*.token",
+        "apiKey",
+        "*.apiKey",
+        "secret",
+        "*.secret",
+        "authorization",
+        "*.authorization",
+        "creem-signature",
+        "*.creem-signature",
+        "*.sign",
+        "req.headers.authorization",
+        "req.headers.cookie",
+        "headers.authorization",
+        "headers.cookie",
+      ],
+      censor: "[REDACTED]",
+    },
   };
 
   // 开发环境：美化输出

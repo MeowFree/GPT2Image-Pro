@@ -21,11 +21,11 @@
 | A8 | HIGH | `auth/email-domain.ts:12` `normalizeEmail` | 仅 trim+lowercase，未规范化 Gmail 点/加号别名 → 单邮箱 N×100 积分薅羊毛 | 规范化：gmail 去点、所有域去 `+tag` |
 | A9 | HIGH | `rate-limit/index.ts:182` | 未配置 Upstash 时限流**静默失效（fail-open）**，默认部署无任何限流 | auth/strict 类型在无后端时 fail-closed |
 | A10 | MED→HIGH | `auth/registration-verification.ts` | 6 位验证码无尝试次数限制、错误不失效 → 可暴力破解（配合 A9） | 加尝试计数 + 失败上限失效 |
-| A11 | MED | `webhooks/creem/route.ts` | 未交叉校验 `order.amount`/`currency` 与套餐价 | 增加金额/币种校验（纵深防御） |
+| A11 | MED | `webhooks/creem/route.ts` | 未交叉校验 `order.amount`/`currency` 与套餐价 | **推迟**：Creem `order.amount`（分）与套餐 `price`（展示币种）单位/币种不一致，硬校验会误拒真实支付；HMAC 已防篡改，纵深防御价值有限。需先对齐 Creem 产品价配置再实现 |
 | A12 | MED | `moderation/index.ts:705` | 仅配置代理审核时，代理失败被吞 → fail-open 放行 | 代理失败计入 errors → fail-closed |
 | A13 | MED | `app/moderate/route.ts:33` | 未配置 secret 时审核端点完全公开（成本放大/绕过探测） | 无 secret 时 fail-closed |
-| A14 | MED | `api/upload/presigned/route.ts` | 大小/Content-Type 仅信客户端声明，未策略强制 | 服务端派生 MIME + 大小校验 |
-| A15 | MED | `api/storage/[bucket]/[...key]/route.ts` | generations 桶对象**无鉴权/属主校验**，仅靠 URL 不可猜 | 加 session + 属主校验 |
+| A14 | MED | `api/upload/presigned/route.ts` | 大小/Content-Type 仅信客户端声明，未策略强制 | 服务端派生 MIME + 严格大小校验 |
+| A15 | LOW/MED | `api/storage/[bucket]/[...key]/route.ts` | generations 桶对象**无鉴权/属主校验**，仅靠 URL 不可猜 | **推迟**：key 为 `userId/nanoid(32)`（≈190bit 不可枚举），属于能力 URL；加鉴权/属主校验风险高（可能破坏全站图片渲染、外链分享、og:image），需先做 UI 测试。建议：generations 桶走 session+属主校验或短时签名 URL，avatars 保持公开 |
 | A16 | LOW/MED | `logger/index.ts` / `bootstrap-super-admin.ts:48` | Pino 无 redact；超管引导密码打到 stdout 日志 | 加 redact；日志只记路径不记密码 |
 
 ## B. 误报（审计纠正）

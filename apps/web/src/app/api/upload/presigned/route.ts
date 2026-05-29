@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { type NextRequest, NextResponse } from "next/server";
 import { withApiLogging } from "@repo/shared/api-logger";
 import { auth } from "@repo/shared/auth";
-import { getFileTypeFromName } from "@/lib/file-utils";
+import { getFileTypeFromName, type SupportedFileType } from "@/lib/file-utils";
 
 /**
  * S3/R2 客户端配置
@@ -29,6 +29,17 @@ const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".doc", ".md", ".txt"];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 /**
+ * 服务端派生的安全 Content-Type（不信任客户端传入的 contentType，
+ * 防止上传方将文档声明为 text/html 等导致存储源上的存储型 XSS）。
+ */
+const SAFE_CONTENT_TYPES: Record<SupportedFileType, string> = {
+  pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  md: "text/markdown",
+  txt: "text/plain",
+};
+
+/**
  * 获取预签名上传 URL
  *
  * POST /api/upload/presigned
@@ -46,9 +57,9 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     }
 
     const body = await request.json();
-    const { filename, contentType, fileSize } = body as {
+    const { filename, fileSize } = body as {
       filename: string;
-      contentType: string;
+      contentType?: string;
       fileSize: number;
     };
 
@@ -71,11 +82,16 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       );
     }
 
-    // 验证文件大小
-    if (fileSize > MAX_FILE_SIZE) {
+    // 验证文件大小（严格：必须是有限正数且不超过上限；缺失/非法一律拒绝）
+    if (
+      typeof fileSize !== "number" ||
+      !Number.isFinite(fileSize) ||
+      fileSize <= 0 ||
+      fileSize > MAX_FILE_SIZE
+    ) {
       return NextResponse.json(
         {
-          error: `File too large. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+          error: `Invalid file size. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024}MB`,
         },
         { status: 400 }
       );
@@ -85,11 +101,14 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     const fileExtension = filename.match(/\.[^.]+$/)?.[0] || "";
     const fileKey = `uploads/${session.user.id}/${nanoid()}${fileExtension}`;
 
+    // 服务端派生 Content-Type（忽略客户端声明），并签入预签名请求。
+    const safeContentType = SAFE_CONTENT_TYPES[fileType];
+
     // 创建预签名 URL
     const command = new PutObjectCommand({
       Bucket: BUCKET_NAME,
       Key: fileKey,
-      ContentType: contentType,
+      ContentType: safeContentType,
     });
 
     const presignedUrl = await getSignedUrl(s3Client, command, {
@@ -103,6 +122,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       presignedUrl,
       fileKey,
       fileUrl,
+      contentType: safeContentType,
       expiresIn: 3600,
     });
   } catch (error) {
