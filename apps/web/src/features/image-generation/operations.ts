@@ -77,6 +77,7 @@ type RunImageGenerationInput =
       userId: string;
       generationId?: string;
       apiKeyId?: string;
+      relayOnly?: boolean;
       backendRequestKind?: ImageBackendRequestKind;
       preferredBackendMemberId?: string;
       mixWebFirst?: boolean;
@@ -88,6 +89,7 @@ type RunImageGenerationInput =
       userId: string;
       generationId?: string;
       apiKeyId?: string;
+      relayOnly?: boolean;
       backendRequestKind?: ImageBackendRequestKind;
       preferredBackendMemberId?: string;
       mixWebFirst?: boolean;
@@ -99,6 +101,7 @@ type RunImageGenerationInput =
       userId: string;
       generationId?: string;
       apiKeyId?: string;
+      relayOnly?: boolean;
       backendRequestKind?: ImageBackendRequestKind;
       preferredBackendMemberId?: string;
       maxChatContextChars?: number;
@@ -368,9 +371,12 @@ async function uploadResponsesImageFile(params: {
 type StoredGeneratedImageOutput = {
   generationId: string;
   imageUrl: string;
+  /** 纯中转模式下直接携带的上游 base64，避免回源我方存储。 */
+  imageBase64?: string;
   imageFileId?: string;
   webImageMessageId?: string;
   webImageGroupId?: string;
+  /** 纯中转模式下为空串（未落对象存储）。 */
   storageKey: string;
   fileSize: number;
   size: string;
@@ -1214,6 +1220,9 @@ async function runQueuedImageGenerationForUser({
   forceWebBackend: boolean;
 }): Promise<ImageGenerationOperationResult> {
   const startedAt = Date.now();
+  // 纯中转模式：不写 generation 历史、不上传对象存储；仍扣费/审核/退款。
+  // generationId 仍生成，仅作扣费/退款的幂等 sourceRef 前缀。
+  const relayOnly = input.relayOnly === true;
   const promptOptimizationMetadata = buildPromptOptimizationMetadata({
     input,
     promptOptimization,
@@ -1235,23 +1244,25 @@ async function runQueuedImageGenerationForUser({
   );
   const isAgentChatInput = input.mode === "chat" && input.agentMode === true;
 
-  await db.insert(generation).values({
-    id: generationId,
-    userId: input.userId,
-    prompt: input.prompt,
-    model: recordModel,
-    size,
-    status: "pending",
-    creditsConsumed: useCredits ? initialCreditCharge : 0,
-    storageBucket: bucket,
-    metadata:
-      input.mode === "edit"
-        ? {
-            mode: "edit",
-            ...backendMetadata,
-            ...modelMetadata,
-            ...promptOptimizationMetadata,
-            ...inputImagesMetadata,
+  // 纯中转：不落生成历史。其余 db.update(generation) 在无行时天然 no-op。
+  if (!relayOnly)
+    await db.insert(generation).values({
+      id: generationId,
+      userId: input.userId,
+      prompt: input.prompt,
+      model: recordModel,
+      size,
+      status: "pending",
+      creditsConsumed: useCredits ? initialCreditCharge : 0,
+      storageBucket: bucket,
+      metadata:
+        input.mode === "edit"
+          ? {
+              mode: "edit",
+              ...backendMetadata,
+              ...modelMetadata,
+              ...promptOptimizationMetadata,
+              ...inputImagesMetadata,
             imageCount: input.images.length,
             hasMask: Boolean(input.mask),
             quality: input.quality || "auto",
@@ -1338,7 +1349,8 @@ async function runQueuedImageGenerationForUser({
     amount: number,
     serviceName: string,
     description: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    sourceRef?: string
   ) => {
     if (!useCredits || amount <= 0) return;
     const roundedAmount = roundCreditAmount(amount);
@@ -1354,6 +1366,7 @@ async function runQueuedImageGenerationForUser({
         amount: roundedAmount,
         serviceName,
         description,
+        sourceRef,
         metadata: {
           ...metadata,
           externalApiKeyId: input.apiKeyId,
@@ -1383,11 +1396,18 @@ async function runQueuedImageGenerationForUser({
     const roundedTarget = roundCreditAmount(Math.max(0, targetCredits));
     const delta = roundCreditAmount(roundedTarget - chargedCredits);
     if (delta > 0) {
-      await chargeAdditionalCredits(delta, serviceName, description, {
-        ...metadata,
-        previousCredits: chargedCredits,
-        targetCredits: roundedTarget,
-      });
+      // 结算补扣用独立 sourceRef，避免与初始扣费 / 退款 sourceRef 冲突而被误判重复。
+      await chargeAdditionalCredits(
+        delta,
+        serviceName,
+        description,
+        {
+          ...metadata,
+          previousCredits: chargedCredits,
+          targetCredits: roundedTarget,
+        },
+        `${sourceRef}:charge`
+      );
       return;
     }
 
@@ -1413,7 +1433,8 @@ async function runQueuedImageGenerationForUser({
           billingGroupId: config.backend?.billingGroupId ?? null,
           initialCredits: initialCreditCharge,
           targetImageCredits: creditsPerImage,
-        }
+        },
+        `${generationId}:charge`
       );
     } catch (error: unknown) {
       const message =
@@ -1465,7 +1486,8 @@ async function runQueuedImageGenerationForUser({
         .where(isPendingGeneration(generationId))
         .returning({ id: generation.id });
 
-      if (updated && creditsToRefund > 0) {
+      // 中转模式无 generation 行，UPDATE 返回空；退款仍须照常执行。
+      if ((updated || relayOnly) && creditsToRefund > 0) {
         try {
           await refundChargedCredits(
             creditsToRefund,
@@ -1836,31 +1858,69 @@ async function runQueuedImageGenerationForUser({
       });
     }
     storedOutputs = [];
-    for (const [index, output] of imageOutputs.entries()) {
-      storedOutputs.push(
-        await storeGeneratedImageOutput({
-          output,
-          config,
-          userId: input.userId,
-          generationId: resolveOutputGenerationId(
-            generationId,
-            index,
-            imageOutputs.length
-          ),
-          bucket,
-          requestedSize: size,
-          requestedFormat: input.outputFormat,
-        })
-      );
+    if (relayOnly) {
+      // 纯中转：不落对象存储，直接透传上游图片（base64 / 上游 URL）。
+      // 不做实际尺寸/格式检测（无 buffer），按请求尺寸计费。
+      storedOutputs = imageOutputs.map((output, index) => ({
+        generationId: resolveOutputGenerationId(
+          generationId,
+          index,
+          imageOutputs.length
+        ),
+        imageUrl: output.imageUrl ?? "",
+        imageBase64: output.imageBase64,
+        imageFileId: output.imageFileId,
+        webImageMessageId: output.webImageMessageId,
+        webImageGroupId: output.webImageGroupId,
+        storageKey: "",
+        fileSize: 0,
+        size,
+        revisedPrompt: output.revisedPrompt || output.upstreamRevisedPrompt,
+        upstreamRevisedPrompt: output.upstreamRevisedPrompt,
+        actualSizeDetected: false,
+        actualOutputFormat: null,
+        actualOutputFormatDetected: false,
+        outputRole: output.outputRole,
+      }));
       if (isAgentChatInput) {
         await emitAgentOperationEvent(callbacks, {
           kind: "tool",
-          status: index === imageOutputs.length - 1 ? "completed" : "running",
-          title:
-            index === imageOutputs.length - 1 ? "图片保存完成" : "保存生成图片",
-          detail: `已保存 ${index + 1}/${imageOutputs.length} 张图片`,
+          status: "completed",
+          title: "图片就绪",
+          detail: `已就绪 ${storedOutputs.length} 张图片（纯中转，未留存）`,
           toolType: "image_storage",
         });
+      }
+    } else {
+      for (const [index, output] of imageOutputs.entries()) {
+        storedOutputs.push(
+          await storeGeneratedImageOutput({
+            output,
+            config,
+            userId: input.userId,
+            generationId: resolveOutputGenerationId(
+              generationId,
+              index,
+              imageOutputs.length
+            ),
+            bucket,
+            requestedSize: size,
+            requestedFormat: input.outputFormat,
+          })
+        );
+        if (isAgentChatInput) {
+          await emitAgentOperationEvent(callbacks, {
+            kind: "tool",
+            status:
+              index === imageOutputs.length - 1 ? "completed" : "running",
+            title:
+              index === imageOutputs.length - 1
+                ? "图片保存完成"
+                : "保存生成图片",
+            detail: `已保存 ${index + 1}/${imageOutputs.length} 张图片`,
+            toolType: "image_storage",
+          });
+        }
       }
     }
   } catch (storageError: unknown) {
@@ -2122,6 +2182,7 @@ async function runQueuedImageGenerationForUser({
     imageOutputs: storedOutputs.map((output, index) => ({
       generationId: output.generationId,
       imageUrl: output.imageUrl,
+      imageBase64: output.imageBase64,
       imageFileId: output.imageFileId,
       webImageMessageId: output.webImageMessageId,
       webImageGroupId: output.webImageGroupId,
