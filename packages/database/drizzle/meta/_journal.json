@@ -169,6 +169,13 @@
       "when": 1779727200000,
       "tag": "0023_image_backend_account_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1779770000000,
+      "tag": "0024_chat_completions_upstream_mode",
+      "breakpoints": true
     }
   ]
 }

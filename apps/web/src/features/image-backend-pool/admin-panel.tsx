@@ -150,6 +150,7 @@ type Api = {
   baseUrl: string;
   model: string | null;
   interfaceMode: ImageBackendApiInterfaceMode;
+  chatCompletionsUpstreamMode: ChatCompletionsUpstreamModeFormValue;
   useStream: boolean;
   contentSafetyEnabled: boolean;
   isEnabled: boolean;
@@ -167,6 +168,9 @@ type ContentSafetyFormValue = "inherit" | "enabled" | "disabled";
 type AccountBackendFormValue = "web" | "responses";
 type GroupBackendTypeFormValue = ImageBackendGroupBackendType;
 type ApiInterfaceModeFormValue = ImageBackendApiInterfaceMode;
+type ChatCompletionsUpstreamModeFormValue =
+  | "responses"
+  | "chat_completions";
 type TokenSyncMode = "web" | "responses" | "both";
 type Sub2ApiPlanFilter = "all" | "free" | "plus" | "pro" | "non_free";
 
@@ -288,6 +292,25 @@ const API_INTERFACE_MODE_OPTIONS: Array<{
     value: "responses",
     label: "仅 Responses",
     detail: "所有生图请求都转换为 /v1/responses，支持 Chat/Agent。",
+  },
+];
+
+const CHAT_COMPLETIONS_UPSTREAM_MODE_OPTIONS: Array<{
+  value: ChatCompletionsUpstreamModeFormValue;
+  label: string;
+  detail: string;
+}> = [
+  {
+    value: "responses",
+    label: "Responses 生图模式",
+    detail:
+      "命中该上游时，本站 /v1/chat/completions 会请求它的 /responses + image_generation tool，保留生图能力。默认推荐。",
+  },
+  {
+    value: "chat_completions",
+    label: "原生 Chat Completions",
+    detail:
+      "命中该上游时，本站 /v1/chat/completions 会请求它的 /chat/completions；适合纯聊天兼容，是否能返回图片取决于上游。",
   },
 ];
 
@@ -668,6 +691,8 @@ export function ImageBackendPoolAdminPanel({
     apiKey: "",
     model: "",
     interfaceMode: "mixed" as ApiInterfaceModeFormValue,
+    chatCompletionsUpstreamMode:
+      "responses" as ChatCompletionsUpstreamModeFormValue,
     useStream: false,
     contentSafetyEnabled: true,
     isEnabled: true,
@@ -938,6 +963,8 @@ export function ImageBackendPoolAdminPanel({
       apiKey: "",
       model: "",
       interfaceMode: "mixed" as ApiInterfaceModeFormValue,
+      chatCompletionsUpstreamMode:
+        "responses" as ChatCompletionsUpstreamModeFormValue,
       useStream: false,
       contentSafetyEnabled: true,
       isEnabled: true,
@@ -1066,6 +1093,8 @@ export function ImageBackendPoolAdminPanel({
       apiKey: "",
       model: api.model || "",
       interfaceMode: api.interfaceMode || "images",
+      chatCompletionsUpstreamMode:
+        api.chatCompletionsUpstreamMode || "responses",
       useStream: api.useStream,
       contentSafetyEnabled: api.contentSafetyEnabled,
       isEnabled: api.isEnabled,
@@ -3072,6 +3101,38 @@ export function ImageBackendPoolAdminPanel({
                   }
                 </p>
               </div>
+              <div className="space-y-2">
+                <Label>Chat Completions 上游</Label>
+                <Select
+                  value={apiForm.chatCompletionsUpstreamMode}
+                  onValueChange={(value) =>
+                    setApiForm((current) => ({
+                      ...current,
+                      chatCompletionsUpstreamMode:
+                        value as ChatCompletionsUpstreamModeFormValue,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CHAT_COMPLETIONS_UPSTREAM_MODE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {
+                    CHAT_COMPLETIONS_UPSTREAM_MODE_OPTIONS.find(
+                      (option) =>
+                        option.value === apiForm.chatCompletionsUpstreamMode
+                    )?.detail
+                  }
+                </p>
+              </div>
               <div className="space-y-1.5">
                 <Label>优先级</Label>
                 <Input
@@ -3139,6 +3200,12 @@ export function ImageBackendPoolAdminPanel({
                       <span className="font-medium">{api.name}</span>
                       <Badge variant="outline">
                         {apiInterfaceModeLabel(api.interfaceMode)}
+                      </Badge>
+                      <Badge variant="outline">
+                        Chat:{" "}
+                        {api.chatCompletionsUpstreamMode === "chat_completions"
+                          ? "原生"
+                          : "Responses"}
                       </Badge>
                       <Badge variant="secondary">{api.status}</Badge>
                       {isCoolingDown(api.cooldownUntil) && (

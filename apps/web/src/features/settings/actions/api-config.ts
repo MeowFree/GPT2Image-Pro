@@ -104,6 +104,9 @@ const apiConfigSchema = z.object({
   apiKey: z.string().trim().min(1, "API key is required"),
   model: optionalTrimmedString,
   useStream: z.boolean().optional(),
+  chatCompletionsUpstreamMode: z
+    .enum(["responses", "chat_completions"])
+    .default("responses"),
 });
 
 const withApiConfigAction = (name: string) =>
@@ -146,6 +149,7 @@ export const saveApiConfig = withApiConfigAction("save")
           apiKey: parsedInput.apiKey,
           model: parsedInput.model || null,
           useStream: parsedInput.useStream ?? false,
+          chatCompletionsUpstreamMode: parsedInput.chatCompletionsUpstreamMode,
           isActive: true,
           updatedAt: new Date(),
         })
@@ -158,6 +162,7 @@ export const saveApiConfig = withApiConfigAction("save")
         apiKey: parsedInput.apiKey,
         model: parsedInput.model || null,
         useStream: parsedInput.useStream ?? false,
+        chatCompletionsUpstreamMode: parsedInput.chatCompletionsUpstreamMode,
         isActive: true,
       });
     }

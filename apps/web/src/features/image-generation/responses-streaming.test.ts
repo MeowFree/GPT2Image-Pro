@@ -302,12 +302,12 @@ describe("Responses streaming parser", () => {
         backend: {
           type: "pool-api",
           apiInterfaceMode: "mixed",
+          chatCompletionsUpstreamMode: "chat_completions",
         },
       },
       {
         prompt: "hello",
         model: "gpt-5.4",
-        chatCompletionsUpstreamMode: "chat_completions",
       }
     );
 
@@ -347,12 +347,12 @@ describe("Responses streaming parser", () => {
         backend: {
           type: "pool-api",
           apiInterfaceMode: "mixed",
+          chatCompletionsUpstreamMode: "chat_completions",
         },
       },
       {
         prompt: "hello",
         model: "gpt-5.4",
-        chatCompletionsUpstreamMode: "chat_completions",
       },
       {
         onTextDelta: (delta) => {

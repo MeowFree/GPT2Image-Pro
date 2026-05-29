@@ -82,7 +82,6 @@ describe("external chat completions handler streaming bridge", () => {
         rawChatCompletionsBody: expect.objectContaining({
           messages: [{ role: "user", content: "hello" }],
         }),
-        chatCompletionsUpstreamMode: "responses",
         backendRequestKind: "chat",
       })
     );
@@ -106,32 +105,10 @@ describe("external chat completions handler streaming bridge", () => {
       expect.objectContaining({
         stream: undefined,
         rawChatCompletionsBody: expect.objectContaining({ stream: true }),
-        chatCompletionsUpstreamMode: "responses",
         backendRequestKind: "chat",
       }),
       expect.any(Object)
     );
   });
 
-  it("lets external callers select native upstream Chat Completions", async () => {
-    const { postExternalChatCompletions } = await import("./chat-completions");
-
-    const response = await postExternalChatCompletions(
-      chatCompletionsRequest({
-        model: "gpt-5.4",
-        chat_completions_upstream: "chat_completions",
-        messages: [{ role: "user", content: "hello" }],
-      }) as never
-    );
-    await response.json();
-
-    const [input, callbacks] = mocks.runImageGenerationForUser.mock.calls[0]!;
-    expect(input).toEqual(
-      expect.objectContaining({
-        chatCompletionsUpstreamMode: "chat_completions",
-        backendRequestKind: "chat",
-      })
-    );
-    expect(callbacks).toBeUndefined();
-  });
 });

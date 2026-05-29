@@ -64,6 +64,10 @@ const safetyOverrideSchema = z.enum(["inherit", "enabled", "disabled"]);
 const accountBackendSchema = z.enum(["web", "responses"]);
 const groupBackendTypeSchema = z.enum(["mixed", "web", "responses"]);
 const apiInterfaceModeSchema = z.enum(["images", "responses", "mixed"]);
+const chatCompletionsUpstreamModeSchema = z.enum([
+  "responses",
+  "chat_completions",
+]);
 const sub2ApiTokenSyncModeSchema = z.enum(["web", "responses", "both"]);
 const sub2ApiPlanFilterSchema = z.enum([
   "all",
@@ -513,6 +517,8 @@ export const saveImageBackendApiAction = withImageBackendPoolAdminAction(
       apiKey: z.string().trim().optional(),
       model: z.string().trim().max(120).optional(),
       interfaceMode: apiInterfaceModeSchema.default("mixed"),
+      chatCompletionsUpstreamMode:
+        chatCompletionsUpstreamModeSchema.default("responses"),
       useStream: z.boolean().default(false),
       contentSafetyEnabled: z.boolean().default(true),
       isEnabled: z.boolean().default(true),
@@ -529,6 +535,7 @@ export const saveImageBackendApiAction = withImageBackendPoolAdminAction(
       apiKey: parsedInput.apiKey || undefined,
       model: parsedInput.model || null,
       interfaceMode: parsedInput.interfaceMode,
+      chatCompletionsUpstreamMode: parsedInput.chatCompletionsUpstreamMode,
       useStream: parsedInput.useStream,
       contentSafetyEnabled: parsedInput.contentSafetyEnabled,
       isEnabled: parsedInput.isEnabled,

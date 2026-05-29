@@ -261,6 +261,7 @@ export interface ApiConfig {
     requestKind?: "image_generation" | "image_edit" | "chat" | "responses";
     accountBackend?: "web" | "responses";
     apiInterfaceMode?: "images" | "responses" | "mixed";
+    chatCompletionsUpstreamMode?: "responses" | "chat_completions";
     apiForceResponsesEndpoint?: boolean;
     billingGroupId?: string | null;
     billingMultiplier?: number;

@@ -592,8 +592,8 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
             },
           ],
           notes: [
-            "调用方可在请求中传 chat_completions_upstream 或 chatCompletionsUpstream：默认 responses 会请求上游 /responses + image_generation tool，保留图片生成、图片引用和 Codex/Responses 能力。",
-            "传 chat_completions 后，本站 /v1/chat/completions 会请求上游 /chat/completions；这更适合纯聊天兼容，但是否能返回图片取决于上游实现。Agent 和 /v1/responses 不受该字段影响。",
+            "上游 API 配置可选择 Chat Completions 上游模式：默认 responses 会请求上游 /responses + image_generation tool，保留图片生成、图片引用和 Codex/Responses 能力。",
+            "选择 chat_completions 后，本站 /v1/chat/completions 会请求命中上游的 /chat/completions；这更适合纯聊天兼容，但是否能返回图片取决于上游实现。Agent 和 /v1/responses 不受该配置影响。",
             "OpenAI 官方 Chat Completions 并不定义“生成图片”的标准返回字段；本站为了兼容对话生图，在 Chat Completions 外形上扩展 choices[].message.images、顶层 images，并在 content 中追加 Markdown 图片链接。严格按官方生图协议接入时，建议使用 /v1/images/generations、/v1/images/edits 或 /v1/responses。",
             "该接口走页面 Chat 的非 Agent 模式，不会注入 web_search、continue_generation，也不会展示 Agent 多轮任务卡。",
             "调度类型是 chat，可命中 Web 账号、Codex/Responses 账号或支持 /responses 的外接 API 后端；用户自接 API 可用时仍保持最高优先级。",
@@ -2284,8 +2284,8 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
             },
           ],
           notes: [
-            "Callers can pass chat_completions_upstream or chatCompletionsUpstream. The default responses mode calls upstream /responses with the image_generation tool so image generation, image references, and Codex/Responses capabilities are preserved.",
-            "Passing chat_completions makes GPT2IMAGE /v1/chat/completions call upstream /chat/completions. This is better for pure chat compatibility, but image output depends on the upstream implementation. Agent and /v1/responses are not affected.",
+            "Upstream API configs can choose the Chat Completions upstream mode. The default responses mode calls upstream /responses with the image_generation tool so image generation, image references, and Codex/Responses capabilities are preserved.",
+            "Selecting chat_completions makes GPT2IMAGE /v1/chat/completions call the selected upstream's /chat/completions. This is better for pure chat compatibility, but image output depends on the upstream implementation. Agent and /v1/responses are not affected.",
             "OpenAI official Chat Completions does not define a standard generated-image response field. GPT2IMAGE extends the Chat Completions shape with choices[].message.images, top-level images, and Markdown image links in content. For strict official image-generation semantics, use /v1/images/generations, /v1/images/edits, or /v1/responses.",
             "This endpoint uses page Chat non-Agent mode. It does not inject web_search or continue_generation and does not return Agent task cards.",
             "The request kind is chat, so routing can select Web accounts, Codex/Responses accounts, or external API backends that support /responses. User custom upstream APIs still keep highest priority when available.",

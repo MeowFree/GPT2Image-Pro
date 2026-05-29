@@ -5,6 +5,13 @@ import { canUseCustomApi } from "@repo/shared/config/subscription-plan";
 import { Button } from "@repo/ui/components/button";
 import { Input } from "@repo/ui/components/input";
 import { Label } from "@repo/ui/components/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@repo/ui/components/select";
 import { Switch } from "@repo/ui/components/switch";
 import {
   AlertTriangle,
@@ -57,6 +64,8 @@ export function ApiConfigForm() {
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
   const [useStream, setUseStream] = useState(false);
+  const [chatCompletionsUpstreamMode, setChatCompletionsUpstreamMode] =
+    useState<"responses" | "chat_completions">("responses");
   const [isActive, setIsActive] = useState(true);
   const [hasConfig, setHasConfig] = useState(false);
   const [customApiAllowed, setCustomApiAllowed] = useState(false);
@@ -85,6 +94,7 @@ export function ApiConfigForm() {
         setApiKey("");
         setModel("");
         setUseStream(false);
+        setChatCompletionsUpstreamMode("responses");
         setHasConfig(false);
       },
     }
@@ -117,6 +127,12 @@ export function ApiConfigForm() {
           setApiKey(configResult.data.apiKey);
           setModel(configResult.data.model || "");
           setUseStream(Boolean(configResult.data.useStream));
+          setChatCompletionsUpstreamMode(
+            configResult.data.chatCompletionsUpstreamMode ===
+              "chat_completions"
+              ? "chat_completions"
+              : "responses"
+          );
           setIsActive(configResult.data.isActive);
           setHasConfig(true);
         }
@@ -139,6 +155,7 @@ export function ApiConfigForm() {
       apiKey,
       model: model || undefined,
       useStream,
+      chatCompletionsUpstreamMode,
     });
   };
 
@@ -266,6 +283,34 @@ export function ApiConfigForm() {
               onCheckedChange={setUseStream}
               disabled={!customApiAllowed}
             />
+          </div>
+
+          <div className="space-y-2 rounded-md border border-border px-3 py-3">
+            <Label htmlFor="api-chat-upstream" className="text-sm">
+              Chat Completions 上游
+            </Label>
+            <Select
+              value={chatCompletionsUpstreamMode}
+              onValueChange={(value) =>
+                setChatCompletionsUpstreamMode(
+                  value === "chat_completions" ? "chat_completions" : "responses"
+                )
+              }
+              disabled={!customApiAllowed}
+            >
+              <SelectTrigger id="api-chat-upstream">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="responses">Responses 生图模式</SelectItem>
+                <SelectItem value="chat_completions">
+                  原生 Chat Completions
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Responses 模式会把 Chat 请求接到上游 /responses，保留生图能力；原生模式会请求上游 /chat/completions，适合纯聊天兼容。
+            </p>
           </div>
 
           {/* Actions */}

@@ -48,6 +48,7 @@ import type { ApiConfig } from "@/features/image-generation/types";
 import {
   imageBackendApiInterfaceAllowsRequest,
   imageBackendApiUsesResponsesEndpoint,
+  normalizeChatCompletionsUpstreamMode,
   normalizeImageBackendApiInterfaceMode,
 } from "./api-interface-mode";
 import {
@@ -56,6 +57,7 @@ import {
 } from "./group-billing";
 import { parseImportTokensText } from "./import-token-parser";
 import type {
+  ChatCompletionsUpstreamMode,
   ContentSafetyOverride,
   ImageBackendApiInterfaceMode,
   ImageBackendAccountBackend,
@@ -88,6 +90,7 @@ type PoolMember =
       apiKey: string;
       model: string | null;
       interfaceMode: ImageBackendApiInterfaceMode;
+      chatCompletionsUpstreamMode: ChatCompletionsUpstreamMode;
       useStream: boolean;
       contentSafetyEnabled: boolean;
       priority: number;
@@ -1370,6 +1373,9 @@ async function selectPoolMember(
               interfaceMode: normalizeImageBackendApiInterfaceMode(
                 row.interfaceMode
               ),
+              chatCompletionsUpstreamMode: normalizeChatCompletionsUpstreamMode(
+                row.chatCompletionsUpstreamMode
+              ),
               useStream: row.useStream,
               contentSafetyEnabled: row.contentSafetyEnabled,
               priority: row.priority,
@@ -1514,6 +1520,7 @@ function toResolvedPoolConfig(
           apiKeyId: options.apiKeyId,
           requestKind: options.requestKind,
           apiInterfaceMode: member.interfaceMode,
+          chatCompletionsUpstreamMode: member.chatCompletionsUpstreamMode,
           apiForceResponsesEndpoint:
             options.accountBackendPreference === "responses",
           billingGroupId: fallbackGroupId,
@@ -5081,6 +5088,7 @@ type UpsertApiInput = {
   apiKey?: string;
   model?: string | null;
   interfaceMode?: ImageBackendApiInterfaceMode;
+  chatCompletionsUpstreamMode?: ChatCompletionsUpstreamMode;
   useStream: boolean;
   contentSafetyEnabled: boolean;
   isEnabled: boolean;
@@ -5095,6 +5103,9 @@ export async function upsertImageBackendApi(input: UpsertApiInput) {
     baseUrl: stripTrailingSlash(input.baseUrl),
     model: input.model || null,
     interfaceMode: normalizeImageBackendApiInterfaceMode(input.interfaceMode),
+    chatCompletionsUpstreamMode: normalizeChatCompletionsUpstreamMode(
+      input.chatCompletionsUpstreamMode
+    ),
     useStream: input.useStream,
     contentSafetyEnabled: input.contentSafetyEnabled,
     isEnabled: input.isEnabled,
@@ -5248,6 +5259,7 @@ export async function listAdminImageBackendPool() {
       baseUrl: imageBackendApi.baseUrl,
       model: imageBackendApi.model,
       interfaceMode: imageBackendApi.interfaceMode,
+      chatCompletionsUpstreamMode: imageBackendApi.chatCompletionsUpstreamMode,
       useStream: imageBackendApi.useStream,
       contentSafetyEnabled: imageBackendApi.contentSafetyEnabled,
       isEnabled: imageBackendApi.isEnabled,

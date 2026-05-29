@@ -748,6 +748,9 @@ export const userApiConfig = pgTable("user_api_config", {
   apiKey: text("api_key").notNull(),
   model: text("model"),
   useStream: boolean("use_stream").notNull().default(false),
+  chatCompletionsUpstreamMode: text("chat_completions_upstream_mode")
+    .notNull()
+    .default("responses"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -843,6 +846,9 @@ export const imageBackendApi = pgTable("image_backend_api", {
   model: text("model"),
   interfaceMode: text("interface_mode").notNull().default("images"),
   useStream: boolean("use_stream").notNull().default(false),
+  chatCompletionsUpstreamMode: text("chat_completions_upstream_mode")
+    .notNull()
+    .default("responses"),
   contentSafetyEnabled: boolean("content_safety_enabled").notNull().default(true),
   isEnabled: boolean("is_enabled").notNull().default(true),
   priority: integer("priority").notNull().default(50),

@@ -3330,7 +3330,12 @@ export async function getUserApiConfig(
   if (normalizedModel) result.model = normalizedModel;
   if (row.useStream) result.useStream = true;
   result.contentSafetyEnabled = true;
-  result.backend = { type: "user-api" };
+  result.backend = {
+    type: "user-api",
+    chatCompletionsUpstreamMode: row.chatCompletionsUpstreamMode as
+      | "responses"
+      | "chat_completions",
+  };
   return result;
 }
 
@@ -3688,7 +3693,7 @@ export async function generateChatImage(
     return generateImageWithChatGptWeb(config, webParams);
   }
   if (
-    params.chatCompletionsUpstreamMode === "chat_completions" &&
+    config.backend?.chatCompletionsUpstreamMode === "chat_completions" &&
     !params.agentMode &&
     !params.rawResponsesBody
   ) {
