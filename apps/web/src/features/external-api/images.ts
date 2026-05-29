@@ -30,8 +30,9 @@ export type ExternalApiErrorOptions = {
   creditsConsumed?: number;
 };
 
-const DEFAULT_JSON_KEEP_ALIVE_INITIAL_WAIT_MS = 75_000;
-const DEFAULT_JSON_KEEP_ALIVE_INTERVAL_MS = 15_000;
+const DEFAULT_JSON_KEEP_ALIVE_INITIAL_WAIT_MS = 2_000;
+const DEFAULT_JSON_KEEP_ALIVE_INTERVAL_MS = 10_000;
+const JSON_KEEP_ALIVE_PADDING = `${" ".repeat(2048)}\n`;
 
 function getRequestBaseUrl(request: Request) {
   return (
@@ -477,9 +478,9 @@ export async function createJsonKeepAliveResponse(
           }
         };
 
-        write(" ");
+        write(JSON_KEEP_ALIVE_PADDING);
         keepAlive = setInterval(() => {
-          write(" ");
+          write(JSON_KEEP_ALIVE_PADDING);
         }, keepAliveMs);
 
         try {
@@ -509,7 +510,10 @@ export async function createJsonKeepAliveResponse(
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store, no-transform",
+        "CDN-Cache-Control": "no-store",
+        "Cloudflare-CDN-Cache-Control": "no-store",
         "X-Accel-Buffering": "no",
+        Connection: "keep-alive",
       },
     }
   );

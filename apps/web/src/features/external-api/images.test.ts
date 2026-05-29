@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createExternalImageStreamResponse,
+  createJsonKeepAliveResponse,
   toExternalGenerationUsage,
   toOpenAIErrorPayload,
 } from "./images";
@@ -34,6 +35,26 @@ describe("external image stream response", () => {
     const firstChunk = await readFirstChunk(response);
 
     expect(firstChunk).toContain(": open");
+    expect(firstChunk.length).toBeGreaterThan(1024);
+  });
+});
+
+describe("external JSON keep-alive response", () => {
+  it("sends an initial padded whitespace chunk before slow JSON data", async () => {
+    const response = await createJsonKeepAliveResponse(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve({ ok: true }), 50);
+        }),
+      { initialWaitMs: 0, keepAliveMs: 1_000 }
+    );
+
+    const firstChunk = await readFirstChunk(response);
+
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("cache-control")).toContain("no-transform");
+    expect(response.headers.get("x-accel-buffering")).toBe("no");
+    expect(firstChunk.trim()).toBe("");
     expect(firstChunk.length).toBeGreaterThan(1024);
   });
 });
