@@ -155,6 +155,12 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 生产部署按模块拆开：Web 应用负责页面、API 和默认内置定时任务，Go sidecar 负责 ChatGPT Web 账号。Sub2API、支付和对象存储按业务需要启用。
 
+### 推荐部署方式
+
+新部署优先使用 Docker Compose。Compose 会同时拉起 Web、PostgreSQL、数据库迁移任务和 Go sidecar，适合大多数单机生产场景。
+
+源码部署适合已经有自己的 PostgreSQL、进程管理、Nginx、对象存储和发布流程的环境。源码部署需要自行守护 Web 进程和 Go sidecar。
+
 ### Docker Compose
 
 Release 镜像发布在 GHCR（GitHub Container Registry）。GHCR 是 GitHub 自带的 Docker 镜像仓库，不需要单独使用 DockerHub。
@@ -167,6 +173,22 @@ docker compose up -d
 
 默认 compose 会启动 PostgreSQL、Web 应用、数据库迁移任务和 ChatGPT Web sidecar。首次启动默认自用模式，超管密码会写入 `app-bootstrap` volume 内的 `super-admin-credentials.txt`，也可通过日志查看。
 
+启动后查看状态：
+
+```bash
+docker compose ps
+docker compose logs -f web
+```
+
+升级到新版本：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+如果只修改 `.env` 里的运行时配置，不需要重新构建镜像，执行 `docker compose up -d` 让容器重新创建即可。
+
 如果需要从源码本地构建镜像：
 
 ```bash
@@ -177,6 +199,11 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ### 1. Web 应用
 
 ```bash
+git clone https://github.com/MeowFree/GPT2Image-Pro.git
+cd GPT2Image-Pro
+cp .env.example .env.local
+mkdir -p apps/web
+cp .env.local apps/web/.env.local
 pnpm install --frozen-lockfile
 pnpm db:push
 pnpm build:web
@@ -193,6 +220,18 @@ NEXT_PUBLIC_APP_URL=https://your-domain.example
 ```
 
 普通 `next start` / standalone 部署不需要配置 `NEXT_PUBLIC_ASSET_PREFIX`，也不需要手工处理静态资源；Next 会从应用自身目录提供 `_next/static`。
+
+源码部署更新：
+
+```bash
+git pull
+pnpm install --frozen-lockfile
+pnpm db:push
+pnpm build:web
+pm2 restart gpt2image-web
+```
+
+如果不用 PM2，请把最后一行替换成自己的 systemd、Docker 或进程管理命令。
 
 ### 2. Go Sidecar
 
