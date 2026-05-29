@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { db, registrationIdentity, user } from "@repo/database";
 import { eq, sql } from "drizzle-orm";
-import { normalizeEmail } from "./email-domain";
+import { canonicalizeEmailForIdentity } from "./email-domain";
 
 export async function isRegistrationEmailTaken(email: string) {
-  const normalizedEmail = normalizeEmail(email);
+  const normalizedEmail = canonicalizeEmailForIdentity(email);
 
   if (!normalizedEmail) {
     return false;
@@ -33,7 +33,7 @@ export async function recordRegistrationIdentity(
   email: string,
   userId?: string | null
 ) {
-  const normalizedEmail = normalizeEmail(email);
+  const normalizedEmail = canonicalizeEmailForIdentity(email);
   const now = new Date();
 
   if (!normalizedEmail) {
@@ -65,7 +65,7 @@ export async function markRegistrationIdentityDeleted(
   email: string,
   userId?: string | null
 ) {
-  const normalizedEmail = normalizeEmail(email);
+  const normalizedEmail = canonicalizeEmailForIdentity(email);
   const now = new Date();
 
   if (!normalizedEmail) {

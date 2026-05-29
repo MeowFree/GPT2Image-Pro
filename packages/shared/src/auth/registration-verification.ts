@@ -14,6 +14,7 @@ import { isSelfUseModeEnabled } from "./self-use-mode";
 const PURPOSE = "registration-email-code";
 const CODE_LENGTH = 6;
 const EXPIRES_IN_MINUTES = 10;
+const MAX_VERIFY_ATTEMPTS = 5;
 
 function getIdentifier(email: string) {
   return `${PURPOSE}:${normalizeEmail(email)}`;
@@ -21,6 +22,22 @@ function getIdentifier(email: string) {
 
 function generateCode() {
   return Array.from({ length: CODE_LENGTH }, () => randomInt(0, 10)).join("");
+}
+
+// value 字段编码为 `code|attempts`，用于在不新增列的前提下记录错误尝试次数。
+// 仅本模块（PURPOSE 前缀的 identifier）使用该编码。
+function encodeCodeValue(code: string, attempts: number) {
+  return `${code}|${attempts}`;
+}
+
+function decodeCodeValue(value: string): { code: string; attempts: number } {
+  const separatorIndex = value.lastIndexOf("|");
+  if (separatorIndex < 0) {
+    return { code: value, attempts: 0 };
+  }
+  const code = value.slice(0, separatorIndex);
+  const attempts = Number(value.slice(separatorIndex + 1));
+  return { code, attempts: Number.isFinite(attempts) ? attempts : 0 };
 }
 
 export async function sendRegistrationVerificationCode(email: string) {
@@ -50,7 +67,7 @@ export async function sendRegistrationVerificationCode(email: string) {
   await db.insert(verification).values({
     id: randomUUID(),
     identifier,
-    value: code,
+    value: encodeCodeValue(code, 0),
     expiresAt,
   });
 
@@ -97,11 +114,31 @@ export async function verifyRegistrationCode(email: string, code: string) {
     return false;
   }
 
-  const valid = record.value === normalizedCode;
+  const { code: storedCode, attempts } = decodeCodeValue(record.value);
+
+  // 超过最大错误次数：作废验证码，阻断暴力破解（6 位码空间仅 10^6）。
+  if (attempts >= MAX_VERIFY_ATTEMPTS) {
+    await db.delete(verification).where(eq(verification.id, record.id));
+    return false;
+  }
+
+  const valid = storedCode === normalizedCode;
 
   if (valid) {
     await db.delete(verification).where(eq(verification.id, record.id));
+    return true;
   }
 
-  return valid;
+  // 记录一次失败尝试；达到上限即作废。
+  const nextAttempts = attempts + 1;
+  if (nextAttempts >= MAX_VERIFY_ATTEMPTS) {
+    await db.delete(verification).where(eq(verification.id, record.id));
+  } else {
+    await db
+      .update(verification)
+      .set({ value: encodeCodeValue(storedCode, nextAttempts) })
+      .where(eq(verification.id, record.id));
+  }
+
+  return false;
 }

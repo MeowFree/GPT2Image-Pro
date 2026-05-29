@@ -179,14 +179,71 @@ export interface RateLimitResult {
  * }
  * ```
  */
+// ============================================
+// 内存兜底限流（未配置 Upstash 时，对敏感类型生效）
+// ============================================
+
+interface MemoryRateBucket {
+  count: number;
+  reset: number;
+}
+
+const memoryBuckets = new Map<string, MemoryRateBucket>();
+const MEMORY_WINDOW_MS = 60_000;
+
+/**
+ * 单实例内存限流。仅用于未配置 Upstash 时的 auth/strict 兜底，
+ * 避免认证 / 验证码 / 注册等敏感端点完全 fail-open 被暴力破解或刷量。
+ * 多实例部署下不跨实例共享——生产应配置 Upstash 获得分布式限流。
+ */
+function checkMemoryRateLimit(
+  identifier: string,
+  type: RateLimitType
+): RateLimitResult {
+  const config = RateLimitConfig[type];
+  const now = Date.now();
+  const key = `${type}:${identifier}`;
+  const bucket = memoryBuckets.get(key);
+
+  if (!bucket || bucket.reset <= now) {
+    if (memoryBuckets.size > 10000) {
+      for (const [k, v] of memoryBuckets) {
+        if (v.reset <= now) memoryBuckets.delete(k);
+      }
+    }
+    memoryBuckets.set(key, { count: 1, reset: now + MEMORY_WINDOW_MS });
+    return {
+      success: true,
+      remaining: config.requests - 1,
+      reset: now + MEMORY_WINDOW_MS,
+      limit: config.requests,
+      skipped: false,
+    };
+  }
+
+  bucket.count += 1;
+  return {
+    success: bucket.count <= config.requests,
+    remaining: Math.max(0, config.requests - bucket.count),
+    reset: bucket.reset,
+    limit: config.requests,
+    skipped: false,
+  };
+}
+
 export async function checkRateLimit(
   identifier: string,
   type: RateLimitType = "global"
 ): Promise<RateLimitResult> {
   const limiter = getLimiter(type);
 
-  // 未配置时跳过限流
+  // 未配置 Upstash：
+  // - 认证 / 严格类型走内存兜底限流（不 fail-open）
+  // - 其它类型保持优雅降级（跳过）
   if (!limiter) {
+    if (type === "auth" || type === "strict") {
+      return checkMemoryRateLimit(identifier, type);
+    }
     return {
       success: true,
       remaining: -1,
@@ -215,10 +272,12 @@ export async function checkRateLimit(
  * 从 NextRequest 获取客户端 IP
  */
 export function getClientIp(request: NextRequest): string {
-  // 优先使用 Vercel 提供的真实 IP
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0]?.trim() ?? "unknown";
+  // 优先使用受信代理设置的单值头（较难伪造）。
+  // 注意：x-forwarded-for 最左字段由客户端可控，故放在最后兜底，
+  // 避免攻击者通过伪造 XFF 轮换 IP 绕过限流。
+  const cfIp = request.headers.get("cf-connecting-ip");
+  if (cfIp) {
+    return cfIp;
   }
 
   const realIp = request.headers.get("x-real-ip");
@@ -226,10 +285,9 @@ export function getClientIp(request: NextRequest): string {
     return realIp;
   }
 
-  // Cloudflare
-  const cfIp = request.headers.get("cf-connecting-ip");
-  if (cfIp) {
-    return cfIp;
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    return forwardedFor.split(",")[0]?.trim() ?? "unknown";
   }
 
   return "unknown";
