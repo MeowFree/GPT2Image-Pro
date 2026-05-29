@@ -633,7 +633,7 @@
     },
     "backend": {
       "title": "生图后端",
-      "description": "选择网页端默认使用的系统后端账号池分组。外接 API Key 也可以在 API Key 列表里单独指定分组。"
+      "description": "选择网页端创作默认使用的系统后端账号池分组。该设置不影响外接 API；外接 API Key 请在 API Key 列表里单独指定分组，未指定时使用平台默认分组。"
     },
     "advanced": {
       "title": "高级设置",
@@ -700,7 +700,7 @@
       },
       "backendGroup": {
         "label": "后端分组",
-        "default": "默认分组"
+        "default": "平台默认分组"
       },
       "success": {
         "created": "API Key 已创建",

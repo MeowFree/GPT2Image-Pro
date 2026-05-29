@@ -81,8 +81,8 @@ const sections = {
       ],
       groups: [
         "外部 API Key 绑定分组优先",
-        "其次使用用户在设置里选择的生图后端分组",
-        "没有显式选择时使用默认启用分组",
+        "外部 API Key 未绑定分组时使用平台默认分组",
+        "网页端创作才使用用户在设置里选择的生图后端分组",
         "分组会检查套餐权限、是否启用、内容安全开关",
       ],
       backends: [
@@ -1762,8 +1762,8 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       ],
       groups: [
         "External API key bound group first",
-        "Then the user's selected image backend group",
-        "Then the enabled default group",
+        "Unbound external API keys use the platform default group",
+        "Page creation is the only path that uses the user's selected image backend group",
         "Group checks plan access, enabled state, and content safety setting",
       ],
       backends: [

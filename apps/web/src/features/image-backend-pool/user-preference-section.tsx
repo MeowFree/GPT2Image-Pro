@@ -95,7 +95,7 @@ export function ImageBackendPreferenceSection() {
         <div>
           <h4 className="text-sm font-medium">生图后端分组</h4>
           <p className="text-xs text-muted-foreground">
-            选择网页端和外接 API 默认使用的后端池。自接 API 仍按当前兼容策略优先使用。
+            只影响网页端创作；外接 API Key 在 API Key 列表中单独选择分组，Key 未绑定时使用平台默认分组。
           </p>
         </div>
         <Button
@@ -119,13 +119,13 @@ export function ImageBackendPreferenceSection() {
           <Label htmlFor="image-backend-group">分组</Label>
           <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
             <SelectTrigger id="image-backend-group">
-              <SelectValue placeholder="默认分组" />
+              <SelectValue placeholder="网页端默认分组" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="default">
                 {defaultGroup
-                  ? `默认分组 · ${groupOptionLabel(defaultGroup)}`
-                  : "默认分组"}
+                  ? `网页端默认分组 · ${groupOptionLabel(defaultGroup)}`
+                  : "网页端默认分组"}
               </SelectItem>
               {groups.map((group) => (
                 <SelectItem key={group.id} value={group.id}>

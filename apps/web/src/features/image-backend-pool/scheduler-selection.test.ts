@@ -348,4 +348,53 @@ describe("image backend pool scheduler selection", () => {
     expect(result?.groupId).toBe("default-group");
     expect(result?.config.backend?.billingGroupId).toBe("default-group");
   });
+
+  it("ignores stale user preferences that point to non-selectable groups", async () => {
+    dbMock.state.groups = [
+      {
+        id: "default-group",
+        name: "Default",
+        description: null,
+        isEnabled: true,
+        isDefault: true,
+        isUserSelectable: true,
+        contentSafetyEnabled: null,
+        priority: 1,
+        metadata: { backendType: "responses" },
+        createdAt: new Date(2026, 0, 1),
+        updatedAt: new Date(2026, 0, 1),
+      },
+      {
+        id: "api-group",
+        name: "API",
+        description: null,
+        isEnabled: true,
+        isDefault: false,
+        isUserSelectable: false,
+        contentSafetyEnabled: true,
+        priority: 10,
+        metadata: { backendType: "mixed" },
+        createdAt: new Date(2026, 0, 2),
+        updatedAt: new Date(2026, 0, 2),
+      },
+    ];
+    dbMock.state.userPreferences = [
+      { userId: "user-a", groupId: "api-group" },
+    ];
+    dbMock.state.accounts = [
+      {
+        ...makeAccount(1),
+        matchedGroupId: "default-group",
+        groupId: "default-group",
+      },
+    ];
+
+    const result = await resolveImageBackendPoolConfig({
+      userId: "user-a",
+      requestKind: "image_generation",
+    });
+
+    expect(result?.groupId).toBe("default-group");
+    expect(result?.config.backend?.billingGroupId).toBe("default-group");
+  });
 });

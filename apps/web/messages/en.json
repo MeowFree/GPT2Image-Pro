@@ -633,7 +633,7 @@
     },
     "backend": {
       "title": "Image backend",
-      "description": "Choose the default system backend account-pool group for web generation. External API keys can set their own group in the API key list."
+      "description": "Choose the default system backend account-pool group for web generation. This does not affect external API calls; external API keys choose their own group in the API key list, and unbound keys use the platform default group."
     },
     "advanced": {
       "title": "Advanced Settings",
@@ -700,7 +700,7 @@
       },
       "backendGroup": {
         "label": "Backend group",
-        "default": "Default group"
+        "default": "Platform default group"
       },
       "success": {
         "created": "API key created",
