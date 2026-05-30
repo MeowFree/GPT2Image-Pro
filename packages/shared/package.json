@@ -89,7 +89,7 @@
     "@upstash/redis": "^1.36.1",
     "better-auth": "^1.4.17",
     "drizzle-orm": "^0.45.1",
-    "lucide-react": "^0.562.0",
+    "lucide-react": "^1.17.0",
     "nanoid": "^5.1.6",
     "next-intl": "^4.7.0",
     "next-safe-action": "^8.0.11",
