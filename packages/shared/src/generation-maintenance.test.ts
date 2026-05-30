@@ -130,3 +130,49 @@ describe("generation photo retention helpers", () => {
     });
   });
 });
+
+describe("computeTimeoutRefund", () => {
+  it("refunds the whole charge when target keeps nothing", async () => {
+    const { computeTimeoutRefund } = await loadHelpers();
+    expect(computeTimeoutRefund({ chargedCredits: 10, targetCredits: 0 })).toBe(
+      10
+    );
+  });
+
+  it("refunds only the difference above the target", async () => {
+    const { computeTimeoutRefund } = await loadHelpers();
+    expect(computeTimeoutRefund({ chargedCredits: 10, targetCredits: 4 })).toBe(
+      6
+    );
+  });
+
+  it("never refunds a negative amount when target exceeds the charge", async () => {
+    const { computeTimeoutRefund } = await loadHelpers();
+    expect(computeTimeoutRefund({ chargedCredits: 4, targetCredits: 10 })).toBe(
+      0
+    );
+  });
+});
+
+describe("resolvePhotoRetentionWindow", () => {
+  it("disables destruction when retention hours are non-positive", async () => {
+    const { resolvePhotoRetentionWindow } = await loadHelpers();
+    const now = new Date("2026-05-31T00:00:00.000Z");
+    expect(resolvePhotoRetentionWindow(0, now)).toEqual({
+      enabled: false,
+      cutoff: null,
+    });
+    expect(resolvePhotoRetentionWindow(-5, now)).toEqual({
+      enabled: false,
+      cutoff: null,
+    });
+  });
+
+  it("computes a cutoff offset by the retention hours", async () => {
+    const { resolvePhotoRetentionWindow } = await loadHelpers();
+    const now = new Date("2026-05-31T00:00:00.000Z");
+    const result = resolvePhotoRetentionWindow(24, now);
+    expect(result.enabled).toBe(true);
+    expect(result.cutoff?.toISOString()).toBe("2026-05-30T00:00:00.000Z");
+  });
+});

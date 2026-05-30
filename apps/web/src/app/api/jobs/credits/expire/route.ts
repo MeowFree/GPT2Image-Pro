@@ -3,25 +3,18 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { withApiLogging } from "@repo/shared/api-logger";
+import { logError, logWarn } from "@repo/shared/logger";
 
 import { runCreditsExpireJob } from "@/server/scheduled-jobs";
 
 /**
  * 积分过期处理 Cron Job API
  *
- * 定期调用此 API 来处理过期的积分批次
- * 需要通过 Bearer Token 进行身份验证
+ * 定期处理过期的积分批次，需通过 Bearer Token（CRON_SECRET）鉴权。
  *
- * 配置 Vercel Cron:
- * 在 vercel.json 中添加:
- * {
- *   "crons": [{
- *     "path": "/api/jobs/credits/expire",
- *     "schedule": "0 0 * * *"
- *   }]
- * }
- *
- * 或使用外部 Cron 服务调用
+ * 触发方式：生产以内置定时调度器为主（INTERNAL_JOB_SCHEDULER_ENABLED + PG
+ * advisory lock）；外部 cron 以携带 Bearer CRON_SECRET 调用 POST 作为回退。
+ * 部署为 Docker Compose + Nginx，不使用 Vercel Cron。
  */
 
 /**
@@ -32,7 +25,7 @@ function validateCronSecret(authHeader: string | null): boolean {
 
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
-    console.warn("CRON_SECRET environment variable is not set");
+    logWarn("CRON_SECRET environment variable is not set");
     return false;
   }
 
@@ -43,8 +36,16 @@ function validateCronSecret(authHeader: string | null): boolean {
 
   if (!token) return false;
 
-  const tokenHash = crypto.createHash("sha256").update(Buffer.from(token)).digest();
-  const secretHash = crypto.createHash("sha256").update(Buffer.from(cronSecret)).digest();
+  const tokenHash = crypto
+    .createHash("sha256")
+    .update(Buffer.from(token))
+    .digest();
+  const secretHash = crypto
+    .createHash("sha256")
+    .update(Buffer.from(cronSecret))
+    .digest();
+  // 长度不一致时 timingSafeEqual 会抛错，先行短路保持与其它 cron 路由一致
+  if (tokenHash.length !== secretHash.length) return false;
   return crypto.timingSafeEqual(tokenHash, secretHash);
 }
 
@@ -65,13 +66,13 @@ export const POST = withApiLogging(async () => {
   try {
     return NextResponse.json(await runCreditsExpireJob());
   } catch (error) {
-    console.error("Failed to process expired batches:", error);
+    // 仅记日志，不向调用方回显内部异常 message（可能含 DB/约束细节）
+    logError(error, { job: "credits-expire" });
 
     return NextResponse.json(
       {
         success: false,
         error: "Failed to process expired batches",
-        message: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
     );

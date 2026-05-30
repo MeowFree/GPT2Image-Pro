@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { isAuthCookieName, toCurrentSessionUser } from "./session-current-core";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,21 +25,9 @@ function withNoStore(response: NextResponse) {
 
 async function clearAuthCookies(response: NextResponse) {
   const cookieStore = await cookies();
-  const authCookieNames = new Set([
-    "better-auth.session_token",
-    "__Secure-better-auth.session_token",
-    "better-auth.session_data",
-    "__Secure-better-auth.session_data",
-    "better-auth.dont_remember",
-    "__Secure-better-auth.dont_remember",
-  ]);
 
   for (const cookie of cookieStore.getAll()) {
-    if (
-      authCookieNames.has(cookie.name) ||
-      cookie.name.startsWith("better-auth.session_data.") ||
-      cookie.name.startsWith("__Secure-better-auth.session_data.")
-    ) {
+    if (isAuthCookieName(cookie.name)) {
       response.cookies.set(cookie.name, "", {
         path: "/",
         maxAge: 0,
@@ -76,6 +65,8 @@ async function getCurrentSessionResponse() {
       email: user.email,
       image: user.image,
       role: user.role,
+      banned: user.banned,
+      bannedReason: user.bannedReason,
     })
     .from(user)
     .where(eq(user.id, session.user.id))
@@ -88,7 +79,7 @@ async function getCurrentSessionResponse() {
   return withNoStore(
     NextResponse.json({
       ...session,
-      user: currentUser,
+      user: toCurrentSessionUser(currentUser),
     })
   );
 }

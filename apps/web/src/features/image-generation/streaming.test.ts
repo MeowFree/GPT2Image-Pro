@@ -56,4 +56,38 @@ describe("image stream response", () => {
 
     expect(completed).toBe(true);
   });
+
+  it("settles the start finally cleanly when cancel races the close guard", async () => {
+    let releaseRun: (() => void) | undefined;
+    const runReleased = new Promise<void>((resolve) => {
+      releaseRun = resolve;
+    });
+    // Surface any throw escaping the start() finally (e.g. controller.close()
+    // racing cancel()) so the guarded close() actually keeps the run quiet.
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => {
+      rejections.push(reason);
+    };
+    process.on("unhandledRejection", onRejection);
+
+    try {
+      const response = createImageStreamResponse(async () => {
+        await runReleased;
+        return { type: "completed", generationId: "gen_race" };
+      });
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("missing response body");
+
+      // Cancel before the run resolves so start()'s finally runs on an already
+      // cancelled controller, exercising the close() fallback.
+      await reader.read();
+      await reader.cancel();
+      releaseRun?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(rejections).toHaveLength(0);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+  });
 });

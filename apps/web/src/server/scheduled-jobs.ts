@@ -9,20 +9,26 @@ import {
   refreshStaleWebBackendAccounts,
   runAutoSub2ApiAccessTokenSync,
 } from "@/features/image-backend-pool/service";
+import {
+  buildCreditsExpireResponse,
+  summarizeExpiredPendingGenerations,
+} from "@/server/scheduled-jobs-response";
+
+/**
+ * 单次图像维护 cron 扫描的最大处理行数。
+ * 同时作为超时 pending 过期与超期成品图销毁的批量上限，避免单次任务无界扫描。
+ */
+const IMAGE_MAINTENANCE_BATCH_LIMIT = 500;
 
 export async function runImageMaintenanceJob() {
   const [pendingResults, photoRetention] = await Promise.all([
-    expireStalePendingGenerations({ limit: 500 }),
-    destroyExpiredGenerationPhotos({ limit: 500 }),
+    expireStalePendingGenerations({ limit: IMAGE_MAINTENANCE_BATCH_LIMIT }),
+    destroyExpiredGenerationPhotos({ limit: IMAGE_MAINTENANCE_BATCH_LIMIT }),
   ]);
 
   return {
     success: true,
-    expired: pendingResults.length,
-    creditsRefunded: pendingResults.reduce(
-      (total, item) => total + item.creditsRefunded,
-      0
-    ),
+    ...summarizeExpiredPendingGenerations(pendingResults),
     details: pendingResults,
     photoRetention,
     timestamp: new Date().toISOString(),
@@ -33,13 +39,7 @@ export async function runCreditsExpireJob() {
   const results = await processExpiredBatches();
 
   return {
-    success: true,
-    processed: results.length,
-    details: results.map((result) => ({
-      batchId: result.batchId,
-      userId: result.userId,
-      expiredAmount: result.expiredAmount,
-    })),
+    ...buildCreditsExpireResponse(results),
     timestamp: new Date().toISOString(),
   };
 }

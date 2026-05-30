@@ -57,7 +57,9 @@ describe("failed generation settlement", () => {
     ).toBe(0.04);
   });
 
-  it("uses multiplied moderation-only settlement from generation metadata", () => {
+  it("applies the billing multiplier to moderationCredits when moderationOnlyCredits is absent", () => {
+    // 无 moderationOnlyCredits 时才会走 moderationCredits * multiplier 分支，
+    // 真正验证乘数（0.04 * 2 = 0.08），而非被 moderationOnlyCredits 短路。
     expect(
       getFailedGenerationTargetCreditsFromMetadata({
         reason: "generation_error",
@@ -66,11 +68,32 @@ describe("failed generation settlement", () => {
           billingMultiplier: 2,
           moderationFailureCredits: 3,
           creditCost: {
-            moderationOnlyCredits: 0.08,
+            moderationCredits: 0.04,
           },
         },
       })
     ).toBe(0.08);
+  });
+
+  it("keeps the full moderation failure charge for moderation_block, capped by chargedCredits", () => {
+    expect(
+      getFailedGenerationTargetCreditsFromMetadata({
+        reason: "moderation_block",
+        chargedCredits: 5,
+        metadata: { moderationFailureCredits: 1.31 },
+      })
+    ).toBe(1.31);
+  });
+
+  it("caps the moderation_block charge at chargedCredits", () => {
+    // moderationFailureCredits 高于实际已扣时，外层 Math.min 钳到 chargedCredits。
+    expect(
+      getFailedGenerationTargetCreditsFromMetadata({
+        reason: "moderation_block",
+        chargedCredits: 0.5,
+        metadata: { moderationFailureCredits: 1.31 },
+      })
+    ).toBe(0.5);
   });
 
   it("keeps old timeout rows compatible when metadata has no cost breakdown", () => {

@@ -104,8 +104,15 @@ export function createImageStreamResponse(
 ) {
   const encoder = new TextEncoder();
   const keepAliveMs = 5_000;
+  // Proxies (Nginx/Cloudflare) often hold back small SSE writes until their
+  // internal buffer fills. Padding each chunk with 2 KiB of whitespace pushes it
+  // past that threshold so events flush to the client immediately.
   const flushPadding = `: ${" ".repeat(2048)}\n\n`;
   let keepAlive: ReturnType<typeof setInterval> | undefined;
+  // Shared close invariant: `closed` is the single source of truth coordinating
+  // write/emit/finally/cancel. Once true, write() drops bytes, the finally block
+  // skips the redundant controller.close(), and cancel() stops further work. It
+  // is only ever flipped to true (never reset), so checks need no extra locking.
   let closed = false;
 
   return new Response(
@@ -149,7 +156,14 @@ export function createImageStreamResponse(
           await emit({ type: "done" });
           if (!closed) {
             closed = true;
-            controller.close();
+            // The controller may already be terminated (e.g. a cancel() that
+            // raced just past the `closed` check above), so guard close() to
+            // avoid an unhandled "Invalid state" throw escaping the finally.
+            try {
+              controller.close();
+            } catch {
+              // Stream already closed; nothing left to do.
+            }
           }
         }
       },

@@ -46,6 +46,40 @@ function getGenerationBucket(bucket?: string | null) {
   );
 }
 
+/**
+ * 计算超时退款金额（纯函数，DB-free）。
+ *
+ * 退款 = max(0, 已扣 - 目标保留)。Math.max(0) 防止 target>charged 时退成负数（多退）。
+ * sourceRef 由调用方按 `${genId}:timeout-refund` 拼接做幂等键，避免重复退款。
+ */
+export function computeTimeoutRefund(params: {
+  chargedCredits: number;
+  targetCredits: number;
+}) {
+  const chargedCredits = Math.max(0, params.chargedCredits);
+  const targetCredits = Math.max(0, params.targetCredits);
+  return Math.max(0, chargedCredits - targetCredits);
+}
+
+/**
+ * 解析照片保留窗口（纯函数，DB-free）。
+ *
+ * retentionHours<=0（默认 0=永久保留）短路返回 {enabled:false, cutoff:null}，
+ * 是阻止全站已完成图片被批量删除的唯一防线；否则 cutoff=now-retentionHours 小时。
+ */
+export function resolvePhotoRetentionWindow(
+  retentionHours: number,
+  now: Date
+): { enabled: boolean; cutoff: Date | null } {
+  if (retentionHours <= 0) {
+    return { enabled: false, cutoff: null };
+  }
+  return {
+    enabled: true,
+    cutoff: new Date(now.getTime() - retentionHours * 60 * 60 * 1000),
+  };
+}
+
 export function collectGenerationImageStorageReferences(params: {
   storageKey?: string | null;
   storageBucket?: string | null;
@@ -248,7 +282,10 @@ export async function expireStalePendingGenerations(
       chargedCredits,
       metadata: row.metadata,
     });
-    const creditsToRefund = Math.max(0, chargedCredits - targetCredits);
+    const creditsToRefund = computeTimeoutRefund({
+      chargedCredits,
+      targetCredits,
+    });
     const sourceRef = `${row.id}:timeout-refund`;
 
     const [updated] = await db
@@ -350,7 +387,8 @@ export async function destroyExpiredGenerationPhotos(
       { nonNegative: true }
     ));
 
-  if (retentionHours <= 0) {
+  const window = resolvePhotoRetentionWindow(retentionHours, now);
+  if (!window.enabled || !window.cutoff) {
     return {
       enabled: false,
       retentionHours,
@@ -366,7 +404,7 @@ export async function destroyExpiredGenerationPhotos(
     };
   }
 
-  const cutoff = new Date(now.getTime() - retentionHours * 60 * 60 * 1000);
+  const cutoff = window.cutoff;
   const rows = await db
     .select({
       id: generation.id,
