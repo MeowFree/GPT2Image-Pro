@@ -12,11 +12,12 @@ import { fetchPublicImage } from "@/features/external-api/safe-image-fetch";
 import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
+  getExternalFinalImageOutputs,
   getImageBase64,
   getPublicImageUrl,
   openAIImageError,
   toExternalGenerationUsage,
-  toOpenAIErrorPayload,
+  toLoggedOpenAIErrorPayload,
   wantsImageStreamResponse,
 } from "@/features/external-api/images";
 import { runBatchImageGeneration } from "@/features/image-generation/batch-runner";
@@ -28,6 +29,7 @@ import {
 import {
   DEFAULT_IMAGE_SIZE,
   getImageModel,
+  isImageModel,
   validateImageSize,
 } from "@/features/image-generation/resolution";
 import type {
@@ -221,17 +223,7 @@ async function toChatCompletionImages(params: {
   result: ChatCompletionResult;
   responseFormat: "url" | "b64_json";
 }) {
-  const outputs = params.result.imageOutputs?.length
-    ? params.result.imageOutputs
-    : params.result.imageUrl
-      ? [
-          {
-            imageUrl: params.result.imageUrl,
-            revisedPrompt: params.result.revisedPrompt,
-            generationId: params.result.generationId,
-          },
-        ]
-      : [];
+  const outputs = getExternalFinalImageOutputs(params.result);
 
   const images: ChatCompletionImageData[] = [];
   for (const [index, output] of outputs.entries()) {
@@ -416,8 +408,11 @@ export const postExternalChatCompletions = withApiLogging(
       );
     }
 
+    const topLevelModel = parsed.data.model?.trim();
+    const topLevelModelIsImage = isImageModel(topLevelModel);
+    const explicitImageModel = parsed.data.imageModel || parsed.data.image_model;
     const imageModel = getImageModel(
-      parsed.data.imageModel || parsed.data.image_model
+      explicitImageModel || (topLevelModelIsImage ? topLevelModel : undefined)
     );
     if ((parsed.data.imageModel || parsed.data.image_model) && !imageModel) {
       return openAIImageError(
@@ -445,7 +440,7 @@ export const postExternalChatCompletions = withApiLogging(
       images,
       moderationBlockRiskLevel: auth.moderationBlockRiskLevel,
       size: parsed.data.size || DEFAULT_IMAGE_SIZE,
-      model: parsed.data.model,
+      model: topLevelModelIsImage ? undefined : parsed.data.model,
       imageModel: imageModel || undefined,
       quality: parsed.data.quality as ImageQuality | undefined,
       moderation: (parsed.data.moderation || "auto") as ImageModeration,
@@ -462,7 +457,9 @@ export const postExternalChatCompletions = withApiLogging(
       // controlled by the selected backend config so external/user APIs can run
       // in either streamed or non-streamed mode.
       stream: undefined,
-      rawChatCompletionsBody: parsed.data,
+      rawChatCompletionsBody: topLevelModelIsImage
+        ? { ...parsed.data, model: undefined }
+        : parsed.data,
       mixWebFirst: parsed.data.mixWebFirst ?? parsed.data.mix_web_first,
       requiresResponsesBackend:
         parsed.data.requiresResponsesBackend ??
@@ -500,15 +497,25 @@ export const postExternalChatCompletions = withApiLogging(
           }),
           onResult: async (result, index) => {
             if (result.error) {
+              const errorPayload = toLoggedOpenAIErrorPayload(
+                result.error,
+                {
+                  route: "/v1/chat/completions",
+                  stream: true,
+                  model: parsed.data.model,
+                  imageModel,
+                },
+                {
+                  generationId: result.generationId,
+                  creditsConsumed: result.creditsConsumed,
+                }
+              );
               await emit({
                 event: "error",
                 data: {
                   type: "upstream_error",
                   message: result.error,
-                  error: toOpenAIErrorPayload(result.error, {
-                    generationId: result.generationId,
-                    creditsConsumed: result.creditsConsumed,
-                  }).error,
+                  error: errorPayload.error,
                   generation_id: result.generationId,
                   generationId: result.generationId,
                   credits_consumed: result.creditsConsumed,
@@ -566,10 +573,20 @@ export const postExternalChatCompletions = withApiLogging(
       const choices = [];
       for (const [index, result] of results.entries()) {
         if (result.error) {
-          return toOpenAIErrorPayload(result.error, {
-            generationId: result.generationId,
-            creditsConsumed: result.creditsConsumed,
-          });
+          return toLoggedOpenAIErrorPayload(
+            result.error,
+            {
+              route: "/v1/chat/completions",
+              stream: false,
+              choiceIndex: index,
+              model: parsed.data.model,
+              imageModel,
+            },
+            {
+              generationId: result.generationId,
+              creditsConsumed: result.creditsConsumed,
+            }
+          );
         }
         const resultImages = await toChatCompletionImages({
           request,

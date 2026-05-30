@@ -19,11 +19,14 @@ import { authenticateExternalApiRequest } from "@/features/external-api/auth";
 import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
+  getExternalFinalImageOutputs,
   getImageBase64,
   getPublicImageUrl,
+  IMAGE_JSON_KEEP_ALIVE_INITIAL_WAIT_MS,
   openAIImageError,
   toOpenAIErrorPayload,
   toOpenAIImagesResponse,
+  toLoggedOpenAIErrorPayload,
   wantsImageStreamResponse,
 } from "@/features/external-api/images";
 import { runBatchImageGeneration } from "@/features/image-generation/batch-runner";
@@ -75,25 +78,18 @@ async function toStreamCompletedPayload(
   responseFormat: "url" | "b64_json",
   index: number
 ) {
-  const outputs = result.imageOutputs?.length
-    ? result.imageOutputs
-    : [
-        {
-          imageUrl: result.imageUrl,
-          imageBase64: result.imageBase64,
-          revisedPrompt: result.revisedPrompt,
-        },
-      ];
+  const outputs = getExternalFinalImageOutputs(result);
   const images = [];
   for (const output of outputs) {
     const image =
       responseFormat === "b64_json"
         ? {
             b64_json:
-              output.imageBase64 ??
+              output.imageBase64 ||
               (await getImageBase64(request, output.imageUrl)),
           }
         : {
+            // 纯中转若上游仅给 base64（无 URL），退化为 data: URI 以保证可用。
             url:
               getPublicImageUrl(request, output.imageUrl) ??
               (output.imageBase64
@@ -268,15 +264,26 @@ export const postExternalImageGenerations = withApiLogging(
           }),
           onResult: async (result, index) => {
             if (result.error) {
+              const errorPayload = toLoggedOpenAIErrorPayload(
+                result.error,
+                {
+                  route: "/v1/images/generations",
+                  stream: true,
+                  index,
+                  model: imageModel,
+                  size: input.size,
+                },
+                {
+                  generationId: result.generationId,
+                  creditsConsumed: result.creditsConsumed,
+                }
+              );
               await emit({
                 event: "error",
                 data: {
                   type: "upstream_error",
                   message: result.error,
-                  error: toOpenAIErrorPayload(result.error, {
-                    generationId: result.generationId,
-                    creditsConsumed: result.creditsConsumed,
-                  }).error,
+                  error: errorPayload.error,
                   generation_id: result.generationId,
                   generationId: result.generationId,
                   credits_consumed: result.creditsConsumed,
@@ -321,7 +328,13 @@ export const postExternalImageGenerations = withApiLogging(
           request,
           results,
           responseFormat,
-          created
+          created,
+          {
+            route: "/v1/images/generations",
+            async: true,
+            model: imageModel,
+            size: input.size,
+          }
         );
         const completedTask = completeAsyncImageTask(task.id, {
           error:
@@ -352,20 +365,29 @@ export const postExternalImageGenerations = withApiLogging(
       return Response.json(toAsyncImageTaskResponse(task));
     }
 
-    return createJsonKeepAliveResponse(async () => {
-      const created = Math.floor(Date.now() / 1000);
+    return createJsonKeepAliveResponse(
+      async () => {
+        const created = Math.floor(Date.now() / 1000);
 
-      const results = await runBatchImageGeneration({
-        count,
-        concurrency: limits.imageGenerationConcurrency,
-        run: () => runImageGenerationForUser(input),
-      });
-      return await toOpenAIImagesResponse(
-        request,
-        results,
-        responseFormat,
-        created
-      );
-    });
+        const results = await runBatchImageGeneration({
+          count,
+          concurrency: limits.imageGenerationConcurrency,
+          run: () => runImageGenerationForUser(input),
+        });
+        return await toOpenAIImagesResponse(
+          request,
+          results,
+          responseFormat,
+          created,
+          {
+            route: "/v1/images/generations",
+            stream: false,
+            model: imageModel,
+            size: input.size,
+          }
+        );
+      },
+      { initialWaitMs: IMAGE_JSON_KEEP_ALIVE_INITIAL_WAIT_MS }
+    );
   }
 );

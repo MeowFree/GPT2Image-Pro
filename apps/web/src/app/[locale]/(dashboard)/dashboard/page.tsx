@@ -76,7 +76,7 @@ export default async function DashboardPage() {
     await Promise.all([
       getPlanCapabilitySnapshot(userPlanInfo.plan),
       listImageBackendGroupOptions({ plan: userPlanInfo.plan }),
-      getUserImageBackendPreference(userId),
+      getUserImageBackendPreference(userId, userPlanInfo.plan),
     ]);
   const activeBackendGroup =
     backendGroups.find((group) => group.id === selectedBackendGroupId) ||

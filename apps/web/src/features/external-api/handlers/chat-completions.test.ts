@@ -88,6 +88,29 @@ describe("external chat completions handler streaming bridge", () => {
     expect(callbacks).toBeUndefined();
   });
 
+  it("treats a top-level gpt-image model as the image model", async () => {
+    const { postExternalChatCompletions } = await import("./chat-completions");
+
+    const response = await postExternalChatCompletions(
+      chatCompletionsRequest({
+        model: "gpt-image-2",
+        messages: [{ role: "user", content: "draw a poster" }],
+      }) as never
+    );
+    await response.json();
+
+    const [input] = mocks.runImageGenerationForUser.mock.calls[0]!;
+    expect(input).toEqual(
+      expect.objectContaining({
+        model: undefined,
+        imageModel: "gpt-image-2",
+      })
+    );
+    expect(input.rawChatCompletionsBody).toEqual(
+      expect.objectContaining({ model: undefined })
+    );
+  });
+
   it("does not force upstream streaming for downstream stream callers", async () => {
     const { postExternalChatCompletions } = await import("./chat-completions");
 

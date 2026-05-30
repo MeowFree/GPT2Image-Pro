@@ -1,4 +1,6 @@
+import { logWarn } from "@repo/shared/logger";
 import type { ImageGenerationOperationResult } from "@/features/image-generation/operations";
+import type { GeneratedImageOutput } from "@/features/image-generation/types";
 
 type OpenAIImageData = {
   url?: string;
@@ -22,6 +24,16 @@ type JsonKeepAliveOptions = {
   status?: number;
 };
 
+type StorageImageReference = {
+  bucket: string;
+  key: string;
+};
+
+export type ExternalFinalImageOutput = Pick<
+  GeneratedImageOutput,
+  "imageUrl" | "imageBase64" | "revisedPrompt" | "generationId" | "outputRole"
+>;
+
 export type ExternalApiErrorOptions = {
   type?: string;
   code?: string | null;
@@ -30,8 +42,11 @@ export type ExternalApiErrorOptions = {
   creditsConsumed?: number;
 };
 
-const DEFAULT_JSON_KEEP_ALIVE_INITIAL_WAIT_MS = 75_000;
-const DEFAULT_JSON_KEEP_ALIVE_INTERVAL_MS = 15_000;
+const DEFAULT_JSON_KEEP_ALIVE_INITIAL_WAIT_MS = 2_000;
+const DEFAULT_JSON_KEEP_ALIVE_INTERVAL_MS = 10_000;
+const JSON_KEEP_ALIVE_PADDING = `${" ".repeat(2048)}\n`;
+
+export const IMAGE_JSON_KEEP_ALIVE_INITIAL_WAIT_MS = 80_000;
 
 function getRequestBaseUrl(request: Request) {
   return (
@@ -39,6 +54,44 @@ function getRequestBaseUrl(request: Request) {
     process.env.BETTER_AUTH_URL ||
     new URL(request.url).origin
   );
+}
+
+function parseLocalStorageImageUrl(
+  request: Request,
+  imageUrl?: string
+): StorageImageReference | null {
+  if (!imageUrl) return null;
+
+  try {
+    const baseUrl = getRequestBaseUrl(request);
+    const parsed = new URL(imageUrl, baseUrl);
+    const isRelativeStorageUrl = imageUrl.startsWith("/api/storage/");
+    const isOwnStorageUrl =
+      parsed.origin === new URL(baseUrl).origin &&
+      parsed.pathname.startsWith("/api/storage/");
+
+    if (!(isRelativeStorageUrl || isOwnStorageUrl)) return null;
+
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const storageIndex = segments.indexOf("storage");
+    const bucket = segments[storageIndex + 1];
+    const keySegments = segments.slice(storageIndex + 2);
+    if (storageIndex < 0 || !bucket || keySegments.length === 0) return null;
+
+    const key = keySegments
+      .map((segment) => decodeURIComponent(segment))
+      .join("/");
+    if (!key || key.includes("..") || key.startsWith("/") || key.includes("\\")) {
+      return null;
+    }
+
+    return {
+      bucket: decodeURIComponent(bucket),
+      key,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function getPublicImageUrl(request: Request, imageUrl?: string) {
@@ -52,6 +105,21 @@ export function getPublicImageUrl(request: Request, imageUrl?: string) {
 
 export async function getImageBase64(request: Request, imageUrl?: string) {
   if (!imageUrl) return undefined;
+
+  // 本地存储直读快路：若 imageUrl 指向我方存储对象，直接读对象拿字节，
+  // 省去一次回环 HTTP（远端引入的优化）。
+  const storageReference = parseLocalStorageImageUrl(request, imageUrl);
+  if (storageReference) {
+    const { getStorageProvider } = await import(
+      "@repo/shared/storage/providers"
+    );
+    const storage = await getStorageProvider();
+    const data = await storage.getObject(
+      storageReference.key,
+      storageReference.bucket
+    );
+    return Buffer.from(data).toString("base64");
+  }
 
   const isAbsolute =
     imageUrl.startsWith("http://") || imageUrl.startsWith("https://");
@@ -73,9 +141,11 @@ export async function getImageBase64(request: Request, imageUrl?: string) {
   const authorization = firstParty
     ? request.headers.get("authorization")
     : null;
-  const response = await fetch(url, {
-    headers: authorization ? { Authorization: authorization } : undefined,
-  });
+  // 仅在需要转发授权时附带 headers；否则用单参 fetch(url)，
+  // 避免向上游第三方传出任何（哪怕是 undefined 的）请求头。
+  const response = authorization
+    ? await fetch(url, { headers: { Authorization: authorization } })
+    : await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to load generated image: ${response.status}`);
   }
@@ -85,7 +155,10 @@ export async function getImageBase64(request: Request, imageUrl?: string) {
 
 export async function toOpenAIImageData(
   request: Request,
-  result: ImageGenerationOperationResult,
+  result: Pick<
+    ImageGenerationOperationResult,
+    "imageUrl" | "revisedPrompt"
+  > & { imageBase64?: string },
   responseFormat: "url" | "b64_json"
 ): Promise<OpenAIImageData> {
   const data: OpenAIImageData = {};
@@ -93,7 +166,7 @@ export async function toOpenAIImageData(
   if (responseFormat === "b64_json") {
     // 纯中转：优先用内联 base64，避免回源我方存储 / 转发客户端凭证到上游。
     data.b64_json =
-      result.imageBase64 ?? (await getImageBase64(request, result.imageUrl));
+      result.imageBase64 || (await getImageBase64(request, result.imageUrl));
   } else {
     // url 模式：直返绝对 URL（上游或我方存储均兼容）。
     // 纯中转若上游仅给 base64（无 URL），退化为 data: URI 以保证可用。
@@ -111,38 +184,108 @@ export async function toOpenAIImageData(
   return data;
 }
 
+export function getExternalFinalImageOutputs(
+  result: Pick<
+    ImageGenerationOperationResult,
+    | "imageUrl"
+    | "imageOutputs"
+    | "revisedPrompt"
+    | "generationId"
+    | "responseText"
+    | "responseAgent"
+  >
+): ExternalFinalImageOutput[] {
+  const outputs = (result.imageOutputs || []).filter(
+    (output) => output.imageUrl || output.imageBase64
+  );
+  const choices = outputs.filter((output) => output.outputRole === "choice");
+  if (choices.length > 0) return choices;
+
+  const finals = outputs.filter((output) => output.outputRole === "final");
+  if (finals.length > 0) return finals;
+
+  const nonDrafts = outputs.filter(
+    (output) => output.outputRole !== "agent_draft"
+  );
+  if (nonDrafts.length > 0) {
+    const last = nonDrafts[nonDrafts.length - 1]!;
+    return [{ ...last, outputRole: last.outputRole || "final" }];
+  }
+
+  if (result.imageUrl) {
+    return [
+      {
+        imageUrl: result.imageUrl,
+        revisedPrompt: result.revisedPrompt,
+        generationId: result.generationId,
+        outputRole: "final",
+      },
+    ];
+  }
+
+  if (outputs.length > 0) {
+    const last = outputs[outputs.length - 1]!;
+    return [{ ...last, outputRole: "final" }];
+  }
+
+  return [];
+}
+
 export async function toOpenAIImagesResponse(
   request: Request,
   results: readonly ImageGenerationOperationResult[],
   responseFormat: "url" | "b64_json",
-  created = Math.floor(Date.now() / 1000)
+  created = Math.floor(Date.now() / 1000),
+  logContext?: Record<string, unknown>
 ) {
   const data = [];
 
-  for (const result of results) {
+  for (const [index, result] of results.entries()) {
     if (result.error) {
-      return toOpenAIErrorPayload(result.error, {
+      const options = {
         generationId: result.generationId,
         creditsConsumed: result.creditsConsumed,
-      });
-    }
-    if (result.imageOutputs?.length) {
-      for (const output of result.imageOutputs) {
-        data.push(
-          await toOpenAIImageData(
-            request,
-            {
-              ...result,
-              imageUrl: output.imageUrl,
-              imageBase64: output.imageBase64,
-              revisedPrompt: output.revisedPrompt || result.revisedPrompt,
-            },
-            responseFormat
-          )
+      };
+      if (logContext) {
+        return toLoggedOpenAIErrorPayload(
+          result.error,
+          { ...logContext, resultIndex: index },
+          options
         );
       }
-    } else {
-      data.push(await toOpenAIImageData(request, result, responseFormat));
+      return toOpenAIErrorPayload(result.error, options);
+    }
+    const outputs = getExternalFinalImageOutputs(result);
+    if (outputs.length === 0) {
+      const message =
+        result.responseText?.trim() ||
+        result.responseAgent?.trim() ||
+        "Image generation completed without an image output";
+      const options = {
+        generationId: result.generationId,
+        creditsConsumed: result.creditsConsumed,
+      };
+      if (logContext) {
+        return toLoggedOpenAIErrorPayload(
+          message,
+          { ...logContext, resultIndex: index },
+          options
+        );
+      }
+      return toOpenAIErrorPayload(message, options);
+    }
+    for (const output of outputs) {
+      data.push(
+        await toOpenAIImageData(
+          request,
+          {
+            imageBase64: output.imageBase64,
+            imageUrl: output.imageUrl,
+            revisedPrompt: output.revisedPrompt || result.revisedPrompt,
+          },
+          responseFormat
+        )
+      );
     }
   }
 
@@ -308,12 +451,51 @@ export function createExternalImageStreamResponse(
   );
 }
 
+function defaultErrorTypeForStatus(status: number) {
+  if (status === 401) return "authentication_error";
+  if (status === 403) return "permission_error";
+  if (status === 429) return "rate_limit_error";
+  if (status >= 400 && status < 500) return "invalid_request_error";
+  return "server_error";
+}
+
+function parseUpstreamHttpError(message: string) {
+  const match = /^Upstream\s+.+?\s+API returned HTTP\s+(\d+):\s*(.*)$/i.exec(
+    message
+  );
+  if (!match) return null;
+
+  const status = Number(match[1]);
+  if (!Number.isInteger(status) || status < 100 || status > 599) return null;
+
+  const parts = (match[2] || "")
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const code = parts[1] || (status === 429 ? "rate_limit_exceeded" : null);
+  const type = parts[2] || defaultErrorTypeForStatus(status);
+
+  return { type, code, status };
+}
+
 function classifyExternalApiError(message: string) {
+  const upstreamHttpError = parseUpstreamHttpError(message);
+  if (upstreamHttpError) return upstreamHttpError;
+
   const normalized = message.toLowerCase();
 
   if (
     normalized.includes("content failed moderation") ||
-    normalized.includes("content blocked")
+    normalized.includes("content blocked") ||
+    normalized.includes("content policy") ||
+    normalized.includes("safety system") ||
+    normalized.includes("flagged by the safety") ||
+    normalized.includes("未能通过安全") ||
+    normalized.includes("安全系统") ||
+    normalized.includes("露骨") ||
+    normalized.includes("成人性") ||
+    normalized.includes("不能帮助") ||
+    normalized.includes("不能协助")
   ) {
     return {
       type: "invalid_request_error",
@@ -333,6 +515,21 @@ function classifyExternalApiError(message: string) {
       type: "upstream_error",
       code: "content_moderation_failed",
       status: 502,
+    };
+  }
+
+  if (
+    normalized.includes("unsupported model") ||
+    normalized.includes("unsupported chat model") ||
+    normalized.includes("unsupported gpt model") ||
+    normalized.includes("unsupported image_model") ||
+    normalized.includes("use a gpt-image") ||
+    normalized.includes("use a non-image model")
+  ) {
+    return {
+      type: "invalid_request_error",
+      code: "unsupported_model",
+      status: 400,
     };
   }
 
@@ -383,11 +580,39 @@ function classifyExternalApiError(message: string) {
     };
   }
 
-  if (normalized.includes("unsupported model")) {
+  if (
+    normalized.includes("不支持当前请求类型") ||
+    normalized.includes("not support current request type")
+  ) {
     return {
       type: "invalid_request_error",
-      code: "unsupported_model",
+      code: "unsupported_backend_request_type",
       status: 400,
+    };
+  }
+
+  if (
+    normalized.includes("选择的生图后端分组不可用") ||
+    normalized.includes("当前套餐不可用")
+  ) {
+    return {
+      type: "invalid_request_error",
+      code: "backend_group_unavailable",
+      status: 403,
+    };
+  }
+
+  if (
+    normalized.includes("当前生图后端分组没有可用账号或 api") ||
+    normalized.includes("没有可用账号或 api") ||
+    normalized.includes("no available image backend") ||
+    normalized.includes("no available backend") ||
+    normalized.includes("no available image quota")
+  ) {
+    return {
+      type: "server_error",
+      code: "no_available_image_backend",
+      status: 503,
     };
   }
 
@@ -436,6 +661,24 @@ export function toOpenAIErrorPayload(
       ? { credits_consumed: creditsConsumed }
       : {}),
   };
+}
+
+export function toLoggedOpenAIErrorPayload(
+  message: string,
+  context: Record<string, unknown>,
+  options?: ExternalApiErrorOptions
+) {
+  const payload = toOpenAIErrorPayload(message, options);
+  logWarn("External API image request failed", {
+    ...context,
+    errorType: payload.error.type,
+    errorCode: payload.error.code,
+    status: payload.error.status,
+    generationId: payload.generation_id,
+    creditsConsumed: payload.credits_consumed,
+    message,
+  });
+  return payload;
 }
 
 function isErrorPayload(data: unknown) {
@@ -500,9 +743,9 @@ export async function createJsonKeepAliveResponse(
           }
         };
 
-        write(" ");
+        write(JSON_KEEP_ALIVE_PADDING);
         keepAlive = setInterval(() => {
-          write(" ");
+          write(JSON_KEEP_ALIVE_PADDING);
         }, keepAliveMs);
 
         try {
@@ -532,7 +775,10 @@ export async function createJsonKeepAliveResponse(
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store, no-transform",
+        "CDN-Cache-Control": "no-store",
+        "Cloudflare-CDN-Cache-Control": "no-store",
         "X-Accel-Buffering": "no",
+        Connection: "keep-alive",
       },
     }
   );

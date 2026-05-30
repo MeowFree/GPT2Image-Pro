@@ -81,8 +81,8 @@ const sections = {
       ],
       groups: [
         "外部 API Key 绑定分组优先",
-        "其次使用用户在设置里选择的生图后端分组",
-        "没有显式选择时使用默认启用分组",
+        "外部 API Key 未绑定分组时使用平台默认分组",
+        "网页端创作才使用用户在设置里选择的生图后端分组",
         "分组会检查套餐权限、是否启用、内容安全开关",
       ],
       backends: [
@@ -255,7 +255,7 @@ const sections = {
         "/api/v1/* 与 /v1/* 使用同一套 handler，只是路径别名。",
         "response_format 控制返回 URL 或 base64；output_format 才控制图片文件格式，二者不是同一个字段。",
         "错误响应采用 OpenAI 风格 error 对象；本站可能额外返回 generation_id、generationId、credits_consumed 方便排查和对账。",
-        "外接 API Key 绑定的后端分组优先；未绑定时使用用户默认分组，再回退默认启用分组。",
+        "外接 API Key 绑定的后端分组优先；未绑定时使用平台默认分组，再回退默认启用分组。页面创作才使用用户选择的默认分组。",
         "分组计费倍率会参与预扣、结算、退款和用量记录；mixed 父分组命中子分组成员时，父分组倍率与子分组倍率相乘生效。",
         "外接 API Key 可设置独立积分限额；GET /v1/credits 可查询 Key 限额、已用额度和账户余额。",
         "用户已启用“接入其他站 API”时，普通 /v1/chat/completions、/v1/images/generations、/v1/images/edits 和 /v1/responses 仍优先使用用户自接 API；命中时 credits_consumed 为 0，不扣本站余额，也不增加本站 API Key 已用额度。",
@@ -1762,8 +1762,8 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       ],
       groups: [
         "External API key bound group first",
-        "Then the user's selected image backend group",
-        "Then the enabled default group",
+        "Unbound external API keys use the platform default group",
+        "Page creation is the only path that uses the user's selected image backend group",
         "Group checks plan access, enabled state, and content safety setting",
       ],
       backends: [
@@ -1946,7 +1946,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         "/api/v1/* and /v1/* use the same handlers; they are path aliases.",
         "response_format controls URL vs base64; output_format controls the image file format. They are different fields.",
         "Error responses use an OpenAI-style error object. GPT2IMAGE may also return generation_id, generationId, and credits_consumed for debugging and reconciliation.",
-        "A backend group bound to the external API key wins first. Otherwise the user's default group is used, then the enabled platform default group.",
+        "A backend group bound to the external API key wins first. Otherwise the platform default group is used, then the enabled fallback group. Page creation still uses the user's selected default group.",
         "Backend group billing multipliers are applied to pre-charge, settlement, refunds, and usage records. When a mixed parent group dispatches to a child group member, the parent and child multipliers are multiplied.",
         "External API keys can have independent credit limits. GET /v1/credits returns key quota, used credits, and account balance.",
         "If the user has enabled a custom upstream API, ordinary /v1/chat/completions, /v1/images/generations, /v1/images/edits, and /v1/responses still use that custom API first. When it wins, credits_consumed is 0 and GPT2IMAGE does not charge account credits or API key quota.",

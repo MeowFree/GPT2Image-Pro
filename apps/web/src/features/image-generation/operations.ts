@@ -1,6 +1,7 @@
 import { db } from "@repo/database";
 import { generation, user } from "@repo/database/schema";
 import { consumeCredits } from "@repo/shared/credits/core";
+import { GPT55_CHAT_MODEL } from "@repo/shared/config/subscription-plan";
 import {
   IMAGE_GENERATION_PENDING_TIMEOUT_MS,
   IMAGE_GENERATION_TIMEOUT_ERROR,
@@ -248,7 +249,10 @@ async function toImageBuffer(result: {
   imageUrl?: string;
 }) {
   if (result.imageBase64) {
-    return Buffer.from(result.imageBase64, "base64");
+    const base64 = result.imageBase64.includes(",")
+      ? result.imageBase64.split(",").pop() || result.imageBase64
+      : result.imageBase64;
+    return Buffer.from(base64, "base64");
   }
 
   if (!result.imageUrl) {
@@ -775,10 +779,20 @@ async function resolveRequestedPoolGptModel(params: {
   allowGpt55: boolean;
 }) {
   const requested = params.model?.trim();
-  if (!requested || !usesPoolAccountBackend(params.config)) return undefined;
+  if (!usesPoolAccountBackend(params.config)) return undefined;
   if (params.config.backend?.accountBackend === "web") {
+    if (!requested) {
+      const configured = params.config.model?.trim();
+      if (configured === GPT55_CHAT_MODEL && !params.allowGpt55) {
+        return undefined;
+      }
+      return configured || undefined;
+    }
     if (requested.startsWith("gpt-image-")) {
       throw new Error("Unsupported GPT model. Use a non-image model.");
+    }
+    if (requested === GPT55_CHAT_MODEL && !params.allowGpt55) {
+      throw new Error("GPT-5.5 chat model requires Ultra plan.");
     }
     return requested;
   }
@@ -1072,7 +1086,11 @@ export async function runImageGenerationForUser(
         config.backend?.type === "pool-account" &&
         config.backend.accountBackend === "web"
       ) {
-        gptModel = input.model?.trim() || config.model?.trim() || undefined;
+        gptModel = await resolveRequestedPoolGptModel({
+          config,
+          model: input.model,
+          allowGpt55: planCapabilities.features["models.gpt55"],
+        });
       } else {
         gptModel = await getResponsesModel(config, input.model, {
           allowGpt55: planCapabilities.features["models.gpt55"],
@@ -1754,6 +1772,54 @@ async function runQueuedImageGenerationForUser({
   }
 
   if (!result.imageBase64 && !result.imageUrl) {
+    if (!isChatInput) {
+      const message =
+        result.responseText?.trim() ||
+        result.responseAgent?.trim() ||
+        "Image generation completed without an image output";
+      const failureTargetCredits = getFailedGenerationTargetCredits({
+        reason: "generation_error",
+        moderationFailureCredits,
+        moderationOnlyCredits: creditCost.moderationOnlyCredits,
+      });
+      try {
+        await settleChargedCredits(
+          failureTargetCredits,
+          "content-moderation",
+          `${generationId}:missing-image-output`,
+          `Settle missing image output: ${input.prompt.substring(0, 50)}`,
+          {
+            generationId,
+            creditCost,
+            fullRefund: failureTargetCredits === 0,
+            error: message,
+          }
+        );
+      } catch {
+        /* best effort settlement */
+      }
+      await db
+        .update(generation)
+        .set({
+          status: "failed",
+          error: message,
+          creditsConsumed: chargedCredits,
+          metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
+            {
+              ...buildResponseOutputMetadata(result),
+              missingImageOutput: true,
+            }
+          )}::jsonb`,
+          completedAt: new Date(),
+        })
+        .where(isPendingGeneration(generationId));
+      return {
+        error: message,
+        generationId,
+        creditsConsumed: chargedCredits,
+      };
+    }
+
     let finalChargedCredits = chargedCredits;
     const textChatRoundCount = isChatInput ? getChatRoundCount(result) : 0;
     const targetChatTextCredits = chatRoundCredits * textChatRoundCount;

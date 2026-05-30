@@ -65,6 +65,35 @@ describe("Responses streaming parser", () => {
     );
   });
 
+  it("falls back from implicit GPT-5.5 defaults when the plan cannot use them", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { getResponsesModel } = await import("./service");
+    const config: ApiConfig = {
+      baseUrl: "https://api.example.test/v1",
+      apiKey: "test-key",
+      model: "gpt-5.5",
+      backend: {
+        type: "pool-account",
+        id: "account_1",
+        groupId: "group_1",
+        accountBackend: "responses",
+        requestKind: "chat",
+        reportResult: false,
+      },
+    };
+
+    await expect(
+      getResponsesModel(config, undefined, { allowGpt55: false })
+    ).resolves.toBe("gpt-5.4");
+    await expect(
+      getResponsesModel(config, "gpt-5.5", { allowGpt55: false })
+    ).rejects.toThrow("GPT-5.5 chat model requires Ultra plan.");
+    await expect(
+      getResponsesModel(config, undefined, { allowGpt55: true })
+    ).resolves.toBe("gpt-5.5");
+  });
+
   it("parses stream=true Responses bodies incrementally even when content-type is wrong", async () => {
     process.env.DATABASE_URL =
       process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
@@ -182,6 +211,52 @@ describe("Responses streaming parser", () => {
         body: expect.stringContaining('"stream":true'),
       })
     );
+  });
+
+  it("uses the final completed image instead of streamed partial image data", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateImage } = await import("./service");
+    const partialBase64 = Buffer.from("partial-image").toString("base64");
+    const finalBase64 = Buffer.from("final-image").toString("base64");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          sseBlock("image_generation.partial_image", {
+            type: "image_generation.partial_image",
+            b64_json: partialBase64,
+            partial_image_index: 0,
+          }) +
+            sseBlock("image_generation.completed", {
+              type: "image_generation.completed",
+              b64_json: finalBase64,
+              revised_prompt: "final prompt",
+            }),
+          {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          }
+        );
+      })
+    );
+
+    const result = await generateImage(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "test-key",
+        useStream: true,
+      },
+      {
+        prompt: "make an icon",
+        model: "gpt-image-2",
+        size: "1024x1024",
+      }
+    );
+
+    expect(result.imageBase64).toBe(finalBase64);
+    expect(result.imageBase64).not.toBe(partialBase64);
+    expect(result.revisedPrompt).toBe("final prompt");
   });
 
   it("surfaces JSON Images API errors returned to an upstream stream request", async () => {
@@ -462,6 +537,69 @@ describe("Responses streaming parser", () => {
           status: "running",
           toolType: "image_generation_call",
         }),
+      ])
+    );
+  });
+
+  it("keeps response.completed image outputs authoritative over earlier streamed output items", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateChatImage } = await import("./service");
+    const draftBase64 = Buffer.from("draft-image").toString("base64");
+    const finalBase64 = Buffer.from("final-image").toString("base64");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          sseBlock("response.output_item.done", {
+            type: "response.output_item.done",
+            item: {
+              id: "ig_draft",
+              type: "image_generation_call",
+              status: "completed",
+              result: draftBase64,
+            },
+          }) +
+            sseBlock("response.completed", {
+              type: "response.completed",
+              response: {
+                id: "resp_test",
+                output: [
+                  {
+                    id: "ig_final",
+                    type: "image_generation_call",
+                    status: "completed",
+                    result: finalBase64,
+                  },
+                ],
+              },
+            }),
+          {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          }
+        );
+      })
+    );
+
+    const result = await generateChatImage(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "test-key",
+      },
+      {
+        prompt: "make an image",
+        model: "gpt-5.4",
+        stream: true,
+      }
+    );
+
+    expect(result.imageOutputs).toEqual([
+      expect.objectContaining({ imageBase64: finalBase64 }),
+    ]);
+    expect(result.imageOutputs).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ imageBase64: draftBase64 }),
       ])
     );
   });

@@ -1071,7 +1071,8 @@ async function getDefaultGroupId() {
 }
 
 async function resolveRequestedGroup(
-  options: ResolveBackendOptions
+  options: ResolveBackendOptions,
+  plan: SubscriptionPlan
 ): Promise<{ groupId: string | null; explicit: boolean }> {
   if (options.apiKeyId) {
     const [key] = await db
@@ -1080,16 +1081,15 @@ async function resolveRequestedGroup(
       .where(eq(externalApiKey.id, options.apiKeyId))
       .limit(1);
     if (key?.groupId) return { groupId: key.groupId, explicit: true };
+    return { groupId: await getDefaultGroupId(), explicit: false };
   }
 
-  const [preference] = await db
-    .select({ groupId: userImageBackendPreference.groupId })
-    .from(userImageBackendPreference)
-    .where(eq(userImageBackendPreference.userId, options.userId))
-    .limit(1);
-
-  if (preference?.groupId) {
-    return { groupId: preference.groupId, explicit: true };
+  const preferenceGroupId = await getUserImageBackendPreference(
+    options.userId,
+    plan
+  );
+  if (preferenceGroupId) {
+    return { groupId: preferenceGroupId, explicit: true };
   }
 
   return { groupId: await getDefaultGroupId(), explicit: false };
@@ -1583,7 +1583,7 @@ async function resolvePoolMember(
   options: ResolveBackendOptions & { excluded?: Set<string> }
 ) {
   const userPlan = await getUserPlan(options.userId);
-  const requestedGroup = await resolveRequestedGroup(options);
+  const requestedGroup = await resolveRequestedGroup(options, userPlan.plan);
   const requestedGroupId = requestedGroup.groupId;
   const group = await ensureGroupUsable(requestedGroupId, userPlan.plan);
   if (!group) {
@@ -1961,13 +1961,34 @@ export async function listSelectableImageBackendGroups(
   return await listImageBackendGroupOptions({ userSelectableOnly: true, plan });
 }
 
-export async function getUserImageBackendPreference(userId: string) {
+export async function getUserImageBackendPreference(
+  userId: string,
+  plan?: SubscriptionPlan
+) {
   const [preference] = await db
     .select({ groupId: userImageBackendPreference.groupId })
     .from(userImageBackendPreference)
     .where(eq(userImageBackendPreference.userId, userId))
     .limit(1);
-  return preference?.groupId ?? null;
+  if (!preference?.groupId) return null;
+
+  const [group] = await db
+    .select({
+      id: imageBackendGroup.id,
+      isEnabled: imageBackendGroup.isEnabled,
+      isUserSelectable: imageBackendGroup.isUserSelectable,
+      metadata: imageBackendGroup.metadata,
+    })
+    .from(imageBackendGroup)
+    .where(eq(imageBackendGroup.id, preference.groupId))
+    .limit(1);
+
+  return group?.id === preference.groupId &&
+    group.isEnabled &&
+    group.isUserSelectable &&
+    (!plan || canUseBackendGroupForPlan(group.metadata, plan))
+    ? preference.groupId
+    : null;
 }
 
 export async function setUserImageBackendPreference(

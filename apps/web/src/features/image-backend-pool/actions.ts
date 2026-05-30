@@ -96,7 +96,7 @@ export const getSelectableImageBackendGroupsAction = protectedAction
     const plan = await getUserPlan(ctx.userId);
     const [groups, selectedGroupId] = await Promise.all([
       listSelectableImageBackendGroups(plan.plan),
-      getUserImageBackendPreference(ctx.userId),
+      getUserImageBackendPreference(ctx.userId, plan.plan),
     ]);
     return { groups, selectedGroupId };
   });

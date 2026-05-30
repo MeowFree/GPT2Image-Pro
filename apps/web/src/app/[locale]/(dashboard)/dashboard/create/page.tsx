@@ -39,7 +39,7 @@ export default async function CreatePage() {
   ] = await Promise.all([
     getPlanUploadLimits(plan.plan),
     listSelectableImageBackendGroups(plan.plan),
-    getUserImageBackendPreference(user.id),
+    getUserImageBackendPreference(user.id, plan.plan),
     isContentModerationEnabled(),
   ]);
   const [capabilities, imageBasePricing] = await Promise.all([
