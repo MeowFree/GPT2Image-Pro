@@ -19,6 +19,18 @@
 - [ ] **（可选）全仓格式化**：历史代码未全量 biome 格式化，故 `lint` 门禁用 `biome lint`（仅 lint、不查格式）。若做一次性 `biome format --write` 全仓重排（大 diff），可将门禁升级为含格式的 `biome ci`。
 - [ ] **（可选）修复存量 lint**：`biome lint` 全仓有 38 errors / 299 warnings 历史债（不阻塞改动文件门禁），可逐步清理；其中 `system-settings-panel.tsx` 有 3 处 `noLabelWithoutControl`（a11y）。
 
+## Issue 修复（已落地 dev，待 UI 实测）
+
+> 2026-05-31 经并行调研 workflow 产出经对抗复核的蓝图后实现。三处改动文件不重叠/串行落地。
+> 提交：#1=a2dd4dc、#15=10d0bc8、#16=c8e9118。typecheck(web+shared)零错误、shared 45 + web 126 测试全绿。
+
+- [x] **#1 管理员手动添加/编辑用户**：`admin-users.ts` 新增 3 个 superAdminAction（createUser/updateUserProfile/setUserPassword），密码走 `better-auth/crypto` 的 `hashPassword` 写 `account.password`（providerId=credential，与 bootstrap-super-admin 同款，绝不明文）；`admin-users-management.tsx` 加'新增用户'按钮与'编辑资料/重设密码'入口及 Dialog（仅超管可见）。无 DB 迁移。
+- [x] **#15 瀑布流对齐原项目**：新增每批并发 tier 选择（预设[1,5,10,20]按 imageGenerationConcurrency 过滤）、补齐质量/尺寸控件（尺寸复用既有 chat 尺寸弹窗）、3 警告节点（首次使用 localStorage 持久化 / 里程碑[tier*10/100/1000]阻塞续批 / 余额不足既有逻辑）。新增 `waterfall-warning-popup.tsx`。
+- [x] **#16 数量/并发改数字输入+滚轮**：根因=文本/编辑'数量'下拉用写死的 `[1,2,4,6,8,10]` 且挂错字段（maxBatchCount 默认恒 10）。改为 `ConcurrencyNumberInput`（数字输入+非被动 wheel 监听），上限=套餐 `imageGenerationConcurrency`；服务端 count 校验 4 处（generate/edit/chat 路由 + operations 管线）同步改挂 imageGenerationConcurrency；归一化硬顶 1000→10000、Zod count.max 100→10000。
+  - [ ] **语义变化需知会运维**：单次最大张数(count)上限由 maxBatchCount(默认10)改为按套餐 `imageGenerationConcurrency`。默认 free=2/starter=5 等低于 10 的套餐**单次张数会下降**，需管理员在后台'生图并发'按需调高。`maxBatchCount` 字段保留但**不再约束 count**（vestigial）。
+  - [ ] **UI/端到端实测**：#1 建号→登录验证哈希链路、改邮箱查重、重设密码；#15 瀑布流 tier/质量/尺寸/3 警告全流程；#16 数字输入+滚轮在 free/pro 账号下上限正确、count>10 能提交且服务端不再 400。
+- [ ] **既有 lint 债（PR 门禁风险）**：`create-page-client.tsx` 有 5 个**既有** error（非本次引入）：`noLabelWithoutControl`×4(ImageSizeDialog)、`noUselessFragments`×2、`useHookAtTopLevel`×1。CI lint 门禁仅 PR、对改动文件全量 lint，故**未来任何 PR 触碰此文件都会被这些既有 error 卡住**。push 到 dev 不跑 lint 故不阻塞当前提交。需择机清理或在门禁中豁免。
+
 ## 仍存在的代码层问题（待办）
 
 - [ ] **成本放大（中危·经济）**：`quality`、`thinking/reasoning.effort` 等高成本参数不计入积分定价（`resolution.ts`）；`/v1/chat/completions` 纯文本按固定 1 积分/轮。上游成本可能数倍于收费，长期亏损。需做定价决策后实现。
