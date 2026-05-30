@@ -4,7 +4,7 @@
  * 提供获取用户当前计划和检查特权的功能
  */
 
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import {
   getPlanFromPriceId,
   getPlanPrivileges,
@@ -14,6 +14,7 @@ import {
 import { db } from "@repo/database";
 import { subscription, user } from "@repo/database/schema";
 import { isSelfUseModeEnabled } from "../../auth/self-use-mode";
+import { logWarn } from "../../logger";
 import { getPlanUploadLimits } from "./upload-limits";
 
 // ============================================
@@ -70,7 +71,11 @@ export async function getUserPlan(userId: string): Promise<UserPlanInfo> {
     return getSelfUseSuperAdminPlan();
   }
 
-  // 查询用户的活跃订阅
+  // 查询用户的活跃订阅。
+  // subscription.userId 无唯一约束，并发 webhook 或跨渠道重订阅可能写入多行；
+  // 不带 orderBy 的 limit(1) 返回顺序未定义，会让降级/退订用户被解析成更高套餐
+  // （多发积分/越权能力）。这里按 updatedAt 倒序固定取最近更新的一行，
+  // 使权限判定在多行场景下也是确定性的（单行场景行为不变）。
   const [userSubscription] = await db
     .select({
       priceId: subscription.priceId,
@@ -80,6 +85,7 @@ export async function getUserPlan(userId: string): Promise<UserPlanInfo> {
     })
     .from(subscription)
     .where(eq(subscription.userId, userId))
+    .orderBy(desc(subscription.updatedAt))
     .limit(1);
 
   const isActive =
@@ -105,9 +111,12 @@ export async function getUserPlan(userId: string): Promise<UserPlanInfo> {
   const plan = getPlanFromPriceId(userSubscription.priceId);
 
   if (!plan) {
-    console.warn(
-      `Unknown priceId: ${userSubscription.priceId} for user ${userId}`
-    );
+    // 未知 priceId 时降级为 free 仍标记 hasActiveSubscription:true。
+    // 付费用户被降级属业务异常，用结构化 Pino 日志记录便于告警与排查。
+    logWarn("Unknown subscription priceId; defaulting to free", {
+      userId,
+      priceId: userSubscription.priceId,
+    });
     return {
       plan: "free",
       planName: "Free",

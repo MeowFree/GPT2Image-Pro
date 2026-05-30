@@ -16,12 +16,18 @@ import "./plan-badge.css";
 import { Building2, Crown, Gem, Sparkles, User } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import type { SubscriptionPlan } from "../../config/subscription-plan";
 import { cn } from "@repo/ui/utils";
 
 /**
  * 订阅计划类型
+ *
+ * 直接复用 SubscriptionPlan 作为单一真相来源，避免本地联合类型与套餐定义
+ * 静默漂移：新增套餐时 planConfig（Record<SubscriptionPlan>）会因缺键而在
+ * 类型检查阶段报错，而非运行时取到 undefined 崩溃。保留 PlanType 别名是为了
+ * 不破坏既有按名导入该类型的调用方。
  */
-export type PlanType = "free" | "starter" | "pro" | "ultra" | "enterprise";
+export type PlanType = SubscriptionPlan;
 
 /**
  * 徽章尺寸

@@ -222,6 +222,56 @@ describe("system setting default initialization", () => {
     expect(store.get("SUB2API_AUTO_SYNC_PLAN_FILTER")).toBeUndefined();
   });
 
+  it("forces Sub2API syncMode=responses when mobile RT import is disabled even if legacy mode=both (C-L28)", async () => {
+    store.set("SUB2API_AUTO_SYNC_MODE", {
+      key: "SUB2API_AUTO_SYNC_MODE",
+      value: "both",
+    });
+    store.set("SUB2API_AUTO_SYNC_ALLOW_MOBILE_RT", {
+      key: "SUB2API_AUTO_SYNC_ALLOW_MOBILE_RT",
+      value: false,
+    });
+
+    await initializeMissingSystemSettingsDefaults();
+
+    const tasks = store.get("SUB2API_AUTO_SYNC_TASKS")?.value as Array<{
+      syncMode: string;
+      allowMobileRtImport: boolean;
+    }>;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({
+      syncMode: "responses",
+      allowMobileRtImport: false,
+    });
+  });
+
+  it("falls back invalid Sub2API legacy interval/plan filter to defaults (C-L28)", async () => {
+    store.set("SUB2API_AUTO_SYNC_ENABLED", {
+      key: "SUB2API_AUTO_SYNC_ENABLED",
+      value: true,
+    });
+    store.set("SUB2API_AUTO_SYNC_INTERVAL_MINUTES", {
+      key: "SUB2API_AUTO_SYNC_INTERVAL_MINUTES",
+      value: "not-a-number",
+    });
+    store.set("SUB2API_AUTO_SYNC_PLAN_FILTER", {
+      key: "SUB2API_AUTO_SYNC_PLAN_FILTER",
+      value: "bogus-filter",
+    });
+
+    await initializeMissingSystemSettingsDefaults();
+
+    const tasks = store.get("SUB2API_AUTO_SYNC_TASKS")?.value as Array<{
+      intervalMinutes: number;
+      planFilter: string;
+    }>;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({
+      intervalMinutes: 720,
+      planFilter: "non_free",
+    });
+  });
+
   it("does not overwrite existing stored settings", async () => {
     store.set("PLAN_STARTER_MONTHLY_AMOUNT", {
       key: "PLAN_STARTER_MONTHLY_AMOUNT",

@@ -1,17 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PLAN_RANK, SUBSCRIPTION_PLANS } from "../../config/subscription-plan";
+import {
+  PLAN_PRIVILEGES,
+  PLAN_RANK,
+  SUBSCRIPTION_PLANS,
+} from "../../config/subscription-plan";
 import { SYSTEM_SETTING_DEFINITIONS } from "../../system-settings/definitions";
 import {
   DEFAULT_PLAN_CAPABILITY_MATRIX,
   PLAN_CAPABILITY_KEYS,
   canUsePlanCapability,
   getAllowedPlanModerationBlockRiskLevels,
+  getDefaultPlanModerationBlockRiskLevel,
+  getMaxPlanModerationBlockRiskLevel,
   getPlanBillingConfig,
   getPlanCapabilityMatrix,
   getPlanCapabilitySnapshot,
   getPlanLimits,
+  getPlanModerationConfig,
   getPlanMonthlyCredits,
+  getPlanPrivilegesFromCapabilities,
   getPlanQueueSettings,
   megabytesToBytes,
   normalizePlanCapabilityMatrix,
@@ -427,5 +435,69 @@ describe("plan capability matrix runtime accessors", () => {
       "low",
       "medium",
     ]);
+  });
+});
+
+describe("plan capability privilege and moderation accessors", () => {
+  beforeEach(() => {
+    runtimeSettingsMock.getRuntimeSettingJson.mockReset();
+    runtimeSettingsMock.getRuntimeSettingNumber.mockReset();
+  });
+
+  it("merges static privileges with runtime byte limits", async () => {
+    runtimeSettingsMock.getRuntimeSettingJson.mockResolvedValue({
+      limits: {
+        pro: {
+          maxFileMb: 64,
+          maxUploadMb: 128,
+          imageGenerationConcurrency: 21,
+          monthlyCredits: 42_000,
+        },
+      },
+    });
+
+    const privileges = await getPlanPrivilegesFromCapabilities("pro");
+
+    expect(privileges.name).toBe(PLAN_PRIVILEGES.pro.name);
+    expect(privileges.maxFileSizeBytes).toBe(megabytesToBytes(64));
+    expect(privileges.maxUploadBytes).toBe(megabytesToBytes(128));
+    expect(privileges.imageGenerationConcurrency).toBe(21);
+    expect(privileges.monthlyCredits).toBe(42_000);
+  });
+
+  it("returns the plan moderation row from the configured matrix", async () => {
+    runtimeSettingsMock.getRuntimeSettingJson.mockResolvedValue({
+      moderation: {
+        ultra: {
+          defaultBlockRiskLevel: "medium",
+          maxBlockRiskLevel: "medium",
+        },
+      },
+    });
+
+    await expect(getPlanModerationConfig("ultra")).resolves.toEqual({
+      defaultBlockRiskLevel: "medium",
+      maxBlockRiskLevel: "medium",
+    });
+  });
+
+  it("exposes default and max moderation block risk levels", async () => {
+    runtimeSettingsMock.getRuntimeSettingJson.mockResolvedValue(undefined);
+    runtimeSettingsMock.getRuntimeSettingNumber.mockImplementation(
+      async (_key: string, fallback: number) => fallback
+    );
+
+    await expect(
+      getDefaultPlanModerationBlockRiskLevel("enterprise")
+    ).resolves.toBe("high");
+    await expect(getMaxPlanModerationBlockRiskLevel("enterprise")).resolves.toBe(
+      "high"
+    );
+    await expect(getDefaultPlanModerationBlockRiskLevel("free")).resolves.toBe(
+      "low"
+    );
+    await expect(getMaxPlanModerationBlockRiskLevel("free")).resolves.toBe(
+      "low"
+    );
   });
 });
