@@ -67,7 +67,7 @@
   "devDependencies": {
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "typescript": "^5"
+    "typescript": "^6"
   },
   "license": "AGPL-3.0-only"
 }

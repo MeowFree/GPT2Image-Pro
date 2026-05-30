@@ -112,7 +112,7 @@
     "@types/nodemailer": "^8.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "typescript": "^5",
+    "typescript": "^6",
     "vitest": "4.0.18"
   },
   "license": "AGPL-3.0-only"
