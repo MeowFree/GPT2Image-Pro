@@ -17,20 +17,27 @@ import {
   getRuntimeSettingNumber,
   getRuntimeSettingString,
 } from "../system-settings";
+import {
+  type AliyunRiskLevel,
+  DEFAULT_MODERATION_BLOCK_RISK_LEVEL,
+  getContentChunks,
+  shouldBlockAliyunRisk,
+} from "./risk";
+
+// 纯逻辑工具从 ./risk re-export，便于在 DB-free 单测中直接引用。
+export {
+  ALIYUN_MAX_CONTENT_LENGTH,
+  ALIYUN_RISK_ORDER,
+  DEFAULT_MODERATION_BLOCK_RISK_LEVEL,
+  getContentChunks,
+  shouldBlockAliyunRisk,
+} from "./risk";
+export type { AliyunRiskLevel } from "./risk";
 
 type ModerationProvider = "aliyun" | "openai";
 type ModerationDecision = "allow" | "block" | "skipped" | "error";
 type ModerationMode = "text" | "image";
-type AliyunRiskLevel = "none" | "low" | "medium" | "high";
 
-const ALIYUN_MAX_CONTENT_LENGTH = 2000;
-const ALIYUN_RISK_ORDER: Record<AliyunRiskLevel, number> = {
-  none: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-};
-const DEFAULT_MODERATION_BLOCK_RISK_LEVEL: AliyunRiskLevel = "low";
 const Green20220302 =
   (
     Green20220302Module as typeof Green20220302Module & {
@@ -156,6 +163,10 @@ async function getProxyUrl() {
   return runtimeValue("CONTENT_MODERATION_PROXY_URL");
 }
 
+// 出站调用审核代理时携带的密钥：只读 PROXY_SECRET（出站主密钥）。
+// 注意与入站不对称：/moderate 入站接受 PROXY_SECRET 与 GATEWAY_SECRET 两者
+// （GATEWAY_SECRET 仅作入站附加密钥，便于轮换），但出站永远只发送 PROXY_SECRET。
+// 因此轮换/下线 PROXY_SECRET 前必须确认出站侧已切换，否则自调用鉴权会失败。
 async function getProxySecret() {
   return runtimeValue("CONTENT_MODERATION_PROXY_SECRET");
 }
@@ -185,20 +196,6 @@ async function getEffectiveAliyunBlockRiskLevel(
   return await normalizePlanModerationBlockRiskLevel(
     userPlan,
     userModerationBlockRiskLevel
-  );
-}
-
-function shouldBlockAliyunRisk(
-  riskLevel: unknown,
-  blockRiskLevel: AliyunRiskLevel
-) {
-  if (typeof riskLevel !== "string") return false;
-  const normalized = riskLevel.toLowerCase();
-  if (!(normalized in ALIYUN_RISK_ORDER)) return normalized !== "pass";
-
-  return (
-    ALIYUN_RISK_ORDER[normalized as AliyunRiskLevel] >=
-    ALIYUN_RISK_ORDER[blockRiskLevel]
   );
 }
 
@@ -318,18 +315,6 @@ function assertAliyunResponseOk(
       ? `Aliyun moderation failed: ${body.code} ${body.message}`
       : `Aliyun moderation failed: ${body.code}`
   );
-}
-
-function getContentChunks(content: string) {
-  const chunks: string[] = [];
-  for (
-    let index = 0;
-    index < content.length;
-    index += ALIYUN_MAX_CONTENT_LENGTH
-  ) {
-    chunks.push(content.slice(index, index + ALIYUN_MAX_CONTENT_LENGTH));
-  }
-  return chunks.length ? chunks : [content];
 }
 
 function getAliyunAgentPayload(
@@ -756,6 +741,11 @@ export async function moderateContent(
       if (result.decision === "allow") {
         return result;
       }
+
+      // result.decision === "skipped"：provider 此前判为已配置（providers 非空），
+      // 但调用时凭据读到 null 而返回 skipped（TOCTOU 或配置缓存抖动）。
+      // 此处并入 errors 走 fail-closed 判定，避免被末尾 skipped 分支静默放行。
+      errors.push({ provider, error: "moderation skipped unexpectedly" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       errors.push({ provider, error: message });

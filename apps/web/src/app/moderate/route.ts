@@ -9,6 +9,7 @@ import {
 } from "@repo/shared/config/subscription-plan";
 import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { NextResponse, type NextRequest } from "next/server";
+import { secretMatchesAny } from "./proxy-secret";
 
 type ModerationRequestImage = {
   data?: string;
@@ -39,7 +40,11 @@ async function verifyProxySecret(request: NextRequest) {
     ? authorization.slice("Bearer ".length).trim()
     : "";
   const headerSecret = request.headers.get("x-moderation-proxy-secret") || "";
-  return secrets.includes(bearer) || secrets.includes(headerSecret);
+  // 用恒定时间比对（sha256 + timingSafeEqual）替代 Array.includes 的原生短路
+  // 字符串比较，避免计时侧信道，与全仓其它鉴权入口的标准对齐。
+  return (
+    secretMatchesAny(bearer, secrets) || secretMatchesAny(headerSecret, secrets)
+  );
 }
 
 function parseImage(image: ModerationRequestImage): ModerationImageInput | null {
