@@ -108,7 +108,7 @@
     "react-dom": "^19"
   },
   "devDependencies": {
-    "@types/node": "20.19.30",
+    "@types/node": "25.9.1",
     "@types/nodemailer": "^8.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
