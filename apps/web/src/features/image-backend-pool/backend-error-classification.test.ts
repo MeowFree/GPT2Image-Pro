@@ -44,6 +44,11 @@ describe("image backend error classification", () => {
         "Your request was rejected by the safety system."
       )
     ).toBe(false);
+    expect(
+      isImageBackendSwitchableError(
+        "I can't help create explicit sexual content."
+      )
+    ).toBe(false);
     expect(isImageBackendSwitchableError("image_generation_user_error")).toBe(
       false
     );

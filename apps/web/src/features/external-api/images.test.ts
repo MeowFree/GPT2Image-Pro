@@ -327,6 +327,25 @@ describe("external API error classification", () => {
     });
 
     expect(
+      toOpenAIErrorPayload(
+        "Upstream Responses API returned HTTP 400: Your request was rejected by the safety system. safety_violations=[sexual]."
+      ).error
+    ).toMatchObject({
+      type: "invalid_request_error",
+      code: "content_policy_violation",
+      status: 400,
+    });
+
+    expect(
+      toOpenAIErrorPayload("I can't help create explicit sexual content.")
+        .error
+    ).toMatchObject({
+      type: "invalid_request_error",
+      code: "content_policy_violation",
+      status: 400,
+    });
+
+    expect(
       toOpenAIErrorPayload("抱歉，我不能协助对这张包含露骨性内容的漫画进行上色。")
         .error
     ).toMatchObject({

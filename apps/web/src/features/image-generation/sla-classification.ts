@@ -43,11 +43,45 @@ const USER_REQUEST_PATTERNS = [
   "account frozen",
 ];
 
-const MODERATION_PATTERNS = [
-  "moderation",
+export const CONTENT_SAFETY_REJECTION_PATTERNS = [
   "content failed moderation",
   "content blocked",
+  "content policy",
+  "content policy violation",
+  "violates our content policy",
+  "violates the content policy",
+  "policy violation",
+  "policy_violation",
+  "safety policy",
+  "safety system",
+  "safety violation",
+  "safety_violations",
+  "request was rejected by the safety system",
+  "rejected by the safety system",
+  "blocked by the safety system",
+  "flagged by the safety system",
+  "flagged by the safety",
+  "flagged for sexual content",
+  "referenced image was flagged",
+  "disallowed content",
+  "unsafe content",
+  "not allowed to generate",
+  "sexualized image",
+  "sexually suggestive",
+  "explicit sexual",
+  "sexual content",
+  "未能通过安全",
+  "安全系统",
+  "露骨",
+  "成人性",
+  "不能帮助",
+  "不能协助",
+];
+
+const MODERATION_PATTERNS = [
+  "moderation",
   "content moderation",
+  ...CONTENT_SAFETY_REJECTION_PATTERNS,
   "aliyun",
   "omni-moderation",
   "risklevel",
@@ -55,6 +89,11 @@ const MODERATION_PATTERNS = [
 
 function includesAny(value: string, patterns: string[]) {
   return patterns.some((pattern) => value.includes(pattern));
+}
+
+export function isContentSafetyRejection(error: string | null | undefined) {
+  const normalized = (error || "").toLowerCase();
+  return includesAny(normalized, CONTENT_SAFETY_REJECTION_PATTERNS);
 }
 
 export function classifyGenerationError(error: string | null | undefined) {

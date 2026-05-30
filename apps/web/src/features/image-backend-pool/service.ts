@@ -43,6 +43,7 @@ import {
   type ChatGptWebAccountInfo,
   getChatGptWebAccountInfo,
 } from "@/features/image-generation/chatgpt-web";
+import { isContentSafetyRejection } from "@/features/image-generation/sla-classification";
 import type { ApiConfig } from "@/features/image-generation/types";
 
 import {
@@ -534,9 +535,8 @@ function isLocalAbortTimeoutError(error?: string | null) {
 function isUserRequestBackendError(error?: string | null) {
   const normalized = (error || "").toLowerCase();
   return (
+    isContentSafetyRejection(error) ||
     normalized.includes("moderation_blocked") ||
-    normalized.includes("safety_violations") ||
-    normalized.includes("safety system") ||
     normalized.includes("image_generation_user_error") ||
     normalized.includes("user_error") ||
     normalized.includes("content_policy") ||

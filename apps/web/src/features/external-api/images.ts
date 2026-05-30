@@ -1,5 +1,6 @@
 import { logWarn } from "@repo/shared/logger";
 import type { ImageGenerationOperationResult } from "@/features/image-generation/operations";
+import { isContentSafetyRejection } from "@/features/image-generation/sla-classification";
 import type { GeneratedImageOutput } from "@/features/image-generation/types";
 
 type OpenAIImageData = {
@@ -479,30 +480,18 @@ function parseUpstreamHttpError(message: string) {
 }
 
 function classifyExternalApiError(message: string) {
-  const upstreamHttpError = parseUpstreamHttpError(message);
-  if (upstreamHttpError) return upstreamHttpError;
-
-  const normalized = message.toLowerCase();
-
-  if (
-    normalized.includes("content failed moderation") ||
-    normalized.includes("content blocked") ||
-    normalized.includes("content policy") ||
-    normalized.includes("safety system") ||
-    normalized.includes("flagged by the safety") ||
-    normalized.includes("未能通过安全") ||
-    normalized.includes("安全系统") ||
-    normalized.includes("露骨") ||
-    normalized.includes("成人性") ||
-    normalized.includes("不能帮助") ||
-    normalized.includes("不能协助")
-  ) {
+  if (isContentSafetyRejection(message)) {
     return {
       type: "invalid_request_error",
       code: "content_policy_violation",
       status: 400,
     };
   }
+
+  const upstreamHttpError = parseUpstreamHttpError(message);
+  if (upstreamHttpError) return upstreamHttpError;
+
+  const normalized = message.toLowerCase();
 
   if (
     normalized.includes("moderation") ||
