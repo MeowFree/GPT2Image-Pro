@@ -25,7 +25,7 @@
     "drizzle-orm": "^0.45.1",
     "framer-motion": "^12.29.2",
     "fumadocs-core": "^16.4.8",
-    "fumadocs-mdx": "^14.2.6",
+    "fumadocs-mdx": "^15.0.10",
     "fumadocs-ui": "^16.4.8",
     "lucide-react": "^0.562.0",
     "nanoid": "^5.1.6",
