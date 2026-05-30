@@ -1,0 +1,28 @@
+# 复合 Action：统一 CI 各 job 的 Node + pnpm 环境与依赖安装。
+# 抽出此文件是为了 DRY —— 任何需要 Node 工具链的 job 只需 `uses: ./.github/actions/setup`，
+# 避免在每个 job 里重复粘贴 pnpm/Node 安装步骤（一处修改，全局生效）。
+name: "Setup pnpm + Node"
+description: "启用 corepack/pnpm、安装匹配版本的 Node、带缓存地执行 frozen-lockfile 安装"
+
+runs:
+  # composite = 由多个已有 Action / shell 步骤组合而成的可复用单元。
+  using: "composite"
+  steps:
+    # pnpm/action-setup 会读取根 package.json 的 `packageManager` 字段（pnpm@10.27.0），
+    # 因此无需在此硬编码版本号 —— 版本真相只存在于 package.json，杜绝漂移。
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+
+    # setup-node 安装指定大版本的 Node，并基于 pnpm lockfile 做依赖缓存（cache: pnpm）。
+    # 必须放在 pnpm 安装之后，否则 `cache: pnpm` 找不到 pnpm 可执行文件。
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22" # 与 Dockerfile.web 的 node:22-alpine 对齐，保证本地/CI/生产一致
+        cache: "pnpm"
+
+    # --frozen-lockfile：lockfile 与 package.json 不一致时直接报错，
+    # 防止 CI 悄悄改动依赖树（可重现构建的前提）。
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile

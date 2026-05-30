@@ -1,0 +1,24 @@
+# Dependabot：自动跟踪依赖与 Action 的安全/版本更新，落实 CLAUDE.md §0.5「依赖安全」。
+# 每周开 PR（受同一套 CI 门禁约束），把升级评审常态化，避免长期堆积安全债。
+version: 2
+updates:
+  # 1) npm（pnpm 工作区）：从仓库根递归发现所有 package.json（apps/* 与 packages/*）。
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)" # 与 Conventional Commits 约定一致（§0.2）
+    # 主版本升级往往含破坏性变更，单独成 PR 便于人工评审；不自动合并。
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  # 2) GitHub Actions：保持 CI/发布流水线里用到的 Action 版本新且安全。
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(ci)"

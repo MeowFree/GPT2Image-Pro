@@ -4,6 +4,14 @@
 > 高危的经济损失 / 入侵口子已在 `dev` 修复（提交 2beb0e0 / b69c10b / 14a88d8 / 07d7a18）。
 > 本清单只记录**仍真实存在的代码层问题**。
 
+## CI/CD（已落地，待仓库侧启用）
+
+> 流水线说明见 `docs/CI-CD.md`。文件：`.github/workflows/ci.yml`、`.github/workflows/docker-release.yml`、`.github/actions/setup/action.yml`、`.github/dependabot.yml`。
+
+- [ ] **开启分支保护**：在 GitHub 仓库 Settings → Branches，对 `dev` 与 `main` 将 `docs-mirror`/`lint`/`typecheck`/`test`/`build`（PR 另含 `docker-build`）设为 **Required status checks**，并勾选「Require branches up to date」。否则 CI 只报告、不拦截。
+- [ ] **（可选）全仓格式化**：仓库历史代码未全量 biome 格式化，故 `lint` 门禁目前仅查改动文件。若做一次性 `biome format --write` 全仓重排（会产生大 diff），可将门禁升级为全仓 `biome ci`。
+- [ ] **（可选）修复存量 lint**：`biome lint` 全仓有 38 errors / 299 warnings 的历史债（不阻塞改动文件门禁），可逐步清理。
+
 ## 仍存在的代码层问题（待办）
 
 - [ ] **成本放大（中危·经济）**：`quality`、`thinking/reasoning.effort` 等高成本参数不计入积分定价（`resolution.ts`）；`/v1/chat/completions` 纯文本按固定 1 积分/轮。上游成本可能数倍于收费，长期亏损。需做定价决策后实现。

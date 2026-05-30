@@ -1,0 +1,173 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI 流水线（持续集成）
+#
+# 目的：在代码合入前对「协作者 / PR 贡献者」的提交做强制门禁，落实 CLAUDE.md/AGENTS.md
+#       第 0 章的协作准则 —— 文档镜像一致、代码风格、类型安全、测试、可构建、容器可打包。
+#
+# 触发：
+#   - pull_request → dev / main：贡献者门禁的主战场（每个 check 都会显示在 PR 上）。
+#   - push        → dev / main：合入后回归，保证主干始终绿色。
+#   - 手动 (workflow_dispatch)：需要时人工重跑。
+#
+# 设计原则：
+#   - 每个关注点拆成独立 job，PR 的 Checks 面板上一目了然，便于设为「必须通过(required)」。
+#   - 风格检查只针对「本次改动的文件」(biome --changed)，既约束新代码，又不强迫为历史
+#     遗留格式问题做一次性全仓重排（仓库当前未全量 biome 格式化，全量 ci 会误伤）。
+#   - 类型检查 / 测试为全仓门禁（仓库当前已全绿，可硬性强制）。
+# ─────────────────────────────────────────────────────────────────────────────
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+# 同一分支/PR 的新提交会取消仍在跑的旧流水线，节省额度、加快反馈。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 最小权限：CI 只读仓库内容；不授予写权限（发布交给 docker-release.yml）。
+permissions:
+  contents: read
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # 1) 文档镜像一致性：CLAUDE.md 必须与 AGENTS.md 逐字相同。
+  #    这是 CLAUDE.md/AGENTS.md 自身定下的「镜像文件」约束的自动化执法点。
+  #    极轻量：无需安装依赖，秒级失败。
+  # ───────────────────────────────────────────────────────────────────────────
+  docs-mirror:
+    name: Docs mirror (CLAUDE == AGENTS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Assert CLAUDE.md and AGENTS.md are identical
+        run: |
+          # diff -q 仅在内容不同时返回非零；--strip-trailing-cr 容忍 CRLF/LF 差异，
+          # 避免因 Windows 贡献者的换行符导致误报。
+          if ! diff -q --strip-trailing-cr CLAUDE.md AGENTS.md > /dev/null; then
+            echo "::error::CLAUDE.md 与 AGENTS.md 内容必须完全一致（镜像文件）。请同步两者后再提交。"
+            echo "----- 差异如下 -----"
+            diff --strip-trailing-cr CLAUDE.md AGENTS.md || true
+            exit 1
+          fi
+          echo "OK：CLAUDE.md 与 AGENTS.md 一致。"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 2) 代码风格 / Lint（仅改动文件）：Biome 对本次 PR/push 触及的文件执行
+  #    lint + 格式 + import 排序检查（biome ci）。新代码必须达标，历史文件不受牵连。
+  # ───────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint & format (changed files)
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 拉取完整历史，否则 --since 的基准提交可能不在浅克隆里。
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup
+
+      # 计算 diff 基准 SHA：PR 用目标分支的 base.sha；push 用上一个提交 before。
+      # 首次推送（before 全 0）时无基准，跳过本检查（SKIP=1）。
+      - name: Resolve diff base
+        id: base
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE" ]; then BASE="${{ github.event.before }}"; fi
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "无 diff 基准（新分支首推），跳过改动文件风格检查。"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 直接调用仓库锁定的 Biome 版本（apps/web 的依赖，2.3.11），cwd=仓库根，
+      # 保证与开发者本地完全同款行为；--changed 仅查相对 base 改动的文件。
+      # --no-errors-on-unmatched：纯文档类 PR（无 JS/TS 改动）不应判失败。
+      - name: Biome CI (changed files only)
+        if: steps.base.outputs.skip != '1'
+        run: |
+          ./apps/web/node_modules/.bin/biome ci \
+            --changed --since="${{ steps.base.outputs.base }}" \
+            --no-errors-on-unmatched \
+            .
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 3) 类型检查（鲁棒性）：全仓 strict tsc --noEmit。仓库当前已全绿，硬性强制。
+  # ───────────────────────────────────────────────────────────────────────────
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - run: pnpm turbo typecheck
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 4) 单元测试（鲁棒性）：全仓 vitest（DB-free）。覆盖积分/扣费/幂等/API 等核心逻辑。
+  # ───────────────────────────────────────────────────────────────────────────
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - run: pnpm turbo test
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 5) 构建（鲁棒性）：next build（standalone）。Next 在 build 时会做整体类型与编译校验，
+  #    能抓到仅在生产构建下暴露的问题。环境变量为占位值，与 Dockerfile.web 的 build-args 一致。
+  #    注意：此处不设 NODE_ENV=production，否则 pnpm 可能跳过 devDependencies 导致构建失败。
+  # ───────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build web
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_NAME: GPT2IMAGE
+      NEXT_PUBLIC_PAYMENT_PROVIDER: none
+      NEXT_PUBLIC_GENERATIONS_BUCKET_NAME: generations
+      NEXT_PUBLIC_AVATARS_BUCKET_NAME: avatars
+      # 仅供构建期模块加载使用的占位值（@repo/database 在 import 时会校验 DATABASE_URL）。
+      # 绝非运行时机密 —— 真实机密只存在于部署环境（见 CLAUDE.md §0.5）。
+      DATABASE_URL: postgresql://gpt2image:gpt2image@localhost:5432/gpt2image
+      BETTER_AUTH_SECRET: build-time-placeholder-secret-not-for-runtime
+      BETTER_AUTH_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - run: pnpm turbo build --filter=@repo/web
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 6) 容器构建校验（仅 PR）：用 Dockerfile.web 实打实构建 web 镜像但**不推送**，
+  #    验证多阶段 Dockerfile（turbo prune → install → build → standalone 打包）未损坏。
+  #    gha 缓存让重复构建保持快速。门禁在前 4 个 job 通过后才跑，避免无谓消耗。
+  # ───────────────────────────────────────────────────────────────────────────
+  docker-build:
+    name: Docker build (no push)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: [lint, typecheck, test, build]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build web image (validation only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.web
+          target: runner
+          push: false # 仅校验可构建性；推送由 tag 触发的 docker-release.yml 负责
+          build-args: |
+            NEXT_PUBLIC_APP_URL=http://localhost:3000
+            NEXT_PUBLIC_APP_NAME=GPT2IMAGE
+            NEXT_PUBLIC_PAYMENT_PROVIDER=none
+            NEXT_PUBLIC_GENERATIONS_BUCKET_NAME=generations
+            NEXT_PUBLIC_AVATARS_BUCKET_NAME=avatars
+          cache-from: type=gha,scope=web-ci
+          cache-to: type=gha,mode=max,scope=web-ci
