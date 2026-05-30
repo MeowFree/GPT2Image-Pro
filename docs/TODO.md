@@ -4,13 +4,19 @@
 > 高危的经济损失 / 入侵口子已在 `dev` 修复（提交 2beb0e0 / b69c10b / 14a88d8 / 07d7a18）。
 > 本清单只记录**仍真实存在的代码层问题**。
 
-## CI/CD（已落地，待仓库侧启用）
+## CI/CD（已落地并启用）
 
 > 流水线说明见 `docs/CI-CD.md`。文件：`.github/workflows/ci.yml`、`.github/workflows/docker-release.yml`、`.github/actions/setup/action.yml`、`.github/dependabot.yml`。
 
-- [ ] **开启分支保护**：在 GitHub 仓库 Settings → Branches，对 `dev` 与 `main` 将 `docs-mirror`/`lint`/`typecheck`/`test`/`build`（PR 另含 `docker-build`）设为 **Required status checks**，并勾选「Require branches up to date」。否则 CI 只报告、不拦截。
-- [ ] **（可选）全仓格式化**：仓库历史代码未全量 biome 格式化，故 `lint` 门禁目前仅查改动文件。若做一次性 `biome format --write` 全仓重排（会产生大 diff），可将门禁升级为全仓 `biome ci`。
-- [ ] **（可选）修复存量 lint**：`biome lint` 全仓有 38 errors / 299 warnings 的历史债（不阻塞改动文件门禁），可逐步清理。
+- [x] **分支保护已启用**（2026-05-30，经 gh API）：`dev` 与 `main` 均要求 5 个 status check 通过（`Docs mirror (CLAUDE == AGENTS)`/`Lint & format (changed files)`/`Typecheck`/`Unit tests`/`Build web`），strict（须先与目标分支同步）、禁 force-push/删除、要求会话解决。`enforce_admins=false`（管理员可应急直推）。
+- [x] **`main` 分支已创建**（= 当时绿色的 dev HEAD `bc1b139`）。默认分支仍为 `dev`；如需以 main 为默认请在仓库设置切换。
+- [ ] **Dependabot 首批 PR 待三角处理**（#4–#13 共 10 个）：
+  - github-actions major（checkout v5→v6 等，#4–#7…）：CI 多为绿，可按需合并。
+  - npm minor-and-patch 分组（#8，42 项）：按 CI 结果合并。
+  - npm major（typescript 6 / @types/node 25 / lucide-react 1.17 / fumadocs-mdx 15 / dotenv 17，#9–#13）：**多数 CI 失败**（破坏性升级），分支保护会自动拦截，建议关闭或单独评估。
+- [ ] **（可选）docker-build 设为必需**：当前 `docker-build` 在 PR 上运行但未列为 required（保 PR 迭代速度）。如需强制可加入 required checks。
+- [ ] **（可选）全仓格式化**：历史代码未全量 biome 格式化，故 `lint` 门禁用 `biome lint`（仅 lint、不查格式）。若做一次性 `biome format --write` 全仓重排（大 diff），可将门禁升级为含格式的 `biome ci`。
+- [ ] **（可选）修复存量 lint**：`biome lint` 全仓有 38 errors / 299 warnings 历史债（不阻塞改动文件门禁），可逐步清理；其中 `system-settings-panel.tsx` 有 3 处 `noLabelWithoutControl`（a11y）。
 
 ## 仍存在的代码层问题（待办）
 

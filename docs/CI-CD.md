@@ -46,11 +46,18 @@ git tag v0.2.0-rc.1
 git push origin v0.2.0-rc.1   # → 触发 docker-release.yml
 ```
 
-## 建议的分支保护（需在 GitHub 仓库设置手动开启）
+## 分支保护（已启用）
 
-为真正「约束」贡献者，应在 `dev` 与 `main` 的 Branch protection 中将以下 checks 设为 **Required**：
-`docs-mirror`、`lint`、`typecheck`、`test`、`build`（以及 PR 场景的 `docker-build`）。
-并开启「Require branches to be up to date before merging」。
+`dev` 与 `main` 已通过 gh API 启用分支保护（2026-05-30）。Required status checks（5 个）：
+`Docs mirror (CLAUDE == AGENTS)`、`Lint & format (changed files)`、`Typecheck`、`Unit tests`、`Build web`。
+另：`strict=true`（合并前须与目标分支同步）、禁 force-push、禁删除、要求会话解决；`enforce_admins=false`（管理员可应急直推）。
+`docker-build` 在 PR 上运行但未列为 required（保 PR 迭代速度），可按需提升。
+
+修改配置示例：
+```bash
+gh api -X PUT repos/MeowFree/GPT2Image-Pro/branches/<dev|main>/protection --input <config>.json
+gh api repos/MeowFree/GPT2Image-Pro/branches/<dev|main>/protection/required_status_checks  # 查看当前
+```
 
 ## 已知边界 / 后续
 
