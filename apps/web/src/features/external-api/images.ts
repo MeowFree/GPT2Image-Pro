@@ -82,7 +82,12 @@ function parseLocalStorageImageUrl(
     const key = keySegments
       .map((segment) => decodeURIComponent(segment))
       .join("/");
-    if (!key || key.includes("..") || key.startsWith("/") || key.includes("\\")) {
+    if (
+      !key ||
+      key.includes("..") ||
+      key.startsWith("/") ||
+      key.includes("\\")
+    ) {
       return null;
     }
 
@@ -156,10 +161,9 @@ export async function getImageBase64(request: Request, imageUrl?: string) {
 
 export async function toOpenAIImageData(
   request: Request,
-  result: Pick<
-    ImageGenerationOperationResult,
-    "imageUrl" | "revisedPrompt"
-  > & { imageBase64?: string },
+  result: Pick<ImageGenerationOperationResult, "imageUrl" | "revisedPrompt"> & {
+    imageBase64?: string;
+  },
   responseFormat: "url" | "b64_json"
 ): Promise<OpenAIImageData> {
   const data: OpenAIImageData = {};
@@ -304,12 +308,13 @@ export function toExternalGenerationUsage(
   const generationIds = results
     .map((result) => result.generationId)
     .filter((id): id is string => Boolean(id));
-  const creditsConsumed = Math.round(
-    results.reduce(
-      (total, result) => total + Math.max(0, result.creditsConsumed || 0),
-      0
-    ) * 100
-  ) / 100;
+  const creditsConsumed =
+    Math.round(
+      results.reduce(
+        (total, result) => total + Math.max(0, result.creditsConsumed || 0),
+        0
+      ) * 100
+    ) / 100;
 
   return {
     ...(generationIds.length === 1
@@ -374,7 +379,9 @@ export function toOpenAIResponseTextItem(params: { id: string; text: string }) {
 }
 
 export function createExternalImageStreamResponse(
-  run: (emit: (event: ExternalImageStreamEvent) => Promise<void>) => Promise<void>
+  run: (
+    emit: (event: ExternalImageStreamEvent) => Promise<void>
+  ) => Promise<void>
 ) {
   const encoder = new TextEncoder();
   const keepAliveMs = 5_000;
@@ -412,13 +419,12 @@ export function createExternalImageStreamResponse(
           await run(emit);
           await emit({ data: "[DONE]" });
         } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Image stream failed";
+          const payload = toOpenAIErrorPayload(message);
           await emit({
             event: "error",
-            data: {
-              type: "upstream_error",
-              message:
-                error instanceof Error ? error.message : "Image stream failed",
-            },
+            data: toExternalErrorStreamData(message, payload),
           });
         } finally {
           if (keepAlive) {
@@ -479,6 +485,26 @@ function parseUpstreamHttpError(message: string) {
   return { type, code, status };
 }
 
+function parseLooseUpstreamStatusError(message: string) {
+  const normalized = message.toLowerCase();
+  const statusMatch =
+    /status_code\s*=\s*(\d{3})/.exec(normalized) ||
+    /bad response status code\s+(\d{3})/.exec(normalized) ||
+    /response status code\s+(\d{3})/.exec(normalized);
+  if (!statusMatch) return null;
+
+  const status = Number(statusMatch[1]);
+  if (!Number.isInteger(status) || status < 400 || status > 599) {
+    return null;
+  }
+
+  return {
+    type: defaultErrorTypeForStatus(status),
+    code: status === 429 ? "rate_limit_exceeded" : `upstream_http_${status}`,
+    status,
+  };
+}
+
 function classifyExternalApiError(message: string) {
   if (isContentSafetyRejection(message)) {
     return {
@@ -506,6 +532,9 @@ function classifyExternalApiError(message: string) {
       status: 502,
     };
   }
+
+  const looseUpstreamStatusError = parseLooseUpstreamStatusError(message);
+  if (looseUpstreamStatusError) return looseUpstreamStatusError;
 
   if (
     normalized.includes("unsupported model") ||
@@ -616,6 +645,25 @@ function classifyExternalApiError(message: string) {
     };
   }
 
+  if (
+    normalized.includes("too many requests") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("rate_limit") ||
+    normalized.includes("usage limit") ||
+    normalized.includes("usage_limit") ||
+    normalized.includes("limit has been reached") ||
+    normalized.includes("limit_reached") ||
+    normalized.includes("quota has been exceeded") ||
+    normalized.includes("quota exceeded") ||
+    normalized.includes("quota_exceeded")
+  ) {
+    return {
+      type: "rate_limit_error",
+      code: "rate_limit_exceeded",
+      status: 429,
+    };
+  }
+
   return {
     type: "upstream_error",
     code: "image_generation_failed",
@@ -648,6 +696,28 @@ export function toOpenAIErrorPayload(
     ...(generationId ? { generation_id: generationId, generationId } : {}),
     ...(creditsConsumed !== undefined
       ? { credits_consumed: creditsConsumed }
+      : {}),
+  };
+}
+
+export function toExternalErrorStreamData(
+  message: string,
+  payload: ReturnType<typeof toOpenAIErrorPayload>
+) {
+  return {
+    type: payload.error.type,
+    code: payload.error.code,
+    status: payload.error.status,
+    message,
+    error: payload.error,
+    ...(payload.generation_id
+      ? {
+          generation_id: payload.generation_id,
+          generationId: payload.generationId,
+        }
+      : {}),
+    ...(payload.credits_consumed !== undefined
+      ? { credits_consumed: payload.credits_consumed }
       : {}),
   };
 }
@@ -714,7 +784,8 @@ export async function createJsonKeepAliveResponse(
   }
 
   const encoder = new TextEncoder();
-  const keepAliveMs = options?.keepAliveMs ?? DEFAULT_JSON_KEEP_ALIVE_INTERVAL_MS;
+  const keepAliveMs =
+    options?.keepAliveMs ?? DEFAULT_JSON_KEEP_ALIVE_INTERVAL_MS;
   let keepAlive: ReturnType<typeof setInterval> | undefined;
   let cancelled = false;
 

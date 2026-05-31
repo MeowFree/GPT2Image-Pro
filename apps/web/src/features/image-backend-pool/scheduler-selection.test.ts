@@ -137,6 +137,7 @@ const dbMock = vi.hoisted(() => {
       state.limitCalls.push({ tableName, limit });
       return builder;
     });
+    // biome-ignore lint/suspicious/noThenProperty: drizzle query mocks need to be awaitable.
     builder.then = (
       resolve: (value: Row[]) => unknown,
       reject?: (reason: unknown) => unknown
@@ -199,7 +200,9 @@ vi.mock("drizzle-orm", () => {
 
 vi.mock("@repo/shared/config/subscription-plan", () => ({
   isPlanAtLeast: vi.fn(() => true),
-  normalizeSubscriptionPlan: vi.fn((_value: unknown, fallback: string) => fallback),
+  normalizeSubscriptionPlan: vi.fn(
+    (_value: unknown, fallback: string) => fallback
+  ),
 }));
 
 vi.mock("@repo/shared/image-backend/nested-groups", () => ({
@@ -220,10 +223,16 @@ vi.mock("@repo/shared/subscription/services/user-plan", () => ({
 
 vi.mock("@repo/shared/system-settings", () => ({
   clearSystemSettingsCache: vi.fn(),
-  getRuntimeSettingBoolean: vi.fn(async (_key: string, fallback = false) => fallback),
+  getRuntimeSettingBoolean: vi.fn(
+    async (_key: string, fallback = false) => fallback
+  ),
   getRuntimeSettingJson: vi.fn(async () => undefined),
-  getRuntimeSettingNumber: vi.fn(async (_key: string, fallback: number) => fallback),
-  getRuntimeSettingSelect: vi.fn(async (_key: string, fallback: string) => fallback),
+  getRuntimeSettingNumber: vi.fn(
+    async (_key: string, fallback: number) => fallback
+  ),
+  getRuntimeSettingSelect: vi.fn(
+    async (_key: string, fallback: string) => fallback
+  ),
   getRuntimeSettingString: vi.fn(async () => ""),
 }));
 
@@ -231,7 +240,10 @@ vi.mock("@/features/image-generation/chatgpt-web", () => ({
   getChatGptWebAccountInfo: vi.fn(),
 }));
 
-import { resolveImageBackendPoolConfig } from "./service";
+import {
+  reportImageBackendResult,
+  resolveImageBackendPoolConfig,
+} from "./service";
 
 function makeAccount(index: number) {
   return {
@@ -291,9 +303,9 @@ describe("image backend pool scheduler selection", () => {
 
     expect(result?.memberType).toBe("account");
     expect(result?.memberId).toBe("acct-51");
-    expect(
-      dbMock.state.limitCalls.filter((call) => call.limit === 50)
-    ).toEqual([]);
+    expect(dbMock.state.limitCalls.filter((call) => call.limit === 50)).toEqual(
+      []
+    );
   });
 
   it("uses the platform default group for API keys without an explicit group", async () => {
@@ -325,12 +337,8 @@ describe("image backend pool scheduler selection", () => {
         updatedAt: new Date(2026, 0, 2),
       },
     ];
-    dbMock.state.externalApiKeys = [
-      { id: "key-a", generationGroupId: null },
-    ];
-    dbMock.state.userPreferences = [
-      { userId: "user-a", groupId: "api-group" },
-    ];
+    dbMock.state.externalApiKeys = [{ id: "key-a", generationGroupId: null }];
+    dbMock.state.userPreferences = [{ userId: "user-a", groupId: "api-group" }];
     dbMock.state.accounts = [
       {
         ...makeAccount(1),
@@ -378,9 +386,7 @@ describe("image backend pool scheduler selection", () => {
         updatedAt: new Date(2026, 0, 2),
       },
     ];
-    dbMock.state.userPreferences = [
-      { userId: "user-a", groupId: "api-group" },
-    ];
+    dbMock.state.userPreferences = [{ userId: "user-a", groupId: "api-group" }];
     dbMock.state.accounts = [
       {
         ...makeAccount(1),
@@ -396,5 +402,58 @@ describe("image backend pool scheduler selection", () => {
 
     expect(result?.groupId).toBe("default-group");
     expect(result?.config.backend?.billingGroupId).toBe("default-group");
+  });
+
+  it("reactivates limited accounts after a successful retry", async () => {
+    dbMock.state.accounts = [
+      {
+        ...makeAccount(1),
+        status: "limited",
+        cooldownUntil: new Date(2026, 0, 1),
+      },
+    ];
+
+    await reportImageBackendResult({
+      memberType: "account",
+      memberId: "acct-1",
+      success: true,
+    });
+
+    const update = dbMock.state.updates.find(
+      (item) => item.tableName === "image_backend_account"
+    );
+    expect(update?.values).toMatchObject({
+      status: "active",
+      cooldownUntil: null,
+      lastError: null,
+      lastErrorAt: null,
+    });
+  });
+
+  it("reactivates limited API backends after a successful retry", async () => {
+    dbMock.state.apis = [
+      {
+        id: "api-1",
+        groupId: "group-a",
+        status: "limited",
+        cooldownUntil: new Date(2026, 0, 1),
+      },
+    ];
+
+    await reportImageBackendResult({
+      memberType: "api",
+      memberId: "api-1",
+      success: true,
+    });
+
+    const update = dbMock.state.updates.find(
+      (item) => item.tableName === "image_backend_api"
+    );
+    expect(update?.values).toMatchObject({
+      status: "active",
+      cooldownUntil: null,
+      lastError: null,
+      lastErrorAt: null,
+    });
   });
 });

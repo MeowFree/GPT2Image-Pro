@@ -22,9 +22,7 @@ describe("image backend error classification", () => {
     const isImageBackendSwitchableError = await loadClassifier();
 
     expect(
-      isImageBackendSwitchableError(
-        "The operation was aborted due to timeout"
-      )
+      isImageBackendSwitchableError("The operation was aborted due to timeout")
     ).toBe(false);
   });
 
@@ -34,6 +32,36 @@ describe("image backend error classification", () => {
     expect(isImageBackendSwitchableError("The quota has been exceeded.")).toBe(
       true
     );
+  });
+
+  it("switches accounts for Codex Responses 429 usage limits", async () => {
+    const isImageBackendSwitchableError = await loadClassifier();
+
+    expect(
+      isImageBackendSwitchableError(
+        "Upstream Responses API returned HTTP 429: The usage limit has been reached | usage_limit_reached"
+      )
+    ).toBe(true);
+    expect(
+      isImageBackendSwitchableError(
+        "Upstream Responses API returned HTTP 429: Rate limit exceeded"
+      )
+    ).toBe(true);
+  });
+
+  it("does not switch accounts for Codex Responses invalid input 400s", async () => {
+    const isImageBackendSwitchableError = await loadClassifier();
+
+    expect(
+      isImageBackendSwitchableError(
+        "Upstream Responses API returned HTTP 400: The image data you provided does not represent a valid image. Please check your input and try again. | invalid_value | invalid_request_error"
+      )
+    ).toBe(false);
+    expect(
+      isImageBackendSwitchableError(
+        "Upstream Responses API returned HTTP 400: Error while downloading file. Upstream status code: 502. | invalid_value | invalid_request_error"
+      )
+    ).toBe(false);
   });
 
   it("does not switch accounts for user safety rejections", async () => {

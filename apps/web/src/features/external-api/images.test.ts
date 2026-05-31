@@ -5,6 +5,7 @@ import {
   createJsonKeepAliveResponse,
   getExternalFinalImageOutputs,
   getImageBase64,
+  toExternalErrorStreamData,
   toExternalGenerationUsage,
   toOpenAIErrorPayload,
   toOpenAIImagesResponse,
@@ -41,9 +42,7 @@ describe("external image stream response", () => {
   it("sets no-buffer headers for proxied SSE", async () => {
     const response = createExternalImageStreamResponse(async () => undefined);
 
-    expect(response.headers.get("content-type")).toContain(
-      "text/event-stream"
-    );
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(response.headers.get("cache-control")).toContain("no-transform");
     expect(response.headers.get("cdn-cache-control")).toBe("no-store");
     expect(response.headers.get("cloudflare-cdn-cache-control")).toBe(
@@ -254,15 +253,18 @@ describe("external image base64 loading", () => {
 describe("external API error classification", () => {
   it("maps plan limit errors to explicit request errors", () => {
     expect(
-      toOpenAIErrorPayload("Batch image generation is not enabled for this plan.")
-        .error
+      toOpenAIErrorPayload(
+        "Batch image generation is not enabled for this plan."
+      ).error
     ).toMatchObject({
       type: "invalid_request_error",
       code: "insufficient_plan",
       status: 403,
     });
 
-    expect(toOpenAIErrorPayload("n must be between 1 and 10.").error).toMatchObject({
+    expect(
+      toOpenAIErrorPayload("n must be between 1 and 10.").error
+    ).toMatchObject({
       type: "invalid_request_error",
       code: "plan_limit_exceeded",
       status: 400,
@@ -281,11 +283,33 @@ describe("external API error classification", () => {
     });
   });
 
-  it("maps unsupported chat/image model errors to bad requests", () => {
+  it("maps upstream rate limits to rate limit errors", () => {
     expect(
       toOpenAIErrorPayload(
-        "Unsupported chat model. Use gpt-5.4, gpt-5.4-mini."
+        "ChatGPT Web conversation failed: HTTP 429 Too many requests"
       ).error
+    ).toMatchObject({
+      type: "rate_limit_error",
+      code: "rate_limit_exceeded",
+      status: 429,
+    });
+  });
+
+  it("maps loose upstream status text to the original HTTP status", () => {
+    expect(
+      toOpenAIErrorPayload("status_code=400, bad response status code 400")
+        .error
+    ).toMatchObject({
+      type: "invalid_request_error",
+      code: "upstream_http_400",
+      status: 400,
+    });
+  });
+
+  it("maps unsupported chat/image model errors to bad requests", () => {
+    expect(
+      toOpenAIErrorPayload("Unsupported chat model. Use gpt-5.4, gpt-5.4-mini.")
+        .error
     ).toMatchObject({
       type: "invalid_request_error",
       code: "unsupported_model",
@@ -315,6 +339,29 @@ describe("external API error classification", () => {
     });
   });
 
+  it("uses classified status and type for streamed error events", () => {
+    const message =
+      "Upstream Responses API returned HTTP 400: Transparent background is not supported for this model. | invalid_value | image_generation_user_error";
+    const payload = toOpenAIErrorPayload(message, {
+      generationId: "gen_1",
+      creditsConsumed: 0,
+    });
+
+    expect(toExternalErrorStreamData(message, payload)).toMatchObject({
+      type: "image_generation_user_error",
+      code: "invalid_value",
+      status: 400,
+      message,
+      generation_id: "gen_1",
+      credits_consumed: 0,
+      error: {
+        type: "image_generation_user_error",
+        code: "invalid_value",
+        status: 400,
+      },
+    });
+  });
+
   it("maps safety refusals to content policy violations", () => {
     expect(
       toOpenAIErrorPayload(
@@ -337,8 +384,7 @@ describe("external API error classification", () => {
     });
 
     expect(
-      toOpenAIErrorPayload("I can't help create explicit sexual content.")
-        .error
+      toOpenAIErrorPayload("I can't help create explicit sexual content.").error
     ).toMatchObject({
       type: "invalid_request_error",
       code: "content_policy_violation",
@@ -346,8 +392,9 @@ describe("external API error classification", () => {
     });
 
     expect(
-      toOpenAIErrorPayload("抱歉，我不能协助对这张包含露骨性内容的漫画进行上色。")
-        .error
+      toOpenAIErrorPayload(
+        "抱歉，我不能协助对这张包含露骨性内容的漫画进行上色。"
+      ).error
     ).toMatchObject({
       type: "invalid_request_error",
       code: "content_policy_violation",

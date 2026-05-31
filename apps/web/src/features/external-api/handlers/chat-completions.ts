@@ -15,6 +15,7 @@ import {
 import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
+  toExternalErrorStreamData,
   getExternalFinalImageOutputs,
   getImageBase64,
   getPublicImageUrl,
@@ -413,7 +414,8 @@ export const postExternalChatCompletions = withApiLogging(
 
     const topLevelModel = parsed.data.model?.trim();
     const topLevelModelIsImage = isImageModel(topLevelModel);
-    const explicitImageModel = parsed.data.imageModel || parsed.data.image_model;
+    const explicitImageModel =
+      parsed.data.imageModel || parsed.data.image_model;
     const imageModel = getImageModel(
       explicitImageModel || (topLevelModelIsImage ? topLevelModel : undefined)
     );
@@ -515,14 +517,7 @@ export const postExternalChatCompletions = withApiLogging(
               );
               await emit({
                 event: "error",
-                data: {
-                  type: "upstream_error",
-                  message: result.error,
-                  error: errorPayload.error,
-                  generation_id: result.generationId,
-                  generationId: result.generationId,
-                  credits_consumed: result.creditsConsumed,
-                },
+                data: toExternalErrorStreamData(result.error, errorPayload),
               });
               return;
             }

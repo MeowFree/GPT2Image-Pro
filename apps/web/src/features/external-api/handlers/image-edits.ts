@@ -21,6 +21,7 @@ import { authenticateExternalApiRequest } from "@/features/external-api/auth";
 import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
+  toExternalErrorStreamData,
   getExternalFinalImageOutputs,
   getImageBase64,
   getPublicImageUrl,
@@ -410,12 +411,16 @@ async function fetchImageReference(
   const maxImageBytes = options?.maxImageBytes ?? DEFAULT_MAX_IMAGE_BYTES;
   // 流式读取并在累计超限时主动 abort：content-length 头可伪造，不能据其预判大小，
   // 也不能先把整段正文缓冲进内存（否则可被巨大响应逼近 OOM）。
-  const buffer = await readResponseBytesWithLimit(response, maxImageBytes, () => {
-    throw new ImageReferenceError(
-      `${options?.mask ? "Mask" : "Image URL"} exceeds the ${formatMegabytes(maxImageBytes)} limit.`,
-      413
-    );
-  });
+  const buffer = await readResponseBytesWithLimit(
+    response,
+    maxImageBytes,
+    () => {
+      throw new ImageReferenceError(
+        `${options?.mask ? "Mask" : "Image URL"} exceeds the ${formatMegabytes(maxImageBytes)} limit.`,
+        413
+      );
+    }
+  );
 
   return new File(
     [buffer],
@@ -794,14 +799,7 @@ export const postExternalImageEdits = withApiLogging(
                 );
                 await emit({
                   event: "error",
-                  data: {
-                    type: "upstream_error",
-                    message: result.error,
-                    error: errorPayload.error,
-                    generation_id: result.generationId,
-                    generationId: result.generationId,
-                    credits_consumed: result.creditsConsumed,
-                  },
+                  data: toExternalErrorStreamData(result.error, errorPayload),
                 });
                 return;
               }

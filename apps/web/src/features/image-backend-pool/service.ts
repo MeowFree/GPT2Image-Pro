@@ -540,7 +540,15 @@ function isUserRequestBackendError(error?: string | null) {
     normalized.includes("image_generation_user_error") ||
     normalized.includes("user_error") ||
     normalized.includes("content_policy") ||
-    normalized.includes("policy_violation")
+    normalized.includes("policy_violation") ||
+    normalized.includes(
+      "the image data you provided does not represent a valid image"
+    ) ||
+    normalized.includes("error while downloading file") ||
+    normalized.includes("unable to download content from the provided url") ||
+    normalized.includes("failed to download file") ||
+    normalized.includes("file urls cannot be larger than") ||
+    normalized.includes("transparent background is not supported")
   );
 }
 
@@ -1673,6 +1681,7 @@ export async function reportImageBackendResult(
         input.success
           ? {
               successCount: sql`${imageBackendApi.successCount} + 1`,
+              status: "active",
               lastError: null,
               lastErrorAt: null,
               cooldownUntil: null,
@@ -1729,7 +1738,7 @@ export async function reportImageBackendResult(
             ...(webSuccess?.metadata !== undefined
               ? { metadata: webSuccess.metadata }
               : {}),
-            ...(webSuccess?.status ? { status: webSuccess.status } : {}),
+            status: webSuccess?.status || "active",
             lastError: null,
             lastErrorAt: null,
             cooldownUntil: webSuccess ? webSuccess.cooldownUntil : null,
@@ -3003,11 +3012,9 @@ function mergedSub2ApiData(
       row.rate_limit_reset_at ?? row.row_data?.rate_limit_reset_at,
     overload_until: row.overload_until ?? row.row_data?.overload_until,
     temp_unschedulable_until:
-      row.temp_unschedulable_until ??
-      row.row_data?.temp_unschedulable_until,
+      row.temp_unschedulable_until ?? row.row_data?.temp_unschedulable_until,
     temp_unschedulable_reason:
-      row.temp_unschedulable_reason ??
-      row.row_data?.temp_unschedulable_reason,
+      row.temp_unschedulable_reason ?? row.row_data?.temp_unschedulable_reason,
     session_window_status:
       row.session_window_status ?? row.row_data?.session_window_status,
     session_window_end:
@@ -4057,9 +4064,7 @@ async function upsertSub2ApiAutoSyncTask(input: {
     overwriteLocalUnavailableState:
       input.overwriteLocalUnavailableState !== false,
     planFilter,
-    intervalMinutes: normalizeSub2ApiSyncIntervalMinutes(
-      input.intervalMinutes
-    ),
+    intervalMinutes: normalizeSub2ApiSyncIntervalMinutes(input.intervalMinutes),
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
