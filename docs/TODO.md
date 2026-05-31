@@ -58,10 +58,32 @@
 
 - [x] 阶段0 接口层脚手架：`packages/shared/src/uol/` 7 核心模块(types/principal/errors/registry/access/invoke/index) + 3 测试文件。已推送分支 `feat/uol-phase0-phase1`。
 - [x] 阶段1 已干净 service-fn 直接注册：144 个操作注册覆盖 10 域（execute 为 stub）。已推送分支 `feat/uol-phase0-phase1`，待合并 dev。
-- [ ] 阶段2 server-action 改为委托去重：actions.ts 系列改 invokeOperation + 末尾 revalidatePath，逐个对拍新旧输出；收敛 image.generate 双 schema（以 route 全量为准）；删除 admin-users/creem 重复副本（shared 为权威）。
-- [ ] 阶段3 内置 Agent + MCP 适配器（价值兑现）：Bridge+Executor（幂等/审计/目标护栏）只读工具先上线 → 审批门+interrupt+UI → 计划模式+裁剪；MCP mcp/ 全套 + /api/mcp 路由 + stdio bin + system-settings 新键 + 面板，默认关闭，DB-free 单测先行。
-- [ ] 阶段4 v1 api-route 改薄适配器：8 对路由退化为 解析→fromBearer→invokeOperation→编码（SSE/JSON/keepalive）；抽传输无关输入构建器（File/Buffer）+ SSRF 校验去重。
-- [ ] 阶段5 缺 service 域补齐 + 财务/存储谨慎收尾：support/tickets 下沉 service-fn + 补幂等键（clientRequestId）+事务；财务 useCredits/adminGrant/adminAdjust 强制 sourceRef + adjust TOCTOU；reportImageBackendResult 补断言/单测（C-M9/C-M11）；存储两栈收敛到 provider 抽象（local 预签名仅 S3 限制）。
+- [ ] 阶段2 管理类 action 委托对接：仅对接 admin/管理操作（admin-users, system-settings, image-backend-pool, support, announcements, credits admin）的 execute stub 到真实 service-fn。v1 用户侧路由不动。逐个对拍新旧输出。
+- [ ] 阶段3 管理员 MCP + 内置 Agent：仅暴露管理操作；管理秘钥鉴权（`MCP_ADMIN_SECRET`）；默认关闭；面向运维 agent。
+- [ ] 阶段4（后续决策）用户 MCP — 生���能力面向全部用户：见下方"MCP 双层决策"。
+
+### MCP 双层决策（已确认，后续实现）
+
+> 管理员 MCP 与用户 MCP 是**完全独立的两套 MCP server**，不可混淆。
+
+| | 管理员 MCP | 用户 MCP |
+|---|---|---|
+| 受众 | 站点运维人员/运维 agent | 全部注册用户/用户侧 agent |
+| 暴露操作 | 管理功能（用户管理/设置/后端池/工单/公告/积分管理） | 生图功能（image.generate 及相关读操作） |
+| 鉴权 | 管理秘钥 Bearer（`MCP_ADMIN_SECRET`，恒定时间比对） | **MCP 专有用户 Key**（per-user，类似 external API key 但独立字段/桶/权限位） |
+| 默认状态 | 关闭（`MCP_ENABLED`） | 关闭（`MCP_USER_ENABLED`，独立开关） |
+| 路由 | `/api/mcp/admin` | `/api/mcp/user` |
+| 积分/计费 | 不涉及（管理操作不消耗用户积分） | 消耗调用者积分（复用现有计费��线） |
+| 权限模型 | 管理员角色体系 | 用户套餐能力矩阵（plan-capabilities） |
+| 限流 | 按管理秘���指纹 + 域 | 按用户 MCP key id（复用或独立于 external-api 桶） |
+
+**要点**：
+- 用户 MCP Key 与 v1 external API Key 是**独立的 key 体系**（不复用，避免权限混淆；MCP key 授权 MCP 工具调用，v1 key 授权 HTTP API）
+- 用户 MCP 复用 `runImageGenerationForUser` 单一管线（扣费/审核/存储全链路不变）
+- 用户 MCP 通过套餐能力位控制可用工具（free 用户只能 generate，Pro 解锁 edit/chat/batch 等）
+- 管理员 MCP 与用户 MCP 物理隔离：独立路由、独立鉴权、独立开关、独立限流桶
+
+**实现时机**：管理员 MCP（阶段3）先行；用户 MCP 在管理员 MCP 稳定后作为独立阶段实现。
 
 ## 部署前必做
 
