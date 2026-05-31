@@ -778,35 +778,43 @@ function SlaCard({
             {formatDuration(stats.avgSeconds, locale)}
           </span>
         </div>
-        {stats.moderationPromptRepair.attempted > 0 ? (
-          <div className="rounded-md border bg-muted/20 p-3 text-xs">
-            <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span className="font-medium text-foreground">
-                {copy(locale, "Prompt repair retries", "审核修剪重试")}
-              </span>
-              <span className="text-muted-foreground">
-                {copy(locale, "Attempts", "尝试")}{" "}
-                {stats.moderationPromptRepair.attempted}
-              </span>
-              <span className="text-muted-foreground">
-                {copy(locale, "Succeeded", "成功")}{" "}
-                {stats.moderationPromptRepair.succeeded}
-              </span>
-              <span className="text-muted-foreground">
-                {copy(locale, "Failed", "失败")}{" "}
-                {stats.moderationPromptRepair.failed}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2 text-muted-foreground">
-              {stats.moderationPromptRepair.byAttempt.map((item) => (
+        <div className="rounded-md border bg-muted/20 p-3 text-xs">
+          <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="font-medium text-foreground">
+              {copy(locale, "Prompt repair retries", "审核修剪重试")}
+            </span>
+            <span className="text-muted-foreground">
+              {copy(locale, "Attempts", "尝试")}{" "}
+              {stats.moderationPromptRepair.attempted}
+            </span>
+            <span className="text-muted-foreground">
+              {copy(locale, "Succeeded", "成功")}{" "}
+              {stats.moderationPromptRepair.succeeded}
+            </span>
+            <span className="text-muted-foreground">
+              {copy(locale, "Failed", "失败")}{" "}
+              {stats.moderationPromptRepair.failed}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2 text-muted-foreground">
+            {stats.moderationPromptRepair.byAttempt.length > 0 ? (
+              stats.moderationPromptRepair.byAttempt.map((item) => (
                 <span key={item.attempt}>
                   #{item.attempt}: {item.attempted}/{item.succeeded}/
                   {item.failed}
                 </span>
-              ))}
-            </div>
+              ))
+            ) : (
+              <span>
+                {copy(
+                  locale,
+                  "No prompt repair retries in the selected range.",
+                  "当前范围暂无审核修剪重试。"
+                )}
+              </span>
+            )}
           </div>
-        ) : null}
+        </div>
         <DurationBreakdownTable
           breakdown={stats.durationBreakdown}
           locale={locale}
