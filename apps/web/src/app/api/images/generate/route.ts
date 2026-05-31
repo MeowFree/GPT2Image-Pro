@@ -7,24 +7,28 @@ import {
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-
-import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
   firstBatchError,
   runBatchImageGeneration,
 } from "@/features/image-generation/batch-runner";
-import {
-  DEFAULT_IMAGE_SIZE,
-  validateImageSize,
-} from "@/features/image-generation/resolution";
-import { createImageStreamResponse } from "@/features/image-generation/streaming";
+import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
   normalizeOutputCompression,
   normalizeOutputFormat,
 } from "@/features/image-generation/output-format";
+import {
+  DEFAULT_IMAGE_SIZE,
+  IMAGE_PROMPT_MAX_CHARACTERS,
+  IMAGE_PROMPT_TOO_LONG_MESSAGE,
+  validateImageSize,
+} from "@/features/image-generation/resolution";
+import { createImageStreamResponse } from "@/features/image-generation/streaming";
 
 const generateImageSchema = z.object({
-  prompt: z.string().min(1).max(4000),
+  prompt: z
+    .string()
+    .min(1)
+    .max(IMAGE_PROMPT_MAX_CHARACTERS, IMAGE_PROMPT_TOO_LONG_MESSAGE),
   generationId: z.string().min(1).max(128).optional(),
   generation_id: z.string().min(1).max(128).optional(),
   generationIds: z.array(z.string().min(1).max(128)).optional(),
@@ -134,7 +138,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       parsed.data.requiresResponsesBackend ||
       parsed.data.requires_responses_backend
         ? false
-        : parsed.data.mixWebFirst ?? parsed.data.mix_web_first,
+        : (parsed.data.mixWebFirst ?? parsed.data.mix_web_first),
     requiresResponsesBackend:
       parsed.data.requiresResponsesBackend ??
       parsed.data.requires_responses_backend,

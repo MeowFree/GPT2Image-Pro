@@ -34,6 +34,16 @@ describe("image backend error classification", () => {
     );
   });
 
+  it("switches accounts when Responses finishes without a final image", async () => {
+    const isImageBackendSwitchableError = await loadClassifier();
+
+    expect(
+      isImageBackendSwitchableError(
+        "Upstream returned no image output: 已生成图片。"
+      )
+    ).toBe(true);
+  });
+
   it("switches accounts for Codex Responses 429 usage limits", async () => {
     const isImageBackendSwitchableError = await loadClassifier();
 

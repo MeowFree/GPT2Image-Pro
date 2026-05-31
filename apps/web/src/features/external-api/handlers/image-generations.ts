@@ -19,15 +19,15 @@ import { authenticateExternalApiRequest } from "@/features/external-api/auth";
 import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
-  toExternalErrorStreamData,
   getExternalFinalImageOutputs,
   getImageBase64,
   getPublicImageUrl,
   IMAGE_JSON_KEEP_ALIVE_INITIAL_WAIT_MS,
   openAIImageError,
+  toExternalErrorStreamData,
+  toLoggedOpenAIErrorPayload,
   toOpenAIErrorPayload,
   toOpenAIImagesResponse,
-  toLoggedOpenAIErrorPayload,
   wantsImageStreamResponse,
 } from "@/features/external-api/images";
 import { runBatchImageGeneration } from "@/features/image-generation/batch-runner";
@@ -39,12 +39,17 @@ import {
 import {
   DEFAULT_IMAGE_SIZE,
   getImageModel,
+  IMAGE_PROMPT_MAX_CHARACTERS,
+  IMAGE_PROMPT_TOO_LONG_MESSAGE,
   validateImageSize,
 } from "@/features/image-generation/resolution";
 import type { PartialImageResult } from "@/features/image-generation/types";
 
 const externalImageGenerationSchema = z.object({
-  prompt: z.string().min(1).max(4000),
+  prompt: z
+    .string()
+    .min(1)
+    .max(IMAGE_PROMPT_MAX_CHARACTERS, IMAGE_PROMPT_TOO_LONG_MESSAGE),
   promptOptimization: z.boolean().optional(),
   prompt_optimization: z.boolean().optional(),
   model: z.string().optional(),

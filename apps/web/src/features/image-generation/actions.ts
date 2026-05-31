@@ -10,11 +10,19 @@ import { protectedAction } from "@repo/shared/safe-action";
 import { getStorageProvider } from "@repo/shared/storage/providers";
 import { and, eq, ne } from "drizzle-orm";
 import { z } from "zod";
-import { DEFAULT_IMAGE_SIZE, validateImageSize } from "./resolution";
 import { runImageGenerationForUser } from "./operations";
+import {
+  DEFAULT_IMAGE_SIZE,
+  IMAGE_PROMPT_MAX_CHARACTERS,
+  IMAGE_PROMPT_TOO_LONG_MESSAGE,
+  validateImageSize,
+} from "./resolution";
 
 const generateImageSchema = z.object({
-  prompt: z.string().min(1).max(4000),
+  prompt: z
+    .string()
+    .min(1)
+    .max(IMAGE_PROMPT_MAX_CHARACTERS, IMAGE_PROMPT_TOO_LONG_MESSAGE),
   size: z
     .string()
     .optional()

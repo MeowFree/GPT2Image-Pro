@@ -1,6 +1,8 @@
 export const DEFAULT_IMAGE_MODEL = "gpt-image-2";
 export const LEGACY_IMAGE_MODEL = "gpt-image-1";
 export const IMAGE_MODEL_PREFIX = "gpt-image-";
+export const IMAGE_PROMPT_MAX_CHARACTERS = 32_000;
+export const IMAGE_PROMPT_TOO_LONG_MESSAGE = `Prompt exceeds the ${IMAGE_PROMPT_MAX_CHARACTERS} character limit.`;
 export const AUTO_IMAGE_SIZE = "auto";
 export const IMAGE_1K_BASE_EDGE = 1248;
 export const IMAGE_1K_BASE_SIZE = `${IMAGE_1K_BASE_EDGE}x${IMAGE_1K_BASE_EDGE}`;
@@ -155,7 +157,8 @@ export function getImageBaseCredits(
   pixels: number,
   pricing?: ImageBaseCreditPricing | null
 ) {
-  const safePixels = Number.isFinite(pixels) && pixels > 0 ? pixels : MAX_IMAGE_PIXELS;
+  const safePixels =
+    Number.isFinite(pixels) && pixels > 0 ? pixels : MAX_IMAGE_PIXELS;
   const { base1024Credits, base4kCredits } = getImageBaseCreditPricing(pricing);
   if (safePixels <= IMAGE_1024_BASE_PIXELS) return base1024Credits;
   if (safePixels >= MAX_IMAGE_PIXELS) return base4kCredits;

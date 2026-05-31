@@ -8,24 +8,11 @@ import {
 import { getPlanUploadLimits } from "@repo/shared/subscription/services/upload-limits";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import { type NextRequest, NextResponse } from "next/server";
-
-import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
   firstBatchError,
   runBatchImageGeneration,
 } from "@/features/image-generation/batch-runner";
-import {
-  DEFAULT_IMAGE_SIZE,
-  validateImageSize,
-} from "@/features/image-generation/resolution";
-import {
-  filesToImageInputs,
-  formatMegabytes,
-  getTotalUploadSize,
-  uploadTemporaryImageUrls,
-  validateImageFile,
-} from "@/features/image-generation/request-utils";
-import { createImageStreamResponse } from "@/features/image-generation/streaming";
+import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
   normalizeImageBackground,
   normalizeOutputCompression,
@@ -33,6 +20,20 @@ import {
   VALID_IMAGE_BACKGROUNDS,
   VALID_OUTPUT_FORMATS,
 } from "@/features/image-generation/output-format";
+import {
+  filesToImageInputs,
+  formatMegabytes,
+  getTotalUploadSize,
+  uploadTemporaryImageUrls,
+  validateImageFile,
+} from "@/features/image-generation/request-utils";
+import {
+  DEFAULT_IMAGE_SIZE,
+  IMAGE_PROMPT_MAX_CHARACTERS,
+  IMAGE_PROMPT_TOO_LONG_MESSAGE,
+  validateImageSize,
+} from "@/features/image-generation/resolution";
+import { createImageStreamResponse } from "@/features/image-generation/streaming";
 import type {
   ChatHistoryMessage,
   ImageBackground,
@@ -625,8 +626,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
   if (!prompt) {
     return errorResponse("Prompt is required.");
   }
-  if (prompt.length > 4000) {
-    return errorResponse("Prompt exceeds the 4000 character limit.");
+  if (prompt.length > IMAGE_PROMPT_MAX_CHARACTERS) {
+    return errorResponse(IMAGE_PROMPT_TOO_LONG_MESSAGE);
   }
 
   const apiPrompt = getText(formData, "apiPrompt") || undefined;

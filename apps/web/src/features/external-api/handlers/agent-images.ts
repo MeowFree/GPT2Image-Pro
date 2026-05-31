@@ -12,10 +12,6 @@ import type { NextRequest } from "next/server";
 
 import { authenticateExternalApiRequest } from "@/features/external-api/auth";
 import {
-  fetchPublicImage,
-  readResponseBytesWithLimit,
-} from "@/features/external-api/safe-image-fetch";
-import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
   getImageBase64,
@@ -24,6 +20,10 @@ import {
   toOpenAIErrorPayload,
   wantsImageStreamResponse,
 } from "@/features/external-api/images";
+import {
+  fetchPublicImage,
+  readResponseBytesWithLimit,
+} from "@/features/external-api/safe-image-fetch";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
   normalizeOutputCompression,
@@ -31,17 +31,19 @@ import {
   VALID_OUTPUT_FORMATS,
 } from "@/features/image-generation/output-format";
 import {
-  DEFAULT_IMAGE_SIZE,
-  isImageModel,
-  validateImageSize,
-} from "@/features/image-generation/resolution";
-import {
   filesToImageInputs,
   formatMegabytes,
   getTotalUploadSize,
   uploadTemporaryImageUrls,
   validateImageFile,
 } from "@/features/image-generation/request-utils";
+import {
+  DEFAULT_IMAGE_SIZE,
+  IMAGE_PROMPT_MAX_CHARACTERS,
+  IMAGE_PROMPT_TOO_LONG_MESSAGE,
+  isImageModel,
+  validateImageSize,
+} from "@/features/image-generation/resolution";
 import type {
   AgentRunEvent,
   ChatHistoryMessage,
@@ -50,8 +52,8 @@ import type {
   ImageModeration,
   ImageOutputFormat,
   ImageQuality,
-  ResponsesPreviousResponseState,
   ResponsesInputFile,
+  ResponsesPreviousResponseState,
   StickyBackendMemberState,
   ThinkingLevel,
 } from "@/features/image-generation/types";
@@ -549,12 +551,16 @@ async function fetchImageReference(
   const type = contentType || "image/png";
   // 流式读取并在累计超限时主动 abort：content-length 头可伪造，不能据其预判大小，
   // 也不能先把整段正文缓冲进内存（否则可被巨大响应逼近 OOM）。
-  const buffer = await readResponseBytesWithLimit(response, maxImageBytes, () => {
-    throw new AgentReferenceError(
-      `Image URL exceeds the ${formatMegabytes(maxImageBytes)} limit.`,
-      413
-    );
-  });
+  const buffer = await readResponseBytesWithLimit(
+    response,
+    maxImageBytes,
+    () => {
+      throw new AgentReferenceError(
+        `Image URL exceeds the ${formatMegabytes(maxImageBytes)} limit.`,
+        413
+      );
+    }
+  );
 
   return new File(
     [buffer],
@@ -894,8 +900,8 @@ export const postExternalAgentImages = withApiLogging(
 
     const prompt = getText(formData, "prompt");
     if (!prompt) return openAIImageError("Prompt is required.");
-    if (prompt.length > 4000) {
-      return openAIImageError("Prompt exceeds the 4000 character limit.");
+    if (prompt.length > IMAGE_PROMPT_MAX_CHARACTERS) {
+      return openAIImageError(IMAGE_PROMPT_TOO_LONG_MESSAGE);
     }
 
     const apiPrompt =

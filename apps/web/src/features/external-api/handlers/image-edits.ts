@@ -21,23 +21,23 @@ import { authenticateExternalApiRequest } from "@/features/external-api/auth";
 import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
-  toExternalErrorStreamData,
   getExternalFinalImageOutputs,
   getImageBase64,
   getPublicImageUrl,
   IMAGE_JSON_KEEP_ALIVE_INITIAL_WAIT_MS,
   openAIImageError,
+  toExternalErrorStreamData,
+  toLoggedOpenAIErrorPayload,
   toOpenAIErrorPayload,
   toOpenAIImagesResponse,
-  toLoggedOpenAIErrorPayload,
   wantsImageStreamResponse,
 } from "@/features/external-api/images";
-import { runBatchImageGeneration } from "@/features/image-generation/batch-runner";
-import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
   fetchPublicImage,
   readResponseBytesWithLimit,
 } from "@/features/external-api/safe-image-fetch";
+import { runBatchImageGeneration } from "@/features/image-generation/batch-runner";
+import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
   normalizeImageBackground,
   normalizeOutputCompression,
@@ -54,6 +54,8 @@ import {
 } from "@/features/image-generation/request-utils";
 import {
   getImageModel,
+  IMAGE_PROMPT_MAX_CHARACTERS,
+  IMAGE_PROMPT_TOO_LONG_MESSAGE,
   validateImageSize,
 } from "@/features/image-generation/resolution";
 import type {
@@ -575,8 +577,8 @@ export const postExternalImageEdits = withApiLogging(
     if (!prompt) {
       return openAIImageError("Prompt is required.");
     }
-    if (prompt.length > 4000) {
-      return openAIImageError("Prompt exceeds the 4000 character limit.");
+    if (prompt.length > IMAGE_PROMPT_MAX_CHARACTERS) {
+      return openAIImageError(IMAGE_PROMPT_TOO_LONG_MESSAGE);
     }
     const promptOptimization = getOptionalBoolean(
       formData,

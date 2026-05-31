@@ -12,13 +12,18 @@ import { protectedAction } from "@/lib/safe-action";
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_IMAGE_SIZE,
+  IMAGE_PROMPT_MAX_CHARACTERS,
+  IMAGE_PROMPT_TOO_LONG_MESSAGE,
   normalizeImageModel,
   validateImageSize,
 } from "./resolution";
 import { generateImage, getEffectiveConfig, getUserApiConfig } from "./service";
 
 const generateImageSchema = z.object({
-  prompt: z.string().min(1).max(4000),
+  prompt: z
+    .string()
+    .min(1)
+    .max(IMAGE_PROMPT_MAX_CHARACTERS, IMAGE_PROMPT_TOO_LONG_MESSAGE),
   size: z
     .string()
     .optional()

@@ -16,6 +16,8 @@ import {
   getRuntimeSettingString,
 } from "@repo/shared/system-settings";
 import { eq } from "drizzle-orm";
+import { assertPublicApiBaseUrl } from "@/features/external-api/safe-image-fetch";
+import { imageBackendApiUsesResponsesEndpoint } from "@/features/image-backend-pool/api-interface-mode";
 import {
   acquireImageBackendInflight,
   ImageBackendPoolUnavailableError,
@@ -24,19 +26,17 @@ import {
   reportImageBackendResult,
   resolveImageBackendPoolConfig,
 } from "@/features/image-backend-pool/service";
-import { imageBackendApiUsesResponsesEndpoint } from "@/features/image-backend-pool/api-interface-mode";
-import { assertPublicApiBaseUrl } from "@/features/external-api/safe-image-fetch";
 import type {
   ImageBackendAccountBackend,
   ImageBackendPreferenceMode,
   ImageBackendRequestKind,
 } from "@/features/image-backend-pool/types";
 import {
+  AGENT_CONTINUE_INSTRUCTIONS,
+  createDefaultAgentAdditionalTools,
   DEFAULT_AGENT_IMAGE_ROUNDS,
   DEFAULT_RESPONSES_IMAGE_INSTRUCTIONS,
   ORIGINAL_PROMPT_RESPONSES_IMAGE_INSTRUCTIONS,
-  AGENT_CONTINUE_INSTRUCTIONS,
-  createDefaultAgentAdditionalTools,
 } from "./agent-tools";
 import {
   editImageWithChatGptWeb,
@@ -56,51 +56,51 @@ import {
   normalizeImageModel,
   parseImageSize,
 } from "./resolution";
-import { getCodexRetryAfterSeconds } from "./retry-metadata";
 import {
   buildResponsesImageEditRequest,
   buildResponsesImageGenerationRequest,
 } from "./responses-image";
-import { extractResponsesImageCallBase64 } from "./responses-output";
-import {
-  normalizeResponsesImageRequestBody,
-  type ResponsesStreamRequestBody,
-} from "./responses-request-normalizer";
 import {
   buildAgentContinuationInput,
   buildContinueGenerationFunctionCallItems,
   buildCurrentResponsesContent,
   buildGeneratedImageReferenceInstruction,
-  buildResponsesInput,
   buildPreviousResponseFallbackRequestBody,
+  buildResponsesInput,
   buildResponsesStoreFalseFallbackRequestBody,
   getContinueGenerationFunctionCalls,
   getNextAssistantImageRoundIndex,
   isPreviousResponseStateError,
   isResponsesStoreUnsupportedError,
-  resolveResponsesNativeState,
-  resolvePromptImageReferences,
-  shouldEnableResponsesPreviousResponse,
   type ResponsesRequestInputItem,
+  resolvePromptImageReferences,
+  resolveResponsesNativeState,
+  shouldEnableResponsesPreviousResponse,
   withResponsesImageReferenceInstructions,
 } from "./responses-native-state";
+import { extractResponsesImageCallBase64 } from "./responses-output";
+import {
+  normalizeResponsesImageRequestBody,
+  type ResponsesStreamRequestBody,
+} from "./responses-request-normalizer";
+import { extractResponsesTokenUsage } from "./responses-usage";
+import { getCodexRetryAfterSeconds } from "./retry-metadata";
 import type {
+  AgentRunEvent,
+  AgentRunEventStatus,
   ApiConfig,
   ChatImageParams,
   EditImageParams,
   GenerateImageParams,
   GenerateImageResult,
-  AgentRunEvent,
-  AgentRunEventStatus,
-  ImageInputFile,
   ImageGenerationCallbacks,
+  ImageInputFile,
   ImageModeration,
   ImageOutputFormat,
   ImageQuality,
   PartialImageResult,
   ThinkingLevel,
 } from "./types";
-import { extractResponsesTokenUsage } from "./responses-usage";
 
 const VALID_QUALITIES = new Set<ImageQuality>([
   "auto",
@@ -290,11 +290,7 @@ export async function getResponsesModel(
   }
 
   const configured = config.model?.trim();
-  if (
-    configured &&
-    poolApiResponsesBackend &&
-    !isImageModel(configured)
-  ) {
+  if (configured && poolApiResponsesBackend && !isImageModel(configured)) {
     return configured;
   }
 
@@ -1183,6 +1179,35 @@ function applyPromptOptimizationResultVisibility(
   };
 }
 
+const MISSING_IMAGE_OUTPUT_ERROR = "Upstream returned no image output";
+
+function hasRequiredImageOutput(result: GenerateImageResult) {
+  return Boolean(
+    result.imageBase64 ||
+      result.imageUrl ||
+      result.imageOutputs?.some((item) => item.imageBase64 || item.imageUrl)
+  );
+}
+
+function compactMissingImageDetail(result: GenerateImageResult) {
+  const detail = (result.responseText || result.responseAgent || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!detail) return "";
+  return detail.length > 500 ? `${detail.slice(0, 500)}...` : detail;
+}
+
+function requireImageOutput(result: GenerateImageResult): GenerateImageResult {
+  if (result.error || hasRequiredImageOutput(result)) return result;
+  const detail = compactMissingImageDetail(result);
+  return {
+    ...result,
+    error: detail
+      ? `${MISSING_IMAGE_OUTPUT_ERROR}: ${detail}`
+      : MISSING_IMAGE_OUTPUT_ERROR,
+  };
+}
+
 function sanitizePromptRepairOutput(value?: string) {
   const trimmed = (value || "").trim();
   if (!trimmed) return "";
@@ -1328,7 +1353,10 @@ function buildChatCompletionsMessages(params: ChatImageParams) {
   }
   messages.push({
     role: "user",
-    content: buildChatCompletionContent(getEffectivePrompt(params), params.images),
+    content: buildChatCompletionContent(
+      getEffectivePrompt(params),
+      params.images
+    ),
   });
   return messages;
 }
@@ -1345,7 +1373,9 @@ function extractChatCompletionText(content: unknown): string {
     .trim();
 }
 
-function extractChatCompletionImages(payload: unknown): ChatCompletionImageItem[] {
+function extractChatCompletionImages(
+  payload: unknown
+): ChatCompletionImageItem[] {
   const images: ChatCompletionImageItem[] = [];
   const collect = (value: unknown) => {
     if (!Array.isArray(value)) return;
@@ -1383,7 +1413,9 @@ function chatCompletionPayloadToResult(
       typeof image.b64_json === "string" ? image.b64_json : undefined,
     imageUrl: typeof image.url === "string" ? image.url : undefined,
     revisedPrompt:
-      typeof image.revised_prompt === "string" ? image.revised_prompt : undefined,
+      typeof image.revised_prompt === "string"
+        ? image.revised_prompt
+        : undefined,
     generationId:
       typeof image.generation_id === "string"
         ? image.generation_id
@@ -1392,7 +1424,9 @@ function chatCompletionPayloadToResult(
           : undefined,
     index,
   }));
-  const firstImage = imageOutputs.find((item) => item.imageBase64 || item.imageUrl);
+  const firstImage = imageOutputs.find(
+    (item) => item.imageBase64 || item.imageUrl
+  );
 
   return {
     responseText: text || undefined,
@@ -1540,7 +1574,10 @@ async function parseChatCompletionsResponse(
   }
   const apiError = getPayloadError(payload);
   if (apiError) return { error: apiError, ...responseRetryMetadata };
-  return { ...chatCompletionPayloadToResult(payload), ...responseRetryMetadata };
+  return {
+    ...chatCompletionPayloadToResult(payload),
+    ...responseRetryMetadata,
+  };
 }
 
 async function generateChatImageWithChatCompletions(
@@ -1560,7 +1597,8 @@ async function generateChatImageWithChatCompletions(
     GPT54_CHAT_MODEL;
   const stream = Boolean(params.stream || config.useStream);
   const rawBody =
-    params.rawChatCompletionsBody && isPlainRecord(params.rawChatCompletionsBody)
+    params.rawChatCompletionsBody &&
+    isPlainRecord(params.rawChatCompletionsBody)
       ? params.rawChatCompletionsBody
       : null;
   const body = {
@@ -1585,23 +1623,26 @@ async function generateChatImageWithChatCompletions(
   delete (body as Record<string, unknown>).requires_responses_backend;
 
   try {
-    const response = await fetch(`${stripTrailingSlash(config.baseUrl)}/chat/completions`, {
-      method: "POST",
-      redirect: "manual",
-      signal: params.signal,
-      cache: stream ? "no-store" : "default",
-      headers: getHeaders(config, {
-        "Content-Type": "application/json",
-        Accept: stream ? "text/event-stream" : "application/json",
-        ...(stream
-          ? {
-              "Accept-Encoding": "identity",
-              "Cache-Control": "no-cache",
-            }
-          : {}),
-      }),
-      body: JSON.stringify(body),
-    });
+    const response = await fetch(
+      `${stripTrailingSlash(config.baseUrl)}/chat/completions`,
+      {
+        method: "POST",
+        redirect: "manual",
+        signal: params.signal,
+        cache: stream ? "no-store" : "default",
+        headers: getHeaders(config, {
+          "Content-Type": "application/json",
+          Accept: stream ? "text/event-stream" : "application/json",
+          ...(stream
+            ? {
+                "Accept-Encoding": "identity",
+                "Cache-Control": "no-cache",
+              }
+            : {}),
+        }),
+        body: JSON.stringify(body),
+      }
+    );
     return await parseChatCompletionsResponse(response, callbacks);
   } catch (error) {
     logImageRequestError(error, {
@@ -1963,7 +2004,9 @@ function getPayloadError(payload: unknown): string | null {
 function extractImageFromPayload(
   payload: ImageResponsePayload
 ): GenerateImageResult | null {
-  const images = (payload.data || []).filter((item) => item.b64_json || item.url);
+  const images = (payload.data || []).filter(
+    (item) => item.b64_json || item.url
+  );
   if (images.length > 0) {
     const image = images[images.length - 1]!;
     return toGenerateImageResult(image);
@@ -2714,7 +2757,9 @@ function getFallbackToolEventKey(
     compactToolText(typeof payload.query === "string" ? payload.query : "") ||
     describeWebSearchAction(action) ||
     compactToolText(typeof payload.name === "string" ? payload.name : "") ||
-    compactToolText(typeof payload.item_id === "string" ? payload.item_id : "") ||
+    compactToolText(
+      typeof payload.item_id === "string" ? payload.item_id : ""
+    ) ||
     compactToolText(
       typeof payload.output_item_id === "string" ? payload.output_item_id : ""
     ) ||
@@ -2939,7 +2984,10 @@ async function processResponsesEventPayload(
     return null;
   }
 
-  const fallbackToolType = isResponsesPartialImageEvent(streamEventName, payload)
+  const fallbackToolType = isResponsesPartialImageEvent(
+    streamEventName,
+    payload
+  )
     ? undefined
     : eventNameToFallbackToolType(streamEventName);
   if (fallbackToolType) {
@@ -3104,7 +3152,8 @@ async function parseResponsesEventStreamResponse(
     completedResult: null,
     fallbackResult: null,
     debugRawStreamEvents:
-      Boolean(callbacks) && process.env.IMAGE_AGENT_DEBUG_STREAM_EVENTS === "true",
+      Boolean(callbacks) &&
+      process.env.IMAGE_AGENT_DEBUG_STREAM_EVENTS === "true",
   };
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -3150,7 +3199,8 @@ async function parseResponsesEventStreamText(
     completedResult: null,
     fallbackResult: null,
     debugRawStreamEvents:
-      Boolean(callbacks) && process.env.IMAGE_AGENT_DEBUG_STREAM_EVENTS === "true",
+      Boolean(callbacks) &&
+      process.env.IMAGE_AGENT_DEBUG_STREAM_EVENTS === "true",
   };
 
   for (const block of text.replace(/\r\n/g, "\n").split("\n\n")) {
@@ -3547,35 +3597,41 @@ export async function generateImage(
           : params.forceWebBackend
             ? "web"
             : undefined,
-        accountBackendPreferenceMode: params.forceWebBackend ? "mixed-only" : undefined,
+        accountBackendPreferenceMode: params.forceWebBackend
+          ? "mixed-only"
+          : undefined,
       }
     );
   }
 
   const model = getModel(config, params.model);
   if (isPoolAccountBackend(config, "web")) {
-    return generateImageWithChatGptWeb(config, {
-      ...params,
-      model,
-      gptModel: params.gptModel,
-    });
+    return requireImageOutput(
+      await generateImageWithChatGptWeb(config, {
+        ...params,
+        model,
+        gptModel: params.gptModel,
+      })
+    );
   }
   if (isResponsesBackend(config)) {
     try {
-      return applyPromptOptimizationResultVisibility(
-        await postResponsesImageRequestWithToolChoiceFallback(
-          config,
-          buildResponsesImageGenerationRequest(config, {
-            ...params,
-            model,
-            gptModel:
-              params.gptModel ||
-              (await getDefaultImageGptModel(config, {
-                allowGpt55: true,
-              })),
-          }),
-          { signal: params.signal },
-          callbacks
+      return requireImageOutput(
+        applyPromptOptimizationResultVisibility(
+          await postResponsesImageRequestWithToolChoiceFallback(
+            config,
+            buildResponsesImageGenerationRequest(config, {
+              ...params,
+              model,
+              gptModel:
+                params.gptModel ||
+                (await getDefaultImageGptModel(config, {
+                  allowGpt55: true,
+                })),
+            }),
+            { signal: params.signal },
+            callbacks
+          )
         )
       );
     } catch (error) {
@@ -3635,8 +3691,10 @@ export async function generateImage(
       }),
     });
 
-    return applyPromptOptimizationResultVisibility(
-      await parseImageResponse(response, callbacks)
+    return requireImageOutput(
+      applyPromptOptimizationResultVisibility(
+        await parseImageResponse(response, callbacks)
+      )
     );
   } catch (error) {
     logImageRequestError(error, {
@@ -3668,7 +3726,9 @@ export async function editImage(
           : params.forceWebBackend
             ? "web"
             : undefined,
-        accountBackendPreferenceMode: params.forceWebBackend ? "mixed-only" : undefined,
+        accountBackendPreferenceMode: params.forceWebBackend
+          ? "mixed-only"
+          : undefined,
       }
     );
   }
@@ -3688,28 +3748,32 @@ export async function editImage(
     apiPrompt: effectiveEditPrompt,
   };
   if (isPoolAccountBackend(config, "web")) {
-    return editImageWithChatGptWeb(config, {
-      ...paramsWithResolvedPrompt,
-      model,
-      gptModel: params.gptModel,
-    });
+    return requireImageOutput(
+      await editImageWithChatGptWeb(config, {
+        ...paramsWithResolvedPrompt,
+        model,
+        gptModel: params.gptModel,
+      })
+    );
   }
   if (isResponsesBackend(config)) {
     try {
-      return applyPromptOptimizationResultVisibility(
-        await postResponsesImageRequestWithToolChoiceFallback(
-          config,
-          buildResponsesImageEditRequest(config, {
-            ...paramsWithResolvedPrompt,
-            model,
-            gptModel:
-              params.gptModel ||
-              (await getDefaultImageGptModel(config, {
-                allowGpt55: true,
-              })),
-          }),
-          { signal: params.signal },
-          callbacks
+      return requireImageOutput(
+        applyPromptOptimizationResultVisibility(
+          await postResponsesImageRequestWithToolChoiceFallback(
+            config,
+            buildResponsesImageEditRequest(config, {
+              ...paramsWithResolvedPrompt,
+              model,
+              gptModel:
+                params.gptModel ||
+                (await getDefaultImageGptModel(config, {
+                  allowGpt55: true,
+                })),
+            }),
+            { signal: params.signal },
+            callbacks
+          )
         )
       );
     } catch (error) {
@@ -3767,8 +3831,10 @@ export async function editImage(
       body: formData,
     });
 
-    return applyPromptOptimizationResultVisibility(
-      await parseImageResponse(response, callbacks)
+    return requireImageOutput(
+      applyPromptOptimizationResultVisibility(
+        await parseImageResponse(response, callbacks)
+      )
     );
   } catch (error) {
     logImageRequestError(error, {
@@ -4055,8 +4121,8 @@ export async function generateChatImage(
           if (
             round === 1 &&
             roundResult.error &&
-            (canUsePreviousResponseId &&
-              isPreviousResponseStateError(roundResult.error))
+            canUsePreviousResponseId &&
+            isPreviousResponseStateError(roundResult.error)
           ) {
             agentPreviousResponseId = undefined;
             roundResult = await fetchAgentRoundResponses({
@@ -4207,7 +4273,9 @@ export async function generateChatImage(
         } else if (forceMaxRounds) {
           await emitAgentDecision(callbacks, {
             status: "completed",
-            title: shouldForceContinue ? "Agent 强制继续" : "Agent 强制轮数完成",
+            title: shouldForceContinue
+              ? "Agent 强制继续"
+              : "Agent 强制轮数完成",
             detail: shouldForceContinue
               ? `系统已开启强制迭代，将继续执行第 ${round + 1} 轮`
               : `已完成强制迭代轮数 ${maxRounds}`,

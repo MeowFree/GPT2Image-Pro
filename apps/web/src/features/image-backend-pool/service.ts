@@ -49,9 +49,9 @@ import type { ApiConfig } from "@/features/image-generation/types";
 import {
   imageBackendApiInterfaceAllowsRequest,
   imageBackendApiUsesResponsesEndpoint,
-  normalizeImagesUpstreamMode,
   normalizeChatCompletionsUpstreamMode,
   normalizeImageBackendApiInterfaceMode,
+  normalizeImagesUpstreamMode,
 } from "./api-interface-mode";
 import {
   getEffectiveBillingMultiplierForSelectedGroup,
@@ -61,8 +61,8 @@ import { parseImportTokensText } from "./import-token-parser";
 import type {
   ChatCompletionsUpstreamMode,
   ContentSafetyOverride,
-  ImageBackendApiInterfaceMode,
   ImageBackendAccountBackend,
+  ImageBackendApiInterfaceMode,
   ImageBackendGroupBackendType,
   ImageBackendGroupSummary,
   ImageBackendPreferenceMode,
@@ -489,6 +489,7 @@ function isRecoverableBackendError(error?: string | null) {
     normalized.includes("empty response") ||
     normalized.includes("non-json responses api response") ||
     normalized.includes("non-json images api response") ||
+    normalized.includes("upstream returned no image output") ||
     normalized.includes("returned no image output") ||
     normalized.includes("api returned no image data") ||
     normalized.includes("http 500") ||

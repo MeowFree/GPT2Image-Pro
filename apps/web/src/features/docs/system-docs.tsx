@@ -767,7 +767,7 @@ curl https://your-domain.example/v1/images/task_... \\
             {
               name: "prompt",
               requirement: "必填",
-              description: "图片提示词，最多 4000 字符。",
+              description: "图片提示词，最多 32000 字符。",
             },
             {
               name: "model",
@@ -1037,7 +1037,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             {
               name: "prompt",
               requirement: "必填",
-              description: "编辑提示词，最多 4000 字符。",
+              description: "编辑提示词，最多 32000 字符。",
             },
             {
               name: "image / image[] / image_*",
@@ -1293,7 +1293,7 @@ data: {"type":"agent.completed","generation_id":"...","generationId":"...","agen
             {
               name: "prompt",
               requirement: "必填",
-              description: "Agent 当前任务，最多 4000 字符。",
+              description: "Agent 当前任务，最多 32000 字符。",
             },
             {
               name: "model / gptModel / gpt_model",
@@ -2476,7 +2476,7 @@ curl https://your-domain.example/v1/images/task_... \\
             {
               name: "prompt",
               requirement: "Required",
-              description: "Image prompt, up to 4000 characters.",
+              description: "Image prompt, up to 32000 characters.",
             },
             {
               name: "model",
@@ -2747,7 +2747,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             {
               name: "prompt",
               requirement: "Required",
-              description: "Edit prompt, up to 4000 characters.",
+              description: "Edit prompt, up to 32000 characters.",
             },
             {
               name: "image / image[] / image_*",
@@ -3005,7 +3005,7 @@ data: {"type":"agent.completed","generation_id":"...","generationId":"...","agen
             {
               name: "prompt",
               requirement: "Required",
-              description: "Current Agent task, up to 4000 characters.",
+              description: "Current Agent task, up to 32000 characters.",
             },
             {
               name: "model / gptModel / gpt_model",
@@ -4033,7 +4033,10 @@ export function SystemDocsContent({
             <ListBlock items={content.moderationRepair.valid} type="valid" />
           </div>
           <div className="rounded-md border bg-muted/20 p-4">
-            <ListBlock items={content.moderationRepair.invalid} type="invalid" />
+            <ListBlock
+              items={content.moderationRepair.invalid}
+              type="invalid"
+            />
           </div>
         </CardContent>
       </Card>

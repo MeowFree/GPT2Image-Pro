@@ -1,5 +1,7 @@
 export const DEFAULT_IMAGE_MODEL = "gpt-image-2";
 export const LEGACY_IMAGE_MODEL = "gpt-image-1";
+export const IMAGE_PROMPT_MAX_CHARACTERS = 32_000;
+export const IMAGE_PROMPT_TOO_LONG_MESSAGE = `Prompt exceeds the ${IMAGE_PROMPT_MAX_CHARACTERS} character limit.`;
 export const DEFAULT_IMAGE_SIZE = "1024x1024";
 export const IMAGE_DIMENSION_STEP = 16;
 export const MIN_IMAGE_DIMENSION = 256;

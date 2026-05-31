@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { withApiLogging } from "@repo/shared/api-logger";
 import { auth } from "@repo/shared/auth";
 import {
@@ -6,18 +7,19 @@ import {
 } from "@repo/shared/subscription/services/plan-capabilities";
 import { getPlanUploadLimits } from "@repo/shared/subscription/services/upload-limits";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
-import { randomUUID } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
-
-import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
   firstBatchError,
   runBatchImageGeneration,
 } from "@/features/image-generation/batch-runner";
+import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
-  parseImageSize,
-  validateImageSize,
-} from "@/features/image-generation/resolution";
+  normalizeImageBackground,
+  normalizeOutputCompression,
+  normalizeOutputFormat,
+  VALID_IMAGE_BACKGROUNDS,
+  VALID_OUTPUT_FORMATS,
+} from "@/features/image-generation/output-format";
 import {
   deleteTemporaryImages,
   filesToImageInputs,
@@ -26,14 +28,13 @@ import {
   uploadTemporaryImageUrls,
   validateImageFile,
 } from "@/features/image-generation/request-utils";
-import { createImageStreamResponse } from "@/features/image-generation/streaming";
 import {
-  normalizeImageBackground,
-  normalizeOutputCompression,
-  normalizeOutputFormat,
-  VALID_IMAGE_BACKGROUNDS,
-  VALID_OUTPUT_FORMATS,
-} from "@/features/image-generation/output-format";
+  IMAGE_PROMPT_MAX_CHARACTERS,
+  IMAGE_PROMPT_TOO_LONG_MESSAGE,
+  parseImageSize,
+  validateImageSize,
+} from "@/features/image-generation/resolution";
+import { createImageStreamResponse } from "@/features/image-generation/streaming";
 import type {
   ImageBackground,
   ImageModeration,
@@ -171,8 +172,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     return errorResponse("Prompt is required.");
   }
 
-  if (prompt.length > 4000) {
-    return errorResponse("Prompt exceeds the 4000 character limit.");
+  if (prompt.length > IMAGE_PROMPT_MAX_CHARACTERS) {
+    return errorResponse(IMAGE_PROMPT_TOO_LONG_MESSAGE);
   }
   const apiPrompt = getText(formData, "apiPrompt") || undefined;
   if (apiPrompt && apiPrompt.length > 8000) {
