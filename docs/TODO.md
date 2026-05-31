@@ -44,18 +44,20 @@
 
 ## 仍存在的代码层问题（待办）
 
-- [ ] **成本放大（中危·经济）**：`quality`、`thinking/reasoning.effort` 等高成本参数不计入积分定价（`resolution.ts`）；`/v1/chat/completions` 纯文本按固定 1 积分/轮。上游成本可能数倍于收费，长期亏损。需做定价决策后实现。
+- [x] **成本放大（已修复）**：`quality`/`thinking` 参数已加积分倍率（quality: low=0.5x/high=1.5x; thinking: medium=1.3x/high=1.6x），operations.ts 4 处扣费调用已传入参数。`/v1/chat/completions` 纯文本按固定 1 积分/轮仍为独立定价（不在此修）。
 - [x] **v1 频率限流**：限流默认 fail-open 修复 + 可信代理头开关（d2a51f4）；**per-key 滑窗已补**（U6，commit 6f48522：authenticateExternalApiRequest 以 apiKey.id 复用 ai 桶）。残留(低)：复用 ai 桶且超限映射 401 非 429，如需独立阈值/语义码后续在 rate-limit 增 externalKey 类型。
-- [ ] **generations 存储对象无鉴权（中低危·S-L7，U3 已尝试但回退）**：2026-05-31 U3 加 cookie 会话+属主鉴权，但对抗复核发现**破坏 v1 API**——v1 默认 `response_format=url` 返回 `/api/storage/generations/...` 绝对 URL，外部消费者用无 cookie 的 HTTP 客户端拉取会全部 401。已回退。正确修法：generations 改**短时签名 URL**（需协调改 URL 签发侧 getPublicImageUrl + 路由验签），avatars 保持公开。改动前需 UI + v1 API 双实测。
-- [ ] **SSRF DNS 重绑定残留（低危·U7 已尝试但回退）**：2026-05-31 U7 实现连接层 IP pin，但对抗复核发现 Next16 每请求 `patchFetch` 重写 `globalThis.fetch`，致 `globalThis.fetch !== nativeFetch` 生产恒真→pin 分支生产永不执行 + 测试 mock node:http 走生产不可达路径成假绿灯。已回退。既有逐跳 redirect:manual SSRF 防护仍在。正确修法：不依赖 globalThis.fetch 比较，无条件走 node:http(s) pin，或引入 undici 用 dispatcher connect.lookup pin（当前 undici 不可导入）。
-- [ ] **Creem 金额软门闩补测 + 硬拒前置（S-M11）**：U1 已加 detect-only 软门闩（默认仅告警，`CREEM_WEBHOOK_ENFORCE_AMOUNT` 可开硬拒）。**残留**：三个金额纯函数内联 creem/route.ts 暂无单测；启用硬拒前须 (1) 迁纯函数至 `payment/creem.ts` 配 DB-free 测试，(2) 运维对齐 Creem 产品价目/币种/单位权威映射。
+- [x] **generations 存储对象鉴权���S-L7，已修复）**：签名 URL 方案（HMAC-SHA256 over bucket/key/expiry，用 BETTER_AUTH_SECRET 签名，1h 有效期）。avatars 保持公开，generations 须 ?sig=&exp= 参数。所有出口（operations.ts/service.ts/v1 handlers）已改为生成签名 URL。单测覆盖签名/验签/过期/篡改。
+- [x] **SSRF DNS 重绑定（已修复主路��）**：`packages/shared/src/security/dns-pin.ts` 实现无条件 node:http/https DNS pin（不依赖 globalThis.fetch 比较）。`fetchPublicImage`/`fetchPublicCallback` 已改用 `fetchWithDnsPin`。测试 mock dns-pin 模块。
+  - [ ] **残留裸 fetch（对抗复核发现）**：`operations.ts toImageBuffer`（L291）和 `images.ts getImageBase64`（L158）直接 fetch 上游返回的 imageUrl 无 SSRF 防护——恶意自定义后端可返回内网 URL。需改为 fetchWithDnsPin 或 fetchPublicImage。
+- [x] **Creem 金额纯函数抽离（S-M11 已完成）**：`packages/shared/src/payment/creem-amount.ts` 导出 3 个纯函数 + 369 行��测覆盖（标准/零小数/三小数币种、金额匹配/不匹配、enforce/detect-only、边界值）。route.ts 已改为 import。
+  - [ ] **启用硬拒前置**：软门闩默认仍仅告警（`CREEM_WEBHOOK_ENFORCE_AMOUNT` 可开启硬拒），须运维对齐 Creem 产品价目确认 `order.amount` 单位（minor units 假设待验证）和实际币种（CNY vs USD）。
 
 ## Agent 集成 / 统一接口层实现路线图（来源：docs/plan/2026-05-31-agent-integration-architecture.md）
 
 > CLAUDE.md/AGENTS.md 已立"统一接口层优先"约束。以下为分阶段落地，每阶段可独立测试与回滚。
 
-- [ ] 阶段0 接口层脚手架：新增 `packages/shared/src/uol/{types,principal,errors,registry,invoke}.ts` + 空 operations/；PrincipalResolver 复用 getSession/getUserRoleById/authenticateExternalApiRequest/验签。零行为变更，补 registry/assertAccess/错误映射单测。
-- [ ] 阶段1 已干净 service-fn 直接注册（低风险高覆盖）：credits 全套 / subscription 能力矩阵族 / image-backend-pool 全部 service-fn / system-settings getter 族 / storage provider 方法 / moderation moderateContent / image runImageGenerationForUser。只读查询族优先验证循环。
+- [x] 阶段0 接口层脚手架：`packages/shared/src/uol/` 7 核心模块(types/principal/errors/registry/access/invoke/index) + 3 测试文件。已推送分支 `feat/uol-phase0-phase1`。
+- [x] 阶段1 已干净 service-fn 直接注册：144 个操作注册覆盖 10 域（execute 为 stub）。已推送分支 `feat/uol-phase0-phase1`，待合并 dev。
 - [ ] 阶段2 server-action 改为委托去重：actions.ts 系列改 invokeOperation + 末尾 revalidatePath，逐个对拍新旧输出；收敛 image.generate 双 schema（以 route 全量为准）；删除 admin-users/creem 重复副本（shared 为权威）。
 - [ ] 阶段3 内置 Agent + MCP 适配器（价值兑现）：Bridge+Executor（幂等/审计/目标护栏）只读工具先上线 → 审批门+interrupt+UI → 计划模式+裁剪；MCP mcp/ 全套 + /api/mcp 路由 + stdio bin + system-settings 新键 + 面板，默认关闭，DB-free 单测先行。
 - [ ] 阶段4 v1 api-route 改薄适配器：8 对路由退化为 解析→fromBearer→invokeOperation→编码（SSE/JSON/keepalive）；抽传输无关输入构建器（File/Buffer）+ SSRF 校验去重。

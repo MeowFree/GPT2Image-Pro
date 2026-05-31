@@ -10,11 +10,13 @@
 - **2026-05-31 修复 workflow 完成**：先修 S-C1(03cc6bd)/S-H5(edbc0d6)/S-H1+H2(f1216df)；再经 15 单元并行修复 workflow 共修 94 条、未修 23 条、defer 4 个上帝组件；dev 9 主题提交 0babd1f..01906e0(封禁会话/回调SSRF/存储越权/限流fail-open/moderate恒定时间/注册冷却/external-api+支付+订阅+生成覆盖)；终验 typecheck+test 全绿(shared235+web257=492)。未修与 defer backlog 见 [测试重构计划](plan/2026-05-31-audit-test-refactor.md)
 - **2026-05-31 安全修复 workflow 二轮（遗留项）**：7 单元对抗复核后保留 5 条(dev 提交 4208681..6f48522)——S-L2 webhook 不吞异常 / S-L1 consumeCredits 按 userId 归属+迁移0029 / S-M8 设置范围校验 / M-H5 admin 集中守卫 / v1 per-key 限流；S-M11 仅 detect-only 软门闩(默认不拒)。**回退 2 条**：U3 S-L7 generations 桶 cookie 鉴权(破坏 v1 API 默认 url 返回的无 cookie 拉取，须改签名 URL)；U7 SSRF pin(Next16 patchFetch 致生产不走 pin+假绿灯)。详见 [测试重构计划](plan/2026-05-31-audit-test-refactor.md)
 - **#1/#15/#16 浏览器实测通过**（api2 隔离测试栈 2026-05-31，未发现真实 Bug；积分首屏短暂0为异步发放假象自愈）
+- **2026-05-31 安全修复三轮（全部遗留项）**：4 条并行修复+对抗复核，dev 提交 cfb3861..06e4709——S-L7 签名 URL 替代 cookie 鉴权 / S-M11 Creem 纯函数抽离+369 行单测 / SSRF 无条件 DNS pin(node:http/https 不经 Next patch) / COST quality+thinking 积分倍率。288 web + shared 全绿。残留：裸 fetch 路径(operations.ts toImageBuffer/images.ts getImageBase64)未接 pin，见 TODO。
 - [待办清单](TODO.md) — 仍存在的代码层问题 + 部署前必做
 
 ## 架构
 
 - [Agent 集成架构](plan/2026-05-31-agent-integration-architecture.md) — 统一接口层(UOL)优先；MCP 适配器默认关闭+管理秘钥；内置 agent 直连接口层；配套盘点表 plan/2026-05-31-feature-interface-inventory.md。**开发新功能前必读**（CLAUDE.md 已立约束）
+- **UOL Phase 0+1 已实现**（分支 `feat/uol-phase0-phase1`，已推送）：脚手架 7 核心模块 + 144 个操作注册(10 域) + 3 测试文件(registry/access/invoke)全绿。execute 均为 stub("Not yet wired")，待 Phase 2 委托对接。合并 dev 前须经 CI。
 
 ## 功能
 
