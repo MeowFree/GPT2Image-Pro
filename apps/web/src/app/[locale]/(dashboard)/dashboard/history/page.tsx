@@ -7,6 +7,7 @@ import { HistoryClient } from "@/features/image-generation/components/history-cl
 import { extractGenerationCreditDetails } from "@/features/image-generation/credit-calculation-details";
 import {
   extractGenerationReferenceImages,
+  extractPromptRepairNotice,
   toStoredImageUrl,
 } from "@/features/image-generation/generation-metadata";
 import { getCurrentUser } from "@repo/shared/auth/server";
@@ -48,6 +49,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     id: g.id,
     prompt: g.prompt,
     revisedPrompt: g.revisedPrompt,
+    promptRepairNotice: extractPromptRepairNotice(g.metadata),
     model: g.model,
     size: g.size,
     status: g.status,

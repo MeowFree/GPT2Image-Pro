@@ -482,6 +482,8 @@ async function toStreamCompletedPayload(
     images.push({
       ...image,
       revised_prompt: output.revisedPrompt || result.revisedPrompt,
+      prompt_repair_notice:
+        output.promptRepairNotice || result.promptRepairNotice,
     });
   }
   const primary = images[images.length - 1] || {};
@@ -494,6 +496,7 @@ async function toStreamCompletedPayload(
     model: result.model,
     size: result.size,
     revised_prompt: result.revisedPrompt,
+    prompt_repair_notice: result.promptRepairNotice,
     credits_consumed: result.creditsConsumed,
     ...primary,
     data: images,

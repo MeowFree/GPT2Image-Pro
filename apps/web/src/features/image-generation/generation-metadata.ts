@@ -99,3 +99,16 @@ export function extractGenerationReferenceImages(
     ];
   });
 }
+
+export function extractPromptRepairNotice(
+  metadata: Record<string, unknown> | null | undefined
+) {
+  const repair = isRecord(metadata?.moderationPromptRepair)
+    ? metadata.moderationPromptRepair
+    : null;
+  if (repair?.succeeded !== true) return null;
+  return (
+    stringValue(repair.notice) ||
+    "The original prompt was rejected by safety checks, so this request was generated after additional prompt adjustments."
+  );
+}

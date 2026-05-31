@@ -6,6 +6,7 @@ import { generation } from "@repo/database/schema";
 import { GalleryClient } from "@/features/image-generation/components/gallery-client";
 import {
   extractGenerationReferenceImages,
+  extractPromptRepairNotice,
   toStoredImageUrl,
 } from "@/features/image-generation/generation-metadata";
 import { getCurrentUser } from "@repo/shared/auth/server";
@@ -58,6 +59,7 @@ function extractAgentDraftGenerations(
             typeof output.revisedPrompt === "string"
               ? output.revisedPrompt
               : g.revisedPrompt,
+          promptRepairNotice: extractPromptRepairNotice(g.metadata),
           model: g.model,
           size: typeof output.size === "string" ? output.size : g.size,
           status: g.status,
@@ -96,6 +98,7 @@ function extractUploadedImageGenerations(
       parentId: g.id,
       prompt: g.prompt,
       revisedPrompt: g.revisedPrompt,
+      promptRepairNotice: extractPromptRepairNotice(g.metadata),
       model: image.type || copy("User upload", "用户上传"),
       size: formatUploadedImageSize(image, copy),
       status: "completed" as const,
@@ -205,6 +208,7 @@ export default async function GalleryPage({ searchParams }: GalleryPageProps) {
             parentId: g.id,
             prompt: g.prompt,
             revisedPrompt: g.revisedPrompt,
+            promptRepairNotice: extractPromptRepairNotice(g.metadata),
             model: g.model,
             size: g.size,
             status: g.status,

@@ -7,6 +7,7 @@ type OpenAIImageData = {
   url?: string;
   b64_json?: string;
   revised_prompt?: string;
+  prompt_repair_notice?: string;
 };
 
 type GenerationBillingResult = Pick<
@@ -32,7 +33,12 @@ type StorageImageReference = {
 
 export type ExternalFinalImageOutput = Pick<
   GeneratedImageOutput,
-  "imageUrl" | "imageBase64" | "revisedPrompt" | "generationId" | "outputRole"
+  | "imageUrl"
+  | "imageBase64"
+  | "revisedPrompt"
+  | "promptRepairNotice"
+  | "generationId"
+  | "outputRole"
 >;
 
 export type ExternalApiErrorOptions = {
@@ -161,7 +167,10 @@ export async function getImageBase64(request: Request, imageUrl?: string) {
 
 export async function toOpenAIImageData(
   request: Request,
-  result: Pick<ImageGenerationOperationResult, "imageUrl" | "revisedPrompt"> & {
+  result: Pick<
+    ImageGenerationOperationResult,
+    "imageUrl" | "revisedPrompt" | "promptRepairNotice"
+  > & {
     imageBase64?: string;
   },
   responseFormat: "url" | "b64_json"
@@ -185,6 +194,9 @@ export async function toOpenAIImageData(
   if (result.revisedPrompt) {
     data.revised_prompt = result.revisedPrompt;
   }
+  if (result.promptRepairNotice) {
+    data.prompt_repair_notice = result.promptRepairNotice;
+  }
 
   return data;
 }
@@ -195,6 +207,7 @@ export function getExternalFinalImageOutputs(
     | "imageUrl"
     | "imageOutputs"
     | "revisedPrompt"
+    | "promptRepairNotice"
     | "generationId"
     | "responseText"
     | "responseAgent"
@@ -222,6 +235,7 @@ export function getExternalFinalImageOutputs(
       {
         imageUrl: result.imageUrl,
         revisedPrompt: result.revisedPrompt,
+        promptRepairNotice: result.promptRepairNotice,
         generationId: result.generationId,
         outputRole: "final",
       },

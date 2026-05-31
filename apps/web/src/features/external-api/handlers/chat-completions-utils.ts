@@ -24,6 +24,7 @@ export type ChatCompletionImageData = {
   url?: string;
   b64_json?: string;
   revised_prompt?: string;
+  prompt_repair_notice?: string;
   index?: number;
   generation_id?: string;
   generationId?: string;

@@ -42,6 +42,7 @@ export interface LightboxGeneration {
   id: string;
   prompt: string;
   revisedPrompt: string | null;
+  promptRepairNotice?: string | null;
   model: string;
   size: string;
   creditsConsumed: number;
@@ -409,6 +410,20 @@ export function ImageLightbox({
                       </p>
                     </div>
                   )}
+
+                {generation.promptRepairNotice && (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                    <p className="text-[11px] font-medium uppercase tracking-widest text-amber-700 dark:text-amber-300">
+                      {copy("Prompt Notice", "提示词说明")}
+                    </p>
+                    <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                      {copy(
+                        "The original prompt was rejected by safety checks, so the system made additional adjustments before generating this result.",
+                        "原提示词因审核被拒，系统已进行更多修改后生成本次结果。"
+                      )}
+                    </p>
+                  </div>
+                )}
 
                 {generation.status === "failed" && generation.error && (
                   <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">

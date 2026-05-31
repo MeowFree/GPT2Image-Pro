@@ -119,6 +119,7 @@ type ResultState = {
   model: string;
   size: string;
   revisedPrompt?: string;
+  promptRepairNotice?: string;
 };
 
 type ImageApiResult = {
@@ -137,12 +138,14 @@ type ImageApiResult = {
     size?: string;
     revisedPrompt?: string;
     upstreamRevisedPrompt?: string;
+    promptRepairNotice?: string;
     index?: number;
     outputRole?: "final" | "agent_draft" | "choice";
   }>;
   model?: string;
   size?: string;
   revisedPrompt?: string;
+  promptRepairNotice?: string;
   responseText?: string;
   responseThinking?: string;
   responseAgent?: string;
@@ -243,6 +246,7 @@ type ChatVariant = {
   model: string;
   size: string;
   revisedPrompt?: string;
+  promptRepairNotice?: string;
   responseText?: string;
   responseThinking?: string;
   responseAgent?: string;
@@ -268,6 +272,7 @@ type ChatResultInput = Pick<
   | "model"
   | "size"
   | "revisedPrompt"
+  | "promptRepairNotice"
   | "responseText"
   | "responseThinking"
   | "responseAgent"
@@ -4184,6 +4189,9 @@ export function CreatePageClient({
         size: resultSize,
       };
       if (data.revisedPrompt) nextResult.revisedPrompt = data.revisedPrompt;
+      if (data.promptRepairNotice) {
+        nextResult.promptRepairNotice = data.promptRepairNotice;
+      }
       setResult(nextResult);
       if (previewMode) {
         setVisualResults((prev) => ({ ...prev, [previewMode]: nextResult }));
@@ -4224,6 +4232,7 @@ export function CreatePageClient({
       model,
       size: resultSize,
       revisedPrompt: data.revisedPrompt,
+      promptRepairNotice: data.promptRepairNotice,
       responseText: data.responseText,
       responseThinking: data.responseThinking,
       responseAgent: data.responseAgent,
@@ -4287,6 +4296,8 @@ export function CreatePageClient({
           output.revisedPrompt ||
           output.upstreamRevisedPrompt ||
           data.revisedPrompt,
+        promptRepairNotice:
+          output.promptRepairNotice || data.promptRepairNotice,
         responseText: isChoice || isLast ? data.responseText : undefined,
         responseThinking: isLast ? data.responseThinking : undefined,
         responseAgent: isLast ? data.responseAgent : undefined,
@@ -7202,6 +7213,14 @@ export function CreatePageClient({
                     {copy("Revised", "优化提示词")}: {modeResult.revisedPrompt}
                   </p>
                 )}
+              {modeResult.promptRepairNotice && (
+                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                  {copy(
+                    "The original prompt was rejected by safety checks, so the system made additional adjustments before generating this result.",
+                    "原提示词因审核被拒，系统已进行更多修改后生成本次结果。"
+                  )}
+                </p>
+              )}
               <div className="flex gap-2">
                 <Button asChild variant="outline" size="sm">
                   <a

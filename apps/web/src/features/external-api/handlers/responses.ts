@@ -558,10 +558,11 @@ function toResponsePayload(params: {
     ? params.result.imageOutputs
     : params.imageBase64
       ? [
-          {
-            imageBase64: params.imageBase64,
-            revisedPrompt: params.result.revisedPrompt,
-          },
+        {
+          imageBase64: params.imageBase64,
+          revisedPrompt: params.result.revisedPrompt,
+          promptRepairNotice: params.result.promptRepairNotice,
+        },
         ]
       : [];
   for (const image of imageOutputs) {

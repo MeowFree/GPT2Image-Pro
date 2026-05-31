@@ -19,6 +19,7 @@ export interface GenerationWithUrl {
   parentId?: string;
   prompt: string;
   revisedPrompt: string | null;
+  promptRepairNotice?: string | null;
   model: string;
   size: string;
   creditsConsumed: number;

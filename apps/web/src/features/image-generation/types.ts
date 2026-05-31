@@ -29,6 +29,7 @@ export interface GenerateImageResult {
   generationId?: string;
   revisedPrompt?: string;
   upstreamRevisedPrompt?: string;
+  promptRepairNotice?: string;
   responseText?: string;
   model?: string;
   responseThinking?: string;
@@ -62,6 +63,7 @@ export interface GeneratedImageOutput {
   size?: string;
   revisedPrompt?: string;
   upstreamRevisedPrompt?: string;
+  promptRepairNotice?: string;
   index?: number;
   outputRole?: "final" | "agent_draft" | "choice";
 }

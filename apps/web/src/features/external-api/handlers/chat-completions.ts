@@ -234,6 +234,8 @@ async function toChatCompletionImages(params: {
     const item: ChatCompletionImageData = {
       index,
       revised_prompt: output.revisedPrompt || params.result.revisedPrompt,
+      prompt_repair_notice:
+        output.promptRepairNotice || params.result.promptRepairNotice,
       generation_id: output.generationId || params.result.generationId,
       generationId: output.generationId || params.result.generationId,
     };

@@ -26,6 +26,7 @@ function buildStorageUrl(bucket: string | null, key: string | null) {
 function getImageOutputs(metadata: unknown, bucket: string | null) {
   const outputImage = asRecord(asRecord(metadata).outputImage);
   const outputs = outputImage.imageOutputs;
+  const promptRepairNotice = getPromptRepairNotice(metadata);
   if (!Array.isArray(outputs)) return [];
   return outputs.flatMap((item, index) => {
     const output = asRecord(item);
@@ -45,6 +46,7 @@ function getImageOutputs(metadata: unknown, bucket: string | null) {
         size: stringValue(output.size),
         revisedPrompt: stringValue(output.revisedPrompt),
         upstreamRevisedPrompt: stringValue(output.upstreamRevisedPrompt),
+        promptRepairNotice,
         index,
         outputRole:
           output.role === "agent_draft" ||
@@ -55,6 +57,13 @@ function getImageOutputs(metadata: unknown, bucket: string | null) {
       },
     ];
   });
+}
+
+function getPromptRepairNotice(metadata: unknown) {
+  const repair = asRecord(asRecord(metadata).moderationPromptRepair);
+  if (repair.succeeded !== true) return undefined;
+  return stringValue(repair.notice) ||
+    "The original prompt was rejected by safety checks, so this request was generated after additional prompt adjustments.";
 }
 
 function getResponseOutput(metadata: unknown) {
@@ -116,6 +125,7 @@ export const GET = withApiLogging(
       model: row.model,
       size: row.size,
       revisedPrompt: row.revisedPrompt,
+      promptRepairNotice: getPromptRepairNotice(row.metadata),
       error: row.error,
       creditsConsumed: row.creditsConsumed,
       imageUrl,

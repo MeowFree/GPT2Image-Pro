@@ -257,6 +257,7 @@ export type ImageGenerationOperationResult = {
   model?: string;
   size?: string;
   revisedPrompt?: string;
+  promptRepairNotice?: string;
   responseText?: string;
   responseThinking?: string;
   responseAgent?: string;
@@ -683,6 +684,8 @@ function getResultImageOutputs(result: GenerateImageResult) {
 }
 
 const MAX_MODERATION_PROMPT_REPAIR_RETRIES = 5;
+const MODERATION_PROMPT_REPAIR_NOTICE =
+  "The original prompt was rejected by safety checks, so this request was generated after additional prompt adjustments.";
 
 type ModerationPromptRepairAttempt = {
   attempt: number;
@@ -711,6 +714,9 @@ function buildModerationPromptRepairMetadata(
       enabled: true,
       totalAttempts: attempts.length,
       succeeded: attempts.some((attempt) => attempt.status === "succeeded"),
+      notice: attempts.some((attempt) => attempt.status === "succeeded")
+        ? MODERATION_PROMPT_REPAIR_NOTICE
+        : undefined,
       attempts,
     },
   };
@@ -731,6 +737,18 @@ function hasImageOutput(result: GenerateImageResult) {
       result.imageUrl ||
       result.imageOutputs?.some((item) => item.imageBase64 || item.imageUrl)
   );
+}
+
+function hasSuccessfulPromptRepairAttempt(
+  attempts: ModerationPromptRepairAttempt[]
+) {
+  return attempts.some((attempt) => attempt.status === "succeeded");
+}
+
+function getPromptRepairNotice(attempts: ModerationPromptRepairAttempt[]) {
+  return hasSuccessfulPromptRepairAttempt(attempts)
+    ? MODERATION_PROMPT_REPAIR_NOTICE
+    : undefined;
 }
 
 function getModerationRepairFailureMessage(
@@ -2165,15 +2183,16 @@ async function runQueuedImageGenerationForUser({
       })
       .where(isPendingGeneration(generationId));
 
-    return {
-      generationId,
-      imageOutputs: result.imageOutputs,
-      model: recordModel,
-      size,
-      revisedPrompt: result.revisedPrompt,
-      responseText: result.responseText,
-      responseThinking: result.responseThinking,
-      responseAgent: result.responseAgent,
+      return {
+        generationId,
+        imageOutputs: result.imageOutputs,
+        model: recordModel,
+        size,
+        revisedPrompt: result.revisedPrompt,
+        promptRepairNotice: getPromptRepairNotice(repairAttempts),
+        responseText: result.responseText,
+        responseThinking: result.responseThinking,
+        responseAgent: result.responseAgent,
       agentEvents: result.agentEvents,
       agentRoundCount: result.agentRoundCount,
       webConversation: result.webConversation,
@@ -2554,6 +2573,7 @@ async function runQueuedImageGenerationForUser({
       size: output.size,
       revisedPrompt: output.revisedPrompt,
       upstreamRevisedPrompt: output.upstreamRevisedPrompt,
+      promptRepairNotice: getPromptRepairNotice(repairAttempts),
       index,
       outputRole:
         output.outputRole ||
@@ -2562,6 +2582,7 @@ async function runQueuedImageGenerationForUser({
     model: recordModel,
     size: primaryOutput.size,
     revisedPrompt: result.revisedPrompt || primaryOutput.revisedPrompt,
+    promptRepairNotice: getPromptRepairNotice(repairAttempts),
     responseText: result.responseText,
     responseThinking: result.responseThinking,
     responseAgent: result.responseAgent,

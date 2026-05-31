@@ -802,6 +802,7 @@ function imageResponseData(
           {
             imageUrl: result.imageUrl,
             revisedPrompt: result.revisedPrompt,
+            promptRepairNotice: result.promptRepairNotice,
             outputRole: "final" as const,
           },
         ]
@@ -817,6 +818,8 @@ function imageResponseData(
           }
         : { url: getPublicImageUrl(request, output.imageUrl) }),
       revised_prompt: output.revisedPrompt || result.revisedPrompt,
+      prompt_repair_notice:
+        output.promptRepairNotice || result.promptRepairNotice,
       generation_id: output.generationId,
       generationId: output.generationId,
       size: output.size || result.size,
