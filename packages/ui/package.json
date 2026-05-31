@@ -52,11 +52,11 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "radix-ui": "^1.4.3",
-    "react-hook-form": "^7.56.4",
+    "react-hook-form": "^7.76.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.562.0",
-    "tailwind-merge": "^3.4.0"
+    "lucide-react": "^0.577.0",
+    "tailwind-merge": "^3.6.0"
   },
   "peerDependencies": {
     "react": "^19",

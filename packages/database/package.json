@@ -15,16 +15,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2",
-    "drizzle-orm": "^0.45.1",
-    "nanoid": "^5.1.6",
-    "pg": "^8.17.2",
-    "ws": "^8.18.0"
+    "@neondatabase/serverless": "^1.1.0",
+    "drizzle-orm": "^0.45.2",
+    "nanoid": "^5.1.11",
+    "pg": "^8.21.0",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
-    "@types/pg": "^8.16.0",
+    "@types/pg": "^8.20.0",
     "dotenv": "^16.5.0",
-    "drizzle-kit": "^0.31.8",
+    "drizzle-kit": "^0.31.10",
     "typescript": "^5"
   },
   "license": "AGPL-3.0-only"
