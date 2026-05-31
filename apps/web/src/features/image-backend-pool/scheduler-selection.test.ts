@@ -447,6 +447,62 @@ describe("image backend pool scheduler selection", () => {
     });
   });
 
+  it("can borrow any Responses backend when the requested group is Web-only", async () => {
+    dbMock.state.groups = [
+      {
+        id: "web-group",
+        name: "Web only",
+        description: null,
+        isEnabled: true,
+        isDefault: true,
+        isUserSelectable: true,
+        contentSafetyEnabled: null,
+        priority: 1,
+        metadata: { backendType: "web" },
+        createdAt: new Date(2026, 0, 1),
+        updatedAt: new Date(2026, 0, 1),
+      },
+      {
+        id: "codex-group",
+        name: "Codex repair",
+        description: null,
+        isEnabled: true,
+        isDefault: false,
+        isUserSelectable: true,
+        contentSafetyEnabled: null,
+        priority: 2,
+        metadata: { backendType: "responses" },
+        createdAt: new Date(2026, 0, 2),
+        updatedAt: new Date(2026, 0, 2),
+      },
+    ];
+    dbMock.state.accounts = [
+      {
+        ...makeAccount(1),
+        matchedGroupId: "codex-group",
+        groupId: "codex-group",
+      },
+    ];
+
+    await expect(
+      resolveImageBackendPoolConfig({
+        userId: "user-a",
+        requestKind: "responses",
+      })
+    ).resolves.toBeNull();
+
+    const result = await resolveImageBackendPoolConfig({
+      userId: "user-a",
+      requestKind: "responses",
+      accountBackendPreference: "responses",
+      allowAnyResponsesBackend: true,
+    });
+
+    expect(result?.memberType).toBe("account");
+    expect(result?.memberId).toBe("acct-1");
+    expect(result?.groupId).toBe("codex-group");
+  });
+
   it("reactivates limited accounts after a successful retry", async () => {
     dbMock.state.accounts = [
       {

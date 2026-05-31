@@ -94,6 +94,8 @@ export type SettingKey =
   | "ALIYUN_MODERATION_IMAGE_APP_ID"
   | "OPENAI_MODERATION_API_KEY"
   | "OPENAI_MODERATION_MODEL"
+  | "IMAGE_MODERATION_PROMPT_REPAIR_ENABLED"
+  | "IMAGE_MODERATION_PROMPT_REPAIR_MAX_RETRIES"
   | "PLATFORM_RESPONSES_MODEL"
   | "PLATFORM_CHAT_MODEL"
   | "IMAGE_GENERATION_GLOBAL_CONCURRENCY"
@@ -836,6 +838,24 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     category: "moderation",
     valueType: "string",
     defaultValue: "omni-moderation-latest",
+  },
+  {
+    key: "IMAGE_MODERATION_PROMPT_REPAIR_ENABLED",
+    label: "审核失败自动修剪重试",
+    description:
+      "检测到审核拦截后，使用可用的 Codex/Responses 账号或外接 /responses API 修剪提示词，并在同一任务内重新发起请求。",
+    category: "moderation",
+    valueType: "boolean",
+    defaultValue: true,
+  },
+  {
+    key: "IMAGE_MODERATION_PROMPT_REPAIR_MAX_RETRIES",
+    label: "审核修剪最大重试轮数",
+    description:
+      "每个生图任务因审核失败触发提示词修剪并重试的最大次数。0 表示关闭，建议 1-3。",
+    category: "moderation",
+    valueType: "number",
+    defaultValue: 1,
   },
   {
     key: "PLATFORM_RESPONSES_MODEL",

@@ -987,6 +987,7 @@ async function retryPoolBackendResult(
     mixWebFirst?: boolean;
     accountBackendPreference?: ImageBackendAccountBackend;
     accountBackendPreferenceMode?: ImageBackendPreferenceMode;
+    allowAnyResponsesBackend?: boolean;
   }
 ) {
   if (
@@ -1024,6 +1025,7 @@ async function retryPoolBackendResult(
         excludedMemberKeys: Array.from(excluded),
         accountBackendPreference,
         accountBackendPreferenceMode: options?.accountBackendPreferenceMode,
+        allowAnyResponsesBackend: options?.allowAnyResponsesBackend,
       });
     } catch (fallbackError) {
       if (fallbackError instanceof ImageBackendPoolUnavailableError) {
@@ -1104,6 +1106,7 @@ async function retryPoolBackendResult(
         excludedMemberKeys: Array.from(excluded),
         accountBackendPreference,
         accountBackendPreferenceMode: options?.accountBackendPreferenceMode,
+        allowAnyResponsesBackend: options?.allowAnyResponsesBackend,
       });
     } catch (error) {
       if (error instanceof ImageBackendPoolUnavailableError) {
@@ -1178,6 +1181,100 @@ function applyPromptOptimizationResultVisibility(
     revisedPrompt: result.revisedPrompt || upstreamRevisedPrompt,
     upstreamRevisedPrompt,
   };
+}
+
+function sanitizePromptRepairOutput(value?: string) {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return "";
+  const withoutFence = trimmed
+    .replace(/^```(?:text|prompt|markdown)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  return withoutFence
+    .replace(/^修剪(?:后)?提示词[:：]\s*/i, "")
+    .replace(/^rewritten prompt[:：]\s*/i, "")
+    .trim();
+}
+
+export async function repairModerationBlockedPromptWithResponses(
+  config: ApiConfig,
+  params: {
+    prompt: string;
+    failureReason: string;
+    mode: "generate" | "edit" | "chat";
+    size?: string;
+    signal?: AbortSignal;
+  }
+): Promise<{ prompt?: string; error?: string }> {
+  const originalPrompt = params.prompt.trim();
+  if (!originalPrompt) return { error: "Prompt is empty" };
+
+  const result = await retryPoolBackendResult(
+    config,
+    async (candidate) => {
+      const model = await getResponsesModel(candidate, undefined, {
+        allowGpt55: true,
+      });
+      const input: ResponsesRequestInputItem[] = [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: [
+                "Rewrite this image prompt so it is more likely to pass image safety moderation.",
+                "Preserve the user's benign intent, subject, style, composition, language, aspect ratio, and useful details.",
+                "Remove or soften only the risky content implied by the failure reason.",
+                "Do not add new unsafe content. Do not add explanations, markdown, labels, or quotes.",
+                `Mode: ${params.mode}`,
+                params.size ? `Requested size: ${params.size}` : "",
+                `Moderation failure: ${params.failureReason.slice(0, 1200)}`,
+                "Original prompt:",
+                originalPrompt,
+              ]
+                .filter(Boolean)
+                .join("\n"),
+            },
+          ],
+        },
+      ];
+      const repaired = await fetchResponses(
+        candidate,
+        {
+          model,
+          input,
+          instructions:
+            "You are a prompt safety editor. Return only the rewritten image prompt text, with no commentary.",
+          store: false,
+          stream: Boolean(candidate.useStream),
+        },
+        {
+          signal: params.signal,
+          stream: Boolean(candidate.useStream),
+        }
+      );
+      if (repaired.error) return { error: repaired.error };
+      const repairedPrompt = sanitizePromptRepairOutput(repaired.responseText);
+      if (!repairedPrompt) {
+        return { error: "Responses prompt repair returned empty text" };
+      }
+      return { responseText: repairedPrompt };
+    },
+    {
+      accountBackendPreference: "responses",
+      allowAnyResponsesBackend: true,
+    }
+  );
+  if (result.error) return { error: result.error };
+
+  const repairedPrompt = sanitizePromptRepairOutput(result.responseText);
+  if (!repairedPrompt) {
+    return { error: "Responses prompt repair returned empty text" };
+  }
+  if (repairedPrompt === originalPrompt) {
+    return { prompt: repairedPrompt };
+  }
+  return { prompt: repairedPrompt };
 }
 
 type ChatCompletionImageItem = {
@@ -3398,6 +3495,7 @@ export async function getEffectiveConfig(
     accountBackendPreference?: ImageBackendAccountBackend;
     accountBackendPreferenceMode?: ImageBackendPreferenceMode;
     ignoreUserConfig?: boolean;
+    allowAnyResponsesBackend?: boolean;
   }
 ): Promise<{
   config: ApiConfig;
@@ -3416,6 +3514,7 @@ export async function getEffectiveConfig(
         preferredMemberId: options.preferredMemberId,
         accountBackendPreference: options.accountBackendPreference,
         accountBackendPreferenceMode: options.accountBackendPreferenceMode,
+        allowAnyResponsesBackend: options.allowAnyResponsesBackend,
       });
     } catch (error) {
       if (error instanceof ImageBackendPoolUnavailableError) {

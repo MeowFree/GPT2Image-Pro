@@ -21,6 +21,7 @@ import {
 } from "@repo/shared/subscription/services/plan-capabilities";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import {
+  getRuntimeSettingBoolean,
   getRuntimeSettingNumber,
   getRuntimeSettingString,
 } from "@repo/shared/system-settings";
@@ -58,7 +59,9 @@ import {
   getEffectiveConfig,
   getResponsesModel,
   getUserApiConfig,
+  repairModerationBlockedPromptWithResponses,
 } from "./service";
+import { isContentSafetyRejection } from "./sla-classification";
 import type {
   ApiConfig,
   ChatHistoryMessage,
@@ -677,6 +680,83 @@ function getResultImageOutputs(result: GenerateImageResult) {
       index: 0,
     },
   ] satisfies NonNullable<GenerateImageResult["imageOutputs"]>;
+}
+
+const MAX_MODERATION_PROMPT_REPAIR_RETRIES = 5;
+
+type ModerationPromptRepairAttempt = {
+  attempt: number;
+  phase: "pre_moderation" | "upstream_generation" | "missing_image_output";
+  status: "attempted" | "retrying" | "succeeded" | "failed" | "skipped";
+  reason: string;
+  originalPrompt: string;
+  repairedPrompt?: string;
+  error?: string;
+  backendMember?: GenerateImageResult["backendMember"];
+  createdAt: string;
+};
+
+function truncateMetadataText(value: string, maxLength = 1000) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength)}...`
+    : normalized;
+}
+
+function buildModerationPromptRepairMetadata(
+  attempts: ModerationPromptRepairAttempt[]
+) {
+  return {
+    moderationPromptRepair: {
+      enabled: true,
+      totalAttempts: attempts.length,
+      succeeded: attempts.some((attempt) => attempt.status === "succeeded"),
+      attempts,
+    },
+  };
+}
+
+function withPromptRepairMetadata(
+  metadata: Record<string, unknown>,
+  attempts: ModerationPromptRepairAttempt[]
+) {
+  return attempts.length
+    ? { ...metadata, ...buildModerationPromptRepairMetadata(attempts) }
+    : metadata;
+}
+
+function hasImageOutput(result: GenerateImageResult) {
+  return Boolean(
+    result.imageBase64 ||
+      result.imageUrl ||
+      result.imageOutputs?.some((item) => item.imageBase64 || item.imageUrl)
+  );
+}
+
+function getModerationRepairFailureMessage(
+  result: GenerateImageResult,
+  isChatInput: boolean
+) {
+  if (result.error && isContentSafetyRejection(result.error)) {
+    return result.error;
+  }
+  if (hasImageOutput(result)) return null;
+  const message =
+    result.responseText?.trim() ||
+    result.responseAgent?.trim() ||
+    "Image generation completed without an image output";
+  if (isContentSafetyRejection(message)) return message;
+  if (isChatInput) return null;
+  return null;
+}
+
+function getLastRetryingRepairAttempt(
+  attempts: ModerationPromptRepairAttempt[]
+) {
+  return attempts
+    .slice()
+    .reverse()
+    .find((attempt) => attempt.status === "retrying");
 }
 
 function resolveOutputGenerationId(
@@ -1507,6 +1587,7 @@ async function runQueuedImageGenerationForUser({
     }
   }
 
+  const repairAttempts: ModerationPromptRepairAttempt[] = [];
   const isTimedOut = () =>
     Date.now() - startedAt > IMAGE_GENERATION_PENDING_TIMEOUT_MS;
   const failTimedOutGeneration =
@@ -1527,7 +1608,7 @@ async function runQueuedImageGenerationForUser({
           creditsConsumed: chargedCredits,
           completedAt: new Date(),
           metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
-            {
+            withPromptRepairMetadata({
               timeout: {
                 reason: "runtime_timeout",
                 timeoutMs: IMAGE_GENERATION_PENDING_TIMEOUT_MS,
@@ -1536,7 +1617,7 @@ async function runQueuedImageGenerationForUser({
                 refundCredits: creditsToRefund,
                 refundSourceRef,
               },
-            }
+            }, repairAttempts)
           )}::jsonb`,
         })
         .where(isPendingGeneration(generationId))
@@ -1580,85 +1661,168 @@ async function runQueuedImageGenerationForUser({
       };
     };
 
-  const moderation = !moderationEnabled
-    ? ({ decision: "skipped" } as const)
-    : await moderateContent({
-        prompt: moderationPrompt,
-        images: inputImages,
-        mode: inputImages.length > 0 ? "image" : "text",
-        userId: input.userId,
-        userPlan: userPlan.plan,
-        userModerationBlockRiskLevel: moderationBlockRiskLevel,
-        generationId,
-      });
+  const repairEnabled =
+    await getRuntimeSettingBoolean(
+      "IMAGE_MODERATION_PROMPT_REPAIR_ENABLED",
+      true
+    );
+  const configuredRepairRetries = await getRuntimeSettingNumber(
+    "IMAGE_MODERATION_PROMPT_REPAIR_MAX_RETRIES",
+    1,
+    { nonNegative: true }
+  );
+  const maxRepairRetries = repairEnabled
+    ? Math.min(
+        MAX_MODERATION_PROMPT_REPAIR_RETRIES,
+        Math.floor(configuredRepairRetries)
+      )
+    : 0;
+  let currentPrompt = input.prompt;
+  let currentApiPrompt = apiPrompt;
+  let currentModerationPrompt = moderationPrompt;
+  let result: GenerateImageResult;
 
-  if (isTimedOut()) {
-    return failTimedOutGeneration();
-  }
+  const repairPrompt = async (
+    phase: ModerationPromptRepairAttempt["phase"],
+    reason: string
+  ) => {
+    if (repairAttempts.length >= maxRepairRetries) return false;
+    const attemptNumber = repairAttempts.length + 1;
+    const attempt: ModerationPromptRepairAttempt = {
+      attempt: attemptNumber,
+      phase,
+      status: "attempted",
+      reason: truncateMetadataText(reason),
+      originalPrompt: truncateMetadataText(currentPrompt),
+      createdAt: new Date().toISOString(),
+    };
+    repairAttempts.push(attempt);
 
-  if (moderation.decision === "block" || moderation.decision === "error") {
-    const targetCredits = getFailedGenerationTargetCredits({
-      reason:
-        moderation.decision === "block"
-          ? "moderation_block"
-          : "moderation_error",
-      moderationFailureCredits,
-      moderationOnlyCredits: creditCost.moderationOnlyCredits,
-    });
     try {
-      await settleChargedCredits(
-        targetCredits,
-        "content-moderation",
-        `${generationId}:moderation`,
-        `Settle after moderation stop: ${input.prompt.substring(0, 50)}`,
+      const repairConfig = await getEffectiveConfig(null, {
+        userId: input.userId,
+        apiKeyId: input.apiKeyId,
+        requestKind: "responses",
+        accountBackendPreference: "responses",
+        ignoreUserConfig: true,
+        allowAnyResponsesBackend: true,
+      });
+      const repaired = await repairModerationBlockedPromptWithResponses(
+        repairConfig.config,
         {
-          generationId,
-          moderationDecision: moderation.decision,
-          creditCost,
+          prompt: currentApiPrompt || currentPrompt,
+          failureReason: reason,
+          mode: input.mode,
+          size,
+          signal: AbortSignal.timeout(IMAGE_GENERATION_PENDING_TIMEOUT_MS),
         }
       );
-    } catch {
-      /* best effort settlement */
+      if (repaired.error || !repaired.prompt?.trim()) {
+        attempt.status = "failed";
+        attempt.error = truncateMetadataText(
+          repaired.error || "Responses prompt repair returned empty text"
+        );
+        return false;
+      }
+      currentPrompt = repaired.prompt.trim();
+      currentApiPrompt = currentPrompt;
+      currentModerationPrompt = currentPrompt;
+      attempt.status = "retrying";
+      attempt.repairedPrompt = truncateMetadataText(currentPrompt);
+      return true;
+    } catch (error) {
+      attempt.status = "failed";
+      attempt.error = truncateMetadataText(
+        error instanceof Error ? error.message : "Prompt repair failed"
+      );
+      return false;
+    } finally {
+      await db
+        .update(generation)
+        .set({
+          metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
+            buildModerationPromptRepairMetadata(repairAttempts)
+          )}::jsonb`,
+        })
+        .where(isPendingGeneration(generationId));
     }
-    const message =
-      moderation.decision === "block"
-        ? "Content failed moderation"
-        : "Content moderation is temporarily unavailable";
-    const responseMessage = moderation.reason || message;
-    await db
-      .update(generation)
-      .set({
-        status: "failed",
-        error: responseMessage,
-        creditsConsumed: chargedCredits,
-      })
-      .where(isPendingGeneration(generationId));
-    return {
-      error: responseMessage,
-      generationId,
-      creditsConsumed: chargedCredits,
-    };
-  }
+  };
 
-  let result: GenerateImageResult;
-  try {
-    result =
-      input.mode === "edit"
-        ? await editImage(
+  const runGenerationAttempt = async () => {
+    const commonSignal = AbortSignal.timeout(
+      IMAGE_GENERATION_PENDING_TIMEOUT_MS
+    );
+    return input.mode === "edit"
+      ? await editImage(
+          config,
+          {
+            prompt: currentPrompt,
+            apiPrompt: currentApiPrompt,
+            promptOptimization,
+            signal: commonSignal,
+            images: input.images,
+            mask: input.mask,
+            size: input.size,
+            model: imageModel,
+            gptModel,
+            thinking: input.thinking,
+            quality: input.quality,
+            n: input.n,
+            moderation: input.moderation,
+            outputFormat: input.outputFormat,
+            outputCompression: input.outputCompression,
+            background: input.background,
+            mixWebFirst,
+            forceWebBackend,
+            requiresResponsesBackend: input.requiresResponsesBackend,
+          },
+          callbacks
+        )
+      : input.mode === "chat"
+        ? await generateChatImage(
             config,
             {
-              prompt: input.prompt,
-              apiPrompt,
+              prompt: currentPrompt,
+              apiPrompt: currentApiPrompt,
+              fileContext: input.fileContext,
+              files: input.files,
               promptOptimization,
-              signal: AbortSignal.timeout(IMAGE_GENERATION_PENDING_TIMEOUT_MS),
+              signal: commonSignal,
               images: input.images,
-              mask: input.mask,
-              size: input.size,
+              history: input.history,
+              size,
+              model: gptModel,
+              imageModel,
+              allowGpt55,
+              quality: input.quality,
+              n: input.n,
+              moderation: input.moderation,
+              outputFormat: input.outputFormat,
+              outputCompression: input.outputCompression,
+              stream: input.stream,
+              thinking: input.thinking,
+              agentMode: input.agentMode,
+              agentMaxRounds: input.agentMaxRounds,
+              agentForceMaxRounds: input.agentForceMaxRounds,
+              rawResponsesBody: input.rawResponsesBody,
+              mixWebFirst,
+              requiresResponsesBackend: input.requiresResponsesBackend,
+            },
+            callbacks
+          )
+        : await generateImage(
+            config,
+            {
+              prompt: currentPrompt,
+              apiPrompt: currentApiPrompt,
+              promptOptimization,
+              signal: commonSignal,
+              size,
               model: imageModel,
               gptModel,
               thinking: input.thinking,
-              quality: input.quality,
               n: input.n,
+              quality: input.quality,
               moderation: input.moderation,
               outputFormat: input.outputFormat,
               outputCompression: input.outputCompression,
@@ -1668,107 +1832,183 @@ async function runQueuedImageGenerationForUser({
               requiresResponsesBackend: input.requiresResponsesBackend,
             },
             callbacks
-          )
-        : input.mode === "chat"
-          ? await generateChatImage(
-              config,
-              {
-                prompt: input.prompt,
-                apiPrompt,
-                fileContext: input.fileContext,
-                files: input.files,
-                promptOptimization,
-                signal: AbortSignal.timeout(
-                  IMAGE_GENERATION_PENDING_TIMEOUT_MS
-                ),
-                images: input.images,
-                history: input.history,
-                size,
-                model: gptModel,
-                imageModel,
-                allowGpt55,
-                quality: input.quality,
-                n: input.n,
-                moderation: input.moderation,
-                outputFormat: input.outputFormat,
-                outputCompression: input.outputCompression,
-                stream: input.stream,
-                thinking: input.thinking,
-                agentMode: input.agentMode,
-                agentMaxRounds: input.agentMaxRounds,
-                agentForceMaxRounds: input.agentForceMaxRounds,
-                rawResponsesBody: input.rawResponsesBody,
-                mixWebFirst,
-                requiresResponsesBackend: input.requiresResponsesBackend,
-              },
-              callbacks
-            )
-          : await generateImage(
-              config,
-              {
-                prompt: input.prompt,
-                apiPrompt,
-                promptOptimization,
-                signal: AbortSignal.timeout(
-                  IMAGE_GENERATION_PENDING_TIMEOUT_MS
-                ),
-                size,
-                model: imageModel,
-                gptModel,
-                thinking: input.thinking,
-                n: input.n,
-                quality: input.quality,
-                moderation: input.moderation,
-                outputFormat: input.outputFormat,
-                outputCompression: input.outputCompression,
-                background: input.background,
-                mixWebFirst,
-                forceWebBackend,
-                requiresResponsesBackend: input.requiresResponsesBackend,
-              },
-              callbacks
-            );
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Image generation failed";
-    const targetCredits = getFailedGenerationTargetCredits({
-      reason: "generation_error",
-      moderationFailureCredits,
-      moderationOnlyCredits: creditCost.moderationOnlyCredits,
-    });
-    try {
-      await settleChargedCredits(
-        targetCredits,
-        "content-moderation",
-        `${generationId}:generation-exception`,
-        `Settle failed generation exception: ${input.prompt.substring(0, 50)}`,
-        {
+          );
+  };
+
+  while (true) {
+    const moderation = !moderationEnabled
+      ? ({ decision: "skipped" } as const)
+      : await moderateContent({
+          prompt: currentModerationPrompt,
+          images: inputImages,
+          mode: inputImages.length > 0 ? "image" : "text",
+          userId: input.userId,
+          userPlan: userPlan.plan,
+          userModerationBlockRiskLevel: moderationBlockRiskLevel,
           generationId,
-          creditCost,
-          error: message,
-        }
-      );
-    } catch {
-      /* best effort settlement */
+        });
+
+    if (isTimedOut()) {
+      return failTimedOutGeneration();
     }
-    await db
-      .update(generation)
-      .set({
-        status: "failed",
-        error: message,
+
+    if (moderation.decision === "block" || moderation.decision === "error") {
+      const message =
+        moderation.decision === "block"
+          ? "Content failed moderation"
+          : "Content moderation is temporarily unavailable";
+      const responseMessage = moderation.reason || message;
+      if (
+        moderation.decision === "block" &&
+        (await repairPrompt("pre_moderation", responseMessage))
+      ) {
+        continue;
+      }
+      const retryingRepairAttempt =
+        getLastRetryingRepairAttempt(repairAttempts);
+      if (retryingRepairAttempt) {
+        retryingRepairAttempt.status = "failed";
+        retryingRepairAttempt.error = truncateMetadataText(responseMessage);
+      }
+
+      const targetCredits = getFailedGenerationTargetCredits({
+        reason:
+          moderation.decision === "block"
+            ? "moderation_block"
+            : "moderation_error",
+        moderationFailureCredits,
+        moderationOnlyCredits: creditCost.moderationOnlyCredits,
+      });
+      try {
+        await settleChargedCredits(
+          targetCredits,
+          "content-moderation",
+          `${generationId}:moderation`,
+          `Settle after moderation stop: ${input.prompt.substring(0, 50)}`,
+          {
+            generationId,
+            moderationDecision: moderation.decision,
+            creditCost,
+          }
+        );
+      } catch {
+        /* best effort settlement */
+      }
+      await db
+        .update(generation)
+        .set({
+          status: "failed",
+          error: responseMessage,
+          creditsConsumed: chargedCredits,
+          metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
+            repairAttempts.length
+              ? buildModerationPromptRepairMetadata(repairAttempts)
+              : {}
+          )}::jsonb`,
+        })
+        .where(isPendingGeneration(generationId));
+      return {
+        error: responseMessage,
+        generationId,
         creditsConsumed: chargedCredits,
-      })
-      .where(isPendingGeneration(generationId));
-    return {
-      error: message,
-      generationId,
-      creditsConsumed: chargedCredits,
-    };
+      };
+    }
+
+    try {
+      result = await runGenerationAttempt();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Image generation failed";
+      const retryingRepairAttempt =
+        getLastRetryingRepairAttempt(repairAttempts);
+      if (retryingRepairAttempt) {
+        retryingRepairAttempt.status = "failed";
+        retryingRepairAttempt.error = truncateMetadataText(message);
+      }
+      const targetCredits = getFailedGenerationTargetCredits({
+        reason: "generation_error",
+        moderationFailureCredits,
+        moderationOnlyCredits: creditCost.moderationOnlyCredits,
+      });
+      try {
+        await settleChargedCredits(
+          targetCredits,
+          "content-moderation",
+          `${generationId}:generation-exception`,
+          `Settle failed generation exception: ${input.prompt.substring(0, 50)}`,
+          {
+            generationId,
+            creditCost,
+            error: message,
+          }
+        );
+      } catch {
+        /* best effort settlement */
+      }
+      await db
+        .update(generation)
+        .set({
+          status: "failed",
+          error: message,
+          creditsConsumed: chargedCredits,
+          metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
+            repairAttempts.length
+              ? buildModerationPromptRepairMetadata(repairAttempts)
+              : {}
+          )}::jsonb`,
+        })
+        .where(isPendingGeneration(generationId));
+      return {
+        error: message,
+        generationId,
+        creditsConsumed: chargedCredits,
+      };
+    }
+
+    if (isTimedOut()) {
+      return failTimedOutGeneration();
+    }
+
+    const repairFailureMessage = getModerationRepairFailureMessage(
+      result,
+      isChatInput
+    );
+    if (
+      repairFailureMessage &&
+      (await repairPrompt(
+        result.error ? "upstream_generation" : "missing_image_output",
+        repairFailureMessage
+      ))
+    ) {
+      continue;
+    }
+
+    break;
   }
 
-  if (isTimedOut()) {
-    return failTimedOutGeneration();
+  const successfulRepairAttempt = getLastRetryingRepairAttempt(repairAttempts);
+  if (successfulRepairAttempt) {
+    const finalRepairFailure = getModerationRepairFailureMessage(
+      result,
+      isChatInput
+    );
+    if (
+      !result.error &&
+      !finalRepairFailure &&
+      (hasImageOutput(result) || isChatInput)
+    ) {
+      successfulRepairAttempt.status = "succeeded";
+    } else {
+      successfulRepairAttempt.status = "failed";
+      successfulRepairAttempt.error = truncateMetadataText(
+        result.error ||
+          finalRepairFailure ||
+          "Retry completed without an image output"
+      );
+    }
   }
+  const metadataWithPromptRepair = (metadata: Record<string, unknown>) =>
+    withPromptRepairMetadata(metadata, repairAttempts);
 
   if (result.error) {
     const failureTargetCredits = getFailedGenerationTargetCredits({
@@ -1797,8 +2037,11 @@ async function runQueuedImageGenerationForUser({
       .set({
         status: "failed",
         error: result.error,
-        creditsConsumed: chargedCredits,
-      })
+          creditsConsumed: chargedCredits,
+          metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
+            metadataWithPromptRepair({})
+          )}::jsonb`,
+        })
       .where(isPendingGeneration(generationId));
     return {
       error: result.error,
@@ -1807,7 +2050,7 @@ async function runQueuedImageGenerationForUser({
     };
   }
 
-  if (!result.imageBase64 && !result.imageUrl) {
+  if (!hasImageOutput(result)) {
     if (!isChatInput) {
       const message =
         result.responseText?.trim() ||
@@ -1841,10 +2084,10 @@ async function runQueuedImageGenerationForUser({
           error: message,
           creditsConsumed: chargedCredits,
           metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
-            {
+            metadataWithPromptRepair({
               ...buildResponseOutputMetadata(result),
               missingImageOutput: true,
-            }
+            })
           )}::jsonb`,
           completedAt: new Date(),
         })
@@ -1900,8 +2143,12 @@ async function runQueuedImageGenerationForUser({
         revisedPrompt: result.revisedPrompt,
         creditsConsumed: finalChargedCredits,
         metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
-          {
-            ...buildRevisedPromptMetadata({ input, apiPrompt, result }),
+          metadataWithPromptRepair({
+            ...buildRevisedPromptMetadata({
+              input,
+              apiPrompt: currentApiPrompt,
+              result,
+            }),
             ...buildResponseOutputMetadata(result),
             ...(isChatInput
               ? {
@@ -1912,7 +2159,7 @@ async function runQueuedImageGenerationForUser({
                   },
                 }
               : {}),
-          }
+          })
         )}::jsonb`,
         completedAt: new Date(),
       })
@@ -2034,7 +2281,13 @@ async function runQueuedImageGenerationForUser({
         : "Unknown storage error";
     await db
       .update(generation)
-      .set({ status: "failed", error: `Storage error: ${message}` })
+      .set({
+        status: "failed",
+        error: `Storage error: ${message}`,
+        metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
+          metadataWithPromptRepair({})
+        )}::jsonb`,
+      })
       .where(isPendingGeneration(generationId));
     try {
       await settleChargedCredits(
@@ -2207,6 +2460,9 @@ async function runQueuedImageGenerationForUser({
         status: "failed",
         error: message,
         creditsConsumed: chargedCredits,
+        metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
+          metadataWithPromptRepair({})
+        )}::jsonb`,
       })
       .where(isPendingGeneration(generationId));
     return {
@@ -2230,8 +2486,12 @@ async function runQueuedImageGenerationForUser({
       revisedPrompt: result.revisedPrompt || primaryOutput.revisedPrompt,
       creditsConsumed: chargedCredits,
       metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
-        {
-          ...buildRevisedPromptMetadata({ input, apiPrompt, result }),
+        metadataWithPromptRepair({
+          ...buildRevisedPromptMetadata({
+            input,
+            apiPrompt: currentApiPrompt,
+            result,
+          }),
           ...buildResponseOutputMetadata(result),
           webConversation: result.webConversation || null,
           outputImage: {
@@ -2273,7 +2533,7 @@ async function runQueuedImageGenerationForUser({
               primary: output.generationId === primaryOutput.generationId,
             })),
           },
-        }
+        })
       )}::jsonb`,
       completedAt: new Date(),
     })

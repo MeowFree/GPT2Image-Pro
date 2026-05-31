@@ -79,6 +79,7 @@ type ResolveBackendOptions = {
   preferredMemberId?: string;
   accountBackendPreference?: ImageBackendAccountBackend;
   accountBackendPreferenceMode?: ImageBackendPreferenceMode;
+  allowAnyResponsesBackend?: boolean;
 };
 
 type PoolMember =
@@ -1601,9 +1602,17 @@ async function resolvePoolMember(
 ) {
   const userPlan = await getUserPlan(options.userId);
   const requestedGroup = await resolveRequestedGroup(options, userPlan.plan);
+  const canFallbackToAnyResponses =
+    options.allowAnyResponsesBackend && options.requestKind === "responses";
+  const resolveAnyResponsesMember = async () => {
+    if (!canFallbackToAnyResponses) return null;
+    return await resolveAnyResponsesPoolMember(options, userPlan.plan);
+  };
   const requestedGroupId = requestedGroup.groupId;
   const group = await ensureGroupUsable(requestedGroupId, userPlan.plan);
   if (!group) {
+    const fallback = await resolveAnyResponsesMember();
+    if (fallback) return fallback;
     if (requestedGroup.explicit) {
       throw new ImageBackendPoolUnavailableError(
         "选择的生图后端分组不可用或当前套餐不可用"
@@ -1613,6 +1622,8 @@ async function resolvePoolMember(
   }
 
   if (!groupBackendAllowsRequest(group.metadata, options.requestKind)) {
+    const fallback = await resolveAnyResponsesMember();
+    if (fallback) return fallback;
     if (requestedGroup.explicit) {
       throw new ImageBackendPoolUnavailableError(
         `生图后端分组「${group.name}」不支持当前请求类型`
@@ -1637,6 +1648,8 @@ async function resolvePoolMember(
     options.accountBackendPreferenceMode
   );
   if (!member) {
+    const fallback = await resolveAnyResponsesMember();
+    if (fallback) return fallback;
     if (requestedGroup.explicit) {
       throw new ImageBackendPoolUnavailableError(
         `生图后端分组「${group.name}」没有可用账号或 API`
@@ -1646,6 +1659,36 @@ async function resolvePoolMember(
   }
 
   return { group, member };
+}
+
+async function resolveAnyResponsesPoolMember(
+  options: ResolveBackendOptions & { excluded?: Set<string> },
+  plan: SubscriptionPlan
+) {
+  const groups = await db
+    .select()
+    .from(imageBackendGroup)
+    .where(eq(imageBackendGroup.isEnabled, true))
+    .orderBy(asc(imageBackendGroup.priority), asc(imageBackendGroup.createdAt));
+
+  for (const group of groups) {
+    if (!canUseBackendGroupForPlan(group.metadata, plan)) continue;
+    if (!groupBackendAllowsRequest(group.metadata, "responses")) continue;
+    const member = await selectPoolMember(
+      group.id,
+      group.metadata,
+      group.contentSafetyEnabled,
+      await listSelectableGroupContexts(group, plan, "responses"),
+      "responses",
+      options.excluded,
+      options.preferredMemberId,
+      "responses",
+      options.accountBackendPreferenceMode
+    );
+    if (member) return { group, member };
+  }
+
+  return null;
 }
 
 export async function resolveImageBackendPoolConfig(

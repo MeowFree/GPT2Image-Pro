@@ -222,6 +222,21 @@ const sections = {
       ],
       note: "所以关系不是“外接 API 调页面 API”，而是“各入口共享同一个 service 层”。",
     },
+    moderationRepair: {
+      title: "审核失败自动修剪重试",
+      description:
+        "开启后，系统检测到本地审核拦截、上游安全拒绝或安全拒绝导致的无图输出时，会先用 Responses 纯文本请求修剪提示词，再在同一个生成任务内重新审核并重新发起生图。",
+      valid: [
+        "该能力需要至少一个可用的 Codex/Responses 账号，或一个支持 /responses 的外接 API 后端；纯 Web 分组也会临时借用 Responses 后端完成提示词修剪。",
+        "最大重试轮数由 IMAGE_MODERATION_PROMPT_REPAIR_MAX_RETRIES 控制，0 表示关闭；IMAGE_MODERATION_PROMPT_REPAIR_ENABLED 可控制总开关。",
+        "修剪重试不会新建第二条生成记录，成功后仍按最终图片和原任务计费；状态监控会按第几次修剪统计尝试、成功和失败。",
+        "如果没有可用 Responses 后端，或修剪后仍被审核拦截，系统会保留原审核失败信息并按失败结算规则处理。",
+      ],
+      invalid: [
+        "审核服务本身不可用、上游限流、余额不足、模型权限不足等平台或用户请求错误不会触发提示词修剪。",
+        "修剪只改写文本提示词，不会修改用户上传的参考图、蒙版或附件内容。",
+      ],
+    },
     agent: {
       title: "页面 Agent 模式",
       description:
@@ -1913,6 +1928,21 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         ],
       ],
       note: "The relationship is not external API -> page API. It is multiple adapters -> one shared service layer.",
+    },
+    moderationRepair: {
+      title: "Safety Prompt Repair Retry",
+      description:
+        "When local moderation, upstream safety refusal, or safety-refusal text without an image is detected, the system can rewrite the prompt through a text-only Responses request and retry generation inside the same task.",
+      valid: [
+        "Requires at least one usable Codex/Responses account or an external API backend that supports /responses. Even a Web-only generation group can borrow a Responses backend for the rewrite step.",
+        "IMAGE_MODERATION_PROMPT_REPAIR_ENABLED controls the feature; IMAGE_MODERATION_PROMPT_REPAIR_MAX_RETRIES controls the maximum rewrite rounds. Set retries to 0 to disable.",
+        "Retries do not create a second generation record. Billing remains attached to the original task and final output; the status page reports attempts, successes, and failures by retry number.",
+        "If no Responses backend is available, or the rewritten prompt is still blocked, the original moderation failure is kept and normal failed-settlement rules apply.",
+      ],
+      invalid: [
+        "Moderation-service outages, upstream rate limits, insufficient credits, and model permission errors are not prompt-repair cases.",
+        "Only the text prompt is rewritten; uploaded reference images, masks, and attachments are not modified.",
+      ],
     },
     agent: {
       title: "Page Agent Mode",
@@ -3986,6 +4016,25 @@ export function SystemDocsContent({
       <RouteDiagram flow={content.flow} />
 
       <RelationshipTable relationship={content.relationship} />
+
+      <Card className="rounded-lg">
+        <CardHeader>
+          <CardTitle className="text-base">
+            {content.moderationRepair.title}
+          </CardTitle>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {content.moderationRepair.description}
+          </p>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-md border bg-muted/20 p-4">
+            <ListBlock items={content.moderationRepair.valid} type="valid" />
+          </div>
+          <div className="rounded-md border bg-muted/20 p-4">
+            <ListBlock items={content.moderationRepair.invalid} type="invalid" />
+          </div>
+        </CardContent>
+      </Card>
 
       <AgentDocs agent={content.agent} />
 

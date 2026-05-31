@@ -101,6 +101,19 @@ type GenerationWindowStats = {
   avgSeconds: number | null;
   p95Seconds: number | null;
   durationBreakdown: DurationBreakdown;
+  moderationPromptRepair: ModerationPromptRepairStats;
+};
+
+type ModerationPromptRepairStats = {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  byAttempt: Array<{
+    attempt: number;
+    attempted: number;
+    succeeded: number;
+    failed: number;
+  }>;
 };
 
 type BackendHealthStats = {
@@ -376,6 +389,65 @@ function getProducedImageCount(row: GenerationMetricRow) {
   return row.storageKey ? 1 : 0;
 }
 
+function getModerationPromptRepairAttempts(row: GenerationMetricRow) {
+  const repair = asRecord(asRecord(row.metadata)?.moderationPromptRepair);
+  const attempts = Array.isArray(repair?.attempts) ? repair.attempts : [];
+  return attempts
+    .map((item) => asRecord(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item));
+}
+
+function createModerationPromptRepairStats(): ModerationPromptRepairStats {
+  return {
+    attempted: 0,
+    succeeded: 0,
+    failed: 0,
+    byAttempt: [],
+  };
+}
+
+function accumulateModerationPromptRepairStats(
+  stats: ModerationPromptRepairStats,
+  row: GenerationMetricRow
+) {
+  const byAttempt = new Map(
+    stats.byAttempt.map((item) => [item.attempt, { ...item }])
+  );
+
+  for (const attempt of getModerationPromptRepairAttempts(row)) {
+    const attemptNumber = Math.max(
+      1,
+      Math.floor(numberFrom(attempt.attempt) || 1)
+    );
+    const status = stringFrom(attempt.status);
+    stats.attempted += 1;
+    if (status === "succeeded") {
+      stats.succeeded += 1;
+    } else if (status === "failed" || status === "skipped") {
+      stats.failed += 1;
+    }
+
+    const bucket =
+      byAttempt.get(attemptNumber) || {
+        attempt: attemptNumber,
+        attempted: 0,
+        succeeded: 0,
+        failed: 0,
+      };
+    bucket.attempted += 1;
+    if (status === "succeeded") {
+      bucket.succeeded += 1;
+    } else if (status === "failed" || status === "skipped") {
+      bucket.failed += 1;
+    }
+    byAttempt.set(attemptNumber, bucket);
+  }
+
+  stats.byAttempt = Array.from(byAttempt.values()).sort(
+    (left, right) => left.attempt - right.attempt
+  );
+}
+
 function percentile(values: number[], p: number) {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -443,10 +515,12 @@ function buildGenerationWindowStats(
   let userRequestErrors = 0;
   const durations: number[] = [];
   const durationAccumulator = createDurationAccumulator();
+  const moderationPromptRepair = createModerationPromptRepairStats();
 
   for (const row of rows) {
     creditsConsumed += Number(row.creditsConsumed) || 0;
     producedImages += getProducedImageCount(row);
+    accumulateModerationPromptRepairStats(moderationPromptRepair, row);
 
     if (row.status === "completed") {
       completed += 1;
@@ -508,6 +582,7 @@ function buildGenerationWindowStats(
     avgSeconds,
     p95Seconds: percentile(durations, 0.95),
     durationBreakdown: buildDurationBreakdown(durationAccumulator),
+    moderationPromptRepair,
   };
 }
 
@@ -703,6 +778,35 @@ function SlaCard({
             {formatDuration(stats.avgSeconds, locale)}
           </span>
         </div>
+        {stats.moderationPromptRepair.attempted > 0 ? (
+          <div className="rounded-md border bg-muted/20 p-3 text-xs">
+            <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="font-medium text-foreground">
+                {copy(locale, "Prompt repair retries", "审核修剪重试")}
+              </span>
+              <span className="text-muted-foreground">
+                {copy(locale, "Attempts", "尝试")}{" "}
+                {stats.moderationPromptRepair.attempted}
+              </span>
+              <span className="text-muted-foreground">
+                {copy(locale, "Succeeded", "成功")}{" "}
+                {stats.moderationPromptRepair.succeeded}
+              </span>
+              <span className="text-muted-foreground">
+                {copy(locale, "Failed", "失败")}{" "}
+                {stats.moderationPromptRepair.failed}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2 text-muted-foreground">
+              {stats.moderationPromptRepair.byAttempt.map((item) => (
+                <span key={item.attempt}>
+                  #{item.attempt}: {item.attempted}/{item.succeeded}/
+                  {item.failed}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <DurationBreakdownTable
           breakdown={stats.durationBreakdown}
           locale={locale}

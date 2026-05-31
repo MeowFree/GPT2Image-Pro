@@ -94,6 +94,65 @@ describe("Responses streaming parser", () => {
     ).resolves.toBe("gpt-5.5");
   });
 
+  it("repairs moderation-blocked prompts through a text-only Responses request", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { repairModerationBlockedPromptWithResponses } = await import(
+      "./service"
+    );
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          id: "resp_repair",
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: "A policy-safe cinematic portrait with softened details",
+                },
+              ],
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await repairModerationBlockedPromptWithResponses(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "test-key",
+        model: "gpt-5.4",
+      },
+      {
+        prompt: "blocked portrait prompt",
+        failureReason: "Content failed moderation",
+        mode: "generate",
+        size: "1024x1024",
+      }
+    );
+
+    expect(result.prompt).toBe(
+      "A policy-safe cinematic portrait with softened details"
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/v1/responses",
+      expect.objectContaining({
+        body: expect.stringContaining('"store":false'),
+      })
+    );
+    const firstCall = fetchMock.mock.calls.at(0) as
+      | [string, RequestInit]
+      | undefined;
+    const requestOptions = firstCall?.[1] as
+      | RequestInit
+      | undefined;
+    expect(String(requestOptions?.body)).not.toContain("image_generation");
+  });
+
   it("parses stream=true Responses bodies incrementally even when content-type is wrong", async () => {
     process.env.DATABASE_URL =
       process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
