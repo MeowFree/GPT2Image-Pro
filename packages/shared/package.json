@@ -69,7 +69,8 @@
     "./components/icons": "./src/components/icons/index.ts",
     "./components/og-image-template": "./src/components/components/og-image-template.tsx",
     "./security/dns-pin": "./src/security/dns-pin.ts",
-    "./security/ip-validation": "./src/security/ip-validation.ts"
+    "./security/ip-validation": "./src/security/ip-validation.ts",
+    "./uol": "./src/uol/index.ts"
   },
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
