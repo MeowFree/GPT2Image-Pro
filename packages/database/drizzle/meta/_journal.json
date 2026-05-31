@@ -211,6 +211,13 @@
       "when": 1780400180000,
       "tag": "0029_credits_transaction_idempotency_userid",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1780400240000,
+      "tag": "0030_mcp_user_keys",
+      "breakpoints": true
     }
   ]
 }

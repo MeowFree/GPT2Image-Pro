@@ -1027,3 +1027,51 @@ export type TicketPriority = (typeof ticketPriorityEnum.enumValues)[number];
 
 /** 工单状态类型 */
 export type TicketStatus = (typeof ticketStatusEnum.enumValues)[number];
+
+// ============================================
+// MCP User API Keys
+// ============================================
+/**
+ * MCP 用户密钥表 - 终端用户通过 MCP 协议访问图像生成等功能时使用的认证密钥
+ *
+ * 独立于 external_api_key（v1 API），二者互不干扰：
+ * - external_api_key: 面向 v1 RESTful API
+ * - mcp_api_key: 面向 MCP JSON-RPC 协议（用户侧）
+ *
+ * @field id - 唯一标识符
+ * @field userId - 所属用户
+ * @field name - 用户可自定义的 key 名称
+ * @field keyPrefix - key 前缀（如 "mcp_"），用于快速识别类型
+ * @field keyHash - SHA-256 哈希（唯一索引，鉴权热路径查找）
+ * @field lastFour - 末四位明文（列表展示时脱敏显示）
+ * @field isActive - 是否启用
+ * @field lastUsedAt - 最近使用时间
+ * @field revokedAt - 撤销时间（撤销后不可恢复）
+ * @field createdAt - 创建时间
+ * @field updatedAt - 更新时间
+ */
+export const mcpApiKey = pgTable(
+  "mcp_api_key",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull().default("Default MCP key"),
+    keyPrefix: text("key_prefix").notNull(),
+    keyHash: text("key_hash").notNull().unique(),
+    lastFour: text("last_four").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    lastUsedAt: timestamp("last_used_at"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("mcp_api_key_key_hash_idx").on(table.keyHash),
+    index("mcp_api_key_user_id_idx").on(table.userId),
+  ],
+);
+
+export type McpApiKey = typeof mcpApiKey.$inferSelect;
+export type NewMcpApiKey = typeof mcpApiKey.$inferInsert;

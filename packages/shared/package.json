@@ -70,7 +70,13 @@
     "./components/og-image-template": "./src/components/components/og-image-template.tsx",
     "./security/dns-pin": "./src/security/dns-pin.ts",
     "./security/ip-validation": "./src/security/ip-validation.ts",
-    "./uol": "./src/uol/index.ts"
+    "./uol": "./src/uol/index.ts",
+    "./uol/operations": "./src/uol/operations/index.ts",
+    "./mcp": "./src/mcp/index.ts",
+    "./mcp/user-config": "./src/mcp/user-config.ts",
+    "./mcp/user-auth": "./src/mcp/user-auth.ts",
+    "./mcp/user-tool-factory": "./src/mcp/user-tool-factory.ts",
+    "./mcp/user-key-actions": "./src/mcp/user-key-actions.ts"
   },
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
