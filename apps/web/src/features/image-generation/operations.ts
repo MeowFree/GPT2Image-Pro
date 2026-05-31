@@ -47,6 +47,8 @@ import {
   getImageCreditCostBreakdown,
   getImageModel,
   type ImageBaseCreditPricing,
+  type ImageQualityLevel,
+  type ImageThinkingLevel,
   isImageSizeWithinPixelRange,
   normalizeImageSize,
   roundCreditAmount,
@@ -270,10 +272,7 @@ export type ImageGenerationOperationResult = {
 };
 
 async function getStoredImageUrl(bucket: string, storageKey: string) {
-  const { generateSignedImageUrl } = await import(
-    "@repo/shared/storage/signed-url"
-  );
-  return generateSignedImageUrl(bucket, storageKey);
+  return `/api/storage/${bucket}/${storageKey}`;
 }
 
 async function toImageBuffer(result: {
@@ -1186,6 +1185,8 @@ export async function runImageGenerationForUser(
     textModerationCount: moderationEnabled ? undefined : 0,
     imageModerationCount: moderationImageCount,
     basePricing: imageBasePricing,
+    quality: input.quality as ImageQualityLevel | undefined,
+    thinking: input.thinking as ImageThinkingLevel | undefined,
   });
   const creditCost = applyBillingMultiplierToCreditCost(
     baseCreditCost,
@@ -2367,13 +2368,16 @@ async function runQueuedImageGenerationForUser({
     (hasChoiceOutputs && output.generationId !== primaryOutput.generationId)
       ? {
           baseCredits: 0,
+          effectiveBaseCredits: 0,
           totalCredits: 0,
           imageModerationCount: 0,
           moderationCny: 0,
           moderationCredits: 0,
           moderationOnlyCredits: 0,
+          qualityMultiplier: 1,
           textModerationCredits: 0,
           textModerationCount: 0,
+          thinkingMultiplier: 1,
           pixels: 0,
         }
       : applyBillingMultiplierToCreditCost(
@@ -2381,6 +2385,8 @@ async function runQueuedImageGenerationForUser({
             textModerationCount: moderationEnabled ? undefined : 0,
             imageModerationCount: moderationEnabled ? inputImages.length : 0,
             basePricing: imageBasePricing,
+            quality: input.quality as ImageQualityLevel | undefined,
+            thinking: input.thinking as ImageThinkingLevel | undefined,
           }),
           billingMultiplier
         )
@@ -2391,6 +2397,8 @@ async function runQueuedImageGenerationForUser({
         textModerationCount: moderationEnabled ? undefined : 0,
         imageModerationCount: moderationEnabled ? inputImages.length : 0,
         basePricing: imageBasePricing,
+        quality: input.quality as ImageQualityLevel | undefined,
+        thinking: input.thinking as ImageThinkingLevel | undefined,
       }),
       billingMultiplier
     )
@@ -2402,6 +2410,8 @@ async function runQueuedImageGenerationForUser({
         textModerationCount: moderationEnabled ? undefined : 0,
         imageModerationCount: moderationEnabled ? inputImages.length : 0,
         basePricing: imageBasePricing,
+        quality: input.quality as ImageQualityLevel | undefined,
+        thinking: input.thinking as ImageThinkingLevel | undefined,
       }),
       billingMultiplier
     );

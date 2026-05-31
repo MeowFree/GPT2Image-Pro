@@ -88,6 +88,8 @@ import {
   DEFAULT_IMAGE_SIZE,
   getImageCreditCost,
   type ImageBaseCreditPricing,
+  type ImageQualityLevel,
+  type ImageThinkingLevel,
   IMAGE_1K_BASE_EDGE,
   IMAGE_DIMENSION_STEP,
   isImageSizeWithinPixelRange,
@@ -1845,6 +1847,10 @@ export function CreatePageClient({
     getImageCreditCost(requestedSize, {
       ...options,
       basePricing: imageBasePricing,
+      quality: (options.quality ??
+        quality) as ImageQualityLevel | undefined,
+      thinking: (options.thinking ??
+        chatThinking) as ImageThinkingLevel | undefined,
     });
   const activeBackendType = selectedBackendGroup?.backendType || "mixed";
   const isWebOnlyBackend = activeBackendType === "web";
@@ -2633,7 +2639,7 @@ export function CreatePageClient({
       applyBillingMultiplier(
         getPricedImageCreditCost(size, moderationCostOptions)
       ),
-    [activeBillingMultiplier, imageBasePricing, moderationCostOptions, size]
+    [activeBillingMultiplier, chatThinking, imageBasePricing, moderationCostOptions, quality, size]
   );
   const textBatchCreditCost = textImageCreditCost * batchCount;
   const linePromptItems = useMemo(

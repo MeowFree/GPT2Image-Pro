@@ -6,6 +6,8 @@ import {
   getImageBaseCredits,
   getImageCreditCostBreakdown,
   getImageModel,
+  getQualityMultiplier,
+  getThinkingMultiplier,
   IMAGE_1024_BASE_PIXELS,
   IMAGE_DIMENSION_STEP,
   isImageModel,
@@ -17,7 +19,9 @@ import {
   MIN_IMAGE_PIXELS,
   normalizeImageModel,
   parseImageSize,
+  QUALITY_MULTIPLIER,
   roundUpCreditAmount,
+  THINKING_MULTIPLIER,
   validateImageSize,
 } from "./resolution";
 
@@ -66,6 +70,140 @@ describe("image resolution credit pricing", () => {
         textModerationCount: 0,
       }).baseCredits
     ).toBe(2);
+  });
+
+  it("defaults to multiplier 1.0 when quality/thinking not specified", () => {
+    const withoutOptions = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+    });
+    const withNullOptions = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+      quality: null,
+      thinking: null,
+    });
+
+    expect(withoutOptions.qualityMultiplier).toBe(1.0);
+    expect(withoutOptions.thinkingMultiplier).toBe(1.0);
+    expect(withoutOptions.totalCredits).toBe(withNullOptions.totalCredits);
+  });
+
+  it("quality=high increases base cost by 50%", () => {
+    const base = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+    });
+    const highQuality = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+      quality: "high",
+    });
+
+    expect(highQuality.qualityMultiplier).toBe(1.5);
+    expect(highQuality.baseCredits).toBe(
+      roundUpCreditAmount(base.baseCredits * 1.5)
+    );
+  });
+
+  it("quality=low decreases base cost by 50%", () => {
+    const base = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+    });
+    const lowQuality = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+      quality: "low",
+    });
+
+    expect(lowQuality.qualityMultiplier).toBe(0.5);
+    expect(lowQuality.baseCredits).toBe(
+      roundUpCreditAmount(base.baseCredits * 0.5)
+    );
+  });
+
+  it("thinking=high increases base cost by 60%", () => {
+    const base = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+    });
+    const highThinking = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+      thinking: "high",
+    });
+
+    expect(highThinking.thinkingMultiplier).toBe(1.6);
+    expect(highThinking.baseCredits).toBe(
+      roundUpCreditAmount(base.baseCredits * 1.6)
+    );
+  });
+
+  it("combined quality=high + thinking=high = 2.4x base", () => {
+    const base = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+    });
+    const combined = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+      quality: "high",
+      thinking: "high",
+    });
+
+    expect(combined.qualityMultiplier).toBe(1.5);
+    expect(combined.thinkingMultiplier).toBe(1.6);
+    expect(combined.baseCredits).toBe(
+      roundUpCreditAmount(base.baseCredits * 1.5 * 1.6)
+    );
+  });
+
+  it("moderation cost is NOT multiplied by quality/thinking", () => {
+    const baseWithMod = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 1,
+      imageModerationCount: 1,
+    });
+    const highWithMod = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 1,
+      imageModerationCount: 1,
+      quality: "high",
+      thinking: "high",
+    });
+
+    // 审核积分（moderationCredits）不受倍率影响
+    expect(highWithMod.moderationCredits).toBe(baseWithMod.moderationCredits);
+    expect(highWithMod.moderationOnlyCredits).toBe(
+      baseWithMod.moderationOnlyCredits
+    );
+  });
+
+  it("quality=auto uses multiplier 1.0 (same as medium/default)", () => {
+    const auto = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+      quality: "auto",
+    });
+    const medium = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+      quality: "medium",
+    });
+
+    expect(auto.qualityMultiplier).toBe(1.0);
+    expect(auto.totalCredits).toBe(medium.totalCredits);
+  });
+
+  it("exposes correct multiplier constants", () => {
+    expect(QUALITY_MULTIPLIER.low).toBe(0.5);
+    expect(QUALITY_MULTIPLIER.medium).toBe(1.0);
+    expect(QUALITY_MULTIPLIER.high).toBe(1.5);
+    expect(QUALITY_MULTIPLIER.auto).toBe(1.0);
+
+    expect(THINKING_MULTIPLIER.none).toBe(1.0);
+    expect(THINKING_MULTIPLIER.minimal).toBe(1.0);
+    expect(THINKING_MULTIPLIER.low).toBe(1.0);
+    expect(THINKING_MULTIPLIER.medium).toBe(1.3);
+    expect(THINKING_MULTIPLIER.high).toBe(1.6);
+    expect(THINKING_MULTIPLIER.xhigh).toBe(1.6);
+  });
+
+  it("getQualityMultiplier returns 1.0 for unknown/null values", () => {
+    expect(getQualityMultiplier(null)).toBe(1.0);
+    expect(getQualityMultiplier(undefined)).toBe(1.0);
+  });
+
+  it("getThinkingMultiplier returns 1.0 for unknown/null values", () => {
+    expect(getThinkingMultiplier(null)).toBe(1.0);
+    expect(getThinkingMultiplier(undefined)).toBe(1.0);
   });
 
   it("checks force web eligibility by configured pixel range", () => {

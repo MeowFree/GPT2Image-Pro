@@ -61,10 +61,49 @@ export const IMAGE_RESOLUTION_PRESETS = [
   { value: "2160x3840", label: "4K Tall", detail: "2160 × 3840" },
 ] as const;
 
+/**
+ * 图像生成质量等级对应的积分倍率。
+ * high 质量实际上游 API 成本更高，low 更低。
+ * auto 视为标准（后端决定，按标准收费）。
+ */
+export const QUALITY_MULTIPLIER: Record<string, number> = {
+  low: 0.5,
+  medium: 1.0,
+  high: 1.5,
+  auto: 1.0,
+} as const;
+
+/**
+ * 思考/推理等级对应的积分倍率。
+ * 思考模式会显著增加上游 API 成本（额外推理 token）。
+ * none/minimal/low 不额外收费；medium +30%；high +60%。
+ */
+export const THINKING_MULTIPLIER: Record<string, number> = {
+  none: 1.0,
+  minimal: 1.0,
+  low: 1.0,
+  medium: 1.3,
+  high: 1.6,
+  xhigh: 1.6,
+} as const;
+
+export type ImageQualityLevel = "low" | "medium" | "high" | "auto";
+export type ImageThinkingLevel =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+
 export type ImageCreditCostOptions = {
   textModerationCount?: number;
   imageModerationCount?: number;
   basePricing?: ImageBaseCreditPricing;
+  /** 图像质量等级，影响积分倍率。默认无（即 1.0 倍，向后兼容） */
+  quality?: ImageQualityLevel | null;
+  /** 思考/推理等级，影响积分倍率。默认无（即 1.0 倍，向后兼容） */
+  thinking?: ImageThinkingLevel | null;
 };
 
 export type ImageBaseCreditPricing = {
@@ -127,6 +166,28 @@ export function getImageBaseCredits(
   return base1024Credits + (base4kCredits - base1024Credits) * progress;
 }
 
+/**
+ * 获取质量等级对应的积分倍率。
+ * 未指定或无效值返回 1.0（向后兼容）。
+ */
+export function getQualityMultiplier(
+  quality?: ImageQualityLevel | null
+): number {
+  if (!quality) return 1.0;
+  return QUALITY_MULTIPLIER[quality] ?? 1.0;
+}
+
+/**
+ * 获取思考等级对应的积分倍率。
+ * 未指定或无效值返回 1.0（向后兼容）。
+ */
+export function getThinkingMultiplier(
+  thinking?: ImageThinkingLevel | null
+): number {
+  if (!thinking) return 1.0;
+  return THINKING_MULTIPLIER[thinking] ?? 1.0;
+}
+
 export function getImageCreditCostBreakdown(
   size?: string | null,
   options: ImageCreditCostOptions = {}
@@ -138,24 +199,35 @@ export function getImageCreditCostBreakdown(
     ? dimensions.width * dimensions.height
     : MAX_IMAGE_PIXELS;
   const baseCredits = getImageBaseCredits(pixels, options.basePricing);
+
+  // 质量和思考倍率应用于基础积分（不影响审核成本，审核是固定透传费用）
+  const qualityMultiplier = getQualityMultiplier(options.quality);
+  const thinkingMultiplier = getThinkingMultiplier(options.thinking);
+  const effectiveBaseCredits = baseCredits * qualityMultiplier * thinkingMultiplier;
+
   const textModerationCount = options.textModerationCount ?? 1;
   const imageModerationCount = options.imageModerationCount ?? 0;
   const moderationCny =
     textModerationCount * TEXT_MODERATION_PRICE_CNY +
     imageModerationCount * IMAGE_MODERATION_PRICE_CNY;
   const moderationCredits = moderationCny / REFERENCE_CREDIT_PRICE_CNY;
-  const totalCredits = roundUpCreditAmount(baseCredits + moderationCredits);
+  const totalCredits = roundUpCreditAmount(
+    effectiveBaseCredits + moderationCredits
+  );
   const moderationOnlyCredits =
     moderationCny > 0 ? roundUpCreditAmount(moderationCredits) : 0;
 
   return {
-    baseCredits: roundUpCreditAmount(baseCredits),
+    baseCredits: roundUpCreditAmount(effectiveBaseCredits),
+    effectiveBaseCredits: roundUpCreditAmount(effectiveBaseCredits),
     imageModerationCount,
     moderationCny,
     moderationCredits: roundCreditAmount(moderationCredits),
     moderationOnlyCredits,
     pixels,
+    qualityMultiplier,
     textModerationCount,
+    thinkingMultiplier,
     totalCredits,
   };
 }
