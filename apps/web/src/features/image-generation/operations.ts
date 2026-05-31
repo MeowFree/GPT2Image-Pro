@@ -270,7 +270,10 @@ export type ImageGenerationOperationResult = {
 };
 
 async function getStoredImageUrl(bucket: string, storageKey: string) {
-  return `/api/storage/${bucket}/${storageKey}`;
+  const { generateSignedImageUrl } = await import(
+    "@repo/shared/storage/signed-url"
+  );
+  return generateSignedImageUrl(bucket, storageKey);
 }
 
 async function toImageBuffer(result: {

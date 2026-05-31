@@ -1,5 +1,19 @@
+/**
+ * 存储对象读取 API 路由
+ *
+ * 提供本地/S3 存储桶中图像的 HTTP 读取。
+ * - avatars 桶：公开访问，无需鉴权。
+ * - generations 桶：需要有效的短时签名 URL（sig + exp 查询参数）。
+ *   签名验证使用 HMAC-SHA256 + 常量时间比较，防止时序攻击。
+ *   v1 API 消费者通过签名 URL 参数获取授权（无 cookie）。
+ */
+
 import { logError } from "@repo/shared/logger";
 import { getStorageProvider } from "@repo/shared/storage/providers";
+import {
+  isPublicBucket,
+  verifySignedImageUrl,
+} from "@repo/shared/storage/signed-url";
 import { type NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 
@@ -22,9 +36,10 @@ const CONTENT_TYPES: Record<string, string> = {
 const GENERATION_CACHE_CONTROL =
   "public, max-age=86400, s-maxage=2592000, stale-while-revalidate=604800, immutable";
 const PUBLIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const NO_STORE_CACHE_CONTROL = "no-store";
 
 /**
- * 判断存储对象是否“不存在”。
+ * 判断存储对象是否"不存在"。
  *
  * 用于区分真正的 404（对象缺失/键非法）与底层基础设施故障（凭证缺失、
  * S3 不可达、配置缺失等），避免把所有异常一律吞成 404 掩盖真实故障。
@@ -56,8 +71,73 @@ function isObjectNotFoundError(error: unknown): boolean {
   return error.message.startsWith("File not found");
 }
 
+/**
+ * 验证 generations 桶的签名 URL。
+ * 公开桶跳过验证；非公开桶需要有效的 sig + exp 查询参数。
+ *
+ * @returns null 表示验证通过，否则返回错误 Response
+ */
+function verifyBucketAccess(
+  request: NextRequest,
+  bucket: string,
+  fileKey: string
+): NextResponse | null {
+  // 公开桶无需签名
+  if (isPublicBucket(bucket)) {
+    return null;
+  }
+
+  const sig = request.nextUrl.searchParams.get("sig");
+  const expParam = request.nextUrl.searchParams.get("exp");
+
+  if (!sig || !expParam) {
+    return NextResponse.json(
+      { error: "Missing signature" },
+      {
+        status: 403,
+        headers: { "Cache-Control": NO_STORE_CACHE_CONTROL },
+      }
+    );
+  }
+
+  const exp = Number(expParam);
+  if (!Number.isFinite(exp) || exp <= 0) {
+    return NextResponse.json(
+      { error: "Invalid expiry" },
+      {
+        status: 403,
+        headers: { "Cache-Control": NO_STORE_CACHE_CONTROL },
+      }
+    );
+  }
+
+  const result = verifySignedImageUrl(bucket, fileKey, sig, exp);
+
+  if (result === "expired") {
+    return NextResponse.json(
+      { error: "Signature expired" },
+      {
+        status: 403,
+        headers: { "Cache-Control": NO_STORE_CACHE_CONTROL },
+      }
+    );
+  }
+
+  if (result === "invalid") {
+    return NextResponse.json(
+      { error: "Invalid signature" },
+      {
+        status: 403,
+        headers: { "Cache-Control": NO_STORE_CACHE_CONTROL },
+      }
+    );
+  }
+
+  return null;
+}
+
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ bucket: string; key: string[] }> }
 ) {
   const { bucket, key } = await params;
@@ -74,6 +154,12 @@ export async function GET(
     fileKey.includes("\\")
   ) {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+  }
+
+  // 签名验证：generations 桶需要有效签名，avatars 桶公开访问。
+  const accessError = verifyBucketAccess(request, bucket, fileKey);
+  if (accessError) {
+    return accessError;
   }
 
   const ext = path.extname(fileKey).toLowerCase();

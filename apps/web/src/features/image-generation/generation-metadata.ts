@@ -1,3 +1,4 @@
+import { generateSignedImageUrl } from "@repo/shared/storage/signed-url";
 import type { ImageInputFile } from "./types";
 
 export type GenerationReferenceImage = {
@@ -25,13 +26,19 @@ function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/**
+ * 从存储桶和键名构造带签名的图像访问 URL。
+ *
+ * generations 桶的 URL 自动附加 HMAC 签名参数（sig + exp），
+ * 防止未授权直接访问。avatars 等公开桶不带签名。
+ */
 export function toStoredImageUrl(
   bucket: string | null | undefined,
   storageKey: string | null | undefined
 ) {
-  return storageKey
-    ? `/api/storage/${bucket || "generations"}/${storageKey}`
-    : null;
+  if (!storageKey) return null;
+  const resolvedBucket = bucket || "generations";
+  return generateSignedImageUrl(resolvedBucket, storageKey);
 }
 
 export function buildInputImagesMetadata(inputImages: ImageInputFile[]) {

@@ -4,5 +4,6 @@
 // imported directly from server-side code (server actions, API routes).
 // Client components should import types, utils, and actions from this barrel.
 export * from "./actions";
+export * from "./signed-url";
 export * from "./types";
 export * from "./utils";

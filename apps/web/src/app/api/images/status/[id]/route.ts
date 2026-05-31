@@ -2,6 +2,7 @@ import { db } from "@repo/database";
 import { generation } from "@repo/database/schema";
 import { withApiLogging } from "@repo/shared/api-logger";
 import { auth } from "@repo/shared/auth";
+import { generateSignedImageUrl } from "@repo/shared/storage/signed-url";
 import { and, eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
@@ -20,7 +21,9 @@ function stringValue(value: unknown) {
 }
 
 function buildStorageUrl(bucket: string | null, key: string | null) {
-  return key ? `/api/storage/${bucket || "generations"}/${key}` : undefined;
+  if (!key) return undefined;
+  const resolvedBucket = bucket || "generations";
+  return generateSignedImageUrl(resolvedBucket, key);
 }
 
 function getImageOutputs(metadata: unknown, bucket: string | null) {

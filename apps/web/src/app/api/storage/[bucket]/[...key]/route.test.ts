@@ -1,5 +1,12 @@
+/**
+ * 存储对象读取路由的 DB-free 单测
+ *
+ * 覆盖：桶白名单、路径穿越拒绝、正常读取、404/502 错误映���、
+ * 签名验证（generations 桶需要 sig+exp，avatars 桶公开访问）。
+ */
+
 import type { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // 模拟存储 provider，使该路由测试保持 DB-free（不触达 @repo/database / runtime settings）。
 const getObject = vi.fn();
@@ -11,31 +18,65 @@ vi.mock("@repo/shared/storage/providers", () => ({
 const logError = vi.hoisted(() => vi.fn());
 vi.mock("@repo/shared/logger", () => ({ logError }));
 
+import { generateSignedImageParams } from "@repo/shared/storage/signed-url";
 import { GET } from "./route";
+
+const TEST_SECRET = "test-secret-for-storage-route-tests";
 
 // 构造 Next.js App Router 动态路由约定的 params Promise。
 function makeParams(bucket: string, key: string[]) {
   return { params: Promise.resolve({ bucket, key }) };
 }
 
-// 该路由不读取 request，传入占位即可。
-const request = {} as NextRequest;
+/**
+ * 构造带 nextUrl.searchParams 的 NextRequest 模拟对象。
+ * avatars 桶不需要签名；generations 桶需要 sig+exp。
+ */
+function makeRequest(
+  searchParams?: Record<string, string>
+): NextRequest {
+  const params = new URLSearchParams(searchParams);
+  return {
+    nextUrl: {
+      searchParams: params,
+    },
+  } as unknown as NextRequest;
+}
+
+/**
+ * 构造带有效签名参数的请求。
+ */
+function makeSignedRequest(bucket: string, key: string): NextRequest {
+  const { sig, exp } = generateSignedImageParams(bucket, key);
+  return makeRequest({ sig, exp: String(exp) });
+}
 
 describe("GET /api/storage/[bucket]/[...key]", () => {
+  const originalSecret = process.env.BETTER_AUTH_SECRET;
+
   beforeEach(() => {
+    process.env.BETTER_AUTH_SECRET = TEST_SECRET;
     getObject.mockReset();
     logError.mockReset();
   });
 
+  afterAll(() => {
+    if (originalSecret === undefined) {
+      delete process.env.BETTER_AUTH_SECRET;
+    } else {
+      process.env.BETTER_AUTH_SECRET = originalSecret;
+    }
+  });
+
   it("拒绝非白名单桶（403 且不访问对象）", async () => {
-    const res = await GET(request, makeParams("secrets", ["a.png"]));
+    const res = await GET(makeRequest(), makeParams("secrets", ["a.png"]));
     expect(res.status).toBe(403);
     expect(getObject).not.toHaveBeenCalled();
   });
 
   it("拒绝路径穿越的 key（400）", async () => {
     const res = await GET(
-      request,
+      makeSignedRequest("generations", "../etc/passwd"),
       makeParams("generations", ["..", "etc", "passwd"])
     );
     expect(res.status).toBe(400);
@@ -43,27 +84,78 @@ describe("GET /api/storage/[bucket]/[...key]", () => {
   });
 
   it("拒绝含反斜杠的 key（400）", async () => {
-    const res = await GET(request, makeParams("generations", ["a\\b.png"]));
+    const res = await GET(
+      makeSignedRequest("generations", "a\\b.png"),
+      makeParams("generations", ["a\\b.png"])
+    );
     expect(res.status).toBe(400);
     expect(getObject).not.toHaveBeenCalled();
   });
 
   it("拒绝以斜杠开头的 key（400）", async () => {
-    const res = await GET(request, makeParams("generations", ["", "abs.png"]));
+    const res = await GET(
+      makeSignedRequest("generations", "/abs.png"),
+      makeParams("generations", ["", "abs.png"])
+    );
     expect(res.status).toBe(400);
     expect(getObject).not.toHaveBeenCalled();
   });
 
   it("拒绝空 key（400）", async () => {
-    const res = await GET(request, makeParams("generations", [""]));
+    const res = await GET(
+      makeSignedRequest("generations", ""),
+      makeParams("generations", [""])
+    );
     expect(res.status).toBe(400);
     expect(getObject).not.toHaveBeenCalled();
   });
 
-  it("白名单桶返回图片字节、正确 content-type 与长缓存", async () => {
+  it("generations 桶缺少签名返回 403", async () => {
+    const res = await GET(
+      makeRequest(),
+      makeParams("generations", ["user-123", "abc.png"])
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("Missing signature");
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(getObject).not.toHaveBeenCalled();
+  });
+
+  it("generations 桶签名过期返回 403", async () => {
+    const pastExp = Math.floor(Date.now() / 1000) - 100;
+    const { sig } = generateSignedImageParams(
+      "generations",
+      "user-123/abc.png"
+    );
+    const res = await GET(
+      makeRequest({ sig, exp: String(pastExp) }),
+      makeParams("generations", ["user-123", "abc.png"])
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("Signature expired");
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(getObject).not.toHaveBeenCalled();
+  });
+
+  it("generations 桶签名无效返回 403", async () => {
+    const futureExp = Math.floor(Date.now() / 1000) + 3600;
+    const res = await GET(
+      makeRequest({ sig: "a".repeat(64), exp: String(futureExp) }),
+      makeParams("generations", ["user-123", "abc.png"])
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("Invalid signature");
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(getObject).not.toHaveBeenCalled();
+  });
+
+  it("generations 桶有效签名返回图片字节、正确 content-type 与长缓存", async () => {
     getObject.mockResolvedValue(Buffer.from("png-bytes"));
     const res = await GET(
-      request,
+      makeSignedRequest("generations", "user-123/abc.png"),
       makeParams("generations", ["user-123", "abc.png"])
     );
     expect(res.status).toBe(200);
@@ -77,10 +169,21 @@ describe("GET /api/storage/[bucket]/[...key]", () => {
     expect(Buffer.from(await res.arrayBuffer()).toString()).toBe("png-bytes");
   });
 
+  it("avatars 桶无需签名即可公开访问", async () => {
+    getObject.mockResolvedValue(Buffer.from("avatar-bytes"));
+    const res = await GET(
+      makeRequest(),
+      makeParams("avatars", ["user-9", "profile.jpg"])
+    );
+    expect(res.status).toBe(200);
+    expect(getObject).toHaveBeenCalledWith("user-9/profile.jpg", "avatars");
+    expect(res.headers.get("Content-Type")).toBe("image/jpeg");
+  });
+
   it("未知扩展回退 octet-stream 并以附件下载（防内容嗅探/存储型 XSS）", async () => {
     getObject.mockResolvedValue(Buffer.from("<svg/>"));
     const res = await GET(
-      request,
+      makeRequest(),
       makeParams("avatars", ["user-9", "evil.svg"])
     );
     expect(res.status).toBe(200);
@@ -93,7 +196,7 @@ describe("GET /api/storage/[bucket]/[...key]", () => {
     const enoent = Object.assign(new Error("no such file"), { code: "ENOENT" });
     getObject.mockRejectedValue(enoent);
     const res = await GET(
-      request,
+      makeSignedRequest("generations", "user-1/missing.png"),
       makeParams("generations", ["user-1", "missing.png"])
     );
     expect(res.status).toBe(404);
@@ -106,7 +209,7 @@ describe("GET /api/storage/[bucket]/[...key]", () => {
     });
     getObject.mockRejectedValue(noSuchKey);
     const res = await GET(
-      request,
+      makeSignedRequest("generations", "user-1/missing.png"),
       makeParams("generations", ["user-1", "missing.png"])
     );
     expect(res.status).toBe(404);
@@ -116,7 +219,7 @@ describe("GET /api/storage/[bucket]/[...key]", () => {
   it("基础设施故障映射为 502 并记日志（不静默吞成 404）", async () => {
     getObject.mockRejectedValue(new Error("存储配置缺失"));
     const res = await GET(
-      request,
+      makeSignedRequest("generations", "user-1/abc.png"),
       makeParams("generations", ["user-1", "abc.png"])
     );
     expect(res.status).toBe(502);
