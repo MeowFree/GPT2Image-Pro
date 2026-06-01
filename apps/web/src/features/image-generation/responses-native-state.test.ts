@@ -294,10 +294,70 @@ describe("Responses native state cache observation", () => {
     expect(second.responsesUsage?.cachedInputTokens).toBeGreaterThan(0);
     expect(bodies[0]?.store).toBe(true);
     expect(bodies[0]).not.toHaveProperty("previous_response_id");
+    expect(bodies[0]?.prompt_cache_key).toEqual(
+      expect.stringMatching(/^g2i_[a-f0-9]{32}$/)
+    );
     expect(bodies[1]).toMatchObject({
       store: true,
       previous_response_id: "resp_first",
+      prompt_cache_key: bodies[0]?.prompt_cache_key,
     });
+  });
+
+  it("scopes official prompt cache keys to the selected Responses backend", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateChatImage } = await import("./service");
+    const bodies: Array<Record<string, unknown>> = [];
+    const imageBase64 = Buffer.from("cache-key-image").toString("base64");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body || "{}")));
+        return new Response(
+          JSON.stringify({
+            id: "resp_cache",
+            output: [
+              {
+                type: "image_generation_call",
+                status: "completed",
+                result: imageBase64,
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      })
+    );
+
+    await generateChatImage(responsesConfig(), {
+      prompt: "生成一张产品海报",
+      model: "gpt-5.4",
+      history: [],
+    });
+    await generateChatImage(
+      {
+        ...responsesConfig(),
+        backend: {
+          type: "pool-account",
+          id: "account-b",
+          accountBackend: "responses",
+        },
+      },
+      {
+        prompt: "生成一张产品海报",
+        model: "gpt-5.4",
+        history: [],
+      }
+    );
+
+    expect(bodies[0]?.prompt_cache_key).toEqual(
+      expect.stringMatching(/^g2i_[a-f0-9]{32}$/)
+    );
+    expect(bodies[1]?.prompt_cache_key).toEqual(
+      expect.stringMatching(/^g2i_[a-f0-9]{32}$/)
+    );
+    expect(bodies[1]?.prompt_cache_key).not.toBe(bodies[0]?.prompt_cache_key);
   });
 
   it("falls back to store:false for Agent when upstream rejects native state", async () => {
@@ -822,6 +882,7 @@ describe("backend isolation", () => {
         model: "gpt-5.4",
         input: "draw",
         previous_response_id: "resp_external",
+        prompt_cache_key: "caller-cache-key",
         store: true,
         tools: [{ type: "web_search" }],
         size: "1024x1024",
@@ -836,6 +897,7 @@ describe("backend isolation", () => {
     expect(body.store).toBe(false);
     expect(body.stream).toBe(false);
     expect(body.previous_response_id).toBe("resp_external");
+    expect(body.prompt_cache_key).toBe("caller-cache-key");
     expect(body.input).toBe("draw");
     expect(body.size).toBeUndefined();
     expect(body.tools).toEqual([
@@ -869,6 +931,9 @@ describe("backend isolation", () => {
 
     expect(request.store).toBe(false);
     expect("previous_response_id" in request).toBe(false);
+    expect(request.prompt_cache_key).toEqual(
+      expect.stringMatching(/^g2i_[a-f0-9]{32}$/)
+    );
     expect(request.instructions).not.toContain(
       RESPONSES_IMAGE_REFERENCE_INSTRUCTIONS
     );

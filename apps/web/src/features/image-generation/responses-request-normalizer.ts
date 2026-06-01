@@ -1,6 +1,7 @@
 export type ResponsesStreamRequestBody = Record<string, unknown> & {
   stream?: boolean;
   tools?: unknown[];
+  prompt_cache_key?: string;
 };
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

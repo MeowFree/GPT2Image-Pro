@@ -100,7 +100,7 @@ describe("Responses streaming parser", () => {
     const { repairModerationBlockedPromptWithResponses } = await import(
       "./service"
     );
-    const fetchMock = vi.fn(async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
       return new Response(
         JSON.stringify({
           id: "resp_repair",
@@ -163,7 +163,7 @@ describe("Responses streaming parser", () => {
         controller = nextController;
       },
     });
-    const fetchMock = vi.fn(async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
       return new Response(stream, {
         status: 200,
         headers: { "Content-Type": "text/plain" },
@@ -522,32 +522,34 @@ describe("Responses streaming parser", () => {
     process.env.DATABASE_URL =
       process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
     const { generateChatImage } = await import("./service");
-    const fetchMock = vi.fn(async () => {
-      return new Response(
-        JSON.stringify({
-          id: "chatcmpl_test",
-          model: "gpt-5.4",
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: "native chat result",
-                images: [
-                  {
-                    b64_json: Buffer.from("native-image").toString("base64"),
-                    revised_prompt: "native image",
-                  },
-                ],
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit): Promise<Response> => {
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl_test",
+            model: "gpt-5.4",
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: "native chat result",
+                  images: [
+                    {
+                      b64_json: Buffer.from("native-image").toString("base64"),
+                      revised_prompt: "native image",
+                    },
+                  ],
+                },
               },
-            },
-          ],
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    });
+            ],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await generateChatImage(
@@ -571,9 +573,16 @@ describe("Responses streaming parser", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.example.test/v1/chat/completions",
       expect.objectContaining({
-        body: expect.not.stringContaining('"stream":true'),
+        body: expect.stringMatching(
+          /"prompt_cache_key":"g2i_[a-f0-9]{32}"/
+        ),
       })
     );
+    const calls = fetchMock.mock.calls;
+    const firstCall = calls[0];
+    if (!firstCall) throw new Error("expected chat completions fetch call");
+    const init = firstCall[1] as RequestInit | undefined;
+    expect(String(init?.body || "")).not.toContain('"stream":true');
   });
 
   it("streams native upstream Chat Completions only when backend streaming is enabled", async () => {
@@ -582,9 +591,9 @@ describe("Responses streaming parser", () => {
     const { generateChatImage } = await import("./service");
     const fetchMock = vi.fn(async () => {
       return new Response(
-        sseBlock("chat.completion.chunk", {
+        `${sseBlock("chat.completion.chunk", {
           choices: [{ delta: { content: "hello" } }],
-        }) + "data: [DONE]\n\n",
+        })}data: [DONE]\n\n`,
         {
           status: 200,
           headers: { "Content-Type": "text/event-stream" },

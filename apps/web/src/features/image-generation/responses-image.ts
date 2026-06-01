@@ -3,6 +3,7 @@ import {
   normalizeOutputCompression,
   normalizeOutputFormat,
 } from "./output-format";
+import { buildOpenAIPromptCacheKey } from "./openai-prompt-cache";
 import {
   AUTO_IMAGE_SIZE,
   DEFAULT_IMAGE_MODEL,
@@ -59,6 +60,7 @@ type ResponsesImageRequest = {
   };
   include: string[];
   instructions?: string;
+  prompt_cache_key?: string;
 };
 
 const RESPONSES_IMAGE_INSTRUCTIONS =
@@ -145,6 +147,22 @@ function getInstructions(params: GenerateImageParams | EditImageParams) {
   return RESPONSES_IMAGE_ORIGINAL_PROMPT_INSTRUCTIONS;
 }
 
+function toolCacheSignature(tool: ResponsesImageRequest["tools"][number]) {
+  return [
+    tool.action,
+    tool.model,
+    tool.size,
+    tool.quality,
+    tool.moderation,
+    tool.output_format,
+    tool.output_compression,
+    tool.background,
+    tool.input_image_mask ? "mask" : "",
+  ]
+    .filter((value) => value !== undefined && value !== "")
+    .join(":");
+}
+
 function normalizeQuality(quality?: string): ImageQuality | undefined {
   if (
     quality === "low" ||
@@ -206,9 +224,10 @@ export function buildResponsesImageGenerationRequest(
   if (background) tool.background = background;
 
   const instructions = getInstructions(params) || RESPONSES_IMAGE_INSTRUCTIONS;
+  const responseModel = getResponsesModel(config, params.gptModel);
 
   return {
-    model: getResponsesModel(config, params.gptModel),
+    model: responseModel,
     input: [
       {
         type: "message",
@@ -224,6 +243,13 @@ export function buildResponsesImageGenerationRequest(
     reasoning: { effort: normalizeThinking(params.thinking), summary: "auto" },
     include: ["reasoning.encrypted_content"],
     instructions,
+    prompt_cache_key: buildOpenAIPromptCacheKey(config, {
+      scope: "responses-image-generation",
+      model: responseModel,
+      imageModel: tool.model,
+      promptOptimization: params.promptOptimization,
+      toolSignature: toolCacheSignature(tool),
+    }),
   };
 }
 
@@ -267,9 +293,10 @@ export function buildResponsesImageEditRequest(
   const instructions = withResponsesImageReferenceInstructions(
     getInstructions(params) || RESPONSES_IMAGE_INSTRUCTIONS
   );
+  const responseModel = getResponsesModel(config, params.gptModel);
 
   return {
-    model: getResponsesModel(config, params.gptModel),
+    model: responseModel,
     input: [
       {
         type: "message",
@@ -288,5 +315,12 @@ export function buildResponsesImageEditRequest(
     reasoning: { effort: normalizeThinking(params.thinking), summary: "auto" },
     include: ["reasoning.encrypted_content"],
     instructions,
+    prompt_cache_key: buildOpenAIPromptCacheKey(config, {
+      scope: "responses-image-edit",
+      model: responseModel,
+      imageModel: tool.model,
+      promptOptimization: params.promptOptimization,
+      toolSignature: toolCacheSignature(tool),
+    }),
   };
 }

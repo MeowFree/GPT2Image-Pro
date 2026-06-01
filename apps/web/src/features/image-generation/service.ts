@@ -47,6 +47,7 @@ import {
   normalizeOutputCompression,
   normalizeOutputFormat,
 } from "./output-format";
+import { buildOpenAIPromptCacheKey } from "./openai-prompt-cache";
 import {
   AUTO_IMAGE_SIZE,
   DEFAULT_IMAGE_MODEL,
@@ -709,6 +710,29 @@ function toBlobPart(buffer: Buffer): BlobPart {
 
 function stripTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
+}
+
+function responseToolCacheSignature(params: {
+  tool: Record<string, unknown>;
+  additionalTools?: Record<string, unknown>[];
+}) {
+  return JSON.stringify({
+    imageTool: {
+      type: params.tool.type,
+      action: params.tool.action,
+      model: params.tool.model,
+      size: params.tool.size,
+      quality: params.tool.quality,
+      moderation: params.tool.moderation,
+      output_format: params.tool.output_format,
+      output_compression: params.tool.output_compression,
+      background: params.tool.background,
+    },
+    additionalTools: (params.additionalTools || []).map((tool) => ({
+      type: tool.type,
+      name: tool.name,
+    })),
+  });
 }
 
 function isPoolAccountBackend(
@@ -1605,6 +1629,14 @@ async function generateChatImageWithChatCompletions(
     ...(rawBody || {}),
     model,
     messages: rawBody?.messages || buildChatCompletionsMessages(params),
+    prompt_cache_key:
+      rawBody?.prompt_cache_key ||
+      buildOpenAIPromptCacheKey(config, {
+        scope: "chat-completions",
+        model,
+        imageModel: params.imageModel,
+        promptOptimization: params.promptOptimization,
+      }),
     ...(stream ? { stream: true } : {}),
   };
   delete (body as Record<string, unknown>).size;
@@ -2007,8 +2039,8 @@ function extractImageFromPayload(
   const images = (payload.data || []).filter(
     (item) => item.b64_json || item.url
   );
-  if (images.length > 0) {
-    const image = images[images.length - 1]!;
+  const image = images.at(-1);
+  if (image) {
     return toGenerateImageResult(image);
   }
 
@@ -4034,6 +4066,17 @@ export async function generateChatImage(
     const defaultAdditionalTools = params.agentMode
       ? createDefaultAgentAdditionalTools()
       : [];
+    const promptCacheKey = buildOpenAIPromptCacheKey(config, {
+      scope: params.agentMode ? "responses-agent" : "responses-chat",
+      model,
+      imageModel: toolModel,
+      agentMode: params.agentMode,
+      promptOptimization: params.promptOptimization,
+      toolSignature: responseToolCacheSignature({
+        tool,
+        additionalTools: defaultAdditionalTools,
+      }),
+    });
     const requestBody: ResponsesStreamRequestBody =
       params.rawResponsesBody && isPlainRecord(params.rawResponsesBody)
         ? normalizeResponsesImageRequestBody(params.rawResponsesBody, {
@@ -4048,6 +4091,7 @@ export async function generateChatImage(
             tools: [tool, ...defaultAdditionalTools],
             instructions,
             store: responsesPreviousResponseEnabled,
+            prompt_cache_key: promptCacheKey,
             ...(canUsePreviousResponseId
               ? { previous_response_id: previousResponsesState?.responseId }
               : {}),
