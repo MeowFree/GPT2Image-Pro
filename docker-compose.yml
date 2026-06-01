@@ -21,7 +21,7 @@ services:
       retries: 10
 
   migrate:
-    image: ${GPT2IMAGE_MIGRATE_IMAGE:-ghcr.io/meowfree/gpt2image-pro-migrate:latest}
+    image: ghcr.io/meowfree/gpt2image-pro-migrate:${GPT2IMAGE_IMAGE_TAG:-latest}
     env_file:
       - ${GPT2IMAGE_ENV_FILE:-.env}
     environment:
@@ -32,7 +32,7 @@ services:
     restart: "no"
 
   web:
-    image: ${GPT2IMAGE_WEB_IMAGE:-ghcr.io/meowfree/gpt2image-pro-web:latest}
+    image: ghcr.io/meowfree/gpt2image-pro-web:${GPT2IMAGE_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
       - ${GPT2IMAGE_ENV_FILE:-.env}
@@ -56,7 +56,7 @@ services:
         condition: service_started
 
   chatgpt-web-proxy:
-    image: ${GPT2IMAGE_PROXY_IMAGE:-ghcr.io/meowfree/gpt2image-pro-chatgpt-web-proxy:latest}
+    image: ghcr.io/meowfree/gpt2image-pro-chatgpt-web-proxy:${GPT2IMAGE_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       CHATGPT_WEB_PROXY_BIND: :3021

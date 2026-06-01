@@ -171,6 +171,8 @@ docker compose up -d
 
 默认 compose 会启动 PostgreSQL、Web 应用、数据库迁移任务和 ChatGPT Web sidecar。首次启动默认自用模式，超管密码会写入 `app-bootstrap` volume 内的 `super-admin-credentials.txt`，也可通过日志查看。
 
+`GPT2IMAGE_IMAGE_TAG` 同时控制 Web、数据库迁移和 sidecar 镜像版本。升级时不要只改其中一个镜像；让三者使用同一个 tag，避免 Web 新版本启动但迁移任务仍停留在旧版本，导致运行时缺表或字段。
+
 启动后查看状态：
 
 ```bash
@@ -186,6 +188,13 @@ docker compose up -d
 ```
 
 如果只修改 `.env` 里的运行时配置，不需要重新构建镜像，执行 `docker compose up -d` 让容器重新创建即可。
+
+如果遇到容器内 `.next/cache` 权限错误，先拉取包含权限修复的新镜像并重建容器：
+
+```bash
+docker compose pull
+docker compose up -d --force-recreate
+```
 
 如果需要从源码本地构建镜像：
 
