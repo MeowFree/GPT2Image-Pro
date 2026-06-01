@@ -5,6 +5,7 @@ import {
   createJsonKeepAliveResponse,
   getExternalFinalImageOutputs,
   getImageBase64,
+  IMAGE_JSON_KEEP_ALIVE_INITIAL_WAIT_MS,
   toExternalErrorStreamData,
   toExternalGenerationUsage,
   toOpenAIErrorPayload,
@@ -61,6 +62,10 @@ describe("external image stream response", () => {
 });
 
 describe("external JSON keep-alive response", () => {
+  it("uses an early first-byte timeout for long image requests", () => {
+    expect(IMAGE_JSON_KEEP_ALIVE_INITIAL_WAIT_MS).toBeLessThanOrEqual(2_000);
+  });
+
   it("sends an initial padded whitespace chunk before slow JSON data", async () => {
     const response = await createJsonKeepAliveResponse(
       () =>
