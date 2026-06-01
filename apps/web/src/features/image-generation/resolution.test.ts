@@ -87,7 +87,7 @@ describe("image resolution credit pricing", () => {
     expect(withoutOptions.totalCredits).toBe(withNullOptions.totalCredits);
   });
 
-  it("quality=high increases base cost by 50%", () => {
+  it("quality does not change image credits", () => {
     const base = getImageCreditCostBreakdown("1024x1024", {
       textModerationCount: 0,
     });
@@ -95,44 +95,37 @@ describe("image resolution credit pricing", () => {
       textModerationCount: 0,
       quality: "high",
     });
-
-    expect(highQuality.qualityMultiplier).toBe(1.5);
-    expect(highQuality.baseCredits).toBe(
-      roundUpCreditAmount(base.baseCredits * 1.5)
-    );
-  });
-
-  it("quality=low decreases base cost by 50%", () => {
-    const base = getImageCreditCostBreakdown("1024x1024", {
-      textModerationCount: 0,
-    });
     const lowQuality = getImageCreditCostBreakdown("1024x1024", {
       textModerationCount: 0,
       quality: "low",
     });
 
-    expect(lowQuality.qualityMultiplier).toBe(0.5);
-    expect(lowQuality.baseCredits).toBe(
-      roundUpCreditAmount(base.baseCredits * 0.5)
-    );
+    expect(highQuality.qualityMultiplier).toBe(1.0);
+    expect(lowQuality.qualityMultiplier).toBe(1.0);
+    expect(highQuality.totalCredits).toBe(base.totalCredits);
+    expect(lowQuality.totalCredits).toBe(base.totalCredits);
   });
 
-  it("thinking=high increases base cost by 60%", () => {
+  it("thinking does not change image credits", () => {
     const base = getImageCreditCostBreakdown("1024x1024", {
       textModerationCount: 0,
+    });
+    const mediumThinking = getImageCreditCostBreakdown("1024x1024", {
+      textModerationCount: 0,
+      thinking: "medium",
     });
     const highThinking = getImageCreditCostBreakdown("1024x1024", {
       textModerationCount: 0,
       thinking: "high",
     });
 
-    expect(highThinking.thinkingMultiplier).toBe(1.6);
-    expect(highThinking.baseCredits).toBe(
-      roundUpCreditAmount(base.baseCredits * 1.6)
-    );
+    expect(mediumThinking.thinkingMultiplier).toBe(1.0);
+    expect(highThinking.thinkingMultiplier).toBe(1.0);
+    expect(mediumThinking.totalCredits).toBe(base.totalCredits);
+    expect(highThinking.totalCredits).toBe(base.totalCredits);
   });
 
-  it("combined quality=high + thinking=high = 2.4x base", () => {
+  it("combined quality and thinking do not change image credits", () => {
     const base = getImageCreditCostBreakdown("1024x1024", {
       textModerationCount: 0,
     });
@@ -142,14 +135,12 @@ describe("image resolution credit pricing", () => {
       thinking: "high",
     });
 
-    expect(combined.qualityMultiplier).toBe(1.5);
-    expect(combined.thinkingMultiplier).toBe(1.6);
-    expect(combined.baseCredits).toBe(
-      roundUpCreditAmount(base.baseCredits * 1.5 * 1.6)
-    );
+    expect(combined.qualityMultiplier).toBe(1.0);
+    expect(combined.thinkingMultiplier).toBe(1.0);
+    expect(combined.totalCredits).toBe(base.totalCredits);
   });
 
-  it("moderation cost is NOT multiplied by quality/thinking", () => {
+  it("moderation cost is unchanged by quality/thinking", () => {
     const baseWithMod = getImageCreditCostBreakdown("1024x1024", {
       textModerationCount: 1,
       imageModerationCount: 1,
@@ -161,11 +152,11 @@ describe("image resolution credit pricing", () => {
       thinking: "high",
     });
 
-    // 审核积分（moderationCredits）不受倍率影响
     expect(highWithMod.moderationCredits).toBe(baseWithMod.moderationCredits);
     expect(highWithMod.moderationOnlyCredits).toBe(
       baseWithMod.moderationOnlyCredits
     );
+    expect(highWithMod.totalCredits).toBe(baseWithMod.totalCredits);
   });
 
   it("quality=auto uses multiplier 1.0 (same as medium/default)", () => {
@@ -183,17 +174,17 @@ describe("image resolution credit pricing", () => {
   });
 
   it("exposes correct multiplier constants", () => {
-    expect(QUALITY_MULTIPLIER.low).toBe(0.5);
+    expect(QUALITY_MULTIPLIER.low).toBe(1.0);
     expect(QUALITY_MULTIPLIER.medium).toBe(1.0);
-    expect(QUALITY_MULTIPLIER.high).toBe(1.5);
+    expect(QUALITY_MULTIPLIER.high).toBe(1.0);
     expect(QUALITY_MULTIPLIER.auto).toBe(1.0);
 
     expect(THINKING_MULTIPLIER.none).toBe(1.0);
     expect(THINKING_MULTIPLIER.minimal).toBe(1.0);
     expect(THINKING_MULTIPLIER.low).toBe(1.0);
-    expect(THINKING_MULTIPLIER.medium).toBe(1.3);
-    expect(THINKING_MULTIPLIER.high).toBe(1.6);
-    expect(THINKING_MULTIPLIER.xhigh).toBe(1.6);
+    expect(THINKING_MULTIPLIER.medium).toBe(1.0);
+    expect(THINKING_MULTIPLIER.high).toBe(1.0);
+    expect(THINKING_MULTIPLIER.xhigh).toBe(1.0);
   });
 
   it("getQualityMultiplier returns 1.0 for unknown/null values", () => {
