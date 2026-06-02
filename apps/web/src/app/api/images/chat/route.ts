@@ -42,6 +42,7 @@ import type {
   ImageOutputFormat,
   ImageQuality,
   ResponsesInputFile,
+  StickyBackendMemberState,
   ThinkingLevel,
 } from "@/features/image-generation/types";
 
@@ -113,16 +114,34 @@ const CHAT_FILE_ACCEPT_TYPES = new Set([
   "text/xml",
 ]);
 
-function getPreferredBackendMemberId(history: ChatHistoryMessage[]) {
+function getPreferredBackendMember(
+  history: ChatHistoryMessage[]
+): StickyBackendMemberState | undefined {
   for (let index = history.length - 1; index >= 0; index--) {
     const message = history[index];
     if (!message || message.role !== "assistant" || message.error) continue;
     const variants = message.variants || [];
     const variant = variants[message.activeVariant || 0] || variants[0];
-    const backendMemberId = variant?.backendMember?.id;
-    if (backendMemberId) return backendMemberId;
+    const responsesBackendMember =
+      variant?.responsesPreviousResponse?.backendMember;
+    if (responsesBackendMember?.id) return responsesBackendMember;
+    const backendMember = variant?.backendMember;
+    if (backendMember?.id) return backendMember;
     const accountId = variant?.webConversation?.accountId;
-    if (accountId) return accountId;
+    if (accountId) return { type: "account", id: accountId, accountBackend: "web" };
+  }
+  return undefined;
+}
+
+function getLatestResponsesPreviousResponseId(
+  history: ChatHistoryMessage[]
+): string | undefined {
+  for (let index = history.length - 1; index >= 0; index--) {
+    const message = history[index];
+    if (!message || message.role !== "assistant" || message.error) continue;
+    const variants = message.variants || [];
+    const variant = variants[message.activeVariant || 0] || variants[0];
+    return variant?.responsesPreviousResponse?.responseId;
   }
   return undefined;
 }
@@ -778,7 +797,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     return errorResponse(limitedContext.error);
   }
   history = normalizeHistoryImageUrls(request, limitedContext.history);
-  const preferredBackendMemberId = getPreferredBackendMemberId(history);
+  const preferredBackendMember = getPreferredBackendMember(history);
+  const stickyPreviousResponseId = getLatestResponsesPreviousResponseId(history);
 
   let size = getText(formData, "size") || DEFAULT_IMAGE_SIZE;
   const sizeCheck = validateImageSize(size);
@@ -898,7 +918,9 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           promptOptimization,
           images: await buildImages(),
           history,
-          preferredBackendMemberId,
+          preferredBackendMemberId: preferredBackendMember?.id,
+          preferredBackendMemberType: preferredBackendMember?.type,
+          stickyPreviousResponseId,
           maxChatContextChars: planLimits.maxChatContextChars,
           size,
           model,

@@ -6,6 +6,9 @@ import {
   imageBackendAccountGroup,
   imageBackendApi,
   imageBackendGroup,
+  imageBackendInflightLease,
+  imageBackendSchedulerMetric,
+  imageBackendStickyBinding,
   systemSetting,
   userImageBackendPreference,
 } from "@repo/database/schema";
@@ -31,8 +34,10 @@ import {
   count,
   desc,
   eq,
+  gt,
   inArray,
   isNull,
+  lt,
   notInArray,
   or,
   sql,
@@ -72,16 +77,40 @@ import type {
 } from "./types";
 
 const MANUAL_TOKEN_IMPORT_LIMIT = 10_000;
+const IMAGE_BACKEND_INFLIGHT_LEASE_TTL_MS = 30 * 60_000;
+const STICKY_PREVIOUS_RESPONSE_TTL_MS = 24 * 60 * 60_000;
+const STICKY_SESSION_TTL_MS = 60 * 60_000;
+
+type BackendLeaseTx = Pick<
+  typeof db,
+  "delete" | "execute" | "insert" | "select"
+>;
 
 type ResolveBackendOptions = {
   userId: string;
   apiKeyId?: string;
   requestKind: ImageBackendRequestKind;
   preferredMemberId?: string;
+  preferredMemberType?: "api" | "account";
+  stickyPreviousResponseId?: string;
+  stickySessionKey?: string;
   accountBackendPreference?: ImageBackendAccountBackend;
   accountBackendPreferenceMode?: ImageBackendPreferenceMode;
   allowAnyResponsesBackend?: boolean;
 };
+
+type StickyBindingMember = {
+  type: "api" | "account";
+  id: string;
+  groupId?: string | null;
+  accountBackend?: "web" | "responses";
+};
+
+type SchedulerSelectionLayer =
+  | "previous_response_id"
+  | "session_hash"
+  | "preferred"
+  | "load_balance";
 
 type PoolMember =
   | {
@@ -101,8 +130,13 @@ type PoolMember =
       contentSafetyEnabled: boolean;
       priority: number;
       concurrency: number;
+      leaseId?: string;
+      leasePersisted?: boolean;
+      schedulerLayer?: SchedulerSelectionLayer;
       lastUsedAt: Date | null;
+      lastAcquiredAt: Date | null;
       createdAt: Date;
+      metadata: Record<string, unknown> | null;
     }
   | {
       type: "account";
@@ -118,7 +152,11 @@ type PoolMember =
       contentSafetyEnabled: boolean;
       priority: number;
       concurrency: number;
+      leaseId?: string;
+      leasePersisted?: boolean;
+      schedulerLayer?: SchedulerSelectionLayer;
       lastUsedAt: Date | null;
+      lastAcquiredAt: Date | null;
       createdAt: Date;
       metadata: Record<string, unknown> | null;
     };
@@ -129,6 +167,7 @@ export type ResolvedImageBackendPoolConfig = {
   memberId: string;
   memberType: "api" | "account";
   contentSafetyEnabled: boolean;
+  schedulerLayer?: SchedulerSelectionLayer;
 };
 
 export class ImageBackendPoolUnavailableError extends Error {
@@ -145,6 +184,7 @@ export type ImageBackendReportResultInput = {
   error?: string | null;
   upstreamResetAt?: string | Date | null;
   retryAfterSeconds?: number | null;
+  durationMs?: number | null;
 };
 
 export type ImageBackendReportResultOutcome = {
@@ -163,6 +203,15 @@ type BackendMetadata = Record<string, unknown> & {
   source?: string;
   chatgptAccountId?: string;
   webAccount?: Partial<WebAccountRuntimeMetadata>;
+  scheduler?: BackendSchedulerMetadata;
+};
+
+type BackendSchedulerMetadata = {
+  errorEwma?: number;
+  durationMsEwma?: number;
+  successStreak?: number;
+  failStreak?: number;
+  lastObservedAt?: string;
 };
 
 type ImageBackendGroupMetadata = Record<string, unknown> & {
@@ -194,6 +243,7 @@ const API_FAILURE_COOLDOWN_ENABLED_KEY =
   "IMAGE_BACKEND_API_FAILURE_COOLDOWN_ENABLED";
 const DEFAULT_BACKEND_COOLDOWN_MINUTES = 15;
 const MAX_PARSED_RESET_COOLDOWN_DAYS = 14;
+const BACKEND_SCHEDULER_EWMA_ALPHA = 0.2;
 const DEFAULT_UNRECOVERABLE_BACKEND_ERROR_KEYWORDS = [
   "refresh token",
   "invalid refresh token",
@@ -211,6 +261,43 @@ const DEFAULT_UNRECOVERABLE_BACKEND_ERROR_KEYWORDS = [
   "identity verification is required",
 ];
 const backendInflight = new Map<string, number>();
+const backendRoundRobinCursor = new Map<string, number>();
+
+export function resetImageBackendInflightForTests() {
+  if (process.env.NODE_ENV === "test") {
+    backendInflight.clear();
+    backendRoundRobinCursor.clear();
+  }
+}
+
+function isMissingBackendLeaseTableError(error: unknown) {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return code === "42P01" || message.includes("image_backend_inflight_lease");
+}
+
+function isMissingBackendStickyTableError(error: unknown) {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return code === "42P01" || message.includes("image_backend_sticky_binding");
+}
+
+function isMissingBackendSchedulerMetricTableError(error: unknown) {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    code === "42P01" || message.includes("image_backend_scheduler_metric")
+  );
+}
 
 function normalizeAccountBackend(
   value?: string | null
@@ -354,6 +441,30 @@ function memberTimestamp(value: Date | string | null | undefined) {
   return new Date(value).getTime();
 }
 
+function schedulerGroupKey(input: {
+  groupId?: string | null;
+  requestKind?: ImageBackendRequestKind;
+}) {
+  return `${input.groupId || "default"}:${input.requestKind || "image_generation"}`;
+}
+
+function nextRoundRobinCursor(key: string, size: number) {
+  if (size <= 0) return 0;
+  const current = backendRoundRobinCursor.get(key) || 0;
+  backendRoundRobinCursor.set(key, (current + 1) % size);
+  return current % size;
+}
+
+function rotateRoundRobinCandidates<T>(items: T[], key: string) {
+  if (items.length <= 1) return items;
+  const start = nextRoundRobinCursor(key, items.length);
+  return [...items.slice(start), ...items.slice(0, start)];
+}
+
+function healthBucket(member: PoolMember) {
+  return Math.floor(backendHealthPenalty(member) * 100);
+}
+
 function parseDurationMs(value: string) {
   const trimmed = value.trim().toLowerCase();
   if (!trimmed) return null;
@@ -395,12 +506,431 @@ function backendKey(member: Pick<PoolMember, "type" | "id">) {
   return `${member.type}:${member.id}`;
 }
 
+function stickyScope(layer: "previous_response_id" | "session_hash") {
+  return layer;
+}
+
+function normalizeStickyBindingMember(
+  value: StickyBindingMember | undefined
+): StickyBindingMember | undefined {
+  if (!value?.id) return undefined;
+  if (value.type !== "api" && value.type !== "account") return undefined;
+  return {
+    type: value.type,
+    id: value.id,
+    groupId: value.groupId ?? null,
+    accountBackend: value.accountBackend,
+  };
+}
+
+export async function bindImageBackendStickyMember(input: {
+  layer: "previous_response_id" | "session_hash";
+  key?: string | null;
+  member?: StickyBindingMember;
+  ttlMs?: number;
+  metadata?: Record<string, unknown> | null;
+}) {
+  const key = input.key?.trim();
+  const member = normalizeStickyBindingMember(input.member);
+  if (!key || !member) return;
+  const now = new Date();
+  const ttlMs =
+    input.ttlMs ??
+    (input.layer === "previous_response_id"
+      ? STICKY_PREVIOUS_RESPONSE_TTL_MS
+      : STICKY_SESSION_TTL_MS);
+  const expiresAt = new Date(now.getTime() + Math.max(60_000, ttlMs));
+  try {
+    await db
+      .insert(imageBackendStickyBinding)
+      .values({
+        id: nanoid(),
+        scope: stickyScope(input.layer),
+        bindingKey: key,
+        memberType: member.type,
+        memberId: member.id,
+        groupId: member.groupId ?? null,
+        accountBackend: member.accountBackend ?? null,
+        expiresAt,
+        metadata: input.metadata ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          imageBackendStickyBinding.scope,
+          imageBackendStickyBinding.bindingKey,
+        ],
+        set: {
+          memberType: member.type,
+          memberId: member.id,
+          groupId: member.groupId ?? null,
+          accountBackend: member.accountBackend ?? null,
+          expiresAt,
+          metadata: input.metadata ?? null,
+          updatedAt: now,
+        },
+      });
+  } catch (error) {
+    if (isMissingBackendStickyTableError(error)) return;
+    logWarn("写入生图后端粘性映射失败", {
+      layer: input.layer,
+      memberType: member.type,
+      memberId: member.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function resolveStickyBinding(input: {
+  layer: "previous_response_id" | "session_hash";
+  key?: string | null;
+}): Promise<StickyBindingMember | null> {
+  const key = input.key?.trim();
+  if (!key) return null;
+  const now = new Date();
+  try {
+    const [row] = await db
+      .select({
+        memberType: imageBackendStickyBinding.memberType,
+        memberId: imageBackendStickyBinding.memberId,
+        groupId: imageBackendStickyBinding.groupId,
+        accountBackend: imageBackendStickyBinding.accountBackend,
+      })
+      .from(imageBackendStickyBinding)
+      .where(
+        and(
+          eq(imageBackendStickyBinding.scope, stickyScope(input.layer)),
+          eq(imageBackendStickyBinding.bindingKey, key),
+          gt(imageBackendStickyBinding.expiresAt, now)
+        )
+      )
+      .limit(1);
+    if (!row) return null;
+    const member = normalizeStickyBindingMember({
+      type: row.memberType === "api" ? "api" : "account",
+      id: row.memberId,
+      groupId: row.groupId,
+      accountBackend:
+        row.accountBackend === "web" || row.accountBackend === "responses"
+          ? row.accountBackend
+          : undefined,
+    });
+    if (!member) return null;
+    await db
+      .update(imageBackendStickyBinding)
+      .set({
+        lastHitAt: now,
+        hitCount: sql`${imageBackendStickyBinding.hitCount} + 1`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(imageBackendStickyBinding.scope, stickyScope(input.layer)),
+          eq(imageBackendStickyBinding.bindingKey, key)
+        )
+      );
+    return member;
+  } catch (error) {
+    if (isMissingBackendStickyTableError(error)) return null;
+    logWarn("读取生图后端粘性映射失败", {
+      layer: input.layer,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+function schedulerMetricBucket(date = new Date()) {
+  const bucket = new Date(date);
+  bucket.setMinutes(0, 0, 0);
+  return bucket;
+}
+
+async function recordSchedulerMetric(input: {
+  requestKind?: ImageBackendRequestKind;
+  layer: SchedulerSelectionLayer | "switch";
+  memberType?: "api" | "account" | null;
+  memberId?: string | null;
+  groupId?: string | null;
+  candidateCount?: number;
+  latencyMs?: number;
+  switchCount?: number;
+}) {
+  const now = new Date();
+  const requestKind = input.requestKind || "image_generation";
+  const selectedLayer = input.layer;
+  const stickyPreviousHitCount =
+    selectedLayer === "previous_response_id" ? 1 : 0;
+  const stickySessionHitCount = selectedLayer === "session_hash" ? 1 : 0;
+  const loadBalanceCount = selectedLayer === "load_balance" ? 1 : 0;
+  const switchCount = Math.max(0, Math.trunc(input.switchCount || 0));
+  const selectCount = selectedLayer === "switch" ? 0 : 1;
+  const candidateCount = Math.max(0, Math.trunc(input.candidateCount || 0));
+  const latencyMs = Math.max(0, Math.trunc(input.latencyMs || 0));
+  const memberType = input.memberType ?? "";
+  const memberId = input.memberId ?? "";
+  const groupId = input.groupId ?? "";
+  try {
+    await db
+      .insert(imageBackendSchedulerMetric)
+      .values({
+        id: nanoid(),
+        bucketStartedAt: schedulerMetricBucket(now),
+        requestKind,
+        selectedLayer,
+        memberType,
+        memberId,
+        groupId,
+        selectCount,
+        stickyPreviousHitCount,
+        stickySessionHitCount,
+        loadBalanceCount,
+        switchCount,
+        candidateCountTotal: candidateCount,
+        latencyMsTotal: latencyMs,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          imageBackendSchedulerMetric.bucketStartedAt,
+          imageBackendSchedulerMetric.requestKind,
+          imageBackendSchedulerMetric.selectedLayer,
+          imageBackendSchedulerMetric.memberType,
+          imageBackendSchedulerMetric.memberId,
+          imageBackendSchedulerMetric.groupId,
+        ],
+        set: {
+          selectCount: sql`${imageBackendSchedulerMetric.selectCount} + ${selectCount}`,
+          stickyPreviousHitCount: sql`${imageBackendSchedulerMetric.stickyPreviousHitCount} + ${stickyPreviousHitCount}`,
+          stickySessionHitCount: sql`${imageBackendSchedulerMetric.stickySessionHitCount} + ${stickySessionHitCount}`,
+          loadBalanceCount: sql`${imageBackendSchedulerMetric.loadBalanceCount} + ${loadBalanceCount}`,
+          switchCount: sql`${imageBackendSchedulerMetric.switchCount} + ${switchCount}`,
+          candidateCountTotal: sql`${imageBackendSchedulerMetric.candidateCountTotal} + ${candidateCount}`,
+          latencyMsTotal: sql`${imageBackendSchedulerMetric.latencyMsTotal} + ${latencyMs}`,
+          updatedAt: now,
+        },
+      });
+  } catch (error) {
+    if (isMissingBackendSchedulerMetricTableError(error)) return;
+    logWarn("记录生图后端调度指标失败", {
+      requestKind,
+      selectedLayer,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function recordImageBackendSchedulerSwitch(input: {
+  requestKind?: ImageBackendRequestKind;
+  memberType?: "api" | "account" | null;
+  memberId?: string | null;
+  groupId?: string | null;
+}) {
+  await recordSchedulerMetric({
+    ...input,
+    layer: "switch",
+    switchCount: 1,
+  });
+}
+
 function backendInflightCount(member: Pick<PoolMember, "type" | "id">) {
   return backendInflight.get(backendKey(member)) || 0;
 }
 
-function backendLoadRate(member: PoolMember) {
-  return backendInflightCount(member) / Math.max(1, member.concurrency || 1);
+function backendConcurrency(member: Pick<PoolMember, "concurrency">) {
+  return Math.max(1, Math.floor(member.concurrency || 1));
+}
+
+function finiteNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizeSchedulerMetadata(
+  metadata: Record<string, unknown> | null | undefined
+): BackendSchedulerMetadata {
+  const raw =
+    metadata && typeof metadata.scheduler === "object" && metadata.scheduler
+      ? (metadata.scheduler as Record<string, unknown>)
+      : {};
+  const errorEwma = finiteNumber(raw.errorEwma);
+  const durationMsEwma = finiteNumber(raw.durationMsEwma);
+  const successStreak = finiteNumber(raw.successStreak);
+  const failStreak = finiteNumber(raw.failStreak);
+  return {
+    ...(errorEwma !== null
+      ? { errorEwma: Math.max(0, Math.min(1, errorEwma)) }
+      : {}),
+    ...(durationMsEwma !== null
+      ? { durationMsEwma: Math.max(0, durationMsEwma) }
+      : {}),
+    ...(successStreak !== null
+      ? { successStreak: Math.max(0, Math.trunc(successStreak)) }
+      : {}),
+    ...(failStreak !== null
+      ? { failStreak: Math.max(0, Math.trunc(failStreak)) }
+      : {}),
+    ...(typeof raw.lastObservedAt === "string"
+      ? { lastObservedAt: raw.lastObservedAt }
+      : {}),
+  };
+}
+
+function ewma(previous: number | undefined, sample: number) {
+  if (previous === undefined || !Number.isFinite(previous)) return sample;
+  return (
+    previous * (1 - BACKEND_SCHEDULER_EWMA_ALPHA) +
+    sample * BACKEND_SCHEDULER_EWMA_ALPHA
+  );
+}
+
+function nextSchedulerMetadataAfterResult(
+  metadata: Record<string, unknown> | null | undefined,
+  input: Pick<ImageBackendReportResultInput, "success" | "durationMs">,
+  now: Date
+): Record<string, unknown> {
+  const base =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? { ...metadata }
+      : {};
+  const previous = normalizeSchedulerMetadata(base);
+  const durationMs =
+    typeof input.durationMs === "number" && Number.isFinite(input.durationMs)
+      ? Math.max(0, input.durationMs)
+      : undefined;
+  const next: BackendSchedulerMetadata = {
+    errorEwma: ewma(previous.errorEwma, input.success ? 0 : 1),
+    successStreak: input.success ? (previous.successStreak || 0) + 1 : 0,
+    failStreak: input.success ? 0 : (previous.failStreak || 0) + 1,
+    lastObservedAt: now.toISOString(),
+    ...(durationMs !== undefined
+      ? { durationMsEwma: ewma(previous.durationMsEwma, durationMs) }
+      : previous.durationMsEwma !== undefined
+        ? { durationMsEwma: previous.durationMsEwma }
+        : {}),
+  };
+  return {
+    ...base,
+    scheduler: next,
+  };
+}
+
+function backendHealthPenalty(member: PoolMember) {
+  const scheduler = normalizeSchedulerMetadata(member.metadata);
+  const errorPenalty = (scheduler.errorEwma || 0) * 100;
+  const durationMs = scheduler.durationMsEwma || 0;
+  const durationPenalty = Math.min(25, durationMs / 10_000);
+  const failStreakPenalty = Math.min(20, (scheduler.failStreak || 0) * 3);
+  const successRecovery = Math.min(8, (scheduler.successStreak || 0) * 0.5);
+  return errorPenalty + durationPenalty + failStreakPenalty - successRecovery;
+}
+
+function hasBackendCapacity(member: PoolMember) {
+  return backendInflightCount(member) < backendConcurrency(member);
+}
+
+async function pruneExpiredBackendLeases(
+  tx: BackendLeaseTx,
+  member: Pick<PoolMember, "type" | "id">,
+  now: Date
+) {
+  await tx
+    .delete(imageBackendInflightLease)
+    .where(
+      and(
+        eq(imageBackendInflightLease.memberType, member.type),
+        eq(imageBackendInflightLease.memberId, member.id),
+        lt(imageBackendInflightLease.expiresAt, now)
+      )
+    );
+}
+
+async function acquirePoolMemberInflightLease(member: PoolMember) {
+  if (!hasBackendCapacity(member)) return false;
+  const leaseId = nanoid();
+  let persisted = false;
+  const now = new Date();
+  const expiresAt = new Date(
+    now.getTime() + IMAGE_BACKEND_INFLIGHT_LEASE_TTL_MS
+  );
+  if (typeof db.transaction !== "function") {
+    acquireImageBackendInflight({
+      memberType: member.type,
+      memberId: member.id,
+    });
+    member.leaseId = leaseId;
+    member.leasePersisted = false;
+    return true;
+  }
+
+  try {
+    const acquired = await db.transaction(async (tx) => {
+      if (member.type === "api") {
+        await tx.execute(
+          sql`SELECT id FROM ${imageBackendApi} WHERE id = ${member.id} FOR UPDATE`
+        );
+      } else {
+        await tx.execute(
+          sql`SELECT id FROM ${imageBackendAccount} WHERE id = ${member.id} FOR UPDATE`
+        );
+      }
+      await pruneExpiredBackendLeases(tx, member, now);
+      const [activeLeaseCount] = await tx
+        .select({ value: count() })
+        .from(imageBackendInflightLease)
+        .where(
+          and(
+            eq(imageBackendInflightLease.memberType, member.type),
+            eq(imageBackendInflightLease.memberId, member.id),
+            gt(imageBackendInflightLease.expiresAt, now)
+          )
+        );
+      const activeCount = Number(activeLeaseCount?.value || 0);
+      if (activeCount >= backendConcurrency(member)) return false;
+      await tx.insert(imageBackendInflightLease).values({
+        id: leaseId,
+        memberType: member.type,
+        memberId: member.id,
+        expiresAt,
+        createdAt: now,
+      });
+      persisted = true;
+      return true;
+    });
+    if (acquired) {
+      acquireImageBackendInflight({
+        memberType: member.type,
+        memberId: member.id,
+      });
+      member.leaseId = leaseId;
+      member.leasePersisted = persisted;
+    }
+    return acquired;
+  } catch (error) {
+    if (isMissingBackendLeaseTableError(error)) {
+      logWarn("生图后端并发租约表不存在，退回进程内并发控制", {
+        memberType: member.type,
+        memberId: member.id,
+      });
+    } else {
+      logWarn("生图后端并发租约获取失败", {
+        memberType: member.type,
+        memberId: member.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  acquireImageBackendInflight({
+    memberType: member.type,
+    memberId: member.id,
+  });
+  member.leaseId = leaseId;
+  member.leasePersisted = false;
+  return true;
 }
 
 function splitKeywordList(value?: string | null) {
@@ -448,6 +978,28 @@ export function releaseImageBackendInflight(input: {
     return;
   }
   backendInflight.set(key, current - 1);
+}
+
+export async function releaseImageBackendInflightLease(input: {
+  memberType?: "api" | "account";
+  memberId?: string;
+  leaseId?: string | null;
+  leasePersisted?: boolean | null;
+}) {
+  releaseImageBackendInflight(input);
+  if (!input.leaseId || input.leasePersisted !== true) return;
+  try {
+    await db
+      .delete(imageBackendInflightLease)
+      .where(eq(imageBackendInflightLease.id, input.leaseId));
+  } catch (error) {
+    logWarn("生图后端并发租约释放失败", {
+      memberType: input.memberType,
+      memberId: input.memberId,
+      leaseId: input.leaseId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function isRecoverableBackendError(error?: string | null) {
@@ -952,7 +1504,8 @@ async function resolveEffectiveFailureForMember(
   }
   return {
     status: failure.status === "error" ? failure.status : undefined,
-    cooldownUntil: failure.status === "error" ? failure.cooldownUntil : undefined,
+    cooldownUntil:
+      failure.status === "error" ? failure.cooldownUntil : undefined,
   };
 }
 
@@ -1215,11 +1768,15 @@ async function selectPoolMember(
   requestKind?: ImageBackendRequestKind,
   excluded?: Set<string>,
   preferredMemberId?: string,
+  preferredMemberType?: "api" | "account",
+  stickyPreviousMember?: StickyBindingMember | null,
+  stickySessionMember?: StickyBindingMember | null,
   accountBackendPreference?: ImageBackendAccountBackend,
   accountBackendPreferenceMode?: ImageBackendPreferenceMode
 ): Promise<PoolMember | null> {
+  const selectionStartedAt = Date.now();
   const contexts =
-    groupContexts && groupContexts.length
+    groupContexts?.length
       ? groupContexts
       : groupId
         ? [
@@ -1292,6 +1849,7 @@ async function selectPoolMember(
           priority: imageBackendAccount.priority,
           concurrency: imageBackendAccount.concurrency,
           lastUsedAt: imageBackendAccount.lastUsedAt,
+          lastAcquiredAt: imageBackendAccount.lastAcquiredAt,
           createdAt: imageBackendAccount.createdAt,
           metadata: imageBackendAccount.metadata,
         })
@@ -1324,6 +1882,7 @@ async function selectPoolMember(
           priority: imageBackendAccount.priority,
           concurrency: imageBackendAccount.concurrency,
           lastUsedAt: imageBackendAccount.lastUsedAt,
+          lastAcquiredAt: imageBackendAccount.lastAcquiredAt,
           createdAt: imageBackendAccount.createdAt,
           metadata: imageBackendAccount.metadata,
         })
@@ -1408,9 +1967,9 @@ async function selectPoolMember(
               baseUrl: row.baseUrl,
               apiKey: row.apiKey,
               model: row.model,
-              interfaceMode: normalizeImageBackendApiInterfaceMode(
-                row.interfaceMode
-              ),
+          interfaceMode: normalizeImageBackendApiInterfaceMode(
+            row.interfaceMode
+          ),
               chatCompletionsUpstreamMode: normalizeChatCompletionsUpstreamMode(
                 row.chatCompletionsUpstreamMode
               ),
@@ -1422,9 +1981,11 @@ async function selectPoolMember(
               priority: row.priority,
               concurrency: 1,
               lastUsedAt: row.lastUsedAt,
+              lastAcquiredAt: row.lastAcquiredAt,
               createdAt: row.createdAt,
-            };
-          });
+              metadata: row.metadata,
+        };
+      });
 
   const accountMembers: PoolMember[] = accountRows
     .filter((row) => {
@@ -1470,33 +2031,133 @@ async function selectPoolMember(
       priority: row.priority,
       concurrency: row.concurrency,
       lastUsedAt: row.lastUsedAt,
+      lastAcquiredAt: row.lastAcquiredAt,
       createdAt: row.createdAt,
       metadata: row.metadata,
     }));
 
-  return (
-    [...apiMembers, ...accountMembers]
-      .filter((member) => !excluded?.has(backendKey(member)))
-      .sort((left, right) => {
-        const preferredDiff =
-          (right.id === preferredMemberId ? 1 : 0) -
-          (left.id === preferredMemberId ? 1 : 0);
-        if (preferredDiff !== 0) return preferredDiff;
-        const priorityDiff = left.priority - right.priority;
-        if (priorityDiff !== 0) return priorityDiff;
-        const loadDiff = backendLoadRate(left) - backendLoadRate(right);
-        if (loadDiff !== 0) return loadDiff;
-        const inflightDiff =
-          backendInflightCount(left) - backendInflightCount(right);
-        if (inflightDiff !== 0) return inflightDiff;
+  const availableCandidates = [...apiMembers, ...accountMembers]
+    .filter((member) => !excluded?.has(backendKey(member)))
+    .filter(hasBackendCapacity);
+  const stickyPreviousCandidates = stickyPreviousMember
+    ? availableCandidates
+        .filter(
+          (member) =>
+            member.type === stickyPreviousMember.type &&
+            member.id === stickyPreviousMember.id
+        )
+        .map((member) => ({
+          ...member,
+          schedulerLayer: "previous_response_id" as const,
+        }))
+    : [];
+  const stickySessionCandidates = stickySessionMember
+    ? availableCandidates
+        .filter(
+          (member) =>
+            member.type === stickySessionMember.type &&
+            member.id === stickySessionMember.id &&
+            !stickyPreviousCandidates.some(
+              (stickyMember) => backendKey(stickyMember) === backendKey(member)
+            )
+        )
+        .map((member) => ({
+          ...member,
+          schedulerLayer: "session_hash" as const,
+        }))
+    : [];
+  const preferredCandidates =
+    preferredMemberId || preferredMemberType
+      ? availableCandidates.filter(
+          (member) =>
+            (!preferredMemberId || member.id === preferredMemberId) &&
+            (!preferredMemberType || member.type === preferredMemberType) &&
+            !stickyPreviousCandidates.some(
+              (stickyMember) => backendKey(stickyMember) === backendKey(member)
+            ) &&
+            !stickySessionCandidates.some(
+              (stickyMember) => backendKey(stickyMember) === backendKey(member)
+            )
+        )
+      : [];
+  const markedPreferredCandidates = preferredCandidates.map((member) => ({
+    ...member,
+    schedulerLayer: "preferred" as const,
+  }));
+  const ordinaryCandidatePool = availableCandidates
+    .filter(
+      (member) =>
+        !stickyPreviousCandidates.some(
+          (stickyMember) => backendKey(stickyMember) === backendKey(member)
+        ) &&
+        !stickySessionCandidates.some(
+          (stickyMember) => backendKey(stickyMember) === backendKey(member)
+        ) &&
+        !preferredCandidates.includes(member)
+    );
+  const ordinaryCandidateGroups = new Map<string, PoolMember[]>();
+  const ordinaryGroupOrder: string[] = [];
+  for (const member of ordinaryCandidatePool) {
+    const key = [member.priority, healthBucket(member)].join(":");
+    if (!ordinaryCandidateGroups.has(key)) {
+      ordinaryCandidateGroups.set(key, []);
+      ordinaryGroupOrder.push(key);
+    }
+    ordinaryCandidateGroups.get(key)?.push(member);
+  }
+  ordinaryGroupOrder.sort((leftKey, rightKey) => {
+    const left = ordinaryCandidateGroups.get(leftKey)?.[0];
+    const right = ordinaryCandidateGroups.get(rightKey)?.[0];
+    if (!left || !right) return 0;
+    const priorityDiff = left.priority - right.priority;
+    if (priorityDiff !== 0) return priorityDiff;
+    return healthBucket(left) - healthBucket(right);
+  });
+  const ordinaryCandidates = ordinaryGroupOrder
+    .flatMap((groupKey) => {
+      const group = ordinaryCandidateGroups.get(groupKey) || [];
+      const sortedGroup = group.sort((left, right) => {
+        const acquiredDiff =
+          memberTimestamp(left.lastAcquiredAt) -
+          memberTimestamp(right.lastAcquiredAt);
+        if (acquiredDiff !== 0) return acquiredDiff;
         const lastUsedDiff =
           memberTimestamp(left.lastUsedAt) - memberTimestamp(right.lastUsedAt);
         if (lastUsedDiff !== 0) return lastUsedDiff;
-        return (
-          memberTimestamp(left.createdAt) - memberTimestamp(right.createdAt)
-        );
-      })[0] ?? null
-  );
+        return memberTimestamp(left.createdAt) - memberTimestamp(right.createdAt);
+      });
+      return rotateRoundRobinCandidates(
+        sortedGroup,
+        `${schedulerGroupKey({ groupId, requestKind })}:${groupKey}`
+      );
+    })
+    .map((member) => ({
+      ...member,
+      schedulerLayer: "load_balance" as const,
+    }));
+  const candidates = [
+    ...stickyPreviousCandidates,
+    ...stickySessionCandidates,
+    ...markedPreferredCandidates,
+    ...ordinaryCandidates,
+  ];
+
+  for (const member of candidates) {
+    if (await acquirePoolMemberInflightLease(member)) {
+      await recordSchedulerMetric({
+        requestKind,
+        layer: member.schedulerLayer || "load_balance",
+        memberType: member.type,
+        memberId: member.id,
+        groupId: member.groupId,
+        candidateCount: availableCandidates.length,
+        latencyMs: Date.now() - selectionStartedAt,
+      });
+      return member;
+    }
+  }
+
+  return null;
 }
 
 async function touchSelectedMember(member: PoolMember) {
@@ -1568,12 +2229,16 @@ function toResolvedPoolConfig(
           billingGroupId: fallbackGroupId,
           billingMultiplier,
           reportResult: true,
+          inflightLease: true,
+          inflightLeaseId: member.leaseId,
+          inflightLeasePersisted: member.leasePersisted,
         },
       },
       groupId,
       memberId: member.id,
       memberType: "api",
       contentSafetyEnabled,
+      schedulerLayer: member.schedulerLayer,
     };
   }
 
@@ -1612,12 +2277,16 @@ function toResolvedPoolConfig(
         billingGroupId: fallbackGroupId,
         billingMultiplier,
         reportResult: true,
+        inflightLease: true,
+        inflightLeaseId: member.leaseId,
+        inflightLeasePersisted: member.leasePersisted,
       },
     },
     groupId,
     memberId: member.id,
     memberType: "account",
     contentSafetyEnabled,
+    schedulerLayer: member.schedulerLayer,
   };
 }
 
@@ -1656,6 +2325,17 @@ async function resolvePoolMember(
     return null;
   }
 
+  const [stickyPreviousMember, stickySessionMember] = await Promise.all([
+    resolveStickyBinding({
+      layer: "previous_response_id",
+      key: options.stickyPreviousResponseId,
+    }),
+    resolveStickyBinding({
+      layer: "session_hash",
+      key: options.stickySessionKey,
+    }),
+  ]);
+
   const member = await selectPoolMember(
     group.id,
     group.metadata,
@@ -1668,6 +2348,9 @@ async function resolvePoolMember(
     options.requestKind,
     options.excluded,
     options.preferredMemberId,
+    options.preferredMemberType,
+    stickyPreviousMember,
+    stickySessionMember,
     options.accountBackendPreference,
     options.accountBackendPreferenceMode
   );
@@ -1698,6 +2381,16 @@ async function resolveAnyResponsesPoolMember(
   for (const group of groups) {
     if (!canUseBackendGroupForPlan(group.metadata, plan)) continue;
     if (!groupBackendAllowsRequest(group.metadata, "responses")) continue;
+    const [stickyPreviousMember, stickySessionMember] = await Promise.all([
+      resolveStickyBinding({
+        layer: "previous_response_id",
+        key: options.stickyPreviousResponseId,
+      }),
+      resolveStickyBinding({
+        layer: "session_hash",
+        key: options.stickySessionKey,
+      }),
+    ]);
     const member = await selectPoolMember(
       group.id,
       group.metadata,
@@ -1706,6 +2399,9 @@ async function resolveAnyResponsesPoolMember(
       "responses",
       options.excluded,
       options.preferredMemberId,
+      options.preferredMemberType,
+      stickyPreviousMember,
+      stickySessionMember,
       "responses",
       options.accountBackendPreferenceMode
     );
@@ -1723,14 +2419,23 @@ export async function resolveImageBackendPoolConfig(
     excluded: new Set(options.excludedMemberKeys || []),
   });
   if (!resolved) return null;
-  await touchSelectedMember(resolved.member);
-  const result = toResolvedPoolConfig(
-    resolved.group.id,
-    resolved.member,
-    options,
-    resolved.group.metadata
-  );
-  return result;
+  try {
+    await touchSelectedMember(resolved.member);
+    return toResolvedPoolConfig(
+      resolved.group.id,
+      resolved.member,
+      options,
+      resolved.group.metadata
+    );
+  } catch (error) {
+    await releaseImageBackendInflightLease({
+      memberType: resolved.member.type,
+      memberId: resolved.member.id,
+      leaseId: resolved.member.leaseId,
+      leasePersisted: resolved.member.leasePersisted,
+    });
+    throw error;
+  }
 }
 
 export async function reportImageBackendResult(
@@ -1755,12 +2460,23 @@ export async function reportImageBackendResult(
   };
 
   if (input.memberType === "api") {
+    const [api] = await db
+      .select({ metadata: imageBackendApi.metadata })
+      .from(imageBackendApi)
+      .where(eq(imageBackendApi.id, input.memberId))
+      .limit(1);
+    const metadata = nextSchedulerMetadataAfterResult(
+      api?.metadata,
+      input,
+      now
+    );
     await db
       .update(imageBackendApi)
       .set(
         input.success
           ? {
               successCount: sql`${imageBackendApi.successCount} + 1`,
+              metadata,
               status: "active",
               lastError: null,
               lastErrorAt: null,
@@ -1769,6 +2485,7 @@ export async function reportImageBackendResult(
             }
           : {
               failCount: sql`${imageBackendApi.failCount} + 1`,
+              metadata,
               ...(effectiveFailure.status
                 ? { status: effectiveFailure.status }
                 : {}),
@@ -1810,6 +2527,11 @@ export async function reportImageBackendResult(
     input.success && backend === "web"
       ? nextWebAccountMetadataAfterSuccess(account?.metadata)
       : null;
+  const metadata = nextSchedulerMetadataAfterResult(
+    webSuccess?.metadata ?? account?.metadata,
+    input,
+    now
+  );
 
   await db
     .update(imageBackendAccount)
@@ -1817,9 +2539,7 @@ export async function reportImageBackendResult(
       input.success
         ? {
             successCount: sql`${imageBackendAccount.successCount} + 1`,
-            ...(webSuccess?.metadata !== undefined
-              ? { metadata: webSuccess.metadata }
-              : {}),
+            metadata,
             status: webSuccess?.status || "active",
             lastError: null,
             lastErrorAt: null,
@@ -1828,6 +2548,7 @@ export async function reportImageBackendResult(
           }
         : {
             failCount: sql`${imageBackendAccount.failCount} + 1`,
+            metadata,
             ...(failure.status ? { status: failure.status } : {}),
             ...(failure.cooldownUntil !== undefined
               ? { cooldownUntil: failure.cooldownUntil }

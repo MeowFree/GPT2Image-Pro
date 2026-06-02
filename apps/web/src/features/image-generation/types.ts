@@ -269,6 +269,9 @@ export interface ApiConfig {
     billingGroupId?: string | null;
     billingMultiplier?: number;
     reportResult?: boolean;
+    inflightLease?: boolean;
+    inflightLeaseId?: string | null;
+    inflightLeasePersisted?: boolean;
   };
 }
 

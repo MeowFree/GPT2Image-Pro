@@ -18,7 +18,10 @@ const backendPoolMock = vi.hoisted(() => {
   return {
     ImageBackendPoolUnavailableError,
     acquireImageBackendInflight: vi.fn(),
+    bindImageBackendStickyMember: vi.fn(async () => undefined),
     releaseImageBackendInflight: vi.fn(),
+    releaseImageBackendInflightLease: vi.fn(async () => undefined),
+    recordImageBackendSchedulerSwitch: vi.fn(async () => undefined),
     isImageBackendSwitchableError: vi.fn((error?: string | null) =>
       (error || "").includes("terminated")
     ),

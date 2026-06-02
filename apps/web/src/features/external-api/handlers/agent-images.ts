@@ -682,14 +682,32 @@ function normalizeHistory(value: unknown, maxChatImages: number) {
   });
 }
 
-function getPreferredBackendMemberId(history: ChatHistoryMessage[]) {
+function getPreferredBackendMember(
+  history: ChatHistoryMessage[]
+): StickyBackendMemberState | undefined {
   for (let index = history.length - 1; index >= 0; index--) {
     const message = history[index];
     if (!message || message.role !== "assistant" || message.error) continue;
     const variants = message.variants || [];
     const variant = variants[message.activeVariant || 0] || variants[0];
-    const backendMemberId = variant?.backendMember?.id;
-    if (backendMemberId) return backendMemberId;
+    const responsesBackendMember =
+      variant?.responsesPreviousResponse?.backendMember;
+    if (responsesBackendMember?.id) return responsesBackendMember;
+    const backendMember = variant?.backendMember;
+    if (backendMember?.id) return backendMember;
+  }
+  return undefined;
+}
+
+function getLatestResponsesPreviousResponseId(
+  history: ChatHistoryMessage[]
+): string | undefined {
+  for (let index = history.length - 1; index >= 0; index--) {
+    const message = history[index];
+    if (!message || message.role !== "assistant" || message.error) continue;
+    const variants = message.variants || [];
+    const variant = variants[message.activeVariant || 0] || variants[0];
+    return variant?.responsesPreviousResponse?.responseId;
   }
   return undefined;
 }
@@ -1011,7 +1029,8 @@ export const postExternalAgentImages = withApiLogging(
     } catch {
       return openAIImageError("history must be valid JSON.");
     }
-    const preferredBackendMemberId = getPreferredBackendMemberId(history);
+    const preferredBackendMember = getPreferredBackendMember(history);
+    const stickyPreviousResponseId = getLatestResponsesPreviousResponseId(history);
 
     const attachmentFiles = getAttachmentFiles(formData);
     if (
@@ -1117,7 +1136,9 @@ export const postExternalAgentImages = withApiLogging(
             promptOptimization,
             images: await buildImages(),
             history,
-            preferredBackendMemberId,
+            preferredBackendMemberId: preferredBackendMember?.id,
+            preferredBackendMemberType: preferredBackendMember?.type,
+            stickyPreviousResponseId,
             maxChatContextChars: planLimits.maxChatContextChars,
             size,
             model: requestedGptModel,

@@ -892,6 +892,92 @@ export const imageBackendApi = pgTable("image_backend_api", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+export const imageBackendInflightLease = pgTable(
+  "image_backend_inflight_lease",
+  {
+    id: text("id").primaryKey(),
+    memberType: text("member_type").notNull(),
+    memberId: text("member_id").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("image_backend_inflight_lease_member_idx").on(
+      table.memberType,
+      table.memberId
+    ),
+    index("image_backend_inflight_lease_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
+export const imageBackendStickyBinding = pgTable(
+  "image_backend_sticky_binding",
+  {
+    id: text("id").primaryKey(),
+    scope: text("scope").notNull(),
+    bindingKey: text("binding_key").notNull(),
+    memberType: text("member_type").notNull(),
+    memberId: text("member_id").notNull(),
+    groupId: text("group_id"),
+    accountBackend: text("account_backend"),
+    expiresAt: timestamp("expires_at").notNull(),
+    lastHitAt: timestamp("last_hit_at"),
+    hitCount: integer("hit_count").notNull().default(0),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("image_backend_sticky_binding_scope_key_unique").on(
+      table.scope,
+      table.bindingKey
+    ),
+    index("image_backend_sticky_binding_member_idx").on(
+      table.memberType,
+      table.memberId
+    ),
+    index("image_backend_sticky_binding_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
+export const imageBackendSchedulerMetric = pgTable(
+  "image_backend_scheduler_metric",
+  {
+    id: text("id").primaryKey(),
+    bucketStartedAt: timestamp("bucket_started_at").notNull(),
+    requestKind: text("request_kind").notNull(),
+    selectedLayer: text("selected_layer").notNull(),
+    memberType: text("member_type"),
+    memberId: text("member_id"),
+    groupId: text("group_id"),
+    selectCount: integer("select_count").notNull().default(0),
+    stickyPreviousHitCount: integer("sticky_previous_hit_count")
+      .notNull()
+      .default(0),
+    stickySessionHitCount: integer("sticky_session_hit_count")
+      .notNull()
+      .default(0),
+    loadBalanceCount: integer("load_balance_count").notNull().default(0),
+    switchCount: integer("switch_count").notNull().default(0),
+    candidateCountTotal: integer("candidate_count_total").notNull().default(0),
+    latencyMsTotal: integer("latency_ms_total").notNull().default(0),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("image_backend_scheduler_metric_bucket_unique").on(
+      table.bucketStartedAt,
+      table.requestKind,
+      table.selectedLayer,
+      table.memberType,
+      table.memberId,
+      table.groupId
+    ),
+    index("image_backend_scheduler_metric_bucket_idx").on(table.bucketStartedAt),
+  ]
+);
+
 export const userImageBackendPreference = pgTable(
   "user_image_backend_preference",
   {
@@ -918,6 +1004,18 @@ export type NewImageBackendAccountGroup =
   typeof imageBackendAccountGroup.$inferInsert;
 export type ImageBackendApi = typeof imageBackendApi.$inferSelect;
 export type NewImageBackendApi = typeof imageBackendApi.$inferInsert;
+export type ImageBackendInflightLease =
+  typeof imageBackendInflightLease.$inferSelect;
+export type NewImageBackendInflightLease =
+  typeof imageBackendInflightLease.$inferInsert;
+export type ImageBackendStickyBinding =
+  typeof imageBackendStickyBinding.$inferSelect;
+export type NewImageBackendStickyBinding =
+  typeof imageBackendStickyBinding.$inferInsert;
+export type ImageBackendSchedulerMetric =
+  typeof imageBackendSchedulerMetric.$inferSelect;
+export type NewImageBackendSchedulerMetric =
+  typeof imageBackendSchedulerMetric.$inferInsert;
 export type UserImageBackendPreference =
   typeof userImageBackendPreference.$inferSelect;
 export type NewUserImageBackendPreference =

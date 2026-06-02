@@ -82,6 +82,47 @@ const schemaMock = vi.hoisted(() => {
       "createdAt",
       "updatedAt",
     ]),
+    imageBackendInflightLease: table("image_backend_inflight_lease", [
+      "id",
+      "memberType",
+      "memberId",
+      "expiresAt",
+      "createdAt",
+    ]),
+    imageBackendStickyBinding: table("image_backend_sticky_binding", [
+      "id",
+      "scope",
+      "bindingKey",
+      "memberType",
+      "memberId",
+      "groupId",
+      "accountBackend",
+      "expiresAt",
+      "lastHitAt",
+      "hitCount",
+      "metadata",
+      "createdAt",
+      "updatedAt",
+    ]),
+    imageBackendSchedulerMetric: table("image_backend_scheduler_metric", [
+      "id",
+      "bucketStartedAt",
+      "requestKind",
+      "selectedLayer",
+      "memberType",
+      "memberId",
+      "groupId",
+      "selectCount",
+      "stickyPreviousHitCount",
+      "stickySessionHitCount",
+      "loadBalanceCount",
+      "switchCount",
+      "candidateCountTotal",
+      "latencyMsTotal",
+      "metadata",
+      "createdAt",
+      "updatedAt",
+    ]),
     systemSetting: table("system_setting", ["key", "value"]),
     userImageBackendPreference: table("user_image_backend_preference", [
       "userId",
@@ -97,8 +138,11 @@ const dbMock = vi.hoisted(() => {
     apis: [] as Row[],
     userPreferences: [] as Row[],
     externalApiKeys: [] as Row[],
+    stickyBindings: [] as Row[],
+    schedulerMetrics: [] as Row[],
     limitCalls: [] as { tableName: string; limit: number }[],
     updates: [] as { tableName: string; values: Row }[],
+    inserts: [] as { tableName: string; values: Row }[],
   };
 
   const tableNameOf = (table: unknown) =>
@@ -116,6 +160,10 @@ const dbMock = vi.hoisted(() => {
         return state.apis;
       case "image_backend_group":
         return state.groups;
+      case "image_backend_sticky_binding":
+        return state.stickyBindings;
+      case "image_backend_scheduler_metric":
+        return state.schedulerMetrics;
       case "user_image_backend_preference":
         return state.userPreferences;
       default:
@@ -134,6 +182,7 @@ const dbMock = vi.hoisted(() => {
     builder.innerJoin = vi.fn(() => builder);
     builder.where = vi.fn(() => builder);
     builder.orderBy = vi.fn(() => builder);
+    builder.groupBy = vi.fn(() => builder);
     builder.limit = vi.fn((limit: number) => {
       limitValue = limit;
       state.limitCalls.push({ tableName, limit });
@@ -164,11 +213,23 @@ const dbMock = vi.hoisted(() => {
     return builder;
   };
 
+  const createInsertBuilder = (table: unknown) => {
+    const tableName = tableNameOf(table);
+    const builder: Record<string, unknown> = {};
+    builder.values = vi.fn((values: Row) => {
+      state.inserts.push({ tableName, values });
+      return builder;
+    });
+    builder.onConflictDoUpdate = vi.fn(async () => undefined);
+    return builder;
+  };
+
   return {
     state,
     db: {
       select: vi.fn(() => createSelectBuilder()),
       update: vi.fn((table: unknown) => createUpdateBuilder(table)),
+      insert: vi.fn((table: unknown) => createInsertBuilder(table)),
     },
   };
 });
@@ -192,8 +253,10 @@ vi.mock("drizzle-orm", () => {
     count: (...values: unknown[]) => predicate("count", values),
     desc: (...values: unknown[]) => predicate("desc", values),
     eq: (...values: unknown[]) => predicate("eq", values),
+    gt: (...values: unknown[]) => predicate("gt", values),
     inArray: (...values: unknown[]) => predicate("inArray", values),
     isNull: (...values: unknown[]) => predicate("isNull", values),
+    lt: (...values: unknown[]) => predicate("lt", values),
     notInArray: (...values: unknown[]) => predicate("notInArray", values),
     or: (...values: unknown[]) => predicate("or", values),
     sql,
@@ -245,6 +308,7 @@ vi.mock("@/features/image-generation/chatgpt-web", () => ({
 import {
   reportImageBackendResult,
   resolveImageBackendPoolConfig,
+  resetImageBackendInflightForTests,
 } from "./service";
 import { getRuntimeSettingBoolean } from "@repo/shared/system-settings";
 
@@ -261,6 +325,7 @@ function makeAccount(index: number) {
     priority: 10,
     concurrency: 1,
     lastUsedAt: null,
+    lastAcquiredAt: null,
     createdAt: new Date(2026, 0, index),
     metadata: null,
   };
@@ -268,6 +333,7 @@ function makeAccount(index: number) {
 
 describe("image backend pool scheduler selection", () => {
   beforeEach(() => {
+    resetImageBackendInflightForTests();
     dbMock.state.groups = [
       {
         id: "group-a",
@@ -289,8 +355,11 @@ describe("image backend pool scheduler selection", () => {
     dbMock.state.apis = [];
     dbMock.state.userPreferences = [];
     dbMock.state.externalApiKeys = [];
+    dbMock.state.stickyBindings = [];
+    dbMock.state.schedulerMetrics = [];
     dbMock.state.limitCalls = [];
     dbMock.state.updates = [];
+    dbMock.state.inserts = [];
     vi.clearAllMocks();
     vi.mocked(getRuntimeSettingBoolean).mockImplementation(
       async (_key: string, fallback = false) => fallback
@@ -312,6 +381,162 @@ describe("image backend pool scheduler selection", () => {
     expect(dbMock.state.limitCalls.filter((call) => call.limit === 50)).toEqual(
       []
     );
+  });
+
+  it("reserves backend capacity during selection and skips saturated members", async () => {
+    dbMock.state.accounts = [makeAccount(1), makeAccount(2)];
+
+    const first = await resolveImageBackendPoolConfig({
+      userId: "user-a",
+      requestKind: "image_generation",
+    });
+    const second = await resolveImageBackendPoolConfig({
+      userId: "user-a",
+      requestKind: "image_generation",
+    });
+    const third = await resolveImageBackendPoolConfig({
+      userId: "user-a",
+      requestKind: "image_generation",
+    });
+
+    expect(first?.memberId).toBe("acct-1");
+    expect(second?.memberId).toBe("acct-2");
+    expect(third).toBeNull();
+  });
+
+  it("round-robins across equal healthy accounts instead of filling high-concurrency accounts first", async () => {
+    dbMock.state.accounts = Array.from({ length: 10 }, (_, index) => ({
+      ...makeAccount(index + 1),
+      concurrency: 50,
+    }));
+
+    const selected: string[] = [];
+    for (let index = 0; index < 10; index += 1) {
+      const result = await resolveImageBackendPoolConfig({
+        userId: "user-a",
+        requestKind: "image_generation",
+      });
+      if (result?.memberId) selected.push(result.memberId);
+    }
+
+    expect(new Set(selected).size).toBe(10);
+    expect(selected).toEqual([
+      "acct-1",
+      "acct-2",
+      "acct-3",
+      "acct-4",
+      "acct-5",
+      "acct-6",
+      "acct-7",
+      "acct-8",
+      "acct-9",
+      "acct-10",
+    ]);
+  });
+
+  it("tries the sticky previous-response backend before normal scheduling", async () => {
+    dbMock.state.accounts = [
+      {
+        ...makeAccount(1),
+        priority: 1,
+        createdAt: new Date(2026, 0, 1),
+      },
+      {
+        ...makeAccount(2),
+        priority: 99,
+        createdAt: new Date(2026, 0, 2),
+      },
+    ];
+
+    const result = await resolveImageBackendPoolConfig({
+      userId: "user-a",
+      requestKind: "responses",
+      preferredMemberId: "acct-2",
+      preferredMemberType: "account",
+    });
+
+    expect(result?.memberType).toBe("account");
+    expect(result?.memberId).toBe("acct-2");
+  });
+
+  it("uses persisted previous-response sticky bindings before request preferences", async () => {
+    dbMock.state.accounts = [makeAccount(1), makeAccount(2)];
+    dbMock.state.stickyBindings = [
+      {
+        memberType: "account",
+        memberId: "acct-2",
+        groupId: "group-a",
+        accountBackend: "responses",
+      },
+    ];
+
+    const result = await resolveImageBackendPoolConfig({
+      userId: "user-a",
+      requestKind: "responses",
+      stickyPreviousResponseId: "resp-a",
+      preferredMemberId: "acct-1",
+      preferredMemberType: "account",
+    });
+
+    expect(result?.memberType).toBe("account");
+    expect(result?.memberId).toBe("acct-2");
+    expect(result?.schedulerLayer).toBe("previous_response_id");
+  });
+
+  it("records scheduler selection metrics", async () => {
+    dbMock.state.accounts = [makeAccount(1)];
+
+    const result = await resolveImageBackendPoolConfig({
+      userId: "user-a",
+      requestKind: "responses",
+    });
+
+    expect(result?.memberId).toBe("acct-1");
+    const metricInsert = dbMock.state.inserts.find(
+      (item) => item.tableName === "image_backend_scheduler_metric"
+    );
+    expect(metricInsert?.values).toMatchObject({
+      requestKind: "responses",
+      selectedLayer: "load_balance",
+      memberType: "account",
+      memberId: "acct-1",
+      selectCount: 1,
+    });
+  });
+
+  it("uses scheduler health metadata to demote unhealthy peers at the same priority", async () => {
+    dbMock.state.accounts = [
+      {
+        ...makeAccount(1),
+        priority: 10,
+        metadata: {
+          scheduler: {
+            errorEwma: 0.9,
+            durationMsEwma: 180_000,
+            failStreak: 5,
+          },
+        },
+      },
+      {
+        ...makeAccount(2),
+        priority: 10,
+        metadata: {
+          scheduler: {
+            errorEwma: 0.05,
+            durationMsEwma: 20_000,
+            successStreak: 3,
+          },
+        },
+      },
+    ];
+
+    const result = await resolveImageBackendPoolConfig({
+      userId: "user-a",
+      requestKind: "responses",
+    });
+
+    expect(result?.memberType).toBe("account");
+    expect(result?.memberId).toBe("acct-2");
   });
 
   it("uses the platform default group for API keys without an explicit group", async () => {
@@ -530,6 +755,51 @@ describe("image backend pool scheduler selection", () => {
       cooldownUntil: null,
       lastError: null,
       lastErrorAt: null,
+      metadata: expect.objectContaining({
+        scheduler: expect.objectContaining({
+          errorEwma: 0,
+          successStreak: 1,
+          failStreak: 0,
+        }),
+      }),
+    });
+  });
+
+  it("updates scheduler EWMA metadata after failures", async () => {
+    dbMock.state.accounts = [
+      {
+        ...makeAccount(1),
+        metadata: {
+          source: "sub2api_postgres",
+          scheduler: {
+            errorEwma: 0.25,
+            durationMsEwma: 10_000,
+            successStreak: 2,
+          },
+        },
+      },
+    ];
+
+    await reportImageBackendResult({
+      memberType: "account",
+      memberId: "acct-1",
+      success: false,
+      error: "HTTP 500 upstream error",
+      durationMs: 20_000,
+    });
+
+    const update = dbMock.state.updates.find(
+      (item) => item.tableName === "image_backend_account"
+    );
+    expect(update?.values.metadata).toMatchObject({
+      source: "sub2api_postgres",
+      scheduler: {
+        errorEwma: 0.4,
+        durationMsEwma: 12_000,
+        successStreak: 0,
+        failStreak: 1,
+        lastObservedAt: expect.any(String),
+      },
     });
   });
 

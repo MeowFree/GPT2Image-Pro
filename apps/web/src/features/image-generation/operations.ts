@@ -28,7 +28,10 @@ import {
 } from "@repo/shared/system-settings";
 import { and, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { ImageBackendPoolUnavailableError } from "@/features/image-backend-pool/service";
+import {
+  ImageBackendPoolUnavailableError,
+  releaseImageBackendInflightLease,
+} from "@/features/image-backend-pool/service";
 import type { ImageBackendRequestKind } from "@/features/image-backend-pool/types";
 import {
   reserveExternalApiKeyCredits,
@@ -96,6 +99,9 @@ type RunImageGenerationInput =
       relayOnly?: boolean;
       backendRequestKind?: ImageBackendRequestKind;
       preferredBackendMemberId?: string;
+      preferredBackendMemberType?: "api" | "account";
+      stickyPreviousResponseId?: string;
+      stickySessionKey?: string;
       mixWebFirst?: boolean;
       forceWebBackend?: boolean;
       requiresResponsesBackend?: boolean;
@@ -108,6 +114,9 @@ type RunImageGenerationInput =
       relayOnly?: boolean;
       backendRequestKind?: ImageBackendRequestKind;
       preferredBackendMemberId?: string;
+      preferredBackendMemberType?: "api" | "account";
+      stickyPreviousResponseId?: string;
+      stickySessionKey?: string;
       mixWebFirst?: boolean;
       forceWebBackend?: boolean;
       requiresResponsesBackend?: boolean;
@@ -120,6 +129,9 @@ type RunImageGenerationInput =
       relayOnly?: boolean;
       backendRequestKind?: ImageBackendRequestKind;
       preferredBackendMemberId?: string;
+      preferredBackendMemberType?: "api" | "account";
+      stickyPreviousResponseId?: string;
+      stickySessionKey?: string;
       maxChatContextChars?: number;
       mixWebFirst?: boolean;
       forceWebBackend?: boolean;
@@ -983,6 +995,23 @@ function buildBackendExecutionMetadata(params: {
   };
 }
 
+async function releasePoolBackendConfigLease(config?: ApiConfig | null) {
+  const backend = config?.backend;
+  if (
+    !backend?.inflightLease ||
+    (backend.type !== "pool-api" && backend.type !== "pool-account")
+  ) {
+    return;
+  }
+  await releaseImageBackendInflightLease({
+    memberType: backend.type === "pool-api" ? "api" : "account",
+    memberId: backend.id,
+    leaseId: backend.inflightLeaseId,
+    leasePersisted: backend.inflightLeasePersisted,
+  });
+  backend.inflightLease = false;
+}
+
 function usesPoolAccountBackend(config: ApiConfig) {
   return config.backend?.type === "pool-account";
 }
@@ -1210,7 +1239,6 @@ export async function runImageGenerationForUser(
     };
   }
 
-  const userConfig = await getUserApiConfig(input.userId);
   const backendRequestKind =
     input.backendRequestKind ??
     (input.mode === "generate"
@@ -1218,158 +1246,6 @@ export async function runImageGenerationForUser(
       : input.mode === "edit"
         ? "image_edit"
         : "chat");
-  let effectiveConfig: Awaited<ReturnType<typeof getEffectiveConfig>>;
-  try {
-    try {
-      effectiveConfig = await getEffectiveConfig(userConfig, {
-        userId: input.userId,
-        apiKeyId: input.apiKeyId,
-        requestKind: backendRequestKind,
-        preferredMemberId: input.preferredBackendMemberId,
-        accountBackendPreference: requiresResponsesBackend
-          ? "responses"
-          : preferWebWithFallback
-            ? "web"
-            : undefined,
-        accountBackendPreferenceMode: forceWebBackend
-          ? "mixed-only"
-          : undefined,
-        ignoreUserConfig: requiresResponsesBackend,
-      });
-    } catch (error) {
-      if (
-        !preferWebWithFallback ||
-        !(error instanceof ImageBackendPoolUnavailableError)
-      ) {
-        throw error;
-      }
-      effectiveConfig = await getEffectiveConfig(userConfig, {
-        userId: input.userId,
-        apiKeyId: input.apiKeyId,
-        requestKind: backendRequestKind,
-        preferredMemberId: input.preferredBackendMemberId,
-        accountBackendPreference: "responses",
-        accountBackendPreferenceMode: forceWebBackend
-          ? "mixed-only"
-          : undefined,
-        ignoreUserConfig: requiresResponsesBackend,
-      });
-    }
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : "当前没有可用的生图后端",
-      generationId,
-    };
-  }
-  const { config, useCredits } = effectiveConfig;
-  const billingMultiplier = getConfigBillingMultiplier(config);
-  const moderationEnabled =
-    (await isContentModerationEnabled()) &&
-    moderationBlockingEnabled &&
-    config.contentSafetyEnabled !== false;
-  const moderationImageCount = moderationEnabled ? inputImages.length : 0;
-  const imageBasePricing = await getRuntimeImageBaseCreditPricing();
-  const baseCreditCost = getImageCreditCostBreakdown(size, {
-    textModerationCount: moderationEnabled ? undefined : 0,
-    imageModerationCount: moderationImageCount,
-    basePricing: imageBasePricing,
-    quality: input.quality as ImageQualityLevel | undefined,
-    thinking: input.thinking as ImageThinkingLevel | undefined,
-  });
-  const creditCost = applyBillingMultiplierToCreditCost(
-    baseCreditCost,
-    billingMultiplier
-  );
-  const creditsPerImage = creditCost.totalCredits;
-  const chatRoundCredits = isChatInput
-    ? applyBillingMultiplier(
-        input.agentMode
-          ? planCapabilities.billing.agentRoundCredits
-          : planCapabilities.billing.chatRoundCredits,
-        billingMultiplier
-      )
-    : 0;
-  const billingPolicy = buildGenerationBillingPolicy({
-    useSiteImageCredits: useCredits,
-    moderationEnabled,
-  });
-  const initialCreditCharge = getInitialGenerationCharge({
-    policy: billingPolicy,
-    isChatInput,
-    chatRoundCredits,
-    creditCost,
-  });
-  const chatModerationOnlyCredits = applyBillingMultiplier(
-    TEXT_MODERATION_ONLY_CREDITS,
-    billingMultiplier
-  );
-  const moderationFailureCredits = moderationEnabled
-    ? getModerationFailureCharge({
-        policy: billingPolicy,
-        moderationOnlyFailureSettlement:
-          planCapabilities.features["moderation.onlyFailureSettlement"],
-        isChatInput,
-        chatRoundCredits,
-        chatModerationOnlyCredits,
-        creditCost,
-        initialCreditCharge,
-      })
-    : 0;
-  let imageModel: string;
-  let gptModel: string | undefined;
-  let recordModel: string;
-  try {
-    if (input.mode === "chat") {
-      if (
-        config.backend?.type === "pool-account" &&
-        config.backend.accountBackend === "web"
-      ) {
-        gptModel = await resolveRequestedPoolGptModel({
-          config,
-          model: input.model,
-          allowGpt55: planCapabilities.features["models.gpt55"],
-        });
-      } else {
-        gptModel = await getResponsesModel(config, input.model, {
-          allowGpt55: planCapabilities.features["models.gpt55"],
-        });
-      }
-      const requestedImageModel = getImageModel(input.imageModel, config.model);
-      if (!requestedImageModel) {
-        throw new Error(
-          "Unsupported model for image generation. Use a gpt-image-* model."
-        );
-      }
-      imageModel = requestedImageModel;
-      recordModel = gptModel || imageModel;
-    } else {
-      const requestedImageModel = getImageModel(input.model, config.model);
-      if (!requestedImageModel) {
-        throw new Error(
-          "Unsupported model for image generation. Use a gpt-image-* model."
-        );
-      }
-      imageModel = requestedImageModel;
-      gptModel = await resolveRequestedPoolGptModel({
-        config,
-        model: input.gptModel,
-        allowGpt55: planCapabilities.features["models.gpt55"],
-      });
-      recordModel = imageModel;
-    }
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : "Invalid model.",
-      generationId,
-    };
-  }
-
-  if (!imageModel || !recordModel) {
-    return {
-      error: "Invalid model.",
-      generationId,
-    };
-  }
 
   try {
     return await withImageGenerationQueue(
@@ -1378,38 +1254,217 @@ export async function runImageGenerationForUser(
         priority: queueSettings.priority,
         userConcurrency: queueSettings.userConcurrency,
       },
-      () =>
-        runQueuedImageGenerationForUser({
-          input,
-          callbacks,
-          generationId,
-          size,
-          inputImages,
-          creditCost,
-          creditsPerImage,
-          isChatInput,
-          initialCreditCharge,
-          chatRoundCredits,
-          bucket,
-          userPlan,
-          moderationBlockRiskLevel,
-          moderationFailureCredits,
-          promptOptimization,
-          apiPrompt,
-          moderationPrompt,
-          imageBasePricing,
-          config,
-          useCredits,
-          billingPolicy,
-          billingMultiplier,
-          imageModel,
-          gptModel,
-          recordModel,
-          allowGpt55: planCapabilities.features["models.gpt55"],
-          moderationEnabled,
-          mixWebFirst,
-          forceWebBackend,
-        })
+      async () => {
+        let leasedConfig: ApiConfig | null = null;
+        try {
+          const userConfig = await getUserApiConfig(input.userId);
+          let effectiveConfig: Awaited<ReturnType<typeof getEffectiveConfig>>;
+          try {
+            try {
+              effectiveConfig = await getEffectiveConfig(userConfig, {
+                userId: input.userId,
+                apiKeyId: input.apiKeyId,
+                requestKind: backendRequestKind,
+                preferredMemberId: input.preferredBackendMemberId,
+                preferredMemberType: input.preferredBackendMemberType,
+                stickyPreviousResponseId: input.stickyPreviousResponseId,
+                stickySessionKey: input.stickySessionKey,
+                accountBackendPreference: requiresResponsesBackend
+                  ? "responses"
+                  : preferWebWithFallback
+                    ? "web"
+                    : undefined,
+                accountBackendPreferenceMode: forceWebBackend
+                  ? "mixed-only"
+                  : undefined,
+                ignoreUserConfig: requiresResponsesBackend,
+              });
+            } catch (error) {
+              if (
+                !preferWebWithFallback ||
+                !(error instanceof ImageBackendPoolUnavailableError)
+              ) {
+                throw error;
+              }
+              effectiveConfig = await getEffectiveConfig(userConfig, {
+                userId: input.userId,
+                apiKeyId: input.apiKeyId,
+                requestKind: backendRequestKind,
+                preferredMemberId: input.preferredBackendMemberId,
+                preferredMemberType: input.preferredBackendMemberType,
+                stickyPreviousResponseId: input.stickyPreviousResponseId,
+                stickySessionKey: input.stickySessionKey,
+                accountBackendPreference: "responses",
+                accountBackendPreferenceMode: forceWebBackend
+                  ? "mixed-only"
+                  : undefined,
+                ignoreUserConfig: requiresResponsesBackend,
+              });
+            }
+          } catch (error) {
+            return {
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "当前没有可用的生图后端",
+              generationId,
+            };
+          }
+
+          const { config, useCredits } = effectiveConfig;
+          leasedConfig = config;
+          const billingMultiplier = getConfigBillingMultiplier(config);
+          const moderationEnabled =
+            (await isContentModerationEnabled()) &&
+            moderationBlockingEnabled &&
+            config.contentSafetyEnabled !== false;
+          const moderationImageCount = moderationEnabled
+            ? inputImages.length
+            : 0;
+          const imageBasePricing = await getRuntimeImageBaseCreditPricing();
+          const baseCreditCost = getImageCreditCostBreakdown(size, {
+            textModerationCount: moderationEnabled ? undefined : 0,
+            imageModerationCount: moderationImageCount,
+            basePricing: imageBasePricing,
+            quality: input.quality as ImageQualityLevel | undefined,
+            thinking: input.thinking as ImageThinkingLevel | undefined,
+          });
+          const creditCost = applyBillingMultiplierToCreditCost(
+            baseCreditCost,
+            billingMultiplier
+          );
+          const creditsPerImage = creditCost.totalCredits;
+          const chatRoundCredits = isChatInput
+            ? applyBillingMultiplier(
+                input.agentMode
+                  ? planCapabilities.billing.agentRoundCredits
+                  : planCapabilities.billing.chatRoundCredits,
+                billingMultiplier
+              )
+            : 0;
+          const billingPolicy = buildGenerationBillingPolicy({
+            useSiteImageCredits: useCredits,
+            moderationEnabled,
+          });
+          const initialCreditCharge = getInitialGenerationCharge({
+            policy: billingPolicy,
+            isChatInput,
+            chatRoundCredits,
+            creditCost,
+          });
+          const chatModerationOnlyCredits = applyBillingMultiplier(
+            TEXT_MODERATION_ONLY_CREDITS,
+            billingMultiplier
+          );
+          const moderationFailureCredits = moderationEnabled
+            ? getModerationFailureCharge({
+                policy: billingPolicy,
+                moderationOnlyFailureSettlement:
+                  planCapabilities.features["moderation.onlyFailureSettlement"],
+                isChatInput,
+                chatRoundCredits,
+                chatModerationOnlyCredits,
+                creditCost,
+                initialCreditCharge,
+              })
+            : 0;
+          let imageModel: string;
+          let gptModel: string | undefined;
+          let recordModel: string;
+          try {
+            if (input.mode === "chat") {
+              if (
+                config.backend?.type === "pool-account" &&
+                config.backend.accountBackend === "web"
+              ) {
+                gptModel = await resolveRequestedPoolGptModel({
+                  config,
+                  model: input.model,
+                  allowGpt55: planCapabilities.features["models.gpt55"],
+                });
+              } else {
+                gptModel = await getResponsesModel(config, input.model, {
+                  allowGpt55: planCapabilities.features["models.gpt55"],
+                });
+              }
+              const requestedImageModel = getImageModel(
+                input.imageModel,
+                config.model
+              );
+              if (!requestedImageModel) {
+                throw new Error(
+                  "Unsupported model for image generation. Use a gpt-image-* model."
+                );
+              }
+              imageModel = requestedImageModel;
+              recordModel = gptModel || imageModel;
+            } else {
+              const requestedImageModel = getImageModel(
+                input.model,
+                config.model
+              );
+              if (!requestedImageModel) {
+                throw new Error(
+                  "Unsupported model for image generation. Use a gpt-image-* model."
+                );
+              }
+              imageModel = requestedImageModel;
+              gptModel = await resolveRequestedPoolGptModel({
+                config,
+                model: input.gptModel,
+                allowGpt55: planCapabilities.features["models.gpt55"],
+              });
+              recordModel = imageModel;
+            }
+          } catch (error) {
+            return {
+              error: error instanceof Error ? error.message : "Invalid model.",
+              generationId,
+            };
+          }
+
+          if (!imageModel || !recordModel) {
+            return {
+              error: "Invalid model.",
+              generationId,
+            };
+          }
+
+          return await runQueuedImageGenerationForUser({
+            input,
+            callbacks,
+            generationId,
+            size,
+            inputImages,
+            creditCost,
+            creditsPerImage,
+            isChatInput,
+            initialCreditCharge,
+            chatRoundCredits,
+            bucket,
+            userPlan,
+            moderationBlockRiskLevel,
+            moderationFailureCredits,
+            promptOptimization,
+            apiPrompt,
+            moderationPrompt,
+            imageBasePricing,
+            config,
+            useCredits,
+            billingPolicy,
+            billingMultiplier,
+            imageModel,
+            gptModel,
+            recordModel,
+            allowGpt55: planCapabilities.features["models.gpt55"],
+            moderationEnabled,
+            mixWebFirst,
+            forceWebBackend,
+          });
+        } finally {
+          await releasePoolBackendConfigLease(leasedConfig);
+        }
+      }
     );
   } catch (error) {
     return {
@@ -1539,54 +1594,9 @@ async function runQueuedImageGenerationForUser({
               ...modelMetadata,
               ...promptOptimizationMetadata,
               ...inputImagesMetadata,
-            imageCount: input.images.length,
-            hasMask: Boolean(input.mask),
-            quality: input.quality || "auto",
-            outputFormat: input.outputFormat || null,
-            outputCompression: input.outputCompression ?? null,
-            background: input.background || null,
-            batchCount: input.n || 1,
-            forceWebBackend,
-            creditCost,
-            ...billingMetadata,
-            chatRoundCredits: billingPolicy.chargeImageCredits
-              ? chatRoundCredits
-              : 0,
-            moderationBlockingEnabled: moderationEnabled,
-            moderationFailureCredits,
-          }
-        : input.mode === "chat"
-          ? {
-              mode: input.agentMode
-                ? "agent"
-                : input.waterfallMode
-                  ? "waterfall"
-                  : "chat",
-              action: "auto",
-              ...backendMetadata,
-              ...modelMetadata,
-              ...promptOptimizationMetadata,
-              ...inputImagesMetadata,
-              imageCount: input.images?.length || 0,
-              fileContextChars: input.fileContext?.length || 0,
+              imageCount: input.images.length,
+              hasMask: Boolean(input.mask),
               quality: input.quality || "auto",
-              moderation: input.moderation || "auto",
-              outputFormat: input.outputFormat || null,
-              outputCompression: input.outputCompression ?? null,
-              batchCount: input.n || 1,
-              forceWebBackend,
-              creditCost,
-              ...billingMetadata,
-              moderationBlockingEnabled: moderationEnabled,
-              moderationFailureCredits,
-            }
-          : {
-              mode: "generate",
-              ...backendMetadata,
-              ...modelMetadata,
-              ...promptOptimizationMetadata,
-              quality: input.quality || "auto",
-              moderation: input.moderation || "auto",
               outputFormat: input.outputFormat || null,
               outputCompression: input.outputCompression ?? null,
               background: input.background || null,
@@ -1594,10 +1604,55 @@ async function runQueuedImageGenerationForUser({
               forceWebBackend,
               creditCost,
               ...billingMetadata,
+              chatRoundCredits: billingPolicy.chargeImageCredits
+                ? chatRoundCredits
+                : 0,
               moderationBlockingEnabled: moderationEnabled,
               moderationFailureCredits,
-            },
-  });
+            }
+          : input.mode === "chat"
+            ? {
+                mode: input.agentMode
+                  ? "agent"
+                  : input.waterfallMode
+                    ? "waterfall"
+                    : "chat",
+                action: "auto",
+                ...backendMetadata,
+                ...modelMetadata,
+                ...promptOptimizationMetadata,
+                ...inputImagesMetadata,
+                imageCount: input.images?.length || 0,
+                fileContextChars: input.fileContext?.length || 0,
+                quality: input.quality || "auto",
+                moderation: input.moderation || "auto",
+                outputFormat: input.outputFormat || null,
+                outputCompression: input.outputCompression ?? null,
+                batchCount: input.n || 1,
+                forceWebBackend,
+                creditCost,
+                ...billingMetadata,
+                moderationBlockingEnabled: moderationEnabled,
+                moderationFailureCredits,
+              }
+            : {
+                mode: "generate",
+                ...backendMetadata,
+                ...modelMetadata,
+                ...promptOptimizationMetadata,
+                quality: input.quality || "auto",
+                moderation: input.moderation || "auto",
+                outputFormat: input.outputFormat || null,
+                outputCompression: input.outputCompression ?? null,
+                background: input.background || null,
+                batchCount: input.n || 1,
+                forceWebBackend,
+                creditCost,
+                ...billingMetadata,
+                moderationBlockingEnabled: moderationEnabled,
+                moderationFailureCredits,
+              },
+    });
 
   let chargedCredits = 0;
   const refundChargedCredits = async (
@@ -1757,17 +1812,20 @@ async function runQueuedImageGenerationForUser({
           creditsConsumed: chargedCredits,
           completedAt: new Date(),
           metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
-            withPromptRepairMetadata({
-              ...buildStreamTelemetryMetadata(),
-              timeout: {
-                reason: "runtime_timeout",
-                timeoutMs: IMAGE_GENERATION_PENDING_TIMEOUT_MS,
-                elapsedMs: Date.now() - startedAt,
-                targetCredits,
-                refundCredits: creditsToRefund,
-                refundSourceRef,
+            withPromptRepairMetadata(
+              {
+                ...buildStreamTelemetryMetadata(),
+                timeout: {
+                  reason: "runtime_timeout",
+                  timeoutMs: IMAGE_GENERATION_PENDING_TIMEOUT_MS,
+                  elapsedMs: Date.now() - startedAt,
+                  targetCredits,
+                  refundCredits: creditsToRefund,
+                  refundSourceRef,
+                },
               },
-            }, repairAttempts)
+              repairAttempts
+            )
           )}::jsonb`,
         })
         .where(isPendingGeneration(generationId))
@@ -1811,11 +1869,10 @@ async function runQueuedImageGenerationForUser({
       };
     };
 
-  const repairEnabled =
-    await getRuntimeSettingBoolean(
-      "IMAGE_MODERATION_PROMPT_REPAIR_ENABLED",
-      true
-    );
+  const repairEnabled = await getRuntimeSettingBoolean(
+    "IMAGE_MODERATION_PROMPT_REPAIR_ENABLED",
+    true
+  );
   const configuredRepairRetries = await getRuntimeSettingNumber(
     "IMAGE_MODERATION_PROMPT_REPAIR_MAX_RETRIES",
     1,
@@ -1848,8 +1905,10 @@ async function runQueuedImageGenerationForUser({
     };
     repairAttempts.push(attempt);
 
+    let repairConfig: Awaited<ReturnType<typeof getEffectiveConfig>> | null =
+      null;
     try {
-      const repairConfig = await getEffectiveConfig(null, {
+      repairConfig = await getEffectiveConfig(null, {
         userId: input.userId,
         apiKeyId: input.apiKeyId,
         requestKind: "responses",
@@ -1887,6 +1946,7 @@ async function runQueuedImageGenerationForUser({
       );
       return false;
     } finally {
+      await releasePoolBackendConfigLease(repairConfig?.config);
       await db
         .update(generation)
         .set({
@@ -2193,11 +2253,11 @@ async function runQueuedImageGenerationForUser({
       .set({
         status: "failed",
         error: result.error,
-          creditsConsumed: chargedCredits,
-          metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
-            metadataWithPromptRepair({})
-          )}::jsonb`,
-        })
+        creditsConsumed: chargedCredits,
+        metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
+          metadataWithPromptRepair({})
+        )}::jsonb`,
+      })
       .where(isPendingGeneration(generationId));
     return {
       error: result.error,
@@ -2329,16 +2389,16 @@ async function runQueuedImageGenerationForUser({
       })
       .where(isPendingGeneration(generationId));
 
-      return {
-        generationId,
-        imageOutputs: result.imageOutputs,
-        model: recordModel,
-        size,
-        revisedPrompt: result.revisedPrompt,
-        promptRepairNotice: getPromptRepairNotice(repairAttempts),
-        responseText: result.responseText,
-        responseThinking: result.responseThinking,
-        responseAgent: result.responseAgent,
+    return {
+      generationId,
+      imageOutputs: result.imageOutputs,
+      model: recordModel,
+      size,
+      revisedPrompt: result.revisedPrompt,
+      promptRepairNotice: getPromptRepairNotice(repairAttempts),
+      responseText: result.responseText,
+      responseThinking: result.responseThinking,
+      responseAgent: result.responseAgent,
       agentEvents: result.agentEvents,
       agentRoundCount: result.agentRoundCount,
       webConversation: result.webConversation,
@@ -2427,8 +2487,7 @@ async function runQueuedImageGenerationForUser({
         if (isAgentChatInput) {
           await emitAgentOperationEvent(callbacks, {
             kind: "tool",
-            status:
-              index === imageOutputs.length - 1 ? "completed" : "running",
+            status: index === imageOutputs.length - 1 ? "completed" : "running",
             title:
               index === imageOutputs.length - 1
                 ? "图片保存完成"

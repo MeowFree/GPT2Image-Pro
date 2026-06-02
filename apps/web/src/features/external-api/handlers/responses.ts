@@ -28,6 +28,7 @@ import {
 } from "@/features/external-api/images";
 import { isExternalResponsesImageModelAllowed } from "@/features/external-api/models";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
+import { bindImageBackendStickyMember } from "@/features/image-backend-pool/service";
 import {
   normalizeOutputCompression,
   normalizeOutputFormat,
@@ -48,6 +49,7 @@ import type {
   ImageModeration,
   ImageOutputFormat,
   ImageQuality,
+  StickyBackendMemberState,
   ThinkingLevel,
 } from "@/features/image-generation/types";
 
@@ -57,6 +59,7 @@ type ImageGenerationResult = Awaited<
 
 type StoredResponsesContinuation = {
   webConversation?: ChatGptWebConversationState;
+  backendMember?: StickyBackendMemberState;
   fallbackHistory?: ChatHistoryMessage[];
 };
 
@@ -85,6 +88,7 @@ const responseSchema = z.object({
   model: z.string().optional(),
   input: z.union([z.string(), z.array(responseInputMessageSchema)]),
   previous_response_id: z.string().optional(),
+  prompt_cache_key: z.string().optional(),
   tools: z.array(z.object({ type: z.string() }).passthrough()).optional(),
   tool_choice: z.unknown().optional(),
   stream: z.boolean().optional(),
@@ -154,9 +158,50 @@ function normalizeWebConversationState(
   };
 }
 
+function normalizeBackendMemberState(
+  value: unknown
+): StickyBackendMemberState | undefined {
+  if (!isRecord(value)) return undefined;
+  const type = value.type === "api" || value.type === "account" ? value.type : null;
+  if (!type || typeof value.id !== "string" || !value.id.trim()) {
+    return undefined;
+  }
+  return {
+    type,
+    id: value.id,
+    groupId:
+      typeof value.groupId === "string"
+        ? value.groupId
+        : value.groupId === null
+          ? null
+          : undefined,
+    accountBackend:
+      value.accountBackend === "web" || value.accountBackend === "responses"
+        ? value.accountBackend
+        : undefined,
+  };
+}
+
 function normalizeHistoryVariant(value: unknown) {
   if (!isRecord(value)) return null;
   const webConversation = normalizeWebConversationState(value.webConversation);
+  const backendMember = normalizeBackendMemberState(value.backendMember);
+  const responsesPreviousResponse = isRecord(value.responsesPreviousResponse)
+    ? {
+        responseId:
+          typeof value.responsesPreviousResponse.responseId === "string"
+            ? value.responsesPreviousResponse.responseId
+            : "",
+        backendMember: normalizeBackendMemberState(
+          value.responsesPreviousResponse.backendMember
+        ),
+        store: value.responsesPreviousResponse.store === true,
+        createdAt:
+          typeof value.responsesPreviousResponse.createdAt === "string"
+            ? value.responsesPreviousResponse.createdAt
+            : undefined,
+      }
+    : null;
   return {
     text:
       typeof value.text === "string"
@@ -170,6 +215,18 @@ function normalizeHistoryVariant(value: unknown) {
     timestamp:
       typeof value.timestamp === "string" ? value.timestamp : undefined,
     webConversation,
+    backendMember,
+    responsesPreviousResponse:
+      responsesPreviousResponse?.responseId &&
+      responsesPreviousResponse.backendMember &&
+      responsesPreviousResponse.store
+        ? {
+            responseId: responsesPreviousResponse.responseId,
+            backendMember: responsesPreviousResponse.backendMember,
+            store: true as const,
+            createdAt: responsesPreviousResponse.createdAt,
+          }
+        : undefined,
   };
 }
 
@@ -222,12 +279,18 @@ function getStoredContinuationFromMetadata(
   const webConversation = normalizeWebConversationState(
     externalResponse.webConversation
   );
+  const backendMember = normalizeBackendMemberState(
+    externalResponse.backendMember
+  );
   const fallbackHistory = normalizeStoredHistory(
     externalResponse.fallbackHistory
   );
-  if (!webConversation && !fallbackHistory.length) return null;
+  if (!webConversation && !backendMember && !fallbackHistory.length) {
+    return null;
+  }
   return {
     webConversation,
+    backendMember,
     fallbackHistory: fallbackHistory.length ? fallbackHistory : undefined,
   };
 }
@@ -270,6 +333,36 @@ async function getStoredResponsesContinuation(params: {
   return state;
 }
 
+async function getPromptCacheBackendMember(params: {
+  userId: string;
+  apiKeyId: string;
+  promptCacheKey?: string;
+}) {
+  const promptCacheKey = params.promptCacheKey?.trim();
+  if (!promptCacheKey) return undefined;
+  const rows = await db
+    .select({ metadata: generation.metadata })
+    .from(generation)
+    .where(
+      and(
+        eq(generation.userId, params.userId),
+        sql`${generation.metadata}::jsonb @> ${JSON.stringify({
+          externalResponse: {
+            apiKeyId: params.apiKeyId,
+            promptCacheKey,
+          },
+        })}::jsonb`
+      )
+    )
+    .orderBy(desc(generation.createdAt))
+    .limit(1);
+  const metadata = rows[0]?.metadata;
+  if (!isRecord(metadata) || !isRecord(metadata.externalResponse)) {
+    return undefined;
+  }
+  return normalizeBackendMemberState(metadata.externalResponse.backendMember);
+}
+
 function withWebContinuationMarker(
   history: ChatHistoryMessage[],
   webConversation?: ChatGptWebConversationState
@@ -306,6 +399,8 @@ function buildFallbackHistoryForStorage(params: {
     size: params.result.size,
     timestamp: new Date().toISOString(),
     webConversation: params.result.webConversation,
+    backendMember: params.result.backendMember,
+    responsesPreviousResponse: params.result.responsesPreviousResponse,
   };
   return trimHistoryForStorage([
     ...params.baseHistory,
@@ -328,12 +423,15 @@ async function storeResponsesContinuation(params: {
   apiKeyId: string;
   responseId: string;
   previousResponseId?: string;
+  promptCacheKey?: string;
   result: ImageGenerationResult;
   fallbackHistory: ChatHistoryMessage[];
 }) {
   if (!params.result.generationId) return;
   const state: StoredResponsesContinuation = {
     webConversation: params.result.webConversation,
+    backendMember: params.result.responsesPreviousResponse?.backendMember ??
+      params.result.backendMember,
     fallbackHistory: params.fallbackHistory,
   };
   try {
@@ -345,10 +443,15 @@ async function storeResponsesContinuation(params: {
             externalResponse: {
               responseId: params.responseId,
               previousResponseId: params.previousResponseId || null,
+              promptCacheKey: params.promptCacheKey || null,
               apiKeyId: params.apiKeyId,
               endpoint: "responses",
               hasWebConversation: Boolean(params.result.webConversation),
               webConversation: params.result.webConversation || null,
+              backendMember:
+                params.result.responsesPreviousResponse?.backendMember ||
+                params.result.backendMember ||
+                null,
               fallbackHistory: params.fallbackHistory,
               storedAt: new Date().toISOString(),
             },
@@ -720,6 +823,22 @@ export const postExternalResponses = withApiLogging(
       apiKeyId: auth.apiKeyId,
       responseId: previousResponseId,
     });
+    const webConversationBackendMember =
+      previousContinuation?.webConversation?.accountId
+        ? {
+            type: "account" as const,
+            id: previousContinuation.webConversation.accountId,
+            accountBackend: "web" as const,
+          }
+        : undefined;
+    const promptCacheBackendMember =
+      previousContinuation?.backendMember || webConversationBackendMember
+        ? undefined
+        : await getPromptCacheBackendMember({
+            userId: auth.userId,
+            apiKeyId: auth.apiKeyId,
+            promptCacheKey: parsed.data.prompt_cache_key,
+          });
     const baseHistory = [
       ...(previousContinuation?.fallbackHistory || []),
       ...history,
@@ -728,8 +847,10 @@ export const postExternalResponses = withApiLogging(
       baseHistory,
       previousContinuation?.webConversation
     );
-    const preferredBackendMemberId =
-      previousContinuation?.webConversation?.accountId;
+    const preferredBackendMember =
+      previousContinuation?.backendMember ||
+      webConversationBackendMember ||
+      promptCacheBackendMember;
     const requestId = responseId("resp");
 
     let images: ImageInputFile[] = [];
@@ -751,7 +872,10 @@ export const postExternalResponses = withApiLogging(
       apiKeyId: auth.apiKeyId,
       relayOnly: auth.relayOnly,
       backendRequestKind: "responses" as const,
-      preferredBackendMemberId,
+      preferredBackendMemberId: preferredBackendMember?.id,
+      preferredBackendMemberType: preferredBackendMember?.type,
+      stickyPreviousResponseId: previousResponseId,
+      stickySessionKey: parsed.data.prompt_cache_key,
       prompt,
       history: requestHistory,
       maxChatContextChars: limits.maxChatContextChars,
@@ -852,11 +976,28 @@ export const postExternalResponses = withApiLogging(
         });
         // 纯中转：不持久化续承（不写 generation.metadata / 不入会话缓存）。
         if (!auth.relayOnly) {
+          await bindImageBackendStickyMember({
+            layer: "previous_response_id",
+            key: requestId,
+            member:
+              result.responsesPreviousResponse?.backendMember ||
+              result.backendMember,
+            metadata: { source: "external-responses" },
+          });
+          await bindImageBackendStickyMember({
+            layer: "session_hash",
+            key: parsed.data.prompt_cache_key,
+            member:
+              result.responsesPreviousResponse?.backendMember ||
+              result.backendMember,
+            metadata: { source: "external-responses" },
+          });
           await storeResponsesContinuation({
             userId: auth.userId,
             apiKeyId: auth.apiKeyId,
             responseId: requestId,
             previousResponseId,
+            promptCacheKey: parsed.data.prompt_cache_key,
             result,
             fallbackHistory,
           });
@@ -933,11 +1074,28 @@ export const postExternalResponses = withApiLogging(
       });
       // 纯中转：不持久化续承（不写 generation.metadata / 不入会话缓存）。
       if (!auth.relayOnly) {
+        await bindImageBackendStickyMember({
+          layer: "previous_response_id",
+          key: requestId,
+          member:
+            result.responsesPreviousResponse?.backendMember ||
+            result.backendMember,
+          metadata: { source: "external-responses" },
+        });
+        await bindImageBackendStickyMember({
+          layer: "session_hash",
+          key: parsed.data.prompt_cache_key,
+          member:
+            result.responsesPreviousResponse?.backendMember ||
+            result.backendMember,
+          metadata: { source: "external-responses" },
+        });
         await storeResponsesContinuation({
           userId: auth.userId,
           apiKeyId: auth.apiKeyId,
           responseId: requestId,
           previousResponseId,
+          promptCacheKey: parsed.data.prompt_cache_key,
           result,
           fallbackHistory,
         });

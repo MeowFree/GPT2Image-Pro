@@ -20,9 +20,11 @@ import { assertPublicApiBaseUrl } from "@/features/external-api/safe-image-fetch
 import { imageBackendApiUsesResponsesEndpoint } from "@/features/image-backend-pool/api-interface-mode";
 import {
   acquireImageBackendInflight,
+  bindImageBackendStickyMember,
   ImageBackendPoolUnavailableError,
   isImageBackendSwitchableError,
-  releaseImageBackendInflight,
+  releaseImageBackendInflightLease,
+  recordImageBackendSchedulerSwitch,
   reportImageBackendResult,
   resolveImageBackendPoolConfig,
 } from "@/features/image-backend-pool/service";
@@ -821,7 +823,8 @@ async function postResponsesImageRequestWithToolChoiceFallback(
 
 async function reportPoolBackendResult(
   config: ApiConfig,
-  result: GenerateImageResult
+  result: GenerateImageResult,
+  durationMs?: number
 ): Promise<boolean> {
   if (!config.backend?.reportResult) return false;
   if (
@@ -838,6 +841,7 @@ async function reportPoolBackendResult(
       error: result.error,
       upstreamResetAt: result.upstreamResetAt,
       retryAfterSeconds: result.retryAfterSeconds,
+      durationMs,
     });
     return outcome.switchable;
   } catch (error) {
@@ -1065,11 +1069,14 @@ async function retryPoolBackendResult(
   while (true) {
     attempt += 1;
     let result: GenerateImageResult;
+    const startedAt = Date.now();
     const currentBackend = candidate.backend;
-    if (
+    const hasPoolBackend =
       currentBackend?.type === "pool-api" ||
-      currentBackend?.type === "pool-account"
-    ) {
+      currentBackend?.type === "pool-account";
+    const acquiredBeforeRun =
+      hasPoolBackend && currentBackend.inflightLease !== true;
+    if (acquiredBeforeRun) {
       acquireImageBackendInflight({
         memberType: currentBackend.type === "pool-api" ? "api" : "account",
         memberId: currentBackend.id,
@@ -1078,17 +1085,21 @@ async function retryPoolBackendResult(
     try {
       result = await run(withoutPoolBackendReport(candidate));
     } finally {
-      if (
-        currentBackend?.type === "pool-api" ||
-        currentBackend?.type === "pool-account"
-      ) {
-        releaseImageBackendInflight({
+      if (hasPoolBackend) {
+        await releaseImageBackendInflightLease({
           memberType: currentBackend.type === "pool-api" ? "api" : "account",
           memberId: currentBackend.id,
+          leaseId: currentBackend.inflightLeaseId,
+          leasePersisted: currentBackend.inflightLeasePersisted,
         });
+        currentBackend.inflightLease = false;
       }
     }
-    const shouldRetry = await reportPoolBackendResult(candidate, result);
+    const shouldRetry = await reportPoolBackendResult(
+      candidate,
+      result,
+      Date.now() - startedAt
+    );
     lastResult = result;
 
     if (
@@ -1152,6 +1163,13 @@ async function retryPoolBackendResult(
     }
     if (!next?.config?.backend) break;
     if (poolBackendMemberKey(next.config) === memberKey) {
+      await releaseImageBackendInflightLease({
+        memberType: next.config.backend.type === "pool-api" ? "api" : "account",
+        memberId: next.config.backend.id,
+        leaseId: next.config.backend.inflightLeaseId,
+        leasePersisted: next.config.backend.inflightLeasePersisted,
+      });
+      next.config.backend.inflightLease = false;
       logWarn("生图后端重试选回同一成员，停止切换", {
         requestKind,
         memberKey,
@@ -1167,6 +1185,12 @@ async function retryPoolBackendResult(
       nextBackendId: next.config.backend.id,
       nextGroupId: next.config.backend.groupId,
       excludedCount: excluded.size,
+    });
+    await recordImageBackendSchedulerSwitch({
+      requestKind,
+      memberType: next.config.backend.type === "pool-api" ? "api" : "account",
+      memberId: next.config.backend.id,
+      groupId: next.config.backend.groupId,
     });
     candidate = next.config;
   }
@@ -3568,6 +3592,9 @@ export async function getEffectiveConfig(
     apiKeyId?: string;
     requestKind?: ImageBackendRequestKind;
     preferredMemberId?: string;
+    preferredMemberType?: "api" | "account";
+    stickyPreviousResponseId?: string;
+    stickySessionKey?: string;
     accountBackendPreference?: ImageBackendAccountBackend;
     accountBackendPreferenceMode?: ImageBackendPreferenceMode;
     ignoreUserConfig?: boolean;
@@ -3588,6 +3615,9 @@ export async function getEffectiveConfig(
         apiKeyId: options.apiKeyId,
         requestKind: options.requestKind,
         preferredMemberId: options.preferredMemberId,
+        preferredMemberType: options.preferredMemberType,
+        stickyPreviousResponseId: options.stickyPreviousResponseId,
+        stickySessionKey: options.stickySessionKey,
         accountBackendPreference: options.accountBackendPreference,
         accountBackendPreferenceMode: options.accountBackendPreferenceMode,
         allowAnyResponsesBackend: options.allowAnyResponsesBackend,
@@ -3995,7 +4025,6 @@ export async function generateChatImage(
               params.files,
               {
                 extraImageReferences: promptRefs.historyImageReferences,
-                includeExtraImageEntities: false,
                 generatedImageReferenceInstruction,
               }
             ),
@@ -4440,13 +4469,22 @@ export async function generateChatImage(
       }
     }
 
-    return applyPromptOptimizationResultVisibility(
-      attachResponsesPreviousResponseState(
-        config,
-        result,
-        responsesPreviousResponseEnabled
-      )
+    const resultWithNativeState = attachResponsesPreviousResponseState(
+      config,
+      result,
+      responsesPreviousResponseEnabled
     );
+    if (resultWithNativeState.responsesPreviousResponse) {
+      await bindImageBackendStickyMember({
+        layer: "previous_response_id",
+        key: resultWithNativeState.responsesPreviousResponse.responseId,
+        member: resultWithNativeState.responsesPreviousResponse.backendMember,
+        metadata: {
+          source: params.agentMode ? "responses-agent" : "responses-chat",
+        },
+      });
+    }
+    return applyPromptOptimizationResultVisibility(resultWithNativeState);
   } catch (error) {
     logImageRequestError(error, {
       operation: "chat",

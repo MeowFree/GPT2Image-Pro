@@ -11,6 +11,7 @@ import {
   generation,
   imageBackendAccount,
   imageBackendApi,
+  imageBackendSchedulerMetric,
   ticket,
   user,
 } from "@repo/database/schema";
@@ -127,6 +128,18 @@ type BackendHealthStats = {
   successCount: number;
   failCount: number;
   modes: Array<{ mode: string; count: number }>;
+};
+
+type SchedulerMetricStats = {
+  selectCount: number;
+  stickyPreviousHits: number;
+  stickySessionHits: number;
+  stickyHitRate: number;
+  loadBalanceCount: number;
+  switchCount: number;
+  avgCandidateCount: number | null;
+  avgLatencyMs: number | null;
+  byLayer: Array<{ layer: string; count: number }>;
 };
 
 type HistoricalErrorFilters = {
@@ -653,6 +666,62 @@ function summarizeBackendRows(
   stats.modes = [...modes.entries()]
     .map(([mode, modeCount]) => ({ mode, count: modeCount }))
     .sort((a, b) => b.count - a.count);
+  return stats;
+}
+
+function summarizeSchedulerMetrics(
+  rows: Array<{
+    selectedLayer: string;
+    selectCount: number;
+    stickyPreviousHitCount: number;
+    stickySessionHitCount: number;
+    loadBalanceCount: number;
+    switchCount: number;
+    candidateCountTotal: number;
+    latencyMsTotal: number;
+  }>
+): SchedulerMetricStats {
+  const byLayer = new Map<string, number>();
+  const stats: SchedulerMetricStats = {
+    selectCount: 0,
+    stickyPreviousHits: 0,
+    stickySessionHits: 0,
+    stickyHitRate: 0,
+    loadBalanceCount: 0,
+    switchCount: 0,
+    avgCandidateCount: null,
+    avgLatencyMs: null,
+    byLayer: [],
+  };
+  let candidateTotal = 0;
+  let latencyTotal = 0;
+
+  for (const row of rows) {
+    stats.selectCount += row.selectCount;
+    stats.stickyPreviousHits += row.stickyPreviousHitCount;
+    stats.stickySessionHits += row.stickySessionHitCount;
+    stats.loadBalanceCount += row.loadBalanceCount;
+    stats.switchCount += row.switchCount;
+    candidateTotal += row.candidateCountTotal;
+    latencyTotal += row.latencyMsTotal;
+    if (row.selectCount > 0) {
+      byLayer.set(
+        row.selectedLayer,
+        (byLayer.get(row.selectedLayer) || 0) + row.selectCount
+      );
+    }
+  }
+
+  const stickyHits = stats.stickyPreviousHits + stats.stickySessionHits;
+  stats.stickyHitRate =
+    stats.selectCount > 0 ? stickyHits / stats.selectCount : 0;
+  stats.avgCandidateCount =
+    stats.selectCount > 0 ? candidateTotal / stats.selectCount : null;
+  stats.avgLatencyMs =
+    stats.selectCount > 0 ? latencyTotal / stats.selectCount : null;
+  stats.byLayer = Array.from(byLayer.entries())
+    .map(([layer, count]) => ({ layer, count }))
+    .sort((left, right) => right.count - left.count);
   return stats;
 }
 
@@ -1265,6 +1334,8 @@ async function loadStatusData() {
     ticketRows,
     accountRows,
     apiRows,
+    schedulerRows24h,
+    schedulerRows7d,
   ] = await Promise.all([
     db
       .select({
@@ -1451,6 +1522,76 @@ async function loadStatusData() {
         mode: imageBackendApi.interfaceMode,
       })
       .from(imageBackendApi),
+    db
+      .select({
+        selectedLayer: imageBackendSchedulerMetric.selectedLayer,
+        selectCount:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.selectCount}), 0)`.mapWith(
+            Number
+          ),
+        stickyPreviousHitCount:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.stickyPreviousHitCount}), 0)`.mapWith(
+            Number
+          ),
+        stickySessionHitCount:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.stickySessionHitCount}), 0)`.mapWith(
+            Number
+          ),
+        loadBalanceCount:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.loadBalanceCount}), 0)`.mapWith(
+            Number
+          ),
+        switchCount:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.switchCount}), 0)`.mapWith(
+            Number
+          ),
+        candidateCountTotal:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.candidateCountTotal}), 0)`.mapWith(
+            Number
+          ),
+        latencyMsTotal:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.latencyMsTotal}), 0)`.mapWith(
+            Number
+          ),
+      })
+      .from(imageBackendSchedulerMetric)
+      .where(gte(imageBackendSchedulerMetric.bucketStartedAt, last24h))
+      .groupBy(imageBackendSchedulerMetric.selectedLayer),
+    db
+      .select({
+        selectedLayer: imageBackendSchedulerMetric.selectedLayer,
+        selectCount:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.selectCount}), 0)`.mapWith(
+            Number
+          ),
+        stickyPreviousHitCount:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.stickyPreviousHitCount}), 0)`.mapWith(
+            Number
+          ),
+        stickySessionHitCount:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.stickySessionHitCount}), 0)`.mapWith(
+            Number
+          ),
+        loadBalanceCount:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.loadBalanceCount}), 0)`.mapWith(
+            Number
+          ),
+        switchCount:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.switchCount}), 0)`.mapWith(
+            Number
+          ),
+        candidateCountTotal:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.candidateCountTotal}), 0)`.mapWith(
+            Number
+          ),
+        latencyMsTotal:
+          sql<number>`coalesce(sum(${imageBackendSchedulerMetric.latencyMsTotal}), 0)`.mapWith(
+            Number
+          ),
+      })
+      .from(imageBackendSchedulerMetric)
+      .where(gte(imageBackendSchedulerMetric.bucketStartedAt, last7d))
+      .groupBy(imageBackendSchedulerMetric.selectedLayer),
   ]);
 
   const rows = recentGenerationRows satisfies GenerationMetricRow[];
@@ -1513,6 +1654,8 @@ async function loadStatusData() {
     },
     accounts: summarizeBackendRows(accountRows),
     apis: summarizeBackendRows(apiRows),
+    scheduler24h: summarizeSchedulerMetrics(schedulerRows24h),
+    scheduler7d: summarizeSchedulerMetrics(schedulerRows7d),
   };
 }
 
@@ -1642,6 +1785,61 @@ export default async function GlobalStatusPage({
           locale={locale}
         />
       </div>
+
+      <Card className="rounded-lg">
+        <CardHeader>
+          <CardTitle>{copy(locale, "Scheduler Routing", "调度路由")}</CardTitle>
+          <CardDescription>
+            {copy(
+              locale,
+              "Sticky routing, backend switches, and scheduler latency. Full backend queues are not used; saturated accounts are skipped.",
+              "粘性路由、后端切换和调度耗时。账号满不排队，会跳过并切换其他账号。"
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <MiniStat
+            label={copy(locale, "24h sticky hit rate", "24小时粘性命中率")}
+            value={formatPercent(data.scheduler24h.stickyHitRate, locale)}
+          />
+          <MiniStat
+            label={copy(locale, "24h backend switches", "24小时后端切换")}
+            value={formatNumber(data.scheduler24h.switchCount, locale)}
+          />
+          <MiniStat
+            label={copy(locale, "24h avg candidates", "24小时平均候选")}
+            value={
+              data.scheduler24h.avgCandidateCount === null
+                ? copy(locale, "No sample", "暂无样本")
+                : formatNumber(data.scheduler24h.avgCandidateCount, locale)
+            }
+          />
+          <MiniStat
+            label={copy(locale, "24h avg routing latency", "24小时平均调度耗时")}
+            value={
+              data.scheduler24h.avgLatencyMs === null
+                ? copy(locale, "No sample", "暂无样本")
+                : `${Math.round(data.scheduler24h.avgLatencyMs)}ms`
+            }
+          />
+          <MiniStat
+            label={copy(locale, "7d previous-response hits", "7天强粘性命中")}
+            value={formatNumber(data.scheduler7d.stickyPreviousHits, locale)}
+          />
+          <MiniStat
+            label={copy(locale, "7d session hits", "7天弱粘性命中")}
+            value={formatNumber(data.scheduler7d.stickySessionHits, locale)}
+          />
+          <MiniStat
+            label={copy(locale, "7d load-balance picks", "7天负载选择")}
+            value={formatNumber(data.scheduler7d.loadBalanceCount, locale)}
+          />
+          <MiniStat
+            label={copy(locale, "7d selections", "7天调度次数")}
+            value={formatNumber(data.scheduler7d.selectCount, locale)}
+          />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="rounded-lg xl:col-span-2">
