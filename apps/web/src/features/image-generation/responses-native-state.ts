@@ -6,6 +6,7 @@ import type {
   ResponsesPreviousResponseState,
   StickyBackendMemberState,
 } from "./types";
+import { getInputImageUrl } from "./input-image-url";
 
 export type ResponsesRequestContent =
   | { type: "input_text"; text: string }
@@ -82,12 +83,7 @@ export function sameStickyBackendMember(
   );
 }
 
-export function getDataUrl(image: ImageInputFile) {
-  if (image.url?.startsWith("http://") || image.url?.startsWith("https://")) {
-    return image.url;
-  }
-  return `data:${image.type || "image/png"};base64,${image.data.toString("base64")}`;
-}
+export const getDataUrl = getInputImageUrl;
 
 export function imageBase64ToDataUrl(
   base64: string,

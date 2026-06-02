@@ -23,6 +23,7 @@ import {
 import { extractResponsesImageCallBase64 } from "./responses-output";
 import { normalizeResponsesImageRequestBody } from "./responses-request-normalizer";
 import { extractResponsesTokenUsage } from "./responses-usage";
+import { getInputImageUrl } from "./input-image-url";
 import type {
   ApiConfig,
   ChatHistoryMessage,
@@ -85,6 +86,71 @@ const testImage: ImageInputFile = {
   name: "reference.png",
   type: "image/png",
 };
+
+describe("getInputImageUrl", () => {
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const originalBetterAuthUrl = process.env.BETTER_AUTH_URL;
+  const originalSecret = process.env.BETTER_AUTH_SECRET;
+
+  afterEach(() => {
+    if (originalAppUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_APP_URL;
+    } else {
+      process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
+    }
+    if (originalBetterAuthUrl === undefined) {
+      delete process.env.BETTER_AUTH_URL;
+    } else {
+      process.env.BETTER_AUTH_URL = originalBetterAuthUrl;
+    }
+    if (originalSecret === undefined) {
+      delete process.env.BETTER_AUTH_SECRET;
+    } else {
+      process.env.BETTER_AUTH_SECRET = originalSecret;
+    }
+  });
+
+  it("builds absolute signed storage URLs for upstream image inputs", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.example.test";
+    process.env.BETTER_AUTH_SECRET = "test-secret";
+
+    const url = getInputImageUrl({
+      ...testImage,
+      url: "/api/storage/generations/user/requests/ref.png",
+      storageBucket: "generations",
+      storageKey: "user/requests/ref.png",
+    });
+
+    expect(url).toMatch(
+      /^https:\/\/app\.example\.test\/api\/storage\/generations\/user\/requests\/ref\.png\?sig=/
+    );
+    expect(url).toContain("&exp=");
+  });
+
+  it("does not send relative storage URLs to upstreams without a public base URL", () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.BETTER_AUTH_URL;
+    process.env.BETTER_AUTH_SECRET = "test-secret";
+
+    expect(
+      getInputImageUrl({
+        ...testImage,
+        url: "/api/storage/generations/user/requests/ref.png",
+        storageBucket: "generations",
+        storageKey: "user/requests/ref.png",
+      })
+    ).toBe("data:image/png;base64,aW1hZ2UtYnl0ZXM=");
+  });
+
+  it("keeps already public input URLs", () => {
+    expect(
+      getInputImageUrl({
+        ...testImage,
+        url: "https://cdn.example.com/source.png",
+      })
+    ).toBe("https://cdn.example.com/source.png");
+  });
+});
 
 function responsesConfig(): ApiConfig {
   return {
@@ -694,7 +760,7 @@ describe("Responses image references", () => {
     });
   });
 
-  it("keeps historical @ refs text-only when native previous_response_id is used", () => {
+  it("attaches explicit historical @ refs even when native previous_response_id is used", () => {
     const history: ChatHistoryMessage[] = [
       {
         role: "assistant",
@@ -716,11 +782,10 @@ describe("Responses image references", () => {
       undefined,
       {
         extraImageReferences: resolved.historyImageReferences,
-        includeExtraImageEntities: false,
       }
     );
 
-    expect(content).not.toContainEqual({
+    expect(content).toContainEqual({
       type: "input_image",
       image_url: "https://cdn.example.com/one.png",
     });
@@ -729,7 +794,7 @@ describe("Responses image references", () => {
         (part) =>
           part.type === "input_text" &&
           part.text.includes("@第1轮图1") &&
-          part.text.includes("native Responses conversation state")
+          part.text.includes("Use this label")
       )
     ).toBe(true);
   });
@@ -1039,7 +1104,7 @@ describe("backend isolation", () => {
     });
   });
 
-  it("uses base64 content for direct Responses edit inputs even when uploaded URLs exist", () => {
+  it("uses uploaded URLs for direct Responses edit inputs when available", () => {
     const request = buildResponsesImageEditRequest(responsesConfig(), {
       prompt: "改这张图",
       images: [{ ...testImage, url: "https://cdn.example.com/source.png" }],
@@ -1048,10 +1113,10 @@ describe("backend isolation", () => {
 
     expect(request.input[0]?.content).toContainEqual({
       type: "input_image",
-      image_url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=",
+      image_url: "https://cdn.example.com/source.png",
     });
     expect(request.tools[0]?.input_image_mask).toEqual({
-      image_url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=",
+      image_url: "https://cdn.example.com/mask.png",
     });
   });
 

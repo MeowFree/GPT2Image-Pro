@@ -14,6 +14,7 @@ import {
   resolvePromptImageReferences,
   withResponsesImageReferenceInstructions,
 } from "./responses-native-state";
+import { getInputImageUrl } from "./input-image-url";
 import type {
   ApiConfig,
   EditImageParams,
@@ -68,10 +69,6 @@ const RESPONSES_IMAGE_INSTRUCTIONS =
 
 const RESPONSES_IMAGE_ORIGINAL_PROMPT_INSTRUCTIONS =
   "Use the user's original image prompt exactly as written for image generation. Do not rewrite, expand, translate, polish, or optimize the prompt before calling the image_generation tool.";
-
-function getInputImageUrl(image: ImageInputFile) {
-  return `data:${image.type || "image/png"};base64,${image.data.toString("base64")}`;
-}
 
 function getInputImageContent(image: ImageInputFile) {
   if (image.imageFileId?.trim()) {

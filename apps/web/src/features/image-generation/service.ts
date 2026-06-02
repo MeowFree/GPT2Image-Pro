@@ -42,6 +42,7 @@ import {
   editImageWithChatGptWeb,
   generateImageWithChatGptWeb,
 } from "./chatgpt-web";
+import { getInputImageUrl } from "./input-image-url";
 import {
   normalizeImageBackground,
   normalizeOutputCompression,
@@ -1334,13 +1335,6 @@ type ChatCompletionImageItem = {
   generationId?: unknown;
 };
 
-function imageInputToDataUrl(image: ImageInputFile) {
-  if (image.url) return image.url;
-  return `data:${image.type || "image/png"};base64,${image.data.toString(
-    "base64"
-  )}`;
-}
-
 function buildChatCompletionContent(text?: string, images?: ImageInputFile[]) {
   const parts: Array<Record<string, unknown>> = [];
   if (text?.trim()) {
@@ -1349,7 +1343,7 @@ function buildChatCompletionContent(text?: string, images?: ImageInputFile[]) {
   for (const image of images || []) {
     parts.push({
       type: "image_url",
-      image_url: { url: imageInputToDataUrl(image) },
+      image_url: { url: getInputImageUrl(image) },
     });
   }
   if (parts.length === 1 && parts[0]?.type === "text") {
