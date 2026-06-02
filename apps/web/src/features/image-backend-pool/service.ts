@@ -78,13 +78,16 @@ import type {
 
 const MANUAL_TOKEN_IMPORT_LIMIT = 10_000;
 const IMAGE_BACKEND_INFLIGHT_LEASE_TTL_MS = 30 * 60_000;
+const MAX_BACKEND_STALE_SELECTION_RETRIES = 100;
 const STICKY_PREVIOUS_RESPONSE_TTL_MS = 24 * 60 * 60_000;
 const STICKY_SESSION_TTL_MS = 60 * 60_000;
 
 type BackendLeaseTx = Pick<
   typeof db,
-  "delete" | "execute" | "insert" | "select"
+  "delete" | "execute" | "insert" | "select" | "update"
 >;
+
+type BackendLeaseAcquireResult = "acquired" | "full" | "stale";
 
 type ResolveBackendOptions = {
   userId: string;
@@ -132,6 +135,7 @@ type PoolMember =
       concurrency: number;
       leaseId?: string;
       leasePersisted?: boolean;
+      leaseTouchedMember?: boolean;
       schedulerLayer?: SchedulerSelectionLayer;
       lastUsedAt: Date | null;
       lastAcquiredAt: Date | null;
@@ -154,6 +158,7 @@ type PoolMember =
       concurrency: number;
       leaseId?: string;
       leasePersisted?: boolean;
+      leaseTouchedMember?: boolean;
       schedulerLayer?: SchedulerSelectionLayer;
       lastUsedAt: Date | null;
       lastAcquiredAt: Date | null;
@@ -261,12 +266,10 @@ const DEFAULT_UNRECOVERABLE_BACKEND_ERROR_KEYWORDS = [
   "identity verification is required",
 ];
 const backendInflight = new Map<string, number>();
-const backendRoundRobinCursor = new Map<string, number>();
 
 export function resetImageBackendInflightForTests() {
   if (process.env.NODE_ENV === "test") {
     backendInflight.clear();
-    backendRoundRobinCursor.clear();
   }
 }
 
@@ -439,26 +442,6 @@ function canUseBackendGroupForPlan(
 function memberTimestamp(value: Date | string | null | undefined) {
   if (!value) return 0;
   return new Date(value).getTime();
-}
-
-function schedulerGroupKey(input: {
-  groupId?: string | null;
-  requestKind?: ImageBackendRequestKind;
-}) {
-  return `${input.groupId || "default"}:${input.requestKind || "image_generation"}`;
-}
-
-function nextRoundRobinCursor(key: string, size: number) {
-  if (size <= 0) return 0;
-  const current = backendRoundRobinCursor.get(key) || 0;
-  backendRoundRobinCursor.set(key, (current + 1) % size);
-  return current % size;
-}
-
-function rotateRoundRobinCandidates<T>(items: T[], key: string) {
-  if (items.length <= 1) return items;
-  const start = nextRoundRobinCursor(key, items.length);
-  return [...items.slice(start), ...items.slice(0, start)];
 }
 
 function healthBucket(member: PoolMember) {
@@ -831,6 +814,13 @@ function hasBackendCapacity(member: PoolMember) {
   return backendInflightCount(member) < backendConcurrency(member);
 }
 
+function sameMemberTimestamp(
+  left: Date | string | null | undefined,
+  right: Date | string | null | undefined
+) {
+  return memberTimestamp(left) === memberTimestamp(right);
+}
+
 async function pruneExpiredBackendLeases(
   tx: BackendLeaseTx,
   member: Pick<PoolMember, "type" | "id">,
@@ -847,10 +837,14 @@ async function pruneExpiredBackendLeases(
     );
 }
 
-async function acquirePoolMemberInflightLease(member: PoolMember) {
-  if (!hasBackendCapacity(member)) return false;
+async function acquirePoolMemberInflightLease(
+  member: PoolMember,
+  options?: { enforceLastAcquiredSnapshot?: boolean }
+): Promise<BackendLeaseAcquireResult> {
+  if (!hasBackendCapacity(member)) return "full";
   const leaseId = nanoid();
   let persisted = false;
+  let touchedMember = false;
   const now = new Date();
   const expiresAt = new Date(
     now.getTime() + IMAGE_BACKEND_INFLIGHT_LEASE_TTL_MS
@@ -862,19 +856,41 @@ async function acquirePoolMemberInflightLease(member: PoolMember) {
     });
     member.leaseId = leaseId;
     member.leasePersisted = false;
-    return true;
+    member.leaseTouchedMember = false;
+    return "acquired";
   }
 
   try {
     const acquired = await db.transaction(async (tx) => {
+      let lockedLastAcquiredAt: Date | string | null | undefined;
       if (member.type === "api") {
-        await tx.execute(
-          sql`SELECT id FROM ${imageBackendApi} WHERE id = ${member.id} FOR UPDATE`
-        );
+        const [locked] = await tx
+          .select({ lastAcquiredAt: imageBackendApi.lastAcquiredAt })
+          .from(imageBackendApi)
+          .where(eq(imageBackendApi.id, member.id))
+          .for("update");
+        lockedLastAcquiredAt = locked?.lastAcquiredAt;
+        if (!locked) return "full";
+        if (
+          options?.enforceLastAcquiredSnapshot &&
+          !sameMemberTimestamp(lockedLastAcquiredAt, member.lastAcquiredAt)
+        ) {
+          return "stale";
+        }
       } else {
-        await tx.execute(
-          sql`SELECT id FROM ${imageBackendAccount} WHERE id = ${member.id} FOR UPDATE`
-        );
+        const [locked] = await tx
+          .select({ lastAcquiredAt: imageBackendAccount.lastAcquiredAt })
+          .from(imageBackendAccount)
+          .where(eq(imageBackendAccount.id, member.id))
+          .for("update");
+        lockedLastAcquiredAt = locked?.lastAcquiredAt;
+        if (!locked) return "full";
+        if (
+          options?.enforceLastAcquiredSnapshot &&
+          !sameMemberTimestamp(lockedLastAcquiredAt, member.lastAcquiredAt)
+        ) {
+          return "stale";
+        }
       }
       await pruneExpiredBackendLeases(tx, member, now);
       const [activeLeaseCount] = await tx
@@ -888,7 +904,7 @@ async function acquirePoolMemberInflightLease(member: PoolMember) {
           )
         );
       const activeCount = Number(activeLeaseCount?.value || 0);
-      if (activeCount >= backendConcurrency(member)) return false;
+      if (activeCount >= backendConcurrency(member)) return "full";
       await tx.insert(imageBackendInflightLease).values({
         id: leaseId,
         memberType: member.type,
@@ -896,16 +912,43 @@ async function acquirePoolMemberInflightLease(member: PoolMember) {
         expiresAt,
         createdAt: now,
       });
+      if (member.type === "api") {
+        await tx
+          .update(imageBackendApi)
+          .set({
+            status: "active",
+            cooldownUntil: null,
+            lastUsedAt: now,
+            lastAcquiredAt: now,
+            updatedAt: now,
+          })
+          .where(eq(imageBackendApi.id, member.id));
+      } else {
+        await tx
+          .update(imageBackendAccount)
+          .set({
+            status: "active",
+            cooldownUntil: null,
+            lastUsedAt: now,
+            lastAcquiredAt: now,
+            updatedAt: now,
+          })
+          .where(eq(imageBackendAccount.id, member.id));
+      }
+      touchedMember = true;
       persisted = true;
-      return true;
+      return "acquired";
     });
-    if (acquired) {
+    if (acquired === "acquired") {
       acquireImageBackendInflight({
         memberType: member.type,
         memberId: member.id,
       });
       member.leaseId = leaseId;
       member.leasePersisted = persisted;
+      member.leaseTouchedMember = touchedMember;
+      member.lastAcquiredAt = now;
+      member.lastUsedAt = now;
     }
     return acquired;
   } catch (error) {
@@ -930,7 +973,8 @@ async function acquirePoolMemberInflightLease(member: PoolMember) {
   });
   member.leaseId = leaseId;
   member.leasePersisted = false;
-  return true;
+  member.leaseTouchedMember = false;
+  return "acquired";
 }
 
 function splitKeywordList(value?: string | null) {
@@ -1772,7 +1816,8 @@ async function selectPoolMember(
   stickyPreviousMember?: StickyBindingMember | null,
   stickySessionMember?: StickyBindingMember | null,
   accountBackendPreference?: ImageBackendAccountBackend,
-  accountBackendPreferenceMode?: ImageBackendPreferenceMode
+  accountBackendPreferenceMode?: ImageBackendPreferenceMode,
+  staleRetryCount = 0
 ): Promise<PoolMember | null> {
   const selectionStartedAt = Date.now();
   const contexts =
@@ -2126,10 +2171,7 @@ async function selectPoolMember(
         if (lastUsedDiff !== 0) return lastUsedDiff;
         return memberTimestamp(left.createdAt) - memberTimestamp(right.createdAt);
       });
-      return rotateRoundRobinCandidates(
-        sortedGroup,
-        `${schedulerGroupKey({ groupId, requestKind })}:${groupKey}`
-      );
+      return sortedGroup;
     })
     .map((member) => ({
       ...member,
@@ -2142,8 +2184,17 @@ async function selectPoolMember(
     ...ordinaryCandidates,
   ];
 
+  let sawStaleCandidate = false;
   for (const member of candidates) {
-    if (await acquirePoolMemberInflightLease(member)) {
+    const leaseResult = await acquirePoolMemberInflightLease(member, {
+      enforceLastAcquiredSnapshot:
+        (member.schedulerLayer || "load_balance") === "load_balance",
+    });
+    if (leaseResult === "stale") {
+      sawStaleCandidate = true;
+      continue;
+    }
+    if (leaseResult === "acquired") {
       await recordSchedulerMetric({
         requestKind,
         layer: member.schedulerLayer || "load_balance",
@@ -2155,6 +2206,27 @@ async function selectPoolMember(
       });
       return member;
     }
+  }
+
+  if (
+    sawStaleCandidate &&
+    staleRetryCount < MAX_BACKEND_STALE_SELECTION_RETRIES
+  ) {
+    return selectPoolMember(
+      groupId,
+      groupMetadata,
+      groupContentSafetyEnabled,
+      groupContexts,
+      requestKind,
+      excluded,
+      preferredMemberId,
+      preferredMemberType,
+      stickyPreviousMember,
+      stickySessionMember,
+      accountBackendPreference,
+      accountBackendPreferenceMode,
+      staleRetryCount + 1
+    );
   }
 
   return null;
@@ -2420,7 +2492,9 @@ export async function resolveImageBackendPoolConfig(
   });
   if (!resolved) return null;
   try {
-    await touchSelectedMember(resolved.member);
+    if (!resolved.member.leaseTouchedMember) {
+      await touchSelectedMember(resolved.member);
+    }
     return toResolvedPoolConfig(
       resolved.group.id,
       resolved.member,

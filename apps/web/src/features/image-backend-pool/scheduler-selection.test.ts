@@ -140,9 +140,12 @@ const dbMock = vi.hoisted(() => {
     externalApiKeys: [] as Row[],
     stickyBindings: [] as Row[],
     schedulerMetrics: [] as Row[],
+    leases: [] as Row[],
+    lockedLastAcquiredAtById: new Map<string, Date | null>(),
     limitCalls: [] as { tableName: string; limit: number }[],
     updates: [] as { tableName: string; values: Row }[],
     inserts: [] as { tableName: string; values: Row }[],
+    executeCalls: [] as unknown[],
   };
 
   const tableNameOf = (table: unknown) =>
@@ -164,6 +167,8 @@ const dbMock = vi.hoisted(() => {
         return state.stickyBindings;
       case "image_backend_scheduler_metric":
         return state.schedulerMetrics;
+      case "image_backend_inflight_lease":
+        return state.leases;
       case "user_image_backend_preference":
         return state.userPreferences;
       default:
@@ -171,18 +176,66 @@ const dbMock = vi.hoisted(() => {
     }
   };
 
-  const createSelectBuilder = () => {
+  const simplePredicateValue = (predicate: unknown, columnName: string) => {
+    if (
+      typeof predicate !== "object" ||
+      !predicate ||
+      !("kind" in predicate) ||
+      !("values" in predicate) ||
+      (predicate as { kind: unknown }).kind !== "eq"
+    ) {
+      return undefined;
+    }
+    const values = (predicate as { values: unknown[] }).values;
+    const column = values[0];
+    if (
+      typeof column === "object" &&
+      column &&
+      "__columnName" in column &&
+      (column as { __columnName: string }).__columnName === columnName
+    ) {
+      return values[1];
+    }
+    return undefined;
+  };
+
+  const findPredicateValue = (
+    predicate: unknown,
+    columnName: string
+  ): unknown => {
+    const value = simplePredicateValue(predicate, columnName);
+    if (value !== undefined) return value;
+    if (
+      typeof predicate === "object" &&
+      predicate &&
+      "values" in predicate &&
+      Array.isArray((predicate as { values: unknown[] }).values)
+    ) {
+      for (const child of (predicate as { values: unknown[] }).values) {
+        const childValue = findPredicateValue(child, columnName);
+        if (childValue !== undefined) return childValue;
+      }
+    }
+    return undefined;
+  };
+
+  const createSelectBuilder = (options?: { filterByWhere?: boolean }) => {
     let tableName = "";
     let limitValue: number | null = null;
+    let wherePredicate: unknown;
     const builder: Record<string, unknown> = {};
     builder.from = vi.fn((table: unknown) => {
       tableName = tableNameOf(table);
       return builder;
     });
     builder.innerJoin = vi.fn(() => builder);
-    builder.where = vi.fn(() => builder);
+    builder.where = vi.fn((predicate: unknown) => {
+      wherePredicate = predicate;
+      return builder;
+    });
     builder.orderBy = vi.fn(() => builder);
     builder.groupBy = vi.fn(() => builder);
+    builder.for = vi.fn(() => builder);
     builder.limit = vi.fn((limit: number) => {
       limitValue = limit;
       state.limitCalls.push({ tableName, limit });
@@ -193,10 +246,41 @@ const dbMock = vi.hoisted(() => {
       resolve: (value: Row[]) => unknown,
       reject?: (reason: unknown) => unknown
     ) => {
-      const rows =
-        limitValue === null
-          ? rowsForTable(tableName)
-          : rowsForTable(tableName).slice(0, limitValue);
+      let rows = rowsForTable(tableName);
+      if (options?.filterByWhere) {
+        const id = findPredicateValue(wherePredicate, "id");
+        const memberType = findPredicateValue(wherePredicate, "memberType");
+        const memberId = findPredicateValue(wherePredicate, "memberId");
+        rows = rows.filter((row) => {
+          if (id !== undefined && row.id !== id) return false;
+          if (memberType !== undefined && row.memberType !== memberType) {
+            return false;
+          }
+          if (memberId !== undefined && row.memberId !== memberId) {
+            return false;
+          }
+          return true;
+        });
+        if (
+          id !== undefined &&
+          (tableName === "image_backend_account" ||
+            tableName === "image_backend_api") &&
+          state.lockedLastAcquiredAtById.has(String(id))
+        ) {
+          const lockedLastAcquiredAt = state.lockedLastAcquiredAtById.get(
+            String(id)
+          );
+          for (const row of rowsForTable(tableName)) {
+            if (row.id === id) {
+              row.lastAcquiredAt = lockedLastAcquiredAt;
+            }
+          }
+          rows = rows.map((row) =>
+            row.id === id ? { ...row, lastAcquiredAt: lockedLastAcquiredAt } : row
+          );
+        }
+      }
+      rows = limitValue === null ? rows : rows.slice(0, limitValue);
       return Promise.resolve(rows).then(resolve, reject);
     };
     return builder;
@@ -204,12 +288,22 @@ const dbMock = vi.hoisted(() => {
 
   const createUpdateBuilder = (table: unknown) => {
     const tableName = tableNameOf(table);
+    let updateValues: Row = {};
     const builder: Record<string, unknown> = {};
     builder.set = vi.fn((values: Row) => {
+      updateValues = values;
       state.updates.push({ tableName, values });
       return builder;
     });
-    builder.where = vi.fn(async () => undefined);
+    builder.where = vi.fn(async (predicate: unknown) => {
+      const rows = rowsForTable(tableName);
+      const id = findPredicateValue(predicate, "id");
+      for (const row of rows) {
+        if (id !== undefined && row.id !== id) continue;
+        Object.assign(row, updateValues);
+      }
+      return undefined;
+    });
     return builder;
   };
 
@@ -218,6 +312,9 @@ const dbMock = vi.hoisted(() => {
     const builder: Record<string, unknown> = {};
     builder.values = vi.fn((values: Row) => {
       state.inserts.push({ tableName, values });
+      if (tableName === "image_backend_inflight_lease") {
+        state.leases.push(values);
+      }
       return builder;
     });
     builder.onConflictDoUpdate = vi.fn(async () => undefined);
@@ -230,6 +327,43 @@ const dbMock = vi.hoisted(() => {
       select: vi.fn(() => createSelectBuilder()),
       update: vi.fn((table: unknown) => createUpdateBuilder(table)),
       insert: vi.fn((table: unknown) => createInsertBuilder(table)),
+      execute: vi.fn(async (query: unknown) => {
+        state.executeCalls.push(query);
+        return [];
+      }),
+      transaction: vi.fn(async (callback: (tx: unknown) => unknown) => {
+        const tx = {
+          select: vi.fn(() => createSelectBuilder({ filterByWhere: true })),
+          update: vi.fn((table: unknown) => createUpdateBuilder(table)),
+          insert: vi.fn((table: unknown) => createInsertBuilder(table)),
+          delete: vi.fn((table: unknown) => ({
+            where: vi.fn(async (predicate: unknown) => {
+              const tableName = tableNameOf(table);
+              if (tableName === "image_backend_inflight_lease") {
+                const memberType = findPredicateValue(predicate, "memberType");
+                const memberId = findPredicateValue(predicate, "memberId");
+                state.leases = state.leases.filter((lease) => {
+                  if (
+                    memberType !== undefined &&
+                    lease.memberType !== memberType
+                  ) {
+                    return true;
+                  }
+                  if (memberId !== undefined && lease.memberId !== memberId) {
+                    return true;
+                  }
+                  return false;
+                });
+              }
+            }),
+          })),
+          execute: vi.fn(async (query: unknown) => {
+            state.executeCalls.push(query);
+            return [];
+          }),
+        };
+        return await callback(tx);
+      }),
     },
   };
 });
@@ -357,9 +491,12 @@ describe("image backend pool scheduler selection", () => {
     dbMock.state.externalApiKeys = [];
     dbMock.state.stickyBindings = [];
     dbMock.state.schedulerMetrics = [];
+    dbMock.state.leases = [];
+    dbMock.state.lockedLastAcquiredAtById.clear();
     dbMock.state.limitCalls = [];
     dbMock.state.updates = [];
     dbMock.state.inserts = [];
+    dbMock.state.executeCalls = [];
     vi.clearAllMocks();
     vi.mocked(getRuntimeSettingBoolean).mockImplementation(
       async (_key: string, fallback = false) => fallback
@@ -432,6 +569,62 @@ describe("image backend pool scheduler selection", () => {
       "acct-9",
       "acct-10",
     ]);
+  });
+
+  it("skips a candidate when its last acquired time changed before row lock", async () => {
+    dbMock.state.accounts = [
+      {
+        ...makeAccount(1),
+        concurrency: 50,
+        lastAcquiredAt: null,
+      },
+      {
+        ...makeAccount(2),
+        concurrency: 50,
+        lastAcquiredAt: new Date(2026, 0, 1, 0, 0, 0),
+      },
+    ];
+    dbMock.state.lockedLastAcquiredAtById.set(
+      "acct-1",
+      new Date(2026, 0, 1, 0, 0, 1)
+    );
+
+    const result = await resolveImageBackendPoolConfig({
+      userId: "user-a",
+      requestKind: "image_generation",
+    });
+
+    expect(result?.memberId).toBe("acct-2");
+  });
+
+  it("reselects when every candidate in the first snapshot is stale", async () => {
+    dbMock.state.accounts = [
+      {
+        ...makeAccount(1),
+        concurrency: 50,
+        lastAcquiredAt: null,
+      },
+      {
+        ...makeAccount(2),
+        concurrency: 50,
+        lastAcquiredAt: null,
+      },
+    ];
+    dbMock.state.lockedLastAcquiredAtById.set(
+      "acct-1",
+      new Date(2026, 0, 1, 0, 0, 1)
+    );
+    dbMock.state.lockedLastAcquiredAtById.set(
+      "acct-2",
+      new Date(2026, 0, 1, 0, 0, 2)
+    );
+
+    const result = await resolveImageBackendPoolConfig({
+      userId: "user-a",
+      requestKind: "image_generation",
+    });
+
+    expect(result?.memberId).toBe("acct-1");
   });
 
   it("tries the sticky previous-response backend before normal scheduling", async () => {
