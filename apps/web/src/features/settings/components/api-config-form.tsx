@@ -121,26 +121,17 @@ export function ApiConfigForm() {
           return;
         }
         if (data.ok) {
-          toast.success(
-            data.modelCount !== undefined
-              ? t("apiConfig.testOkWithModels", {
-                  latency: data.latencyMs,
-                  count: data.modelCount,
-                })
-              : t("apiConfig.testOk", { latency: data.latencyMs })
-          );
+          toast.success(t("apiConfig.testOk", { latency: data.latencyMs }));
           return;
         }
-        if (data.status === "auth_failed") {
-          toast.error(
-            t("apiConfig.testAuthFailed", { status: data.httpStatus ?? 0 })
-          );
-        } else if (data.status === "http_error") {
-          toast.error(
-            t("apiConfig.testHttpError", { status: data.httpStatus ?? 0 })
-          );
-        } else {
+        if (data.status === "no_image") {
+          toast.error(t("apiConfig.testNoImage"));
+        } else if (data.status === "auth_failed") {
+          toast.error(t("apiConfig.testAuthFailed"));
+        } else if (data.status === "unreachable") {
           toast.error(t("apiConfig.testUnreachable"));
+        } else {
+          toast.error(t("apiConfig.testError"));
         }
       },
       onError: (err) => {
@@ -210,7 +201,7 @@ export function ApiConfigForm() {
       toast.error(t("apiConfig.testNeedsInput"));
       return;
     }
-    executeTest({ baseUrl, apiKey });
+    executeTest({ baseUrl, apiKey, model: model || undefined });
   };
 
   if (loading) {

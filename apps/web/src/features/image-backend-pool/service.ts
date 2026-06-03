@@ -19,10 +19,6 @@ import {
 } from "@repo/shared/config/subscription-plan";
 import { validateNestedGroupConfig } from "@repo/shared/image-backend/nested-groups";
 import { logWarn } from "@repo/shared/logger";
-import {
-  probeUpstreamApi,
-  type UpstreamApiHealthResult,
-} from "@repo/shared/upstream-health";
 import { canUsePlanCapability } from "@repo/shared/subscription/services/plan-capabilities";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import {
@@ -67,6 +63,10 @@ import {
   getEffectiveBillingMultiplierForSelectedGroup,
   getGroupBillingMultiplier,
 } from "./group-billing";
+import {
+  checkImageBackendApiHealth,
+  type ImageApiHealthResult,
+} from "./health-check";
 import { parseImportTokensText } from "./import-token-parser";
 import type {
   ChatCompletionsUpstreamMode,
@@ -1140,7 +1140,51 @@ function isLocalAbortTimeoutError(error?: string | null) {
   );
 }
 
+/**
+ * 识别"上游模型缺少 image_generation 工具 / 不具备出图能力"导致只回文字的错误。
+ *
+ * WHY 单列：这类响应往往以"抱歉…我无法…"开头，会被内容安全拒绝启发式
+ * （isApologyRefusal）误判为"用户内容被拒"，从而既不切换后端、也不惩罚后端，
+ * 导致请求当场失败、坏后端长期留在轮换里。但它本质是后端配错（模型没有图像
+ * 工具 / 环境未提供该工具），应当：可切换到别的后端 + 把该后端标记为 error。
+ *
+ * 为避免误伤"真正的内容拒绝"（如「图像生成请求被系统拒绝」），要求同时命中
+ * "image_generation 工具 / 图像生成工具"字样与"未提供/不可用"语义。
+ *
+ * @param error 上游或本站包装后的错误文本。
+ * @returns 是否为"后端缺少出图能力"类错误。
+ */
+export function isMissingImageToolBackendError(error?: string | null) {
+  const normalized = (error || "").toLowerCase();
+  const mentionsImageTool =
+    normalized.includes("图像生成工具") ||
+    (normalized.includes("image_generation") &&
+      (normalized.includes("工具") || normalized.includes("tool")));
+  if (!mentionsImageTool) return false;
+  return (
+    normalized.includes("未提供") ||
+    normalized.includes("没有提供") ||
+    normalized.includes("没有可调用") ||
+    normalized.includes("未提供可调用") ||
+    normalized.includes("无法调用") ||
+    normalized.includes("不可用") ||
+    normalized.includes("不支持") ||
+    normalized.includes("not available") ||
+    normalized.includes("isn't available") ||
+    normalized.includes("is not available") ||
+    normalized.includes("not provided") ||
+    normalized.includes("not enabled") ||
+    normalized.includes("does not have") ||
+    normalized.includes("doesn't have") ||
+    normalized.includes("no image_generation") ||
+    normalized.includes("unavailable")
+  );
+}
+
 function isUserRequestBackendError(error?: string | null) {
+  // 缺图像工具是后端能力问题（非用户内容拒绝）：放行去走"可切换 + 标记 error"，
+  // 否则会被下方 isApologyRefusal 误判成用户拒绝而当场失败、不切换。
+  if (isMissingImageToolBackendError(error)) return false;
   const normalized = (error || "").toLowerCase();
   return (
     isContentSafetyRejection(error) ||
@@ -1449,6 +1493,11 @@ async function classifyFailure(
   const normalized = (error || "").toLowerCase();
   if (isUserRequestBackendError(error)) {
     return {};
+  }
+  // 后端缺少出图能力（只回文字/无 image_generation 工具）：标记 error 踢出轮换，
+  // 与 isImageBackendSwitchableError 配合实现"本次切换到别的后端 + 后续不再选它"。
+  if (isMissingImageToolBackendError(error)) {
+    return { status: "error", cooldownUntil: null };
   }
   if (
     (await isUnrecoverableBackendError(error)) ||
@@ -6062,24 +6111,29 @@ export async function setImageBackendApiEnabled(input: {
 }
 
 /** 将测活失败结果格式化为中文，写入 lastError 供后台展示。 */
-function describeApiHealthFailure(result: UpstreamApiHealthResult): string {
+function describeImageHealthFailure(result: ImageApiHealthResult): string {
   switch (result.status) {
+    case "no_image":
+      return `测活：连接成功但未返回图片（${result.message}）`;
     case "auth_failed":
-      return `测活：密钥被拒绝（HTTP ${result.httpStatus ?? "?"}）`;
-    case "http_error":
-      return `测活：端点返回 HTTP ${result.httpStatus ?? "?"}`;
+      return `测活：密钥被拒绝（${result.message}）`;
+    case "unreachable":
+      return `测活：无法连接或超时（${result.message}）`;
     default:
-      return `测活：无法连接（${result.message}）`;
+      return `测活：出图失败（${result.message}）`;
   }
 }
 
 /**
- * 测活：对一个 API 直透后端发起只读探针，并把结果落到该成员的健康字段。
+ * 测活：对一个 API 直透后端发起一次真实最小生图请求，看是否真的返回图片，
+ * 并把结果落到该成员的健康字段。
  *
- * 成功：清空 lastError/cooldownUntil 并置 status="active"（手动确认其恢复）。
- * 失败：写入 lastError/lastErrorAt 供后台展示；鉴权失败额外置 status="error"
- * （密钥无效不可恢复，主动标红）；瞬时不可达/HTTP 错误不擅自下线，由管理员决定停用。
- * 不改动 success/fail 计数，避免污染调度器统计。
+ * 成功（真返回图片）：清空 lastError/cooldownUntil 并置 status="active"。
+ * 失败：写入 lastError/lastErrorAt 供后台展示。其中"出不了图（no_image）/密钥
+ * 失效（auth_failed）"属确定性不可用 → 置 status="error" 踢出轮换；瞬时不可达/
+ * 超时（unreachable）不擅自下线，仅记录，由管理员决定停用。
+ * 复用 generateImage（reportResult=false），不改动 success/fail 计数；但会真实
+ * 消耗上游 1 张图额度。
  *
  * @param id 目标 imageBackendApi 行 id。
  * @returns `{ id, name, result }`；成员不存在时抛错。
@@ -6087,7 +6141,7 @@ function describeApiHealthFailure(result: UpstreamApiHealthResult): string {
 export async function probeImageBackendApi(id: string): Promise<{
   id: string;
   name: string;
-  result: UpstreamApiHealthResult;
+  result: ImageApiHealthResult;
 }> {
   const [api] = await db
     .select({
@@ -6095,6 +6149,11 @@ export async function probeImageBackendApi(id: string): Promise<{
       name: imageBackendApi.name,
       baseUrl: imageBackendApi.baseUrl,
       apiKey: imageBackendApi.apiKey,
+      model: imageBackendApi.model,
+      useStream: imageBackendApi.useStream,
+      interfaceMode: imageBackendApi.interfaceMode,
+      imageUpstreamMode: imageBackendApi.imageUpstreamMode,
+      chatCompletionsUpstreamMode: imageBackendApi.chatCompletionsUpstreamMode,
     })
     .from(imageBackendApi)
     .where(eq(imageBackendApi.id, id))
@@ -6104,9 +6163,17 @@ export async function probeImageBackendApi(id: string): Promise<{
     throw new Error("API 后端不存在");
   }
 
-  const result = await probeUpstreamApi({
+  const result = await checkImageBackendApiHealth({
     baseUrl: api.baseUrl,
     apiKey: api.apiKey,
+    model: api.model,
+    useStream: api.useStream,
+    apiInterfaceMode: normalizeImageBackendApiInterfaceMode(api.interfaceMode),
+    imagesUpstreamMode: normalizeImagesUpstreamMode(api.imageUpstreamMode),
+    chatCompletionsUpstreamMode: normalizeChatCompletionsUpstreamMode(
+      api.chatCompletionsUpstreamMode
+    ),
+    backendType: "pool-api",
   });
 
   const now = new Date();
@@ -6122,12 +6189,14 @@ export async function probeImageBackendApi(id: string): Promise<{
       })
       .where(eq(imageBackendApi.id, id));
   } else {
+    const markError =
+      result.status === "no_image" || result.status === "auth_failed";
     await db
       .update(imageBackendApi)
       .set({
-        lastError: truncateError(describeApiHealthFailure(result)),
+        lastError: truncateError(describeImageHealthFailure(result)),
         lastErrorAt: now,
-        ...(result.status === "auth_failed" ? { status: "error" } : {}),
+        ...(markError ? { status: "error" } : {}),
         updatedAt: now,
       })
       .where(eq(imageBackendApi.id, id));

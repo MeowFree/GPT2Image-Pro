@@ -9,7 +9,8 @@ import { userApiConfig } from "@repo/database/schema";
 import { protectedAction } from "@repo/shared/safe-action";
 import { canUsePlanCapability } from "@repo/shared/subscription/services/plan-capabilities";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
-import { probeUpstreamApi } from "@repo/shared/upstream-health";
+
+import { checkImageBackendApiHealth } from "@/features/image-backend-pool/health-check";
 
 /**
  * 检查 URL 是否指向私有/内部网络地址
@@ -202,22 +203,27 @@ const apiTestSchema = z.object({
     .url("Use a valid HTTPS API base URL")
     .refine((url) => !isPrivateUrl(url), "Use a public HTTPS API base URL"),
   apiKey: z.string().trim().min(1, "API key is required"),
+  model: optionalTrimmedString,
 });
 
 /**
- * 测活：对用户填写（或已保存）的自定义 API 端点发起一次只读探针。
+ * 测活：对用户填写（或已保存）的自定义 API 端点发起一次真实最小生图请求，
+ * 看上游是否真的返回图片（而非仅探连通性）。
  *
- * 入参为当前表单值，便于"保存前先测"。能力门禁与 SSRF 防护齐备：
- * - 需 `customApi.configure` 能力，避免被当作 SSRF/端口扫描代理；
- * - baseUrl 经 `isPrivateUrl` 拒绝私网，底层探针再经 DNS pin 二次兜底。
- * 仅探测、不写库；返回 `UpstreamApiHealthResult` 由前端本地化展示。
+ * 入参为当前表单值，便于"保存前先测"。能力门禁与 SSRF 防护：
+ * - 需 `customApi.configure` 能力，避免被当作 SSRF/扫描代理；
+ * - baseUrl 经 `isPrivateUrl` 拒绝私网（与真实出图同一防护基线）。
+ * 复用真实出图原语（reportResult=false，不计费/不落库/不改统计），但会真实消耗
+ * 上游 1 张图额度；返回结构化结果由前端本地化展示。
  */
 export const testApiConfig = withApiConfigAction("test")
   .schema(apiTestSchema)
   .action(async ({ parsedInput, ctx }) => {
     await ensureCustomApiAllowed(ctx.userId);
-    return probeUpstreamApi({
+    return checkImageBackendApiHealth({
       baseUrl: parsedInput.baseUrl,
       apiKey: parsedInput.apiKey,
+      model: parsedInput.model ?? null,
+      backendType: "user-api",
     });
   });

@@ -1300,20 +1300,18 @@ export function ImageBackendPoolAdminPanel({
       const result = data?.result;
       const name = data?.name ?? "";
       if (result?.ok) {
-        const models =
-          result.modelCount !== undefined
-            ? `，${result.modelCount} 个模型`
-            : "";
         toast.success(
-          `测活成功：${name} 连接正常（${result.latencyMs}ms${models}）`
+          `测活成功：${name} 真实返回了图片（${result.latencyMs}ms）`
         );
       } else {
         const detail =
-          result?.status === "auth_failed"
-            ? `密钥被拒绝（HTTP ${result.httpStatus ?? "?"}）`
-            : result?.status === "http_error"
-              ? `端点返回 HTTP ${result.httpStatus ?? "?"}`
-              : "无法连接到该端点";
+          result?.status === "no_image"
+            ? "连接成功但未返回图片（可能模型不支持出图）"
+            : result?.status === "auth_failed"
+              ? "密钥被拒绝"
+              : result?.status === "unreachable"
+                ? "无法连接或超时"
+                : "出图失败";
         toast.error(`测活失败：${name} ${detail}`);
       }
       reload();

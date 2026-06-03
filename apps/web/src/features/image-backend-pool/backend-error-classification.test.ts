@@ -6,6 +6,11 @@ async function loadClassifier() {
   return service.isImageBackendSwitchableError;
 }
 
+async function loadService() {
+  process.env.DATABASE_URL ||= "postgres://test:test@localhost:5432/test";
+  return import("./service");
+}
+
 describe("image backend error classification", () => {
   it("treats transient connection termination as switchable", async () => {
     const isImageBackendSwitchableError = await loadClassifier();
@@ -72,6 +77,48 @@ describe("image backend error classification", () => {
         "Upstream Responses API returned HTTP 400: Error while downloading file. Upstream status code: 502. | invalid_value | invalid_request_error"
       )
     ).toBe(false);
+  });
+
+  it("switches accounts when the backend lacks an image_generation tool", async () => {
+    const isImageBackendSwitchableError = await loadClassifier();
+
+    // 上游模型没有图像工具、只回文字：应可切换到别的后端（而非当场失败）。
+    expect(
+      isImageBackendSwitchableError(
+        "Upstream returned no image output: 抱歉，当前环境未提供可调用的 image_generation 图像生成工具，因此我无法直接返回生成后的图片。"
+      )
+    ).toBe(true);
+    expect(
+      isImageBackendSwitchableError(
+        "Upstream returned no image output: Sorry, the image_generation tool is not available in this environment."
+      )
+    ).toBe(true);
+  });
+
+  it("classifies missing image tool only when capability is absent", async () => {
+    const { isMissingImageToolBackendError } = await loadService();
+
+    // 命中：缺图像工具/不可用。
+    expect(
+      isMissingImageToolBackendError(
+        "抱歉，当前环境未提供可调用的 image_generation 图像生成工具。"
+      )
+    ).toBe(true);
+    expect(
+      isMissingImageToolBackendError(
+        "the image_generation tool is not available"
+      )
+    ).toBe(true);
+    // 不命中：真正的内容拒绝（无图像工具字样），保持用户拒绝语义、不切换。
+    expect(
+      isMissingImageToolBackendError(
+        "抱歉，图像生成请求被系统拒绝了，当前无法返回生成图。"
+      )
+    ).toBe(false);
+    expect(
+      isMissingImageToolBackendError("Upstream returned no image output: 已生成图片。")
+    ).toBe(false);
+    expect(isMissingImageToolBackendError("I can't help with that.")).toBe(false);
   });
 
   it("does not switch accounts for user safety rejections", async () => {

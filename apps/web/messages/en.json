@@ -743,14 +743,14 @@
       "removed": "API configuration removed",
       "updateFailed": "Failed to update",
       "requiresPaid": "Custom API requires Starter plan or higher",
-      "test": "Test connection",
+      "test": "Test image",
       "testing": "Testing…",
       "testNeedsInput": "Enter the API base URL and key first",
-      "testOk": "Connection OK ({latency}ms)",
-      "testOkWithModels": "Connection OK ({latency}ms, {count} models)",
-      "testAuthFailed": "API key rejected (HTTP {status})",
-      "testHttpError": "Endpoint returned HTTP {status}",
-      "testUnreachable": "Endpoint unreachable"
+      "testOk": "Health check passed: image returned ({latency}ms)",
+      "testNoImage": "Connected but no image returned (model may not support image generation)",
+      "testAuthFailed": "API key rejected",
+      "testError": "Image generation failed",
+      "testUnreachable": "Endpoint unreachable or timed out"
     },
     "general": {
       "title": "General",
