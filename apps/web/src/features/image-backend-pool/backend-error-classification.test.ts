@@ -102,6 +102,20 @@ describe("image backend error classification", () => {
     ).toBe(false);
   });
 
+  it("treats resolution/size and invalid-image errors as user errors (not switchable)", async () => {
+    const isImageBackendSwitchableError = await loadClassifier();
+
+    for (const err of [
+      "Upstream Images API returned HTTP 400: Invalid mask image format - mask size does not match image size | invalid_mask_image_format",
+      "Upstream Responses API returned HTTP 400: unsupported size 1234x5678",
+      "Upstream Responses API returned HTTP 400: invalid resolution",
+      "Upstream Images API returned HTTP 400: not a valid image",
+      "Upstream Images API returned HTTP 400: unsupported image format",
+    ]) {
+      expect(isImageBackendSwitchableError(err)).toBe(false);
+    }
+  });
+
   it("marks image-generation-disabled backends (403 permission) switchable and as error", async () => {
     const svc = await loadService();
     const err =

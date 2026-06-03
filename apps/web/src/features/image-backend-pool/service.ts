@@ -1251,6 +1251,23 @@ function isUserRequestBackendError(error?: string | null) {
     normalized.includes("unable to download content from the provided url") ||
     normalized.includes("file urls cannot be larger than") ||
     normalized.includes("transparent background is not supported") ||
+    // 分辨率/尺寸不对（用户给的 size/分辨率/蒙版尺寸不符）：切后端也救不了，算用户错。
+    normalized.includes("unsupported size") ||
+    normalized.includes("invalid size") ||
+    normalized.includes("size is not supported") ||
+    normalized.includes("size not supported") ||
+    normalized.includes("invalid resolution") ||
+    normalized.includes("unsupported resolution") ||
+    normalized.includes("resolution is not supported") ||
+    normalized.includes("invalid dimensions") ||
+    normalized.includes("unsupported dimensions") ||
+    normalized.includes("does not match image size") ||
+    normalized.includes("invalid_mask_image_format") ||
+    // 无效图像（用户提供的图片本身无法识别/格式不对）：同理算用户错。
+    normalized.includes("not a valid image") ||
+    normalized.includes("invalid image data") ||
+    normalized.includes("invalid image format") ||
+    normalized.includes("unsupported image format") ||
     // 我方为算 token 下载图片失败（failed to download file）默认算用户错（坏链接/非图片/403/404），
     // 但若是 429/限流/超时/5xx 等瞬时原因（典型：上游为算 token 下载我方图片被限流），
     // 不算用户错，放行给 isRecoverableBackendError 走"切后端 + 冷却"。
