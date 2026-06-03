@@ -742,7 +742,15 @@
       "saved": "API configuration saved",
       "removed": "API configuration removed",
       "updateFailed": "Failed to update",
-      "requiresPaid": "Custom API requires Starter plan or higher"
+      "requiresPaid": "Custom API requires Starter plan or higher",
+      "test": "Test connection",
+      "testing": "Testing…",
+      "testNeedsInput": "Enter the API base URL and key first",
+      "testOk": "Connection OK ({latency}ms)",
+      "testOkWithModels": "Connection OK ({latency}ms, {count} models)",
+      "testAuthFailed": "API key rejected (HTTP {status})",
+      "testHttpError": "Endpoint returned HTTP {status}",
+      "testUnreachable": "Endpoint unreachable"
     },
     "general": {
       "title": "General",

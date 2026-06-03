@@ -70,6 +70,7 @@
     "./components/og-image-template": "./src/components/components/og-image-template.tsx",
     "./security/dns-pin": "./src/security/dns-pin.ts",
     "./security/ip-validation": "./src/security/ip-validation.ts",
+    "./upstream-health": "./src/upstream-health/index.ts",
     "./uol": "./src/uol/index.ts",
     "./uol/operations": "./src/uol/operations/index.ts",
     "./mcp": "./src/mcp/index.ts",

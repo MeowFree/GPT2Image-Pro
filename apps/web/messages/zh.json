@@ -742,7 +742,15 @@
       "saved": "API 配置已保存",
       "removed": "API 配置已删除",
       "updateFailed": "更新失败",
-      "requiresPaid": "自定义 API 需要入门版或更高套餐"
+      "requiresPaid": "自定义 API 需要入门版或更高套餐",
+      "test": "测试连接",
+      "testing": "测试中…",
+      "testNeedsInput": "请先填写 API 地址和密钥",
+      "testOk": "连接正常（{latency}ms）",
+      "testOkWithModels": "连接正常（{latency}ms，{count} 个模型）",
+      "testAuthFailed": "密钥被拒绝（HTTP {status}）",
+      "testHttpError": "端点返回 HTTP {status}",
+      "testUnreachable": "无法连接到该端点"
     },
     "general": {
       "title": "基本信息",

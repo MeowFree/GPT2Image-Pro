@@ -14,6 +14,7 @@ import {
 } from "@repo/ui/components/select";
 import { Switch } from "@repo/ui/components/switch";
 import {
+  Activity,
   AlertTriangle,
   ChevronDown,
   ExternalLink,
@@ -29,6 +30,7 @@ import {
   deleteApiConfig,
   getApiConfig,
   saveApiConfig,
+  testApiConfig,
   toggleApiConfig,
 } from "../actions";
 
@@ -109,6 +111,46 @@ export function ApiConfigForm() {
     },
   });
 
+  // 测活：把探测结果按本地化文案提示给用户（成功/密钥被拒/HTTP 错误/不可达）。
+  const { execute: executeTest, isPending: isTesting } = useAction(
+    testApiConfig,
+    {
+      onSuccess: ({ data }) => {
+        if (!data) {
+          toast.error(t("apiConfig.testUnreachable"));
+          return;
+        }
+        if (data.ok) {
+          toast.success(
+            data.modelCount !== undefined
+              ? t("apiConfig.testOkWithModels", {
+                  latency: data.latencyMs,
+                  count: data.modelCount,
+                })
+              : t("apiConfig.testOk", { latency: data.latencyMs })
+          );
+          return;
+        }
+        if (data.status === "auth_failed") {
+          toast.error(
+            t("apiConfig.testAuthFailed", { status: data.httpStatus ?? 0 })
+          );
+        } else if (data.status === "http_error") {
+          toast.error(
+            t("apiConfig.testHttpError", { status: data.httpStatus ?? 0 })
+          );
+        } else {
+          toast.error(t("apiConfig.testUnreachable"));
+        }
+      },
+      onError: (err) => {
+        toast.error(
+          getActionErrorMessage(err.error, t("apiConfig.testUnreachable"))
+        );
+      },
+    }
+  );
+
   useEffect(() => {
     const loadConfig = async () => {
       try {
@@ -157,6 +199,18 @@ export function ApiConfigForm() {
       useStream,
       chatCompletionsUpstreamMode,
     });
+  };
+
+  const handleTest = () => {
+    if (!customApiAllowed) {
+      toast.error(t("apiConfig.requiresPaid"));
+      return;
+    }
+    if (!baseUrl || !apiKey) {
+      toast.error(t("apiConfig.testNeedsInput"));
+      return;
+    }
+    executeTest({ baseUrl, apiKey });
   };
 
   if (loading) {
@@ -322,6 +376,21 @@ export function ApiConfigForm() {
             >
               {isSaving && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
               {t("apiConfig.save")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTest}
+              disabled={
+                !customApiAllowed || !baseUrl || !apiKey || isTesting
+              }
+            >
+              {isTesting ? (
+                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+              ) : (
+                <Activity className="mr-2 h-3 w-3" />
+              )}
+              {isTesting ? t("apiConfig.testing") : t("apiConfig.test")}
             </Button>
             {hasConfig && (
               <Button

@@ -19,6 +19,10 @@ import {
 } from "@repo/shared/config/subscription-plan";
 import { validateNestedGroupConfig } from "@repo/shared/image-backend/nested-groups";
 import { logWarn } from "@repo/shared/logger";
+import {
+  probeUpstreamApi,
+  type UpstreamApiHealthResult,
+} from "@repo/shared/upstream-health";
 import { canUsePlanCapability } from "@repo/shared/subscription/services/plan-capabilities";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import {
@@ -6038,6 +6042,98 @@ export async function upsertImageBackendApi(input: UpsertApiInput) {
     apiKey: input.apiKey,
   });
   return id;
+}
+
+/**
+ * 启用/停用一个 API 直透后端（"是否启用"快速开关）。
+ *
+ * @param input.id 目标 imageBackendApi 行 id。
+ * @param input.isEnabled 目标启用态。
+ * @returns void。仅更新 isEnabled 与 updatedAt；停用后调度器不再选中该成员。
+ */
+export async function setImageBackendApiEnabled(input: {
+  id: string;
+  isEnabled: boolean;
+}): Promise<void> {
+  await db
+    .update(imageBackendApi)
+    .set({ isEnabled: input.isEnabled, updatedAt: new Date() })
+    .where(eq(imageBackendApi.id, input.id));
+}
+
+/** 将测活失败结果格式化为中文，写入 lastError 供后台展示。 */
+function describeApiHealthFailure(result: UpstreamApiHealthResult): string {
+  switch (result.status) {
+    case "auth_failed":
+      return `测活：密钥被拒绝（HTTP ${result.httpStatus ?? "?"}）`;
+    case "http_error":
+      return `测活：端点返回 HTTP ${result.httpStatus ?? "?"}`;
+    default:
+      return `测活：无法连接（${result.message}）`;
+  }
+}
+
+/**
+ * 测活：对一个 API 直透后端发起只读探针，并把结果落到该成员的健康字段。
+ *
+ * 成功：清空 lastError/cooldownUntil 并置 status="active"（手动确认其恢复）。
+ * 失败：写入 lastError/lastErrorAt 供后台展示；鉴权失败额外置 status="error"
+ * （密钥无效不可恢复，主动标红）；瞬时不可达/HTTP 错误不擅自下线，由管理员决定停用。
+ * 不改动 success/fail 计数，避免污染调度器统计。
+ *
+ * @param id 目标 imageBackendApi 行 id。
+ * @returns `{ id, name, result }`；成员不存在时抛错。
+ */
+export async function probeImageBackendApi(id: string): Promise<{
+  id: string;
+  name: string;
+  result: UpstreamApiHealthResult;
+}> {
+  const [api] = await db
+    .select({
+      id: imageBackendApi.id,
+      name: imageBackendApi.name,
+      baseUrl: imageBackendApi.baseUrl,
+      apiKey: imageBackendApi.apiKey,
+    })
+    .from(imageBackendApi)
+    .where(eq(imageBackendApi.id, id))
+    .limit(1);
+
+  if (!api) {
+    throw new Error("API 后端不存在");
+  }
+
+  const result = await probeUpstreamApi({
+    baseUrl: api.baseUrl,
+    apiKey: api.apiKey,
+  });
+
+  const now = new Date();
+  if (result.ok) {
+    await db
+      .update(imageBackendApi)
+      .set({
+        status: "active",
+        lastError: null,
+        lastErrorAt: null,
+        cooldownUntil: null,
+        updatedAt: now,
+      })
+      .where(eq(imageBackendApi.id, id));
+  } else {
+    await db
+      .update(imageBackendApi)
+      .set({
+        lastError: truncateError(describeApiHealthFailure(result)),
+        lastErrorAt: now,
+        ...(result.status === "auth_failed" ? { status: "error" } : {}),
+        updatedAt: now,
+      })
+      .where(eq(imageBackendApi.id, id));
+  }
+
+  return { id: api.id, name: api.name, result };
 }
 
 export async function deleteImageBackendMembers(input: {

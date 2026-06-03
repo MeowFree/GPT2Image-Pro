@@ -35,6 +35,7 @@ import {
 import { Textarea } from "@repo/ui/components/textarea";
 import { cn } from "@repo/ui/utils";
 import {
+  Activity,
   Ban,
   ChevronLeft,
   ChevronRight,
@@ -79,8 +80,10 @@ import {
   saveImageBackendAccountAction,
   saveImageBackendApiAction,
   saveImageBackendGroupAction,
+  setImageBackendApiEnabledAction,
   setSub2ApiAutoSyncTaskEnabledAction,
   setSub2ApiAutoSyncTaskOverwriteLocalUnavailableStateAction,
+  testImageBackendApiAction,
   updateSub2ApiAutoSyncTaskOptionsAction,
 } from "./actions";
 import { parseImportTokensText } from "./import-token-parser";
@@ -1276,6 +1279,50 @@ export function ImageBackendPoolAdminPanel({
         toast.error(error.serverError || "保存 API 后端失败"),
     }
   );
+
+  const { execute: setApiEnabled, isPending: isSettingApiEnabled } = useAction(
+    setImageBackendApiEnabledAction,
+    {
+      onSuccess: () => {
+        toast.success("API 后端状态已更新");
+        reload();
+      },
+      onError: ({ error }) =>
+        toast.error(error.serverError || "更新 API 后端状态失败"),
+    }
+  );
+
+  // 测活：记录正在测试的成员 id，仅该行显示加载态；结果按状态提示并刷新列表。
+  const [testingApiId, setTestingApiId] = useState<string | null>(null);
+  const { execute: testApi } = useAction(testImageBackendApiAction, {
+    onSuccess: ({ data }) => {
+      setTestingApiId(null);
+      const result = data?.result;
+      const name = data?.name ?? "";
+      if (result?.ok) {
+        const models =
+          result.modelCount !== undefined
+            ? `，${result.modelCount} 个模型`
+            : "";
+        toast.success(
+          `测活成功：${name} 连接正常（${result.latencyMs}ms${models}）`
+        );
+      } else {
+        const detail =
+          result?.status === "auth_failed"
+            ? `密钥被拒绝（HTTP ${result.httpStatus ?? "?"}）`
+            : result?.status === "http_error"
+              ? `端点返回 HTTP ${result.httpStatus ?? "?"}`
+              : "无法连接到该端点";
+        toast.error(`测活失败：${name} ${detail}`);
+      }
+      reload();
+    },
+    onError: ({ error }) => {
+      setTestingApiId(null);
+      toast.error(error.serverError || "测活失败");
+    },
+  });
 
   const { executeAsync: runSub2ApiManualSync } = useAction(
     runSub2ApiManualSyncAction
@@ -3218,6 +3265,18 @@ export function ImageBackendPoolAdminPanel({
                   }
                 />
               </div>
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <Label>是否启用</Label>
+                <Switch
+                  checked={apiForm.isEnabled}
+                  onCheckedChange={(checked) =>
+                    setApiForm((current) => ({
+                      ...current,
+                      isEnabled: checked,
+                    }))
+                  }
+                />
+              </div>
               <Button
                 className="w-full"
                 onClick={() => saveApi(apiForm)}
@@ -3300,9 +3359,48 @@ export function ImageBackendPoolAdminPanel({
                       </p>
                     )}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {!readOnly && (
                       <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={testingApiId === api.id}
+                          onClick={() => {
+                            setTestingApiId(api.id);
+                            testApi({ id: api.id });
+                          }}
+                        >
+                          {testingApiId === api.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Activity className="mr-2 h-4 w-4" />
+                          )}
+                          测活
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isSettingApiEnabled}
+                          onClick={() =>
+                            setApiEnabled({
+                              id: api.id,
+                              isEnabled: !api.isEnabled,
+                            })
+                          }
+                        >
+                          {api.isEnabled ? (
+                            <>
+                              <Ban className="mr-2 h-4 w-4" />
+                              停用
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="mr-2 h-4 w-4" />
+                              启用
+                            </>
+                          )}
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"

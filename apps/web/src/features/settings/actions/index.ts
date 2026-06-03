@@ -4,6 +4,7 @@ export {
   deleteApiConfig,
   getApiConfig,
   saveApiConfig,
+  testApiConfig,
   toggleApiConfig,
 } from "./api-config";
 export { deleteAccountAction } from "./delete-account";

@@ -28,10 +28,12 @@ import {
   listSelectableImageBackendGroups,
   listSub2ApiAutoSyncTasksForAdmin,
   listSub2ApiSourceGroups,
+  probeImageBackendApi,
   refreshImageBackendAccountInfo,
   refreshImageBackendAccountsInfo,
   runSub2ApiManualSync,
   runSub2ApiAutoSyncTaskNow,
+  setImageBackendApiEnabled,
   setSub2ApiAutoSyncTaskEnabled,
   setSub2ApiAutoSyncTaskOverwriteLocalUnavailableState,
   setUserImageBackendPreference,
@@ -546,6 +548,29 @@ export const saveImageBackendApiAction = withImageBackendPoolAdminAction(
       status: parsedInput.status || "active",
     });
     return { success: true, id };
+  });
+
+export const setImageBackendApiEnabledAction = withImageBackendPoolAdminAction(
+  "setApiEnabled"
+)
+  .schema(
+    z.object({
+      id: z.string().trim().min(1),
+      isEnabled: z.boolean(),
+    })
+  )
+  .action(async ({ parsedInput }) => {
+    await setImageBackendApiEnabled(parsedInput);
+    return { success: true };
+  });
+
+export const testImageBackendApiAction = withImageBackendPoolAdminAction(
+  "testApi"
+)
+  .schema(z.object({ id: z.string().trim().min(1) }))
+  .action(async ({ parsedInput }) => {
+    const probe = await probeImageBackendApi(parsedInput.id);
+    return { success: true, ...probe };
   });
 
 export const deleteImageBackendMemberAction = withImageBackendPoolAdminAction(

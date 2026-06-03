@@ -9,6 +9,7 @@ import { userApiConfig } from "@repo/database/schema";
 import { protectedAction } from "@repo/shared/safe-action";
 import { canUsePlanCapability } from "@repo/shared/subscription/services/plan-capabilities";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
+import { probeUpstreamApi } from "@repo/shared/upstream-health";
 
 /**
  * 检查 URL 是否指向私有/内部网络地址
@@ -192,4 +193,31 @@ export const toggleApiConfig = withApiConfigAction("toggle")
       })
       .where(eq(userApiConfig.userId, ctx.userId));
     return { success: true };
+  });
+
+const apiTestSchema = z.object({
+  baseUrl: z
+    .string()
+    .trim()
+    .url("Use a valid HTTPS API base URL")
+    .refine((url) => !isPrivateUrl(url), "Use a public HTTPS API base URL"),
+  apiKey: z.string().trim().min(1, "API key is required"),
+});
+
+/**
+ * 测活：对用户填写（或已保存）的自定义 API 端点发起一次只读探针。
+ *
+ * 入参为当前表单值，便于"保存前先测"。能力门禁与 SSRF 防护齐备：
+ * - 需 `customApi.configure` 能力，避免被当作 SSRF/端口扫描代理；
+ * - baseUrl 经 `isPrivateUrl` 拒绝私网，底层探针再经 DNS pin 二次兜底。
+ * 仅探测、不写库；返回 `UpstreamApiHealthResult` 由前端本地化展示。
+ */
+export const testApiConfig = withApiConfigAction("test")
+  .schema(apiTestSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    await ensureCustomApiAllowed(ctx.userId);
+    return probeUpstreamApi({
+      baseUrl: parsedInput.baseUrl,
+      apiKey: parsedInput.apiKey,
+    });
   });
