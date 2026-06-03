@@ -79,6 +79,40 @@ describe("image backend error classification", () => {
     ).toBe(false);
   });
 
+  it("treats token-count download 429 as switchable, not a user error", async () => {
+    const isImageBackendSwitchableError = await loadClassifier();
+
+    // count_token 失败：上游为算 token 下载我方图片被限流(429)，属瞬时，应可切后端。
+    expect(
+      isImageBackendSwitchableError(
+        "Upstream Responses API returned HTTP 500: error getting file type: failed to download file, status code: 429 (request id: x) | count_token_failed | new_api_error"
+      )
+    ).toBe(true);
+    // 5xx/超时同理。
+    expect(
+      isImageBackendSwitchableError(
+        "error getting file type: failed to download file, status code: 522 | count_token_failed"
+      )
+    ).toBe(true);
+    // 但客户端原因(403/坏链)仍算用户错、不切换。
+    expect(
+      isImageBackendSwitchableError(
+        "error getting file type: failed to download file, status code: 403 | count_token_failed"
+      )
+    ).toBe(false);
+  });
+
+  it("marks image-generation-disabled backends (403 permission) switchable and as error", async () => {
+    const svc = await loadService();
+    const err =
+      "Upstream Responses API returned HTTP 403: Image generation is not enabled for this group | permission_error";
+
+    expect(svc.isImageGenDisabledBackendError(err)).toBe(true);
+    expect(svc.isImageBackendSwitchableError(err)).toBe(true);
+    const failure = await svc.classifyFailure(err);
+    expect(failure.status).toBe("error");
+  });
+
   it("switches accounts when the backend lacks an image_generation tool", async () => {
     const isImageBackendSwitchableError = await loadClassifier();
 

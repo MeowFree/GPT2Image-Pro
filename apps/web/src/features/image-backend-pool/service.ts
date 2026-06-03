@@ -1107,7 +1107,10 @@ function isRecoverableBackendError(error?: string | null) {
     normalized.includes("overloaded") ||
     normalized.includes("temporarily unavailable") ||
     normalized.includes("temporary unavailable") ||
-    normalized.includes("service unavailable")
+    normalized.includes("service unavailable") ||
+    // 我方算 token 下载图片因 429/限流/超时/5xx 失败属瞬时，可切后端重试。
+    (isTokenCountDownloadFailure(normalized) &&
+      isTransientFileDownloadFailure(normalized))
   );
 }
 
@@ -1195,6 +1198,40 @@ function isDeadRelayBackendError(error?: string | null) {
   );
 }
 
+// "failed to download file" 专指我方（如上游 new-api 为算 token）下载图片失败，
+// 与 "error while downloading file"（上游下载用户提供的 url）区分：
+// 后者是用户链接问题（终态、不切换），前者若是 429/超时/5xx 则属瞬时、可切后端。
+function isTokenCountDownloadFailure(normalized: string) {
+  return normalized.includes("failed to download file");
+}
+
+// 文件下载失败是否属于瞬时/可重试原因（429/限流/超时/5xx），而非客户端坏链接。
+function isTransientFileDownloadFailure(normalized: string) {
+  return (
+    normalized.includes("429") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("too many requests") ||
+    normalized.includes("timeout") ||
+    normalized.includes("timed out") ||
+    /status code:\s*5\d\d/.test(normalized)
+  );
+}
+
+/**
+ * 识别"该后端/分组未开通图像生成"(HTTP 403 permission_error)的确定性坏配置错误。
+ * 不会自愈，应可切换到别的后端 + 把该后端标记为 error 踢出轮换，
+ * 等管理员开通/测活后再启用，避免请求一直被路由到坏后端而当场失败。
+ */
+export function isImageGenDisabledBackendError(error?: string | null) {
+  const normalized = (error || "").toLowerCase();
+  return (
+    normalized.includes("image generation is not enabled") ||
+    normalized.includes("image_generation is not enabled") ||
+    (normalized.includes("permission_error") &&
+      normalized.includes("image generation"))
+  );
+}
+
 function isUserRequestBackendError(error?: string | null) {
   // 缺图像工具是后端能力问题（非用户内容拒绝）：放行去走"可切换 + 标记 error"，
   // 否则会被下方 isApologyRefusal 误判成用户拒绝而当场失败、不切换。
@@ -1212,9 +1249,13 @@ function isUserRequestBackendError(error?: string | null) {
     ) ||
     normalized.includes("error while downloading file") ||
     normalized.includes("unable to download content from the provided url") ||
-    normalized.includes("failed to download file") ||
     normalized.includes("file urls cannot be larger than") ||
-    normalized.includes("transparent background is not supported")
+    normalized.includes("transparent background is not supported") ||
+    // 我方为算 token 下载图片失败（failed to download file）默认算用户错（坏链接/非图片/403/404），
+    // 但若是 429/限流/超时/5xx 等瞬时原因（典型：上游为算 token 下载我方图片被限流），
+    // 不算用户错，放行给 isRecoverableBackendError 走"切后端 + 冷却"。
+    (isTokenCountDownloadFailure(normalized) &&
+      !isTransientFileDownloadFailure(normalized))
   );
 }
 
@@ -1224,7 +1265,8 @@ export function isImageBackendSwitchableError(error?: string | null) {
       !isUserRequestBackendError(error) &&
       !isLocalAbortTimeoutError(error) &&
       (isRecoverableBackendError(error) ||
-        isInvalidBackendCredentialError(error))
+        isInvalidBackendCredentialError(error) ||
+        isImageGenDisabledBackendError(error))
   );
 }
 
@@ -1494,7 +1536,7 @@ async function getBackendCooldownMinutes(
   return await getRuntimeSettingNumber(key, defaultMinutes, { positive: true });
 }
 
-async function classifyFailure(
+export async function classifyFailure(
   error?: string | null,
   input?: Pick<
     ImageBackendReportResultInput,
@@ -1515,6 +1557,10 @@ async function classifyFailure(
   }
   // 中转坏掉（无 token / 返回 HTML）：确定性不可用，按用户判定升级为 error 踢出。
   if (isDeadRelayBackendError(error)) {
+    return { status: "error", cooldownUntil: null };
+  }
+  // 该后端/分组未开通图像生成(403 permission)：确定性坏配置，标记 error 踢出轮换。
+  if (isImageGenDisabledBackendError(error)) {
     return { status: "error", cooldownUntil: null };
   }
   if (
