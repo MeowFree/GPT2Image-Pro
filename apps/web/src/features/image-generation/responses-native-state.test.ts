@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getInputImageUrl } from "./input-image-url";
 import {
   buildResponsesImageEditRequest,
   buildResponsesImageGenerationRequest,
@@ -23,7 +24,6 @@ import {
 import { extractResponsesImageCallBase64 } from "./responses-output";
 import { normalizeResponsesImageRequestBody } from "./responses-request-normalizer";
 import { extractResponsesTokenUsage } from "./responses-usage";
-import { getInputImageUrl } from "./input-image-url";
 import type {
   ApiConfig,
   ChatHistoryMessage,
@@ -35,8 +35,8 @@ vi.mock("@repo/shared/system-settings", () => ({
   getRuntimeSettingBoolean: vi.fn(async (key: string, fallback = false) =>
     key === "IMAGE_RESPONSES_PREVIOUS_RESPONSE_ENABLED" ? true : fallback
   ),
-  getRuntimeSettingNumber: vi.fn(async (_key: string, fallback: number) =>
-    fallback
+  getRuntimeSettingNumber: vi.fn(
+    async (_key: string, fallback: number) => fallback
   ),
   getRuntimeSettingString: vi.fn(async () => ""),
 }));
@@ -142,13 +142,40 @@ describe("getInputImageUrl", () => {
     ).toBe("data:image/png;base64,aW1hZ2UtYnl0ZXM=");
   });
 
-  it("keeps already public input URLs", () => {
+  it("inlines external input URLs as base64 when bytes are available", () => {
+    // 第三方外链不再透传给上游（上游下载外链会被图床限流 429）；有字节即内联。
     expect(
       getInputImageUrl({
         ...testImage,
         url: "https://cdn.example.com/source.png",
       })
-    ).toBe("https://cdn.example.com/source.png");
+    ).toBe("data:image/png;base64,aW1hZ2UtYnl0ZXM=");
+  });
+
+  it("passes through first-party storage URLs without storageKey", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.example.test";
+    process.env.BETTER_AUTH_SECRET = "test-secret";
+
+    const firstParty =
+      "https://app.example.test/api/storage/generations/user/requests/ref.png?sig=a&exp=1";
+    expect(
+      getInputImageUrl({
+        ...testImage,
+        url: firstParty,
+      })
+    ).toBe(firstParty);
+  });
+
+  it("falls back to the external URL when no bytes are available", () => {
+    // 历史图等无字节场景：无法 base64，best-effort 透传原外链。
+    expect(
+      getInputImageUrl({
+        data: Buffer.alloc(0),
+        name: "history.png",
+        type: "image/png",
+        url: "https://cdn.example.com/history.png",
+      })
+    ).toBe("https://cdn.example.com/history.png");
   });
 });
 
@@ -244,20 +271,26 @@ describe("Responses native state request planning", () => {
           "role" in message &&
           message.role === "user" &&
           message.content.some(
-            (part) => part.type === "input_text" && part.text === "make a poster"
+            (part) =>
+              part.type === "input_text" && part.text === "make a poster"
           )
       )
     ).toBe(true);
   });
 
   it("builds fallback request by clearing previous_response_id", () => {
-    const fallbackInput = buildResponsesInput("retry with history", undefined, undefined, [
-      { role: "user", text: "original request" },
-    ]);
+    const fallbackInput = buildResponsesInput(
+      "retry with history",
+      undefined,
+      undefined,
+      [{ role: "user", text: "original request" }]
+    );
     const request = buildPreviousResponseFallbackRequestBody(
       {
         model: "gpt-5.4",
-        input: [{ role: "user", content: [{ type: "input_text", text: "retry" }] }],
+        input: [
+          { role: "user", content: [{ type: "input_text", text: "retry" }] },
+        ],
         previous_response_id: "resp_invalid",
         store: true,
       },
@@ -520,7 +553,7 @@ describe("Responses image output compatibility", () => {
 
 describe("Responses image references", () => {
   it("turns current <ref id> references into real input_image content", () => {
-    const content = buildCurrentResponsesContent("use this <ref id=\"hero\" />", [
+    const content = buildCurrentResponsesContent('use this <ref id="hero" />', [
       testImage,
     ]);
 
@@ -543,32 +576,47 @@ describe("Responses image references", () => {
   });
 
   it("uses signed temporary URLs for current uploaded images when available", () => {
-    const content = buildCurrentResponsesContent("make variants", [
-      {
-        ...testImage,
-        url: "https://app.example.test/api/storage/generations/user/requests/ref.png?sig=old&exp=1",
-        storageBucket: "generations",
-        storageKey: "user/requests/ref.png",
-      },
-    ]);
+    const previousAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const previousSecret = process.env.BETTER_AUTH_SECRET;
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.example.test";
+    process.env.BETTER_AUTH_SECRET = "test-secret";
+    try {
+      const content = buildCurrentResponsesContent("make variants", [
+        {
+          ...testImage,
+          url: "https://app.example.test/api/storage/generations/user/requests/ref.png?sig=old&exp=1",
+          storageBucket: "generations",
+          storageKey: "user/requests/ref.png",
+        },
+      ]);
 
-    expect(content).toContainEqual({
-      type: "input_image",
-      image_url:
-        "https://app.example.test/api/storage/generations/user/requests/ref.png?sig=old&exp=1",
-    });
-    expect(
-      content.some(
-        (part) =>
-          part.type === "input_image" &&
-          typeof part.image_url === "string" &&
-          part.image_url.startsWith("data:image/")
-      )
-    ).toBe(false);
+      // 有 storageKey 时以新签名站内 URL（第一方）发送，绝不内联 base64。
+      const imagePart = content.find((part) => part.type === "input_image");
+      expect(
+        imagePart?.type === "input_image" &&
+          typeof imagePart.image_url === "string" &&
+          imagePart.image_url.startsWith(
+            "https://app.example.test/api/storage/generations/user/requests/ref.png?sig="
+          )
+      ).toBe(true);
+      expect(
+        content.some(
+          (part) =>
+            part.type === "input_image" &&
+            typeof part.image_url === "string" &&
+            part.image_url.startsWith("data:image/")
+        )
+      ).toBe(false);
+    } finally {
+      if (previousAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+      else process.env.NEXT_PUBLIC_APP_URL = previousAppUrl;
+      if (previousSecret === undefined) delete process.env.BETTER_AUTH_SECRET;
+      else process.env.BETTER_AUTH_SECRET = previousSecret;
+    }
   });
 
   it("uses image file IDs as real input_image references", () => {
-    const content = buildCurrentResponsesContent("edit <ref id=\"file\" />", [
+    const content = buildCurrentResponsesContent('edit <ref id="file" />', [
       {
         ...testImage,
         imageFileId: "file_image_123",
@@ -603,21 +651,24 @@ describe("Responses image references", () => {
     );
 
     expect(
-      input.some((message) =>
-        "content" in message &&
-        message.content.some(
-          (part) => part.type === "input_image" && part.file_id === "file_img_cached"
-        )
+      input.some(
+        (message) =>
+          "content" in message &&
+          message.content.some(
+            (part) =>
+              part.type === "input_image" && part.file_id === "file_img_cached"
+          )
       )
     ).toBe(true);
     expect(
-      input.some((message) =>
-        "content" in message &&
-        message.content.some(
-          (part) =>
-            part.type === "input_image" &&
-            part.image_url === "https://cdn.example.com/starry.png"
-        )
+      input.some(
+        (message) =>
+          "content" in message &&
+          message.content.some(
+            (part) =>
+              part.type === "input_image" &&
+              part.image_url === "https://cdn.example.com/starry.png"
+          )
       )
     ).toBe(false);
   });
@@ -677,13 +728,14 @@ describe("Responses image references", () => {
     ]);
 
     expect(
-      input.some((message) =>
-        "content" in message &&
-        message.content.some(
-          (part) =>
-            part.type === "input_image" &&
-            part.image_url === "https://cdn.example.com/starry.png"
-        )
+      input.some(
+        (message) =>
+          "content" in message &&
+          message.content.some(
+            (part) =>
+              part.type === "input_image" &&
+              part.image_url === "https://cdn.example.com/starry.png"
+          )
       )
     ).toBe(true);
   });
@@ -881,7 +933,9 @@ describe("Agent continue_generation tool", () => {
     const input = buildAgentContinuationInput({
       baseInput: [],
       previousResult: {
-        imageOutputs: [{ imageBase64: Buffer.from("draft").toString("base64") }],
+        imageOutputs: [
+          { imageBase64: Buffer.from("draft").toString("base64") },
+        ],
       },
       currentRound: 1,
       maxRounds: 3,
@@ -912,7 +966,8 @@ describe("Agent continue_generation tool", () => {
         (message) =>
           "content" in message &&
           message.content.some(
-            (part) => part.type === "input_text" && part.text.includes("@第1轮图2")
+            (part) =>
+              part.type === "input_text" && part.text.includes("@第1轮图2")
           )
       )
     ).toBe(true);
@@ -1075,13 +1130,16 @@ describe("backend isolation", () => {
       images: [testImage],
     });
 
-    expect(request.instructions).toContain(RESPONSES_IMAGE_REFERENCE_INSTRUCTIONS);
+    expect(request.instructions).toContain(
+      RESPONSES_IMAGE_REFERENCE_INSTRUCTIONS
+    );
     expect(request.instructions).toContain("@图1");
     expect(request.instructions).toContain('<ref id="..." />');
   });
 
   it("appends image reference instructions once to internal base instructions", () => {
-    const instructions = withResponsesImageReferenceInstructions("Base instructions.");
+    const instructions =
+      withResponsesImageReferenceInstructions("Base instructions.");
 
     expect(instructions).toBe(
       `Base instructions.\n\n${RESPONSES_IMAGE_REFERENCE_INSTRUCTIONS}`
@@ -1104,7 +1162,8 @@ describe("backend isolation", () => {
     });
   });
 
-  it("uses uploaded URLs for direct Responses edit inputs when available", () => {
+  it("inlines external edit input URLs as base64 instead of forwarding them", () => {
+    // 第三方外链 + 有字节 → 内联 base64，避免上游下载外链被图床限流 429。
     const request = buildResponsesImageEditRequest(responsesConfig(), {
       prompt: "改这张图",
       images: [{ ...testImage, url: "https://cdn.example.com/source.png" }],
@@ -1113,10 +1172,10 @@ describe("backend isolation", () => {
 
     expect(request.input[0]?.content).toContainEqual({
       type: "input_image",
-      image_url: "https://cdn.example.com/source.png",
+      image_url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=",
     });
     expect(request.tools[0]?.input_image_mask).toEqual({
-      image_url: "https://cdn.example.com/mask.png",
+      image_url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=",
     });
   });
 

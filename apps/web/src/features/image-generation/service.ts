@@ -23,8 +23,8 @@ import {
   bindImageBackendStickyMember,
   ImageBackendPoolUnavailableError,
   isImageBackendSwitchableError,
-  releaseImageBackendInflightLease,
   recordImageBackendSchedulerSwitch,
+  releaseImageBackendInflightLease,
   reportImageBackendResult,
   resolveImageBackendPoolConfig,
 } from "@/features/image-backend-pool/service";
@@ -45,12 +45,13 @@ import {
   generateImageWithChatGptWeb,
 } from "./chatgpt-web";
 import { getInputImageUrl } from "./input-image-url";
+import { buildOpenAIPromptCacheKey } from "./openai-prompt-cache";
 import {
   normalizeImageBackground,
   normalizeOutputCompression,
   normalizeOutputFormat,
 } from "./output-format";
-import { buildOpenAIPromptCacheKey } from "./openai-prompt-cache";
+import { ensureInputImageRehosted } from "./rehost-input-images";
 import {
   AUTO_IMAGE_SIZE,
   DEFAULT_IMAGE_MODEL,
@@ -3637,6 +3638,89 @@ export async function getEffectiveConfig(
   );
 }
 
+/**
+ * api 后端（pool-api）分发前的输入图 re-host 守卫。
+ *
+ * 仅在最终选定的后端为 pool-api 且已知 userId 时生效（account 后端不受影响）：
+ * 把待发送给上游的输入图、mask、历史图逐张确保转存到我方对象存储，避免把第三方
+ * 外链交给上游（上游下载外链会被图床限流返回 "failed download file 429"）。
+ *
+ * 幂等：直接原地改写 params 内的 image 对象/字符串，已转存（带 storageKey 或
+ * 第一方 url）的项会被 ensureInputImageRehosted 短路；重试时不会重复下载/上传。
+ * 任何单张失败不影响其他图，也不中断主流程（失败语义见 ensureInputImageRehosted）。
+ *
+ * @param config 已选定的后端配置（用于判定 pool-api 与取 userId）。
+ * @param params 含 images / mask / history 的请求参数（原地改写）。
+ * @param signal 透传给下载的 abort 信号。
+ */
+async function rehostApiBackendInputImages(
+  config: ApiConfig,
+  params: {
+    images?: ImageInputFile[];
+    mask?: ImageInputFile;
+    history?: ChatImageParams["history"];
+  },
+  signal?: AbortSignal
+): Promise<void> {
+  const backend = config.backend;
+  if (backend?.type !== "pool-api") return;
+  const userId = backend.userId?.trim();
+  if (!userId) return;
+
+  const generationId = backend.id || "rehost";
+
+  if (params.images?.length) {
+    for (let index = 0; index < params.images.length; index++) {
+      const image = params.images[index];
+      if (!image) continue;
+      params.images[index] = await ensureInputImageRehosted(image, {
+        userId,
+        generationId,
+        scope: "rehost",
+        index,
+        signal,
+      });
+    }
+  }
+
+  if (params.mask) {
+    params.mask = await ensureInputImageRehosted(params.mask, {
+      userId,
+      generationId,
+      scope: "rehost-mask",
+      index: 0,
+      signal,
+    });
+  }
+
+  // 历史图只有 url、无字节，属于"下载再传"分支：转存后回填第一方签名 url，
+  // 让 getInputImageUrl 透传我方 URL 而非原外链。
+  for (const message of params.history || []) {
+    const urls = message.imageUrls;
+    if (!urls?.length) continue;
+    for (let index = 0; index < urls.length; index++) {
+      const url = urls[index]?.trim();
+      if (!url) continue;
+      const rehosted = await ensureInputImageRehosted(
+        {
+          data: Buffer.alloc(0),
+          name: `history-image-${index + 1}.png`,
+          type: "image/png",
+          url,
+        },
+        {
+          userId,
+          generationId,
+          scope: "rehost-history",
+          index,
+          signal,
+        }
+      );
+      if (rehosted.url) urls[index] = rehosted.url;
+    }
+  }
+}
+
 export async function generateImage(
   config: ApiConfig,
   params: GenerateImageParams,
@@ -3789,6 +3873,13 @@ export async function editImage(
     );
   }
 
+  // pool-api 后端分发前确保输入图/ mask 已 re-host，避免把外链交给上游。
+  await rehostApiBackendInputImages(
+    config,
+    { images: params.images, mask: params.mask },
+    params.signal
+  );
+
   const model = getModel(config, params.model);
   const editPromptRefs = resolvePromptImageReferences({
     prompt: getEffectivePrompt(params),
@@ -3923,6 +4014,13 @@ export async function generateChatImage(
       }
     );
   }
+
+  // pool-api 后端分发前确保输入图/历史图已 re-host，避免把外链交给上游。
+  await rehostApiBackendInputImages(
+    config,
+    { images: params.images, history: params.history },
+    params.signal
+  );
 
   const model = await getResponsesModel(config, params.model, {
     allowGpt55: params.allowGpt55,
