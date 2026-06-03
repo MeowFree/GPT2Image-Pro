@@ -98,6 +98,44 @@ describe("fetchPublicImage", () => {
     const response = await fetchPublicImage("https://1.1.1.1/image.png");
     expect(response.status).toBe(200);
   });
+
+  it("retries on 429 then succeeds", async () => {
+    vi.useFakeTimers();
+    try {
+      mockFetchWithDnsPin
+        .mockResolvedValueOnce(new Response("rate limited", { status: 429 }))
+        .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+      const promise = fetchPublicImage("https://1.1.1.1/image.png");
+      // 推进退避计时器以触发第二次尝试。
+      await vi.runAllTimersAsync();
+      const response = await promise;
+
+      expect(response.status).toBe(200);
+      expect(mockFetchWithDnsPin).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries on 5xx and surfaces the last response after exhausting retries", async () => {
+    vi.useFakeTimers();
+    try {
+      mockFetchWithDnsPin.mockResolvedValue(
+        new Response("boom", { status: 503 })
+      );
+
+      const promise = fetchPublicImage("https://1.1.1.1/image.png");
+      await vi.runAllTimersAsync();
+      const response = await promise;
+
+      expect(response.status).toBe(503);
+      // 首次 + MAX_TRANSIENT_RETRIES 次重试 = 4 次调用。
+      expect(mockFetchWithDnsPin).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("assertPublicCallbackUrl", () => {

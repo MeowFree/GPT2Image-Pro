@@ -32,6 +32,28 @@ export class SafeImageFetchError extends Error {
 
 const MAX_REDIRECTS = 3;
 
+/**
+ * 拉取图片时对临时性失败（429 限流 / 5xx）的重试上限与退避基准。
+ *
+ * 部分图床（用户输入图的外链来源）在被密集下载时会返回 429，导致 api 后端
+ * "failed download file 429" 而整单失败。这里在本站侧先做有限重试，配合上层
+ * re-host 把图片转存到我方对象存储，避免把易限流外链直接交给上游。
+ * 退避采用指数增长（300ms、600ms、1200ms），抖动从略以保持可测。
+ */
+const MAX_TRANSIENT_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 300;
+
+/**
+ * 判断响应是否为可重试的临时性失败：429（限流）或 5xx（上游短暂故障）。
+ */
+function isTransientFetchStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function isPrivateIpAddress(address: string): boolean {
   const normalized = address.toLowerCase();
   if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") return true;
@@ -238,6 +260,10 @@ export async function readResponseBytesWithLimit(
  * 2. fetchWithDnsPin：连接层 pin IP，根除 DNS rebinding（使用 node:http/https）
  *
  * 返回最终的非重定向 Response（调用方负责检查 ok / content-type / 大小）。
+ *
+ * 对 429 / 5xx 临时性失败做有限指数退避重试（最多 MAX_TRANSIENT_RETRIES 次），
+ * 重定向与 SSRF 校验在每次重试内逐跳复检，重试不放宽任何安全约束。重定向响应
+ * (3xx) 不视为临时失败，按原逻辑继续跟随。
  */
 export async function fetchPublicImage(
   rawUrl: string,
@@ -255,19 +281,37 @@ export async function fetchPublicImage(
 
     await assertPublicImageUrl(parsed);
 
-    let response: Response;
-    try {
-      // 使用 DNS-pinning fetch 防止 rebinding 攻击
-      response = await fetchWithDnsPin(parsed.href, {
-        method: "GET",
-        headers: init.headers,
-        signal: init.signal,
-      });
-    } catch (err) {
-      if (err instanceof SsrfBlockedError) {
-        throw new SafeImageFetchError(err.message);
+    let response: Response | null = null;
+    // 同一跳上对临时性失败重试：每次重试都已通过上面的 SSRF 预校验，
+    // 且使用 DNS-pinning fetch，安全约束不变。
+    for (let attempt = 0; attempt <= MAX_TRANSIENT_RETRIES; attempt++) {
+      try {
+        // 使用 DNS-pinning fetch 防止 rebinding 攻击
+        response = await fetchWithDnsPin(parsed.href, {
+          method: "GET",
+          headers: init.headers,
+          signal: init.signal,
+        });
+      } catch (err) {
+        if (err instanceof SsrfBlockedError) {
+          throw new SafeImageFetchError(err.message);
+        }
+        throw err;
       }
-      throw err;
+
+      if (
+        attempt < MAX_TRANSIENT_RETRIES &&
+        isTransientFetchStatus(response.status)
+      ) {
+        await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
+        continue;
+      }
+      break;
+    }
+
+    // response 在循环内必被赋值（至少执行一次），此处仅作类型收窄。
+    if (!response) {
+      throw new SafeImageFetchError("Image URL fetch produced no response.");
     }
 
     if (response.status >= 300 && response.status < 400) {
