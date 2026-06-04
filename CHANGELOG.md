@@ -2,6 +2,22 @@
 
 本文件记录各发布版本的变更。版本格式 `v<MAJOR>.<MINOR>.<PATCH>`。
 
+## v0.4.0 (2026-06-04)
+
+性能为主：显著降低前端卡顿、图片加载与大表查询开销;并修正若干生图后端错误分类与输入图转发。
+
+### 性能
+
+- **前端包体瘦身（每页 −~430KB，约 26%）**：定位到每个 dashboard 页此前强制下载/hydrate ~1.6MB JS，其中图表库 recharts（~107KB gzip）因模板残留的死图表卡经 barrel 被拖进每页公共包。移除 3 个从未渲染的死图表卡、修正 barrel 导入、并将控制台首页定价图表改为 `next/dynamic` 按需懒加载——recharts 仅在需要时异步加载，各页首屏 JS 由 1.6MB 降到 1.2MB。（服务端 SSR 本就 ~6ms，非瓶颈。）
+- **图片缩略图按需缩放（单图 ~161x 更小）**：历史/图库等列表此前直接加载全分辨率生成图（平均 2.4MB、最大 14MB），拖垮浏览器内存与解码，导致"点历史/图库后整体发卡"。`/api/storage` 读取路由新增 `?w=<width>`，用 sharp 缩成小 webp 并按 (bucket,key,width) 进程内缓存；网格缩略图改请求小图，lightbox 仍取全图。单图实测 2.07MB → 13KB。
+- **生图大表读路径加索引**：`generation`（686MB / 12 万行）与 `credits_transaction`（14 万行）此前仅主键索引，历史/计数/账单与"每次读触发的 pending 维护扫描"全是顺序扫（累计读 23 亿行）。新增 `generation(user_id, created_at)`、`generation(status, created_at)`、`credits_transaction(user_id, created_at)` 索引，转为索引扫描（历史计数 22ms→6ms、维护扫描 15ms→0.03ms、账单 0.1ms）。
+- **画廊查询收敛**：成品主查询仅在对应标签页执行、移除与计数重复的查询，减少每次进画廊的无效 DB 往返。
+
+### 修复
+
+- **生图后端错误分类更准**：修正"为算 token 下载我方图片被限流（429）""未开通图像生成（403 permission）""分辨率/尺寸不符、无效图像"等的归类（可切换后端 vs 用户错误 vs 标记 error），减少误判与误下线。
+- **输入图转发**：pool-api 分发前 re-host 输入图、不再把第三方外链直接交给上游；`fetchPublicImage` 对 429/5xx 有限重试。
+
 ## v0.3.1 (2026-06-03)
 
 图像后端池（image-backend-pool）增强：更可观测、可控，调度在少量/不稳后端下更稳。
