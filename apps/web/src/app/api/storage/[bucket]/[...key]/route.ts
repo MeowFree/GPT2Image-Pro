@@ -15,6 +15,8 @@ import {
   verifySignedImageUrl,
 } from "@repo/shared/storage/signed-url";
 import { type NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 
@@ -82,6 +84,66 @@ function setCachedThumb(key: string, buf: Buffer): void {
     if (oldest !== undefined) {
       thumbCache.delete(oldest);
     }
+  }
+}
+
+// 限制 sharp 每次操作占用的 libvips 线程数,避免并发缩放时线程超额抢 CPU。
+sharp.concurrency(2);
+
+// 持久磁盘缩略图缓存:每张图每个宽度只缩一次,之后任意进程/任意签名都从磁盘秒回——
+// 跳过"拉原图 + sharp 缩放",且不受进程重启影响(进程内 LRU 会随重启清空,磁盘不会)。
+// 这是修复"图片加载 11–15s、点不了 Tab"的关键:绝大多数请求不再触发昂贵的缩放。
+const THUMB_DISK_DIR =
+  process.env.THUMB_CACHE_DIR || "/home/user1/gpt2image-thumb-cache";
+
+function thumbDiskPath(bucket: string, fileKey: string, width: number): string {
+  const h = createHash("sha256").update(`${bucket}/${fileKey}`).digest("hex");
+  // 按前两位分桶,避免单目录文件过多。
+  return path.join(THUMB_DISK_DIR, h.slice(0, 2), `${h}@w${width}.webp`);
+}
+
+// 并发信号量:限制同时进行的 sharp 缩放数。单张原图可达 14MB(解码后位图数百 MB),
+// 一屏 20+ 张并发缩放会把内存/CPU 压爆,导致请求堆到 11–15s 甚至挂起,并拖垮整个服务
+// (连导航请求都挤不进去 → 点不动)。超额请求在此排队,服务端始终保有响应余力。
+const THUMB_MAX_CONCURRENCY = 4;
+let thumbInflight = 0;
+const thumbWaiters: Array<() => void> = [];
+function acquireThumbSlot(): Promise<void> {
+  return new Promise((resolve) => {
+    if (thumbInflight < THUMB_MAX_CONCURRENCY) {
+      thumbInflight += 1;
+      resolve();
+    } else {
+      thumbWaiters.push(resolve);
+    }
+  });
+}
+function releaseThumbSlot(): void {
+  const next = thumbWaiters.shift();
+  if (next) {
+    next(); // 把名额直接交给排队者(thumbInflight 不变)
+  } else {
+    thumbInflight -= 1;
+  }
+}
+
+async function readThumbFromDisk(diskPath: string): Promise<Buffer | undefined> {
+  try {
+    return await readFile(diskPath);
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeThumbToDisk(diskPath: string, buf: Buffer): Promise<void> {
+  try {
+    await mkdir(path.dirname(diskPath), { recursive: true });
+    // 原子写:先写临时文件再 rename,避免并发/中断写出半文件被读到。
+    const tmp = `${diskPath}.${process.pid}-${buf.length}.tmp`;
+    await writeFile(tmp, buf);
+    await rename(tmp, diskPath);
+  } catch {
+    // 落盘失败不致命:本次仍返回内存里的缩略图,下次再尝试。
   }
 }
 
@@ -212,45 +274,51 @@ export async function GET(
   const ext = path.extname(fileKey).toLowerCase();
   const mappedContentType = CONTENT_TYPES[ext];
   const contentType = mappedContentType || "application/octet-stream";
-
-  let data: Buffer;
-  try {
-    const storage = await getStorageProvider();
-    data = await storage.getObject(fileKey, bucket);
-  } catch (error) {
-    if (isObjectNotFoundError(error)) {
-      return NextResponse.json({ error: "File not found" }, { status: 404 });
-    }
-    // 凭证/网络/配置等基础设施故障不可静默吞成 404：记日志并返回 502。
-    logError(error, { source: "storage-read", bucket, key: fileKey });
-    return NextResponse.json(
-      { error: "Storage backend error" },
-      { status: 502 }
-    );
-  }
-
   const cacheControl =
     bucket === GENERATIONS_BUCKET
       ? GENERATION_CACHE_CONTROL
       : PUBLIC_ASSET_CACHE_CONTROL;
 
-  // 按需缩略图：仅对可缩放栅格图、且带合法 w 参数时生效。命中缓存直接返回小 webp,
-  // 否则用 sharp 缩放后入缓存;缩放失败则落到下方原图返回(不影响可用性)。
   const thumbWidth = THUMB_RESIZABLE_TYPES.has(ext)
     ? parseThumbWidth(request.nextUrl.searchParams.get("w"))
     : null;
+
+  // 缩略图请求:先查 进程内 → 磁盘 缓存(命中则连原图都不拉、不缩放,直接秒回);
+  // 都未命中才 限并发 拉原图 + sharp 缩放 + 落盘。缩放失败回退到返回原图。
   if (thumbWidth) {
     const cacheKey = `${bucket}/${fileKey}@w${thumbWidth}`;
+    const diskPath = thumbDiskPath(bucket, fileKey, thumbWidth);
     let thumb = getCachedThumb(cacheKey);
     if (!thumb) {
+      thumb = await readThumbFromDisk(diskPath);
+      if (thumb) {
+        setCachedThumb(cacheKey, thumb);
+      }
+    }
+    if (!thumb) {
+      await acquireThumbSlot();
       try {
-        thumb = await sharp(data)
-          .rotate()
-          .resize({ width: thumbWidth, withoutEnlargement: true })
-          .webp({ quality: 80 })
-          .toBuffer();
+        // 排队期间可能已被别的请求缩好并落盘,先再查一次磁盘,避免重复缩放。
+        thumb = await readThumbFromDisk(diskPath);
+        if (!thumb) {
+          const storage = await getStorageProvider();
+          const original = await storage.getObject(fileKey, bucket);
+          thumb = await sharp(original)
+            .rotate()
+            .resize({ width: thumbWidth, withoutEnlargement: true })
+            .webp({ quality: 78 })
+            .toBuffer();
+          await writeThumbToDisk(diskPath, thumb);
+        }
         setCachedThumb(cacheKey, thumb);
       } catch (error) {
+        if (isObjectNotFoundError(error)) {
+          return NextResponse.json(
+            { error: "File not found" },
+            { status: 404 }
+          );
+        }
+        // 缩放/读取失败不致命:记日志并回退到下方返回原图。
         logError(error, {
           source: "storage-thumb",
           bucket,
@@ -258,6 +326,8 @@ export async function GET(
           width: thumbWidth,
         });
         thumb = undefined;
+      } finally {
+        releaseThumbSlot();
       }
     }
     if (thumb) {
@@ -272,6 +342,23 @@ export async function GET(
         },
       });
     }
+  }
+
+  // 非缩略图请求,或缩略图失败回退:拉原图返回。
+  let data: Buffer;
+  try {
+    const storage = await getStorageProvider();
+    data = await storage.getObject(fileKey, bucket);
+  } catch (error) {
+    if (isObjectNotFoundError(error)) {
+      return NextResponse.json({ error: "File not found" }, { status: 404 });
+    }
+    // 凭证/网络/配置等基础设施故障不可静默吞成 404：记日志并返回 502。
+    logError(error, { source: "storage-read", bucket, key: fileKey });
+    return NextResponse.json(
+      { error: "Storage backend error" },
+      { status: 502 }
+    );
   }
 
   const headers: Record<string, string> = {
