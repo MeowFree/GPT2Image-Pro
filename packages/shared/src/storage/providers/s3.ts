@@ -180,7 +180,11 @@ export const s3Provider: StorageProvider = {
    * @param bucket - 存储桶名称
    * @returns 文件内容 Buffer
    */
-  async getObject(key: string, bucket: string): Promise<Buffer> {
+  async getObject(
+    key: string,
+    bucket: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<Buffer> {
     const client = await getS3Client();
 
     const command = new GetObjectCommand({
@@ -188,7 +192,13 @@ export const s3Provider: StorageProvider = {
       Key: key,
     });
 
-    const response = await client.send(command);
+    // 透传 abortSignal：调用方取消（如缩略图请求被页面切换打断）时，SDK 会
+    // 中止进行中的下载并断开连接，立即释放资源。exactOptionalPropertyTypes 下
+    // 不能传 abortSignal: undefined，故用条件展开仅在有信号时附带该字段。
+    const response = await client.send(
+      command,
+      options?.signal ? { abortSignal: options.signal } : {}
+    );
 
     if (!response.Body) {
       throw new Error(`File not found: ${key}`);

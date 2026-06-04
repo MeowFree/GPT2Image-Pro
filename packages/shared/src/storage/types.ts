@@ -57,9 +57,15 @@ export interface StorageProvider {
    *
    * @param key - 文件键名 (路径)
    * @param bucket - 存储桶名称
+   * @param options - 可选项；`signal` 在调用方取消时（如客户端切换页面打断了
+   *   缩略图请求）中止底层下载，立即释放网络与处理资源，而非空跑到底再丢弃结果。
    * @returns 文件内容 Buffer
    */
-  getObject(key: string, bucket: string): Promise<Buffer>;
+  getObject(
+    key: string,
+    bucket: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<Buffer>;
 
   putObject(
     key: string,

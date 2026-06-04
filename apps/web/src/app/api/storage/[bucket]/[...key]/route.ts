@@ -148,6 +148,23 @@ async function writeThumbToDisk(diskPath: string, buf: Buffer): Promise<void> {
 }
 
 /**
+ * 判断错误是否由"调用方主动取消"引发（客户端切换页面/关闭标签页,导致
+ * request.signal 触发,透传给 S3/fs 下载后中止)。这类不是故障,无需记日志,
+ * 也不该回退去拉原图（同一个被取消的 signal 会让原图请求同样失败）。
+ * - Node fs/promises 取消:name="AbortError"、code="ABORT_ERR"。
+ * - AWS SDK v3 经 abortSignal 取消:name="AbortError"。
+ */
+function isAbortError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  if (error.name === "AbortError" || error.name === "TimeoutError") {
+    return true;
+  }
+  return (error as { code?: unknown }).code === "ABORT_ERR";
+}
+
+/**
  * 判断存储对象是否"不存在"。
  *
  * 用于区分真正的 404（对象缺失/键非法）与底层基础设施故障（凭证缺失、
@@ -298,11 +315,20 @@ export async function GET(
     if (!thumb) {
       await acquireThumbSlot();
       try {
+        // 拿到名额后,若调用方已切走(请求被取消),立即放弃:不做无用的拉取+缩放,
+        // 把名额尽快让给仍在排队、用户真正想看的请求——这正是"切换页面打断加载"的
+        // 服务端落点(finally 会释放名额)。
+        if (request.signal.aborted) {
+          return new NextResponse(null, { status: 499 });
+        }
         // 排队期间可能已被别的请求缩好并落盘,先再查一次磁盘,避免重复缩放。
         thumb = await readThumbFromDisk(diskPath);
         if (!thumb) {
           const storage = await getStorageProvider();
-          const original = await storage.getObject(fileKey, bucket);
+          // 透传 signal:缩放前若客户端断开,拉原图会被中止,不再空跑。
+          const original = await storage.getObject(fileKey, bucket, {
+            signal: request.signal,
+          });
           thumb = await sharp(original)
             .rotate()
             .resize({ width: thumbWidth, withoutEnlargement: true })
@@ -312,6 +338,10 @@ export async function GET(
         }
         setCachedThumb(cacheKey, thumb);
       } catch (error) {
+        // 调用方取消(切换页面打断):非故障,直接结束,不记日志、不回退拉原图。
+        if (isAbortError(error)) {
+          return new NextResponse(null, { status: 499 });
+        }
         if (isObjectNotFoundError(error)) {
           return NextResponse.json(
             { error: "File not found" },
@@ -348,8 +378,14 @@ export async function GET(
   let data: Buffer;
   try {
     const storage = await getStorageProvider();
-    data = await storage.getObject(fileKey, bucket);
+    data = await storage.getObject(fileKey, bucket, {
+      signal: request.signal,
+    });
   } catch (error) {
+    // 调用方取消(切换页面打断):非故障,直接结束,不记日志。
+    if (isAbortError(error)) {
+      return new NextResponse(null, { status: 499 });
+    }
     if (isObjectNotFoundError(error)) {
       return NextResponse.json({ error: "File not found" }, { status: 404 });
     }
