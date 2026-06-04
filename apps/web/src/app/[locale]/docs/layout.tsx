@@ -1,4 +1,7 @@
+import "fumadocs-ui/style.css";
+
 import { DocsLayout } from "fumadocs-ui/layouts/docs";
+import { RootProvider } from "fumadocs-ui/provider/next";
 import type { ReactNode } from "react";
 
 import { Header } from "@/features/marketing/components";
@@ -16,7 +19,9 @@ export default async function Layout({ children }: { children: ReactNode }) {
   const tree = docsSource.pageTree;
 
   return (
-    <>
+    // RootProvider 仅在文档区挂载(全局 Providers 已不再挂载它),提供 fumadocs 的
+    // 搜索/page-tree 等上下文;fumadocs-ui/style.css 同理只在文档区引入。
+    <RootProvider>
       {/* 网站顶部导航栏 - 放在 DocsLayout 外部确保显示 */}
       <Header />
 
@@ -32,6 +37,6 @@ export default async function Layout({ children }: { children: ReactNode }) {
       >
         {children}
       </DocsLayout>
-    </>
+    </RootProvider>
   );
 }

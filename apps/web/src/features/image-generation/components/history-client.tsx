@@ -15,11 +15,21 @@ import Image from "next/image";
 import Link from "next/link";
 import { useLocale } from "next-intl";
 import { useState } from "react";
-import {
-  ImageLightbox,
-  type LightboxReferenceImage,
-  type LightboxGeneration,
+import dynamic from "next/dynamic";
+import type {
+  LightboxReferenceImage,
+  LightboxGeneration,
 } from "@/features/image-generation/components/image-lightbox";
+
+// 懒加载:lightbox(大图查看模态)仅在点开某张图时才需要,改 next/dynamic 后从列表页
+// 首屏 bundle 移出,点开时再异步加载。
+const ImageLightbox = dynamic(
+  () =>
+    import("@/features/image-generation/components/image-lightbox").then(
+      (m) => m.ImageLightbox
+    ),
+  { ssr: false }
+);
 import type { GenerationCreditDetails } from "@/features/image-generation/credit-calculation-details";
 
 export interface HistoryGeneration {
@@ -186,7 +196,13 @@ export function HistoryClient({
                   <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded border border-border bg-muted md:h-14 md:w-14">
                     {item.imageUrl && item.status === "completed" ? (
                       <Image
-                        src={item.imageUrl}
+                        // 列表缩略图(56–64px):对同源存储图请求 w=128 的小图,避免下整图
+                        // (平均 2.4MB)。与 ImageCard 同款,消除“点历史发卡”的残留来源。
+                        src={
+                          item.imageUrl.startsWith("/api/storage/")
+                            ? `${item.imageUrl}${item.imageUrl.includes("?") ? "&" : "?"}w=128`
+                            : item.imageUrl
+                        }
                         alt={item.prompt}
                         fill
                         sizes="64px"
