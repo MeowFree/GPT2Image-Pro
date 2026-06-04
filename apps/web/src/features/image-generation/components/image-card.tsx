@@ -54,6 +54,13 @@ export function ImageCard({
 }: ImageCardProps) {
   const locale = useLocale();
   const clickable = Boolean(onClick);
+  // 列表缩略图:对同源存储图(/api/storage)请求按需缩放后的小图(w=640),把全分辨率
+  // 大图(平均 2.4MB)降到缩略图尺寸,大幅降低列表的下载/解码/内存占用——这是“点历史/
+  // 图库后整体发卡”的主因。非存储图(外链回退)保持原样,附加参数无副作用。
+  const thumbnailUrl =
+    imageUrl?.startsWith("/api/storage/")
+      ? `${imageUrl}${imageUrl.includes("?") ? "&" : "?"}w=640`
+      : imageUrl;
 
   return (
     <Card
@@ -63,9 +70,9 @@ export function ImageCard({
       }`}
     >
       <div className="relative aspect-square w-full overflow-hidden bg-muted">
-        {imageUrl && status === "completed" ? (
+        {thumbnailUrl && status === "completed" ? (
           <Image
-            src={imageUrl}
+            src={thumbnailUrl}
             alt={prompt}
             fill
             sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"

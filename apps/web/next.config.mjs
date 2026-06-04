@@ -35,6 +35,8 @@ const nextConfig = {
     "pino",
     "pino-pretty",
     "@axiomhq/pino",
+    // 原生模块（存储路由的按需缩略图缩放）：保持外置，避免被打进 server bundle。
+    "sharp",
   ],
 };
 
