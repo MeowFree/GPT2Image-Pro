@@ -76,12 +76,17 @@ export async function getSubscriptionMonthlyCredits() {
 async function getRuntimePriceId(
   plan: PaidPlanId,
   interval: "monthly" | "yearly",
-  provider: RuntimePaymentProvider
+  // provider 已不影响回退(统一合成 ID),保留参数以兼容调用方签名。
+  _provider: RuntimePaymentProvider
 ) {
   const key = PLAN_PRICE_ENV_KEYS[plan][interval];
   const configured = await getRuntimeSettingString(key);
   if (configured) return configured;
-  return provider === "epay" ? `${plan}_${interval}` : "";
+  // 无论 creem/epay,无第三方 Price ID 时都回退到稳定的合成 ID(${plan}_${interval}),
+  // 避免新部署(默认 creem、未填 Creem Price ID)套餐 priceId 为空 → 改套餐/下单报
+  // "价格 ID 不能为空 / 未定义 priceId"。epay 全程用合成 ID 闭环;creem 若要真走 Creem
+  // 收款仍需在后台填真实 Price ID,否则下单会被 Creem 拒(而不是这里就崩)。
+  return `${plan}_${interval}`;
 }
 
 async function getRuntimePlanPrice(

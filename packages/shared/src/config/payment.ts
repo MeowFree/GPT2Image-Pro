@@ -30,30 +30,26 @@ const paymentProvider =
  * 易支付模式不依赖第三方后台产品 ID，使用稳定的本地 priceId。
  */
 export const PRICE_IDS = {
+  // 无第三方 Price ID 时一律回退到稳定的合成 ID(用 || 兼容未设置与空串),避免
+  // 新部署(默认 creem、未填 Creem Price ID,且 NEXT_PUBLIC_PAYMENT_PROVIDER 为
+  // build-time 默认值)套餐 priceId 为空 → dashboard 改套餐报 "未定义 priceId"。
   STARTER_MONTHLY:
-    process.env.NEXT_PUBLIC_CREEM_PRICE_STARTER_MONTHLY ??
-    (paymentProvider === "epay" ? "starter_monthly" : ""),
+    process.env.NEXT_PUBLIC_CREEM_PRICE_STARTER_MONTHLY || "starter_monthly",
   STARTER_YEARLY:
-    process.env.NEXT_PUBLIC_CREEM_PRICE_STARTER_YEARLY ??
-    (paymentProvider === "epay" ? "starter_yearly" : ""),
+    process.env.NEXT_PUBLIC_CREEM_PRICE_STARTER_YEARLY || "starter_yearly",
   PRO_MONTHLY:
-    process.env.NEXT_PUBLIC_CREEM_PRICE_PRO_MONTHLY ??
-    (paymentProvider === "epay" ? "pro_monthly" : ""),
-  PRO_YEARLY:
-    process.env.NEXT_PUBLIC_CREEM_PRICE_PRO_YEARLY ??
-    (paymentProvider === "epay" ? "pro_yearly" : ""),
+    process.env.NEXT_PUBLIC_CREEM_PRICE_PRO_MONTHLY || "pro_monthly",
+  PRO_YEARLY: process.env.NEXT_PUBLIC_CREEM_PRICE_PRO_YEARLY || "pro_yearly",
   ULTRA_MONTHLY:
-    process.env.NEXT_PUBLIC_CREEM_PRICE_ULTRA_MONTHLY ??
-    (paymentProvider === "epay" ? "ultra_monthly" : ""),
+    process.env.NEXT_PUBLIC_CREEM_PRICE_ULTRA_MONTHLY || "ultra_monthly",
   ULTRA_YEARLY:
-    process.env.NEXT_PUBLIC_CREEM_PRICE_ULTRA_YEARLY ??
-    (paymentProvider === "epay" ? "ultra_yearly" : ""),
+    process.env.NEXT_PUBLIC_CREEM_PRICE_ULTRA_YEARLY || "ultra_yearly",
   ENTERPRISE_MONTHLY:
-    process.env.NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_MONTHLY ??
-    (paymentProvider === "epay" ? "enterprise_monthly" : ""),
+    process.env.NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_MONTHLY ||
+    "enterprise_monthly",
   ENTERPRISE_YEARLY:
-    process.env.NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_YEARLY ??
-    (paymentProvider === "epay" ? "enterprise_yearly" : ""),
+    process.env.NEXT_PUBLIC_CREEM_PRICE_ENTERPRISE_YEARLY ||
+    "enterprise_yearly",
 } as const;
 
 // ============================================
