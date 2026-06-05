@@ -468,3 +468,45 @@ defineOperation({
     throw new Error("Not yet wired: image.selectWebCandidate");
   },
 });
+
+// ---------------------------------------------------------------------------
+// 13. image.exportPsd - 导出分层 PSD（策略 A：按元素分别透明生成后服务端组装）
+// 基于一张已生成的底图，按需抠主体 + 透明生成附加元素，服务端用 ag-psd 组装为真·分层 .psd
+// ---------------------------------------------------------------------------
+defineOperation({
+  name: "image.exportPsd",
+  domain: "image-generation",
+  title: "导出分层 PSD",
+  description:
+    "基于一张已生成的底图，按需把主体抠成透明层、为每个附加元素透明生成一层，" +
+    "服务端用 ag-psd 组装为真·分层 .psd 并存储、返回签名下载链接。" +
+    "每新增一个图层走一次普通出图扣费，组装本身不收费。",
+  input: z.object({
+    generationId: z.string(),
+    isolateSubject: z.boolean().optional(),
+    elements: z
+      .array(
+        z.object({
+          name: z.string().optional(),
+          prompt: z.string().min(1),
+        }),
+      )
+      .optional(),
+  }),
+  output: z.object({
+    psdStorageKey: z.string(),
+    psdSignedUrl: z.string(),
+    layerCount: z.number(),
+    creditsConsumed: z.number(),
+  }),
+  access: { kind: "owner", resource: "generation" },
+  readOnly: false,
+  destructive: false,
+  // 触发多次生成、非安全重放：与 image.generateAction 一致用 none，由 UI 防重复提交。
+  idempotency: { kind: "none" },
+  sideEffects: ["billing", "storage", "external-call"],
+  processLocalState: true,
+  execute: async () => {
+    throw new Error("Not yet wired: image.exportPsd");
+  },
+});
