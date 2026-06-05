@@ -159,6 +159,15 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 源码部署适合已经有自己的 PostgreSQL、进程管理、Nginx、对象存储和发布流程的环境。源码部署需要自行守护 Web 进程和 Go sidecar。
 
+> **环境变量文件对照（别拿错模板）：**
+>
+> | 部署方式 | 复制哪个模板 | 实际读取 |
+> | --- | --- | --- |
+> | **Docker Compose** | `cp .env.docker.example .env` | 仅 `.env`（精简、约 30 行） |
+> | **源码 / 本地开发** | `cp .env.example .env.local` | `.env.local`（完整模板，含全部可选功能） |
+>
+> 仓库只有这两个模板。`.env.example`（大的）**不是给 Docker 的**；Docker Compose **不读** `.env.local`。`DATABASE_URL` 在 Docker 下由 `POSTGRES_USER/PASSWORD` 自动拼好并覆盖，不用手写。
+
 ### Docker Compose
 
 Release 镜像发布在 GHCR（GitHub Container Registry）。GHCR 是 GitHub 自带的 Docker 镜像仓库，不需要单独使用 DockerHub。
