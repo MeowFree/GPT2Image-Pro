@@ -72,7 +72,7 @@ type GenerationMetricRow = {
 };
 
 const RESOLUTION_DURATION_BUCKETS = ["4k", "2k", "1k", "custom"] as const;
-const BACKEND_DURATION_BUCKETS = ["web", "codex"] as const;
+const BACKEND_DURATION_BUCKETS = ["web", "codex", "images"] as const;
 
 type ResolutionDurationBucket = (typeof RESOLUTION_DURATION_BUCKETS)[number];
 type BackendDurationBucket = (typeof BACKEND_DURATION_BUCKETS)[number];
@@ -377,9 +377,18 @@ function getBackendDurationBucket(
   row: GenerationMetricRow
 ): BackendDurationBucket | null {
   const backend = asRecord(asRecord(row.metadata)?.backend);
-  const accountBackend = backend?.accountBackend;
-  if (accountBackend === "web") return "web";
-  if (accountBackend === "responses") return "codex";
+  // 后端"有效模式"来源因后端类型而异:
+  // - pool-account(账号池):backend.accountBackend = "web" | "responses"
+  // - pool-api(API 池):无 accountBackend,用 imagesUpstreamMode(图像上游模式,优先)
+  //   或 apiInterfaceMode = "responses"(Codex/Responses)| "images"(直连图像 API)| "web"
+  // 之前只认 accountBackend,流量切到 pool-api 后该面板全"暂无样本"——这里统一兜底。
+  const mode =
+    backend?.accountBackend ??
+    backend?.imagesUpstreamMode ??
+    backend?.apiInterfaceMode;
+  if (mode === "web") return "web";
+  if (mode === "responses") return "codex";
+  if (mode === "images") return "images";
   return null;
 }
 
@@ -488,10 +497,10 @@ function summarizeDurations(values: number[]): DurationBucketStats {
 
 function createDurationAccumulator(): DurationAccumulator {
   return {
-    "4k": { web: [], codex: [] },
-    "2k": { web: [], codex: [] },
-    "1k": { web: [], codex: [] },
-    custom: { web: [], codex: [] },
+    "4k": { web: [], codex: [], images: [] },
+    "2k": { web: [], codex: [], images: [] },
+    "1k": { web: [], codex: [], images: [] },
+    custom: { web: [], codex: [], images: [] },
   };
 }
 
@@ -502,18 +511,22 @@ function buildDurationBreakdown(
     "4k": {
       web: summarizeDurations(accumulator["4k"].web),
       codex: summarizeDurations(accumulator["4k"].codex),
+      images: summarizeDurations(accumulator["4k"].images),
     },
     "2k": {
       web: summarizeDurations(accumulator["2k"].web),
       codex: summarizeDurations(accumulator["2k"].codex),
+      images: summarizeDurations(accumulator["2k"].images),
     },
     "1k": {
       web: summarizeDurations(accumulator["1k"].web),
       codex: summarizeDurations(accumulator["1k"].codex),
+      images: summarizeDurations(accumulator["1k"].images),
     },
     custom: {
       web: summarizeDurations(accumulator.custom.web),
       codex: summarizeDurations(accumulator.custom.codex),
+      images: summarizeDurations(accumulator.custom.images),
     },
   };
 }
@@ -905,14 +918,17 @@ function resolutionDurationLabel(
 }
 
 function backendDurationLabel(bucket: BackendDurationBucket) {
-  return bucket === "web" ? "Web" : "Codex";
+  if (bucket === "web") return "Web";
+  if (bucket === "images") return "Images";
+  return "Codex";
 }
 
 function isDurationBucketApplicable(
   resolutionBucket: ResolutionDurationBucket,
   backendBucket: BackendDurationBucket
 ) {
-  return backendBucket === "codex" || resolutionBucket === "1k";
+  // Web 仅 1K(统一计入 1K);Codex/Images 走真实分辨率,各档都适用。
+  return backendBucket !== "web" || resolutionBucket === "1k";
 }
 
 function DurationBucketCell({
