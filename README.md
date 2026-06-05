@@ -19,7 +19,7 @@
   ·
   <a href="#生产部署">生产部署</a>
   ·
-  <a href="#docker-compose">Docker Compose</a>
+  <a href="#两种部署方式二选一">部署方式</a>
   ·
   <a href="#常用命令">常用命令</a>
 </p>
@@ -153,11 +153,17 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 生产部署按模块拆开：Web 应用负责页面、API 和默认内置定时任务，Go sidecar 负责 ChatGPT Web 账号。Sub2API、支付和对象存储按业务需要启用。
 
-### 推荐部署方式
+### 两种部署方式（二选一）
 
-新部署优先使用 Docker Compose。Compose 会同时拉起 Web、PostgreSQL、数据库迁移任务和 Go sidecar，适合大多数单机生产场景。
+| | **方式一：Docker Compose（推荐）** | **方式二：源码部署** |
+| --- | --- | --- |
+| 适合谁 | 单机生产、想一条命令拉起全部 | 已有自己的 PostgreSQL / Nginx / 对象存储 / 发布流程 |
+| 怎么起 | `docker compose up -d` | `pnpm build:web` + 自己守护进程 |
+| 数据库 + 迁移 | Compose 自带 PostgreSQL，**自动跑迁移** | 用你自己的 PostgreSQL，手动 `pnpm db:push` |
+| 进程守护 | Compose 托管 Web / 迁移 / Go sidecar | 自己用 PM2 / systemd 守护 Web 与 Go sidecar |
+| 环境变量文件 | `cp .env.docker.example .env`（仅读 `.env`） | `cp .env.example .env.local`（读 `.env.local`） |
 
-源码部署适合已经有自己的 PostgreSQL、进程管理、Nginx、对象存储和发布流程的环境。源码部署需要自行守护 Web 进程和 Go sidecar。
+新部署优先用**方式一**；只有已有成熟基建（自己的库/反代/发布流程）才选**方式二**。下面分别给出两种方式的完整步骤。
 
 > **环境变量文件对照（别拿错模板）：**
 >
@@ -168,7 +174,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 >
 > 仓库只有这两个模板。`.env.example`（大的）**不是给 Docker 的**；Docker Compose **不读** `.env.local`。`DATABASE_URL` 在 Docker 下由 `POSTGRES_USER/PASSWORD` 自动拼好并覆盖，不用手写。
 
-### Docker Compose
+### 方式一：Docker Compose（推荐）
 
 Release 镜像发布在 GHCR（GitHub Container Registry）。GHCR 是 GitHub 自带的 Docker 镜像仓库，不需要单独使用 DockerHub。
 
@@ -212,7 +218,11 @@ cp .env.docker.example .env
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-### 1. Web 应用
+### 方式二：源码部署
+
+适合已有自己的 PostgreSQL、Nginx、对象存储和发布流程的环境。需要你自行准备数据库、守护 Web 进程与 Go sidecar。下分三个模块。
+
+#### 1. Web 应用
 
 ```bash
 git clone https://github.com/MeowFree/GPT2Image-Pro.git
@@ -249,7 +259,7 @@ pm2 restart gpt2image-web
 
 如果不用 PM2，请把最后一行替换成自己的 systemd、Docker 或进程管理命令。
 
-### 2. Go Sidecar
+#### 2. Go Sidecar
 
 Web 账号池依赖 `services/chatgpt-web-proxy`，生产环境应单独常驻运行；如果完全不使用 Web 后端，可以不启用这一模块。
 
@@ -268,7 +278,7 @@ CHATGPT_WEB_PROXY_URL=http://127.0.0.1:3021
 CHATGPT_WEB_PROXY_SECRET=<proxy-secret>
 ```
 
-### 3. 定时任务
+#### 3. 定时任务
 
 Web 应用默认启用内置定时任务，会自动执行 pending 超时退款、照片销毁清理、积分过期、Web 账号刷新和 Sub2API 自动同步检查。多实例部署时会使用 PostgreSQL advisory lock，避免多个 Web 进程重复执行同一个任务。
 
