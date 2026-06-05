@@ -18,6 +18,26 @@ vi.mock("@repo/shared/storage/providers", () => ({
 const logError = vi.hoisted(() => vi.fn());
 vi.mock("@repo/shared/logger", () => ({ logError }));
 
+// 第一方会话回退鉴权的依赖:getCurrentUser(会话)与 db(按 storage_key 查归属)。
+// 保持 DB-free:getCurrentUser/db 均被 mock;正常签名校验通过的用例不会触达它们。
+const { getCurrentUser, dbState } = vi.hoisted(() => ({
+  getCurrentUser: vi.fn(),
+  dbState: { rows: [] as Array<{ userId: string | null }> },
+}));
+vi.mock("@repo/shared/auth/server", () => ({ getCurrentUser }));
+vi.mock("@repo/database", () => ({
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({ limit: async () => dbState.rows }),
+      }),
+    }),
+  },
+}));
+vi.mock("@repo/database/schema", () => ({
+  generation: { userId: "userId", storageKey: "storageKey" },
+}));
+
 import { generateSignedImageParams } from "@repo/shared/storage/signed-url";
 import { GET } from "./route";
 
@@ -61,6 +81,10 @@ describe("GET /api/storage/[bucket]/[...key]", () => {
     process.env.BETTER_AUTH_SECRET = TEST_SECRET;
     getObject.mockReset();
     logError.mockReset();
+    // 默认:无会话(签名失败即 403),归属查询返回空。各用例按需覆盖。
+    getCurrentUser.mockReset();
+    getCurrentUser.mockResolvedValue(null);
+    dbState.rows = [];
   });
 
   afterAll(() => {
@@ -172,6 +196,32 @@ describe("GET /api/storage/[bucket]/[...key]", () => {
     // 图片白名单扩展不应被强制下载。
     expect(res.headers.get("Content-Disposition")).toBeNull();
     expect(Buffer.from(await res.arrayBuffer()).toString()).toBe("png-bytes");
+  });
+
+  it("签名缺失但第一方会话且归属本人 → 放行(回退鉴权,200)", async () => {
+    // 浏览器同源请求带 cookie:即便没有/过期签名,拥有该图的登录用户也能读自己的图。
+    getCurrentUser.mockResolvedValue({ id: "user-123" });
+    dbState.rows = [{ userId: "user-123" }];
+    getObject.mockResolvedValue(Buffer.from("png-bytes"));
+    const res = await GET(
+      makeRequest(),
+      makeParams("generations", ["user-123", "abc.png"])
+    );
+    expect(res.status).toBe(200);
+    expect(getObject).toHaveBeenCalledWith("user-123/abc.png", "generations", {
+      signal: expect.anything(),
+    });
+  });
+
+  it("签名缺失且会话用户非归属人 → 403(杜绝越权 IDOR)", async () => {
+    getCurrentUser.mockResolvedValue({ id: "intruder" });
+    dbState.rows = [{ userId: "owner-1" }];
+    const res = await GET(
+      makeRequest(),
+      makeParams("generations", ["owner-1", "abc.png"])
+    );
+    expect(res.status).toBe(403);
+    expect(getObject).not.toHaveBeenCalled();
   });
 
   it("avatars 桶无需签名即可公开访问", async () => {

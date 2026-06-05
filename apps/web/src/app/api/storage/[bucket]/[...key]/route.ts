@@ -8,12 +8,16 @@
  *   v1 API 消费者通过签名 URL 参数获取授权（无 cookie）。
  */
 
+import { db } from "@repo/database";
+import { generation } from "@repo/database/schema";
+import { getCurrentUser } from "@repo/shared/auth/server";
 import { logError } from "@repo/shared/logger";
 import { getStorageProvider } from "@repo/shared/storage/providers";
 import {
   isPublicBucket,
   verifySignedImageUrl,
 } from "@repo/shared/storage/signed-url";
+import { eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -203,11 +207,36 @@ function isObjectNotFoundError(error: unknown): boolean {
  *
  * @returns null 表示验证通过，否则返回错误 Response
  */
-function verifyBucketAccess(
+/**
+ * 第一方登录态回退鉴权(非公开桶):签名 URL 校验未通过时,若请求带有效会话且
+ * 当前用户拥有该图(按 storage_key 归属),允许访问。
+ *
+ * WHY:签名 URL 本是给「无 cookie 的 v1 API 消费方」设计的短时凭证(默认 1 小时)。
+ * 浏览器同源请求本就自动带 session cookie,不该因签名过期而看不到自己的图——典型是
+ * 创作页把带签名的图片 URL 存进 localStorage,旧会话重新打开时签名已过期。让浏览器走
+ * 会话鉴权即可彻底解决,且不削弱签名有效期这一安全策略。
+ * 仅在「签名校验未通过」时才走此回退(带一次会话校验+一次归属查库),正常签名流量
+ * 校验通过即返回、不触达 DB,热路径不受影响。归属校验(storage_key 属于当前用户)
+ * 杜绝越权(IDOR):他人即便拿到 key 也无法越权读取。
+ */
+async function isOwnerViaSession(fileKey: string): Promise<boolean> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return false;
+  }
+  const rows = await db
+    .select({ userId: generation.userId })
+    .from(generation)
+    .where(eq(generation.storageKey, fileKey))
+    .limit(1);
+  return rows.length > 0 && rows[0]?.userId === user.id;
+}
+
+async function verifyBucketAccess(
   request: NextRequest,
   bucket: string,
   fileKey: string
-): NextResponse | null {
+): Promise<NextResponse | null> {
   // 公开桶无需签名
   if (isPublicBucket(bucket)) {
     return null;
@@ -216,50 +245,49 @@ function verifyBucketAccess(
   const sig = request.nextUrl.searchParams.get("sig");
   const expParam = request.nextUrl.searchParams.get("exp");
 
+  // 先按签名 URL 校验,失败时记下对应的拒绝响应(denial)再回退会话鉴权,
+  // 而非立刻返回——让带 cookie 的第一方浏览器即便签名过期也能读自己的图。
+  let denial: NextResponse | null = null;
+
   if (!sig || !expParam) {
-    return NextResponse.json(
+    denial = NextResponse.json(
       { error: "Missing signature" },
-      {
-        status: 403,
-        headers: { "Cache-Control": NO_STORE_CACHE_CONTROL },
-      }
+      { status: 403, headers: { "Cache-Control": NO_STORE_CACHE_CONTROL } }
     );
+  } else {
+    const exp = Number(expParam);
+    if (!Number.isFinite(exp) || exp <= 0) {
+      denial = NextResponse.json(
+        { error: "Invalid expiry" },
+        { status: 403, headers: { "Cache-Control": NO_STORE_CACHE_CONTROL } }
+      );
+    } else {
+      const result = verifySignedImageUrl(bucket, fileKey, sig, exp);
+      if (result === "expired") {
+        denial = NextResponse.json(
+          { error: "Signature expired" },
+          { status: 403, headers: { "Cache-Control": NO_STORE_CACHE_CONTROL } }
+        );
+      } else if (result === "invalid") {
+        denial = NextResponse.json(
+          { error: "Invalid signature" },
+          { status: 403, headers: { "Cache-Control": NO_STORE_CACHE_CONTROL } }
+        );
+      }
+    }
   }
 
-  const exp = Number(expParam);
-  if (!Number.isFinite(exp) || exp <= 0) {
-    return NextResponse.json(
-      { error: "Invalid expiry" },
-      {
-        status: 403,
-        headers: { "Cache-Control": NO_STORE_CACHE_CONTROL },
-      }
-    );
+  // 签名校验通过
+  if (!denial) {
+    return null;
   }
 
-  const result = verifySignedImageUrl(bucket, fileKey, sig, exp);
-
-  if (result === "expired") {
-    return NextResponse.json(
-      { error: "Signature expired" },
-      {
-        status: 403,
-        headers: { "Cache-Control": NO_STORE_CACHE_CONTROL },
-      }
-    );
+  // 签名缺失/过期/无效:回退第一方会话归属鉴权(仅此路径触达 DB)。
+  if (await isOwnerViaSession(fileKey)) {
+    return null;
   }
 
-  if (result === "invalid") {
-    return NextResponse.json(
-      { error: "Invalid signature" },
-      {
-        status: 403,
-        headers: { "Cache-Control": NO_STORE_CACHE_CONTROL },
-      }
-    );
-  }
-
-  return null;
+  return denial;
 }
 
 export async function GET(
@@ -293,8 +321,8 @@ export async function GET(
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
 
-  // 签名验证：generations 桶需要有效签名，avatars 桶公开访问。
-  const accessError = verifyBucketAccess(request, bucket, fileKey);
+  // 签名验证：generations 桶需要有效签名(或第一方会话归属),avatars 桶公开访问。
+  const accessError = await verifyBucketAccess(request, bucket, fileKey);
   if (accessError) {
     return accessError;
   }
