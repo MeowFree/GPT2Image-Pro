@@ -4372,10 +4372,11 @@ function buildSub2ApiHealthMessage(account: Sub2ApiTokenAccount) {
 }
 
 async function getSub2ApiHealthOverride(account: Sub2ApiTokenAccount): Promise<{
-  status: "active" | "limited" | "error" | "disabled" | null;
+  // 同步只回写"健康/可用性",绝不产生 disabled 状态、也不回写 isEnabled——
+  // 启用/停用是本站管理员的本地控制,不随上游(Sub2API)同步。
+  status: "active" | "limited" | "error" | null;
   cooldownUntil?: Date | null;
   lastError?: string | null;
-  isEnabled?: boolean;
 }> {
   const message = buildSub2ApiHealthMessage(account);
   const combined = [
@@ -4397,11 +4398,13 @@ async function getSub2ApiHealthOverride(account: Sub2ApiTokenAccount): Promise<{
     account.sourceStatus?.trim().toLowerCase() === "disabled" ||
     account.sourceStatus?.trim().toLowerCase() === "inactive"
   ) {
+    // 上游把账号标记 disabled/inactive:仅作为"错误"健康态把它踢出轮换(上游不可
+    // 调度,路由过去必失败),但不同步成 disabled 状态、不回写 isEnabled。启停由本站
+    // 管理员控制;上游恢复(下次同步返回 status:null)即自愈为 active。
     return {
-      status: "disabled",
+      status: "error",
       cooldownUntil: account.sourceCooldownUntil,
       lastError: message || "Sub2API 标记账号不可调度",
-      isEnabled: false,
     };
   }
 
@@ -4482,11 +4485,11 @@ async function getSub2ApiHealthOverride(account: Sub2ApiTokenAccount): Promise<{
   }
 
   if (account.sourceSchedulable === false) {
+    // 同上:不可调度只作为错误踢出轮换,不同步 disabled 状态、不回写 isEnabled。
     return {
-      status: "disabled",
+      status: "error",
       cooldownUntil: account.sourceCooldownUntil,
       lastError: message || "Sub2API 标记账号不可调度",
-      isEnabled: false,
     };
   }
 
@@ -4644,8 +4647,9 @@ async function resolveSyncedAccountHealth(
         (await shouldPreserveLocalUnavailableState(existing))));
   const rawUpdate = sourceHealth.status
     ? {
+        // 同步不回写启停:始终保留本地 isEnabled(管理员控制),仅新账号默认启用。
         status: sourceHealth.status,
-        isEnabled: sourceHealth.isEnabled ?? existing?.isEnabled ?? true,
+        isEnabled: existing?.isEnabled ?? true,
         cooldownUntil: sourceHealth.cooldownUntil ?? null,
         lastError: sourceHealth.lastError ?? null,
         lastErrorAt: sourceHealth.lastError ? now : null,
@@ -4659,8 +4663,10 @@ async function resolveSyncedAccountHealth(
           lastErrorAt: existing!.lastErrorAt,
         }
       : {
+          // 上游健康:恢复为 active,但同样保留本地 isEnabled——不因上游正常就把
+          // 管理员本地停用的账号强行重新启用(启停不随上游同步)。新账号默认启用。
           status: "active",
-          isEnabled: true,
+          isEnabled: existing?.isEnabled ?? true,
           cooldownUntil: null,
           lastError: null,
           lastErrorAt: null,
