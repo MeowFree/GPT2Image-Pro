@@ -42,6 +42,8 @@ import {
   normalizeValidImageSize,
 } from "@/features/image-generation/resolution";
 import { classifyGenerationError } from "@/features/image-generation/sla";
+import { GLOBAL_STATUS_CACHE_TAG } from "./cache-tag";
+import { RefreshStatusButton } from "./refresh-status-button";
 
 export const dynamic = "force-dynamic";
 
@@ -1669,7 +1671,7 @@ async function loadStatusData() {
 const getCachedStatusData = unstable_cache(
   loadStatusData,
   ["admin-global-status"],
-  { revalidate: 120 }
+  { revalidate: 120, tags: [GLOBAL_STATUS_CACHE_TAG] }
 );
 
 export default async function GlobalStatusPage({
@@ -1716,10 +1718,17 @@ export default async function GlobalStatusPage({
             )}
           </p>
         </div>
-        <Badge variant="outline" className="w-fit">
-          {copy(locale, "Updated", "更新时间")}{" "}
-          {formatDateTime(new Date(data.now), locale, timeZone)}
-        </Badge>
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+          <RefreshStatusButton
+            label={copy(locale, "Refresh", "刷新")}
+            refreshingLabel={copy(locale, "Refreshing", "刷新中")}
+            errorLabel={copy(locale, "Refresh failed", "刷新失败")}
+          />
+          <Badge variant="outline" className="w-fit">
+            {copy(locale, "Updated", "更新时间")}{" "}
+            {formatDateTime(new Date(data.now), locale, timeZone)}
+          </Badge>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
