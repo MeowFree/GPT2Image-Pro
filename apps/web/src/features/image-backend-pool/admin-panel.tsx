@@ -1610,6 +1610,29 @@ export function ImageBackendPoolAdminPanel({
       message: "正在按任务配置全量同步 Sub2API 账号",
     });
 
+    // 全量同步是单次后端调用、无中间进度上报(后端还要做 cleanup/建任务等原子操作,
+    // 不宜客户端分批)。用渐进动画让进度条平滑爬向 ~90% 表示"在跑",真实结果返回后
+    // 由下方 setSyncProgress 跳到 100%——避免长同步时看着像卡死。
+    let progressTimer: ReturnType<typeof setInterval> | null = setInterval(() => {
+      setSyncProgress((prev) =>
+        prev.status === "running" && prev.value < 90
+          ? {
+              ...prev,
+              value: Math.min(
+                90,
+                prev.value + Math.max(1, Math.round((90 - prev.value) / 12))
+              ),
+            }
+          : prev
+      );
+    }, 700);
+    const stopSyncProgressTimer = () => {
+      if (progressTimer) {
+        clearInterval(progressTimer);
+        progressTimer = null;
+      }
+    };
+
     try {
       const sourceGroupName =
         sub2ApiSourceGroups.find(
@@ -1682,6 +1705,7 @@ export function ImageBackendPoolAdminPanel({
       });
       toast.error(message);
     } finally {
+      stopSyncProgressTimer();
       setIsSyncingSub2Api(false);
     }
   };
