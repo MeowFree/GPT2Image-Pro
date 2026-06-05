@@ -249,6 +249,10 @@ const AUTO_SUB2API_SYNC_STATE_KEY = "SUB2API_AUTO_SYNC_STATE";
 const AUTO_SUB2API_SYNC_TASKS_KEY = "SUB2API_AUTO_SYNC_TASKS";
 const DEFAULT_BACKEND_COOLDOWN_MINUTES = 15;
 const MAX_PARSED_RESET_COOLDOWN_DAYS = 14;
+// 冷却地板:上游/源给的重置时间若过短(典型:per-min 429 的 "try again in 15ms"),
+// 直接采纳会让冷却≈0、账号被立刻重选再撞限流。低于地板一律抬到地板。真·用量限制
+// (5h/7d)重置远大于地板,不受影响。
+const MIN_RESET_COOLDOWN_MS = 60_000;
 const BACKEND_SCHEDULER_EWMA_ALPHA = 0.2;
 const DEFAULT_UNRECOVERABLE_BACKEND_ERROR_KEYWORDS = [
   "refresh token",
@@ -1439,8 +1443,10 @@ function parseDateValue(value: string | Date | null | undefined) {
 
 function clampResetDate(date: Date | null, now: Date) {
   if (!date || date.getTime() <= now.getTime()) return null;
+  // 地板:亚秒级/过短的上游重置抬到至少 MIN_RESET_COOLDOWN_MS,避免冷却形同虚设。
+  const min = now.getTime() + MIN_RESET_COOLDOWN_MS;
   const max = now.getTime() + MAX_PARSED_RESET_COOLDOWN_DAYS * 24 * 60 * 60_000;
-  return new Date(Math.min(date.getTime(), max));
+  return new Date(Math.min(Math.max(date.getTime(), min), max));
 }
 
 function parseResetDateFromError(error?: string | null) {
@@ -4595,8 +4601,17 @@ async function normalizeSyncedAccountCooldown(input: {
   cooldownUntil: Date | null;
   lastError?: string | null;
 }) {
-  if (input.status !== "limited" || input.cooldownUntil) {
+  if (input.status !== "limited") {
     return input.cooldownUntil;
+  }
+
+  // 同步路径(sub2api)的 limited 冷却可能直接来自源 sourceRateLimitResetAt——
+  // 同样可能是亚秒级(per-min 429)。已有冷却则抬到地板;无冷却则用配置分钟数(≥地板)。
+  if (input.cooldownUntil) {
+    const floor = Date.now() + MIN_RESET_COOLDOWN_MS;
+    return input.cooldownUntil.getTime() < floor
+      ? new Date(floor)
+      : input.cooldownUntil;
   }
 
   const error = input.lastError || "";

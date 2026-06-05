@@ -1,4 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// 让分类函数 DB-free:运行时设置一律返回默认值(避免 classifyFailure 经
+// isUnrecoverableBackendError 去查 system_setting 表)。只调纯函数的用例不受影响。
+vi.mock("@repo/shared/system-settings", () => ({
+  clearSystemSettingsCache: () => {},
+  getRuntimeSettingJson: async (_key: string, def?: unknown) => def ?? null,
+  getRuntimeSettingNumber: async (_key: string, def?: number) => def ?? 0,
+  getRuntimeSettingString: async (_key: string, def?: string) => def ?? "",
+}));
 
 async function loadClassifier() {
   process.env.DATABASE_URL ||= "postgres://test:test@localhost:5432/test";
@@ -125,6 +134,18 @@ describe("image backend error classification", () => {
     expect(svc.isImageBackendSwitchableError(err)).toBe(true);
     const failure = await svc.classifyFailure(err);
     expect(failure.status).toBe("error");
+  });
+
+  it("限流的亚秒级上游重置(15ms)被冷却地板抬到至少 ~60s,而非形同无冷却", async () => {
+    const svc = await loadService();
+    const err =
+      "Rate limit reached for gpt-image-2-codex (for limit gpt-image) in organization org-X on input-images per min: Limit 4000, Used 4000, Requested 1. Please try again in 15ms. | rate_limit_exceeded | input-images";
+    // 上游/中转把 "try again in 15ms" 传成 retryAfterSeconds=0.015;无地板时冷却≈15ms。
+    const failure = await svc.classifyFailure(err, { retryAfterSeconds: 0.015 });
+    expect(failure.cooldownUntil).toBeInstanceOf(Date);
+    const remainMs = (failure.cooldownUntil as Date).getTime() - Date.now();
+    // 地板 60s,留抖动余量按 ≥55s 断言。
+    expect(remainMs).toBeGreaterThanOrEqual(55_000);
   });
 
   it("switches accounts when the backend lacks an image_generation tool", async () => {
