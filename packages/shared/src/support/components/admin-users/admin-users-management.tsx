@@ -23,6 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { formatCredits } from "../../../credits/format";
+import { buildStorageThumbnailUrl } from "../../../storage/signed-url";
 import { formatDateInTimeZone } from "../../../time-zone";
 import {
   adminAdjustCreditsAction,
@@ -1624,15 +1625,21 @@ export function AdminUsersManagement({
                             <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md bg-muted">
                               {item.imageUrl ? (
                                 <Image
-                                  src={item.imageUrl}
+                                  // 走 /w/ 路径段缩略图 + unoptimized 直连。
+                                  // 不能用 Next 图片优化器:它对带 ?sig= 的本地图会
+                                  // 返回 400("url parameter is not allowed",需配
+                                  // images.localPatterns);且优化器会拉 5~7MB 原图来
+                                  // 生成 80px 缩略图。改直连 /w160/ 小 webp。
+                                  src={
+                                    buildStorageThumbnailUrl(item.imageUrl, 160) ??
+                                    item.imageUrl
+                                  }
                                   alt={item.prompt}
                                   width={80}
                                   height={80}
                                   sizes="80px"
                                   className="h-full w-full object-cover"
-                                  unoptimized={
-                                    !item.imageUrl.startsWith("/api/storage/")
-                                  }
+                                  unoptimized
                                 />
                               ) : item.status === "failed" ? (
                                 <XCircle className="h-5 w-5 text-destructive" />
