@@ -2,20 +2,48 @@
  * 分层 PSD 组装(进程内,ag-psd)。
  *
  * 职责:把"生成即分层"产出的多张图组装成一个分层 PSD。底图/背景层保持不透明铺满;
- * 前景元素层(模型在纯白底上单独生成)先过 ISNet matte 抠掉白底转 alpha,再作为透明层叠上去。
+ * 前景元素层(模型在纯白底上单独生成)逐层单独抠白底转 alpha,再作为透明层叠上去。
  *
- * WHY:分层在生成阶段由 agent【正向逐层生成】完成(整图 → 背景 → 各元素),本模块只负责把这些
- * 现成的层堆叠为 PSD,不做图像分解、不生成新图、不扣费。注意这是"生成式分层",层间可能有
- * 尺度/位置漂移,叠加为近似还原而非像素级还原。
+ * 抠图策略:元素层【主用 ISNet】(对实心主体如人物/动物抠得干净);仅当 ISNet 把某层抠到近乎全空
+ * (不透明覆盖率过低,常见于稀疏/接近白的主体,如樱花树的镂空花枝——实测可被 ISNet 抠到 alpha≈3)
+ * 时,该层【自动回退白底 chroma-key】,避免丢层。两者均为逐层单独处理,互不影响。
+ *
+ * 分层在生成阶段由 agent【正向逐层生成】完成(整图 → 背景 → 各元素),本模块只负责把现成的层
+ * 堆叠为 PSD,不做图像分解、不生成新图、不扣费。注意这是"生成式分层",层间可能有尺度/位置漂移,
+ * 叠加为近似还原而非像素级还原。
  *
  * 使用方:分层 generation 完成后的后台组装(见 orchestrator 的分层导出路径)。
- * 性能:每个元素层一次 ISNet 推理(CPU ~1s)+ sharp 解码;ag-psd 写盘。
- *
  * 许可:ag-psd(MIT)、sharp(Apache-2.0)、ISNet(MIT,见 matte.ts)。
  */
 import { writePsdBuffer } from "ag-psd";
 import sharp from "sharp";
 import { removeBackground } from "./matte";
+
+/** 不透明覆盖率(alpha>200 的像素占比),用于判断 ISNet 是否把某层抠到近乎全空。 */
+async function opaqueRatio(image: Buffer): Promise<number> {
+  const { data, info } = await sharp(image)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let opaque = 0;
+  const n = info.width * info.height;
+  for (let i = 3; i < data.length; i += 4) {
+    if ((data[i] ?? 0) > 200) opaque++;
+  }
+  return n > 0 ? opaque / n : 0;
+}
+
+/**
+ * 元素层抠白底:主用 ISNet;若结果近乎全空(<2% 不透明)则回退白键。逐层单独处理。
+ */
+async function matteElement(image: Buffer): Promise<Buffer> {
+  const isnet = await removeBackground(image);
+  if ((await opaqueRatio(isnet)) >= 0.02) {
+    return isnet;
+  }
+  // ISNet 抠空(稀疏/接近白主体)→ 回退白键,保住该层。
+  return keyOutWhite(image);
+}
 
 /** 单层规格。 */
 export type LayerSpec = {
@@ -39,6 +67,33 @@ export type AssembleLayeredPsdInput = {
    */
   composite?: Buffer;
 };
+
+/**
+ * 白底 chroma-key:把"纯白背景上的单元素图"的白底抠成透明,主体(含稀疏边缘)保留。
+ *
+ * 按像素 min(r,g,b) 判定接近白的程度:<=LOW 全保留(不透明)、>=HIGH 当作纯白(透明)、
+ * 中间线性过渡(边缘抗锯齿)。LOW 取较高值以保住浅色主体(如浅粉樱花,min≈200 仍判为不透明),
+ * 只削除接近纯白的背景。与已有 alpha 取 min,兼容输入本身带 alpha 的情况。
+ */
+async function keyOutWhite(image: Buffer): Promise<Buffer> {
+  const { data, info } = await sharp(image)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const LOW = 235;
+  const HIGH = 252;
+  for (let i = 0; i < data.length; i += 4) {
+    const m = Math.min(data[i] ?? 0, data[i + 1] ?? 0, data[i + 2] ?? 0);
+    const keyed =
+      m <= LOW ? 255 : m >= HIGH ? 0 : Math.round((255 * (HIGH - m)) / (HIGH - LOW));
+    data[i + 3] = Math.min(data[i + 3] ?? 255, keyed);
+  }
+  return sharp(data, {
+    raw: { width: info.width, height: info.height, channels: 4 },
+  })
+    .png()
+    .toBuffer();
+}
 
 /** sharp 解码为指定画布尺寸的非预乘 RGBA 像素。 */
 async function toRgba(
@@ -83,12 +138,10 @@ export async function assembleLayeredPsd(
   const width = meta.width;
   const height = meta.height;
 
-  // 各层转 RGBA:不透明层直接铺满;元素层先抠白底(matte 输出已带 alpha)。
+  // 各层转 RGBA:不透明层(背景)直接铺满;元素层逐层抠白底(ISNet 为主,近空回退白键)。
   const children = await Promise.all(
     layers.map(async (layer) => {
-      const src = layer.opaque
-        ? layer.image
-        : await removeBackground(layer.image);
+      const src = layer.opaque ? layer.image : await matteElement(layer.image);
       const imageData = await toRgba(src, width, height);
       return {
         name: layer.name,

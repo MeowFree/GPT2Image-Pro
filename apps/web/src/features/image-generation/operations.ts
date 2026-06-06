@@ -266,6 +266,16 @@ function resolveOutputRole(params: {
   total: number;
 }) {
   if (params.outputRole === "choice") return "choice";
+  // 分层生成:整图(index 0)=成品 final;背景/各元素=中间图 agent_draft。
+  // 忽略 merge 标的"最后一张=final"(分层里最后一张是某个元素层,不该当成品)——否则图库会把
+  // 整图归到中间图、把某个元素当成品,导致"原版在中间图、成品没导出按钮、导出缺层"等错位。
+  if (
+    params.input.mode === "chat" &&
+    params.input.agentMode &&
+    params.input.layeredGeneration
+  ) {
+    return params.index === 0 ? "final" : "agent_draft";
+  }
   if (params.input.mode === "chat" && params.input.agentMode) {
     return (
       params.outputRole ||
@@ -2802,13 +2812,12 @@ async function runQueuedImageGenerationForUser({
               actualFormat: output.actualOutputFormat,
               actualFormatDetected: output.actualOutputFormatDetected,
               actualSizeDetected: output.actualSizeDetected,
-              role:
-                output.outputRole ||
-                resolveOutputRole({
-                  input,
-                  index,
-                  total: storedOutputs.length,
-                }),
+              role: resolveOutputRole({
+                input,
+                outputRole: output.outputRole,
+                index,
+                total: storedOutputs.length,
+              }),
               primary: output.generationId === primaryOutput.generationId,
             })),
             layered: isLayeredRun
@@ -2852,9 +2861,12 @@ async function runQueuedImageGenerationForUser({
       upstreamRevisedPrompt: output.upstreamRevisedPrompt,
       promptRepairNotice: getPromptRepairNotice(repairAttempts),
       index,
-      outputRole:
-        output.outputRole ||
-        resolveOutputRole({ input, index, total: storedOutputs.length }),
+      outputRole: resolveOutputRole({
+        input,
+        outputRole: output.outputRole,
+        index,
+        total: storedOutputs.length,
+      }),
     })),
     model: recordModel,
     size: primaryOutput.size,

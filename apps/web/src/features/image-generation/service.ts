@@ -4262,11 +4262,16 @@ export async function generateChatImage(
 
     let result: ResponsesResultWithOutput | undefined;
     if (params.agentMode && !params.rawResponsesBody) {
-      const maxRounds =
-        normalizeAgentMaxRounds(params.agentMaxRounds) ||
-        (await getAgentMaxRounds());
-      const forceMaxRounds =
-        params.agentForceMaxRounds ?? (await getAgentForceMaxRounds());
+      // 分层生成需"整图 + 背景 + 每个元素"各一轮,层数由模型规划、事先未知,用上限轮数(8)给足,
+      // 让其逐层跑完(模型生成完最后一层不再调 continue_generation 会自行提前停),避免被用户的小
+      // 轮数(默认 3)截断而丢层(如"没有狗")。分层也不强制跑满轮数(否则会硬凑出多余层)。
+      const maxRounds = useLayered
+        ? 8
+        : normalizeAgentMaxRounds(params.agentMaxRounds) ||
+          (await getAgentMaxRounds());
+      const forceMaxRounds = useLayered
+        ? false
+        : (params.agentForceMaxRounds ?? (await getAgentForceMaxRounds()));
       const roundResults: ResponsesResultWithOutput[] = [];
       let nextInput = input;
       let agentPreviousResponseEnabled = responsesPreviousResponseEnabled;
