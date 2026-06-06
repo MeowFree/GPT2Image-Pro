@@ -1,30 +1,32 @@
 "use client";
 
 /**
- * 「导出 PSD」弹窗。
+ * 「导出 PSD」弹窗(异步)。
  *
- * 挂在出图详情(image-lightbox)里:基于当前 generation,让用户选择是否把主体单独成层、
- * 添加若干透明元素层,触发 exportPsdAction,成功后给出 .psd 签名下载链接。
+ * 挂在出图详情(image-lightbox):选择是否抠主体单独成层、加若干透明元素层,触发 exportPsdAction
+ * (后台异步导出,立即返回签名 URL),前端轮询该 URL(404=未好、200=好了 → 取 blob 下载)。
  *
- * 自包含、最小侵入:不依赖外部状态,locale 自取。每个新增图层会触发一次普通出图扣费。
+ * WHY 轮询:带元素的导出要多次出图、可能数分钟,同步会超 Cloudflare 100s "假失败"。
+ * 自包含、最小侵入。每个附加元素走一次普通出图扣费;主体层抠图不额外收费。
  */
 import { Button } from "@repo/ui/components/button";
 import { Checkbox } from "@repo/ui/components/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@repo/ui/components/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@repo/ui/components/dialog";
 import { Input } from "@repo/ui/components/input";
 import { Label } from "@repo/ui/components/label";
 import { Download, Layers, Loader2, Plus, X } from "lucide-react";
 import { useLocale } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { exportPsdAction } from "../actions";
 import { MAX_PSD_EXTRA_LAYERS } from "../plan";
 
 type ElementField = { id: string; value: string };
+type Phase = "idle" | "generating" | "ready" | "failed";
+
+/** 轮询上限:带多元素导出可能数分钟,给足余量。 */
+const POLL_DEADLINE_MS = 12 * 60 * 1000;
+const POLL_INTERVAL_MS = 4000;
 
 function newField(): ElementField {
   return { id: crypto.randomUUID(), value: "" };
@@ -37,16 +39,64 @@ export function ExportPsdDialog({ generationId }: { generationId: string }) {
   const [open, setOpen] = useState(false);
   const [isolateSubject, setIsolateSubject] = useState(true);
   const [fields, setFields] = useState<ElementField[]>([]);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
   const { execute, result, isExecuting, hasErrored, reset } =
     useAction(exportPsdAction);
-  const data = result?.data;
+  const signedUrl = result?.data?.psdSignedUrl;
 
   const filledElements = fields
     .map((f) => f.value.trim())
     .filter((v) => v.length > 0);
   const extraCount = (isolateSubject ? 1 : 0) + filledElements.length;
   const atLimit = extraCount >= MAX_PSD_EXTRA_LAYERS;
+
+  // action 返回签名 URL 后轮询:存储路由对未写入对象返回 404,写好返回 200。
+  useEffect(() => {
+    if (!signedUrl) return;
+    setPhase("generating");
+    setDownloadUrl(null);
+    const controller = new AbortController();
+    let cancelled = false;
+    const deadline = Date.now() + POLL_DEADLINE_MS;
+    (async () => {
+      while (!cancelled && Date.now() < deadline) {
+        try {
+          const resp = await fetch(signedUrl, { signal: controller.signal });
+          if (resp.status === 200) {
+            const blob = await resp.blob();
+            if (cancelled) return;
+            setDownloadUrl(URL.createObjectURL(blob));
+            setPhase("ready");
+            return;
+          }
+          if (resp.status !== 404) {
+            setPhase("failed");
+            return;
+          }
+        } catch {
+          if (controller.signal.aborted) return;
+          // 网络抖动:忽略,继续轮询。
+        }
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      }
+      if (!cancelled) setPhase("failed");
+    })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [signedUrl]);
+
+  function resetAll() {
+    reset();
+    setPhase("idle");
+    setDownloadUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }
 
   function updateField(id: string, value: string) {
     setFields((prev) => prev.map((f) => (f.id === id ? { ...f, value } : f)));
@@ -65,6 +115,9 @@ export function ExportPsdDialog({ generationId }: { generationId: string }) {
     });
   }
 
+  const busy = isExecuting || phase === "generating";
+  const failed = hasErrored || phase === "failed";
+
   return (
     <>
       <Button
@@ -80,7 +133,7 @@ export function ExportPsdDialog({ generationId }: { generationId: string }) {
         open={open}
         onOpenChange={(next) => {
           setOpen(next);
-          if (!next) reset();
+          if (!next) resetAll();
         }}
       >
         <DialogContent className="max-w-md">
@@ -91,6 +144,7 @@ export function ExportPsdDialog({ generationId }: { generationId: string }) {
               <Checkbox
                 checked={isolateSubject}
                 onCheckedChange={(v) => setIsolateSubject(v === true)}
+                disabled={busy}
               />
               <span className="text-sm">
                 {copy("Subject as a separate layer", "把主体单独成一层")}
@@ -105,6 +159,7 @@ export function ExportPsdDialog({ generationId }: { generationId: string }) {
                 <div key={field.id} className="flex gap-2">
                   <Input
                     value={field.value}
+                    disabled={busy}
                     onChange={(e) => updateField(field.id, e.target.value)}
                     placeholder={copy(
                       "Describe an element (transparent layer)",
@@ -115,6 +170,7 @@ export function ExportPsdDialog({ generationId }: { generationId: string }) {
                     type="button"
                     variant="ghost"
                     size="icon"
+                    disabled={busy}
                     onClick={() => removeField(field.id)}
                     aria-label={copy("Remove", "移除")}
                   >
@@ -127,7 +183,7 @@ export function ExportPsdDialog({ generationId }: { generationId: string }) {
                 variant="outline"
                 size="sm"
                 onClick={() => setFields((prev) => [...prev, newField()])}
-                disabled={atLimit}
+                disabled={atLimit || busy}
               >
                 <Plus className="mr-1 h-4 w-4" />
                 {copy("Add element", "添加元素")}
@@ -153,35 +209,38 @@ export function ExportPsdDialog({ generationId }: { generationId: string }) {
               {copy(", MIT) via onnxruntime.", ",MIT 许可),引擎 onnxruntime。")}
             </p>
 
-            {hasErrored && (
+            {failed && (
               <p className="text-sm text-destructive">
-                {copy("Export failed, please try again.", "导出失败,请重试。")}
+                {copy(
+                  "Export failed or took too long, please try again (fewer elements).",
+                  "导出失败或耗时过长,请重试(可减少元素数)。"
+                )}
               </p>
             )}
 
-            {data?.psdSignedUrl ? (
+            {phase === "ready" && downloadUrl ? (
               <Button asChild className="w-full justify-center">
                 <a
-                  href={data.psdSignedUrl}
+                  href={downloadUrl}
                   download={`gpt2image-${generationId}.psd`}
                 >
                   <Download className="mr-2 h-4 w-4" />
-                  {copy(
-                    `Download PSD (${data.layerCount} layers)`,
-                    `下载 PSD(${data.layerCount} 层)`
-                  )}
+                  {copy("Download PSD", "下载 PSD")}
                 </a>
               </Button>
             ) : (
               <Button
                 className="w-full justify-center"
                 onClick={handleExport}
-                disabled={isExecuting}
+                disabled={busy}
               >
-                {isExecuting ? (
+                {busy ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {copy("Generating layers…", "正在生成图层…")}
+                    {copy(
+                      "Generating… (may take 1-2 min, keep open)",
+                      "正在生成…(可能 1-2 分钟,请勿关闭)"
+                    )}
                   </>
                 ) : (
                   copy("Export", "开始导出")

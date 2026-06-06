@@ -39,6 +39,8 @@ export type ExportLayeredPsdInput = {
   generationId: string;
   isolateSubject?: boolean;
   elements?: PsdElementSpec[];
+  /** 预先算好的 PSD 存储 key(异步导出:action 先返回签名 URL,后台用同一 key 写入)。 */
+  psdStorageKey?: string;
 };
 
 export type ExportLayeredPsdResult = {
@@ -158,7 +160,8 @@ export async function exportLayeredPsdForUser(
   const psdBuffer = await assembleLayeredPsd(layers, { width, height });
 
   // 5. 存入与底图同桶,返回签名下载链接。
-  const psdStorageKey = `${input.userId}/${nanoid(32)}.psd`;
+  const psdStorageKey =
+    input.psdStorageKey || `${input.userId}/${nanoid(32)}.psd`;
   await storage.putObject(
     psdStorageKey,
     bucket,
