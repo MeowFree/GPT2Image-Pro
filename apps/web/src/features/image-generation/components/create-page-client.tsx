@@ -5312,10 +5312,14 @@ export function CreatePageClient({
               </label>
               <label
                 htmlFor="layered-generation"
-                className="flex items-center gap-1.5 text-xs text-foreground"
+                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
+                  layeredGeneration
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-primary/40 bg-primary/5 text-foreground"
+                }`}
                 title={copy(
-                  "Layered generation: the agent first creates the full image, then generates it layer by layer (background + each element). Use 'Export PSD' afterwards to assemble.",
-                  "分层生成:先出整图,再逐层生成(背景 + 每个元素各一层)。"
+                  "Split into PSD layers: the agent first creates the full image, then decomposes it into editable layers (background + each element) for PSD export.",
+                  "打散元素生成 PSD:先出整图,再把整图打散成可编辑图层(背景 + 每个元素各一层),完成后可导出分层 PSD。"
                 )}
               >
                 <Checkbox
@@ -5326,7 +5330,7 @@ export function CreatePageClient({
                   }
                   disabled={isChatGenerating}
                 />
-                {copy("Layered", "分层")}
+                {copy("Split into PSD layers", "打散元素生成 PSD")}
               </label>
               <Select
                 value={String(agentMaxRounds)}
@@ -5996,7 +6000,14 @@ export function CreatePageClient({
         currentPrompt,
         fallbackSize || size
       );
-      const variant = variants[variants.length - 1];
+      // 默认展示"成品"那张:分层结果整图的 outputRole 为 final(其余层为 agent_draft),
+      // 用它作活动变体,避免大图落在最后生成的某个图层上。非分层时 final 即最后一张,行为不变。
+      const finalVariantIndex = variants.findIndex(
+        (item) => item.outputRole === "final"
+      );
+      const activeIndex =
+        finalVariantIndex >= 0 ? finalVariantIndex : variants.length - 1;
+      const variant = variants[activeIndex];
       if (!variant || variants.length === 0) {
         const message = copy(
           "API returned no image data",
@@ -6033,7 +6044,7 @@ export function CreatePageClient({
                   ...item,
                   pending: false,
                 })),
-                activeVariant: variants.length - 1,
+                activeVariant: activeIndex,
               }
             : message
         )

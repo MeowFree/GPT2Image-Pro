@@ -2607,12 +2607,16 @@ async function runQueuedImageGenerationForUser({
   const hasChoiceOutputs = storedOutputs.some(
     (output) => output.outputRole === "choice"
   );
+  // 分层生成:每一轮的图(整图 + 背景 + 各元素)都是可交付的 PSD 图层,逐张计费(而非只计成品)。
   const billableOutputs = hasChoiceOutputs
     ? [primaryOutput]
-    : storedOutputs.filter((output) => output.outputRole !== "agent_draft");
+    : isLayeredRun
+      ? storedOutputs
+      : storedOutputs.filter((output) => output.outputRole !== "agent_draft");
   const billableImageOutputCount = billableOutputs.length;
   const perOutputCreditCosts = storedOutputs.map((output) =>
-    output.outputRole === "agent_draft" ||
+    // 分层运行:每张图都计费(不把层当作免费 agent_draft 草稿)。
+    (!isLayeredRun && output.outputRole === "agent_draft") ||
     (hasChoiceOutputs && output.generationId !== primaryOutput.generationId)
       ? {
           baseCredits: 0,
