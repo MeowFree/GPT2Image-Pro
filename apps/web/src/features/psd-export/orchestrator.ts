@@ -114,41 +114,45 @@ export async function exportLayeredPsdForUser(
       .png()
       .toBuffer();
 
-  // 3. 逐层产出位图。
-  const layers: PsdLayerInput[] = [];
-  let creditsConsumed = 0;
+  // 抠掉背景 + 对齐画布。
+  const matteToCanvas = async (png: Buffer) =>
+    fitToCanvas(await removeBackground(png));
 
-  for (const job of jobs) {
-    if (job.role === "background") {
-      layers.push({ name: job.name, image: baseBytes });
-      continue;
-    }
-
-    if (job.role === "subject") {
-      // 主体层 = 对底图抠图(像素级精确,不生成、不扣费)。
-      const cut = await removeBackground(baseBytes);
-      layers.push({ name: job.name, image: await fitToCanvas(cut) });
-      continue;
-    }
-
-    // 元素层 = 不透明生成(走内置扣费)→ 抠掉背景 → 透明叠层。
-    const result = await runImageGenerationForUser({
-      mode: "generate",
-      userId: input.userId,
-      prompt: job.prompt,
-      outputFormat: "png",
-      size: sizeParam,
-      n: 1,
-    });
-    if (result.error || !result.generationId) {
-      throw new Error(result.error || "图层生成失败");
-    }
-    creditsConsumed += result.creditsConsumed ?? 0;
-
-    const rawLayer = await loadGenerationImageBytes(result, storage);
-    const cut = await removeBackground(rawLayer);
-    layers.push({ name: job.name, image: await fitToCanvas(cut) });
-  }
+  // 3. 逐层产出位图。元素层各自一次出图,并发跑——串行会把多元素叠加到几分钟、超 CF 100s;
+  //    顺序由 jobs 决定,Promise.all 保序。
+  const produced = await Promise.all(
+    jobs.map(async (job) => {
+      if (job.role === "background") {
+        return { layer: { name: job.name, image: baseBytes }, credits: 0 };
+      }
+      if (job.role === "subject") {
+        // 主体层 = 对底图抠图(像素级精确,不生成、不扣费)。
+        return {
+          layer: { name: job.name, image: await matteToCanvas(baseBytes) },
+          credits: 0,
+        };
+      }
+      // 元素层 = 不透明生成(走内置扣费)→ 抠掉背景 → 透明叠层。
+      const result = await runImageGenerationForUser({
+        mode: "generate",
+        userId: input.userId,
+        prompt: job.prompt,
+        outputFormat: "png",
+        size: sizeParam,
+        n: 1,
+      });
+      if (result.error || !result.generationId) {
+        throw new Error(result.error || "图层生成失败");
+      }
+      const rawLayer = await loadGenerationImageBytes(result, storage);
+      return {
+        layer: { name: job.name, image: await matteToCanvas(rawLayer) },
+        credits: result.creditsConsumed ?? 0,
+      };
+    })
+  );
+  const layers: PsdLayerInput[] = produced.map((item) => item.layer);
+  const creditsConsumed = produced.reduce((sum, item) => sum + item.credits, 0);
 
   // 4. 组装分层 PSD。
   const psdBuffer = await assembleLayeredPsd(layers, { width, height });
