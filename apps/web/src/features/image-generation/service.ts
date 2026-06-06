@@ -2985,6 +2985,21 @@ async function processResponsesEventPayload(
       state,
       payload.item as ResponsesOutputItem | undefined
     );
+    // 按顺序累积已完成的输出项,作为 response.completed.output 为空时的兜底来源。
+    if (item?.type) {
+      state.completedOutputItems = state.completedOutputItems || [];
+      const itemId = getResponseItemId(item);
+      const existingIndex = itemId
+        ? state.completedOutputItems.findIndex(
+            (existing) => getResponseItemId(existing) === itemId
+          )
+        : -1;
+      if (existingIndex >= 0) {
+        state.completedOutputItems[existingIndex] = item;
+      } else {
+        state.completedOutputItems.push(item);
+      }
+    }
     await reportResponsesToolEvent(state, callbacks, item, "completed");
     const itemImageBase64 = extractResponsesImageCallBase64(item);
     if (item?.type === "image_generation_call" && itemImageBase64) {
@@ -3037,6 +3052,15 @@ async function processResponsesEventPayload(
     return null;
   }
 
+  // 不逐 token 汇报函数调用参数(如 continue_generation 的 reason):工具事件签名含 arguments,
+  // 每个 delta 累积参数都不同 → 绕过去重 → 日志逐字刷屏。必须在 fallbackToolType 兜底块【之前】
+  // 拦截,否则会被 eventNameToFallbackToolType("...function_call...") 归类后逐 delta 发出(兜底块
+  // 在前,之前放在其后的分支是死代码)。函数调用起止已由 output_item.added/done 与轮次循环的
+  // 「Agent 请求继续」单独汇报。
+  if (streamEventName === "response.function_call_arguments.delta") {
+    return null;
+  }
+
   const fallbackToolType = isResponsesPartialImageEvent(
     streamEventName,
     payload
@@ -3071,8 +3095,7 @@ async function processResponsesEventPayload(
     streamEventName === "response.output_item.delta" ||
     streamEventName === "response.web_search_call.searching" ||
     streamEventName === "response.web_search_call.in_progress" ||
-    streamEventName === "response.code_interpreter_call.code.delta" ||
-    streamEventName === "response.function_call_arguments.delta"
+    streamEventName === "response.code_interpreter_call.code.delta"
   ) {
     const item =
       getStreamDeltaItem(state, payload) ||
@@ -3135,13 +3158,21 @@ async function processResponsesEventPayload(
     const completedPayload = extractResponseCompletedPayload(
       payload as ResponsesPayload | { response?: ResponsesPayload }
     );
-    const result = parseResponsesOutput(completedPayload.output);
+    // codex(store:false)的 completed.output 常为空;此时退回流式累积的 output_item.done 项,
+    // 否则会丢掉 function_call(continue_generation)等输出项,导致 agent 续轮被误判停止。
+    const completedOutput =
+      completedPayload.output && completedPayload.output.length > 0
+        ? completedPayload.output
+        : state.completedOutputItems && state.completedOutputItems.length > 0
+          ? state.completedOutputItems
+          : completedPayload.output;
+    const result = parseResponsesOutput(completedOutput);
     if (result) {
       const completedImageOutputCount = result.imageOutputs?.length || 0;
       state.completedResult = {
         ...result,
         responseId: completedPayload.id,
-        outputItems: completedPayload.output,
+        outputItems: completedOutput,
         responsesUsage: extractResponsesTokenUsage(completedPayload),
         imageOutputs:
           completedImageOutputCount > 0
@@ -3331,6 +3362,10 @@ type EventStreamParseState = {
   responseAgent?: string;
   agentEvents?: AgentRunEvent[];
   streamItems?: Record<string, ResponsesOutputItem>;
+  // 按到达顺序累积的 output_item.done 项。WHY:codex(store:false)的 response.completed
+  // 返回的 output 为空数组,真正的输出项(含带 call_id 的 continue_generation function_call)
+  // 只通过 output_item.done 逐条下发;completed.output 为空时用本列表兜底,否则会漏判"请求继续"。
+  completedOutputItems?: ResponsesOutputItem[];
   emittedToolEvents?: Record<string, string>;
   emittedRawStreamEvents?: Record<string, true>;
   debugRawStreamEvents?: boolean;
@@ -4391,6 +4426,30 @@ export async function generateChatImage(
 
         if (roundResult.error) {
           if (roundResults.slice(0, -1).some(hasAgentImage)) {
+            const partial = mergeGenerateImageResults(
+              roundResults.slice(0, -1)
+            );
+            // 续轮遇到"可切换"上游错误(如 token 失效/限流/账号不可用)时,上抛 error,交由外层
+            // retryPoolBackendResult 换号重跑整个 agent(多轮任务如分层尤其需要:否则只会停在
+            // 第一轮)。同时保留已产出的图,池子彻底耗尽时仍把这版返回。非切换类错误(如内容审核)
+            // 维持原"保留上一版、不重试"语义。
+            if (isImageBackendSwitchableError(roundResult.error)) {
+              await emitAgentProgress(callbacks, {
+                kind: "message",
+                status: "failed",
+                title: `Agent 第 ${round} 轮失败`,
+                detail: `后续迭代上游错误，尝试切换账号重试：${roundResult.error}`,
+                timestamp: new Date().toISOString(),
+              });
+              result = {
+                ...partial,
+                error: roundResult.error,
+                upstreamResetAt: roundResult.upstreamResetAt,
+                retryAfterSeconds: roundResult.retryAfterSeconds,
+                partialAgentError: roundResult.error,
+              };
+              break;
+            }
             await reportPoolBackendResult(config, {
               error: roundResult.error,
               upstreamResetAt: roundResult.upstreamResetAt,
@@ -4404,7 +4463,7 @@ export async function generateChatImage(
               timestamp: new Date().toISOString(),
             });
             result = {
-              ...mergeGenerateImageResults(roundResults.slice(0, -1)),
+              ...partial,
               partialAgentError: roundResult.error,
             };
             break;

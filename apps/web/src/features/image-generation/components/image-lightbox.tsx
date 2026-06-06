@@ -53,6 +53,8 @@ export interface LightboxGeneration {
   createdAt: string;
   outputRole?: "final" | "agent_draft" | "upload";
   referenceImages?: LightboxReferenceImage[];
+  /** 是否为"生成即分层"产物:为 true 才展示导出分层 PSD 入口。 */
+  isLayered?: boolean;
 }
 
 export interface ImageLightboxProps {
@@ -617,7 +619,9 @@ export function ImageLightbox({
                       {copy("Download", "下载")}
                     </a>
                   </Button>
-                  <ExportPsdDialog generationId={generation.id} />
+                  {generation.isLayered && (
+                    <ExportPsdDialog generationId={generation.id} />
+                  )}
                 </>
               )}
               {onDelete && (

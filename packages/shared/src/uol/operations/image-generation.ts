@@ -470,15 +470,15 @@ defineOperation({
 });
 
 // ---------------------------------------------------------------------------
-// 13. image.exportPsd - 导出分层 PSD（用 LayerD 把底图分解成可编辑分层 PSD）
-// 不生成新图、不扣费;LayerD(Python:BiRefNet 抠图 + LaMa 补全)直接输出分层 .psd。异步。
+// 13. image.exportPsd - 导出分层 PSD（把"生成即分层"的产物组装成可编辑分层 PSD）
+// 不生成新图、不扣费;逐元素 ISNet 抠白底转透明 + ag-psd 组装。仅分层生成产物可导出。异步。
 // ---------------------------------------------------------------------------
 defineOperation({
   name: "image.exportPsd",
   domain: "image-generation",
   title: "导出分层 PSD",
   description:
-    "用 LayerD 把一张已生成的底图分解成可编辑分层 .psd 并存储、返回签名下载链接。" +
+    "把一次分层生成的产物(整图/背景/各元素)组装成可编辑分层 .psd 并存储、返回签名下载链接。" +
     "不生成新图、不扣费;CPU 数十秒,异步执行(action 立即返回签名 URL,前端轮询)。",
   input: z.object({
     generationId: z.string(),

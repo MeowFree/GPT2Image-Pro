@@ -6,6 +6,7 @@ import { generation } from "@repo/database/schema";
 import { buildSignedStorageImageUrl } from "@repo/shared/storage/signed-url";
 import { HistoryClient } from "@/features/image-generation/components/history-client";
 import { extractGenerationCreditDetails } from "@/features/image-generation/credit-calculation-details";
+import { hasLayeredMeta } from "@/features/psd-export/layered-meta";
 import {
   extractGenerationReferenceImages,
   extractPromptRepairNotice,
@@ -63,6 +64,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     storageBucket: g.storageBucket,
     imageUrl: buildSignedStorageImageUrl(g.storageKey, g.storageBucket),
     referenceImages: extractGenerationReferenceImages(g.metadata),
+    isLayered: hasLayeredMeta(g.metadata),
     createdAt: g.createdAt.toISOString(),
   }));
 

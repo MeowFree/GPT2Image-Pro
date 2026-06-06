@@ -11,6 +11,7 @@ import { getAppTimeZone } from "@repo/shared/time-zone/server";
 import { getLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { CreatePageClient } from "@/features/image-generation/components/create-page-client";
+import { hasLayeredMeta } from "@/features/psd-export/layered-meta";
 import { getRuntimeImageBaseCreditPricing } from "@/features/image-generation/pricing-settings";
 import { getUserRecentGenerations } from "@/features/image-generation/queries";
 import { getUserApiConfig } from "@/features/image-generation/service";
@@ -81,6 +82,7 @@ export default async function CreatePage() {
     creditsConsumed: g.creditsConsumed,
     status: g.status,
     imageUrl: buildSignedStorageImageUrl(g.storageKey, g.storageBucket),
+    isLayered: hasLayeredMeta(g.metadata),
     createdAt: g.createdAt.toISOString(),
   }));
 

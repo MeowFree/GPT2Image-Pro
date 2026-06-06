@@ -26,6 +26,7 @@ export interface RecentCreation {
   storageKey: string | null;
   storageBucket: string | null;
   imageUrl: string | null;
+  isLayered?: boolean;
 }
 
 export function RecentCreationsClient({

@@ -52,6 +52,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
+import { buildStorageThumbnailUrl } from "@repo/shared/storage/signed-url";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale } from "next-intl";
@@ -112,6 +113,7 @@ type RecentGeneration = {
   status: "pending" | "completed" | "failed";
   imageUrl: string | null;
   createdAt: string;
+  isLayered?: boolean;
 };
 
 type ResultState = {
@@ -153,6 +155,7 @@ type ImageApiResult = {
   responseAgent?: string;
   agentEvents?: AgentRunEvent[];
   agentRoundCount?: number;
+  layered?: boolean;
   webConversation?: ChatGptWebConversationState;
   backendMember?: StickyBackendMemberState;
   responsesPreviousResponse?: ResponsesPreviousResponseState;
@@ -280,6 +283,7 @@ type ChatResultInput = Pick<
   | "responseAgent"
   | "agentEvents"
   | "agentRoundCount"
+  | "layered"
   | "webConversation"
   | "backendMember"
   | "responsesPreviousResponse"
@@ -968,6 +972,15 @@ function ImageSizeDialog({
 
 const shouldBypassImageOptimization = (imageUrl: string | undefined) =>
   Boolean(imageUrl);
+
+// 列表/缩略图场景:把同源存储图(/api/storage)改走 /w<width>/ 路径段缩略图。
+// WHY:这些位置常以很小尺寸展示(最近面板 80px、变体 40px),但原本直接加载全分辨率原图
+// (单张可达 1.3MB),一屏多图严重拖卡前端;next/image 优化器对带签名 query 的本地图会 400,
+// 故沿用全站既有方案——直连 /w/ 路径段缩略图(CF/磁盘可缓存),非存储图原样返回。
+const thumbSrc = (
+  imageUrl: string | null | undefined,
+  width: number
+): string => buildStorageThumbnailUrl(imageUrl, width) || imageUrl || "";
 
 const DEFAULT_MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const DEFAULT_MAX_EDIT_REQUEST_BYTES = 75 * 1024 * 1024;
@@ -3730,6 +3743,11 @@ export function CreatePageClient({
         ? createOptimisticAgentRoundEvents(1)
         : [];
       let previewUrl: string | undefined;
+      // 分层生成:第 1 轮整图出来后把它钉为主预览,后续逐层(背景/元素)只进事件列表缩略图,
+      // 不再覆盖主预览——否则用户看到的"整图"会被后面的单层图替换掉。非分层不受影响。
+      let layeredCompositePinned = false;
+      const allowMainPreviewUpdate = () =>
+        !(layeredGeneration && layeredCompositePinned);
 
       const processBlock = async (block: string) => {
         const data = block
@@ -3817,7 +3835,7 @@ export function CreatePageClient({
         if (event.type === "agent_event") {
           agentEvents = appendAgentRunEvent(agentEvents, event.event);
           const eventImageUrl = agentEventToImageUrl(event.event);
-          if (eventImageUrl) {
+          if (eventImageUrl && allowMainPreviewUpdate()) {
             previewUrl = eventImageUrl;
             setStreamingPreviewUrl(eventImageUrl);
           }
@@ -3834,7 +3852,11 @@ export function CreatePageClient({
         if (event.type === "partial_image") {
           const nextPreviewUrl = imageStreamEventToPreviewUrl(event);
           if (nextPreviewUrl) {
-            previewUrl = nextPreviewUrl;
+            const updateMain = allowMainPreviewUpdate();
+            if (updateMain) {
+              previewUrl = nextPreviewUrl;
+              setStreamingPreviewUrl(nextPreviewUrl);
+            }
             if (!event.final) {
               agentEvents = appendAgentRunEvent(agentEvents, {
                 kind: "image_partial",
@@ -3846,15 +3868,18 @@ export function CreatePageClient({
                 timestamp: new Date().toISOString(),
               });
             }
-            setStreamingPreviewUrl(nextPreviewUrl);
+            // 分层:首张整图(final)出现后钉住主预览,后续逐层图只进事件列表、不覆盖主图。
+            if (layeredGeneration && event.final) {
+              layeredCompositePinned = true;
+            }
             await publishStreamState({
               text,
               thinking,
               agent,
               agentEvents,
-              imageUrl: nextPreviewUrl,
+              imageUrl: previewUrl,
             });
-            if (streamCardId) {
+            if (streamCardId && updateMain) {
               setBatchCards((prev) =>
                 prev.map((card) =>
                   card.id === streamCardId && card.state === "loading"
@@ -4225,6 +4250,7 @@ export function CreatePageClient({
           imageUrl: data.imageUrl || null,
           createdAt: new Date().toISOString(),
           canDelete: true,
+          isLayered: data.layered,
         },
         ...prev.slice(0, 5),
       ]);
@@ -4366,6 +4392,7 @@ export function CreatePageClient({
           imageUrl: variant.imageUrl || null,
           createdAt: new Date().toISOString(),
           canDelete: index === 0,
+          isLayered: data.layered,
         }));
       if (nextRecent.length > 0) {
         setRecent((prev) => {
@@ -5000,7 +5027,7 @@ export function CreatePageClient({
       {task.imageUrl && (
         <div className="mt-2 max-w-[240px] overflow-hidden rounded-md border bg-muted">
           <Image
-            src={task.imageUrl}
+            src={thumbSrc(task.imageUrl, 480)}
             alt={task.title}
             width={240}
             height={240}
@@ -6800,6 +6827,27 @@ export function CreatePageClient({
           })
         )
     )[0] ??
+    // 文生图/视觉模式的结果存在 visualResults(不在 recent/chat 里),也要能解析出来供预览,
+    // 否则点击结果图时找不到对应项 → 预览打不开(假按钮)。
+    Object.values(visualResults)
+      .filter(
+        (result): result is ResultState =>
+          result != null && result.generationId === selectedRecentId
+      )
+      .map(
+        (result): ChatRecentGeneration => ({
+          id: result.generationId,
+          prompt: result.prompt,
+          revisedPrompt: result.revisedPrompt ?? null,
+          model: result.model,
+          size: result.size,
+          creditsConsumed: 0,
+          status: "completed",
+          imageUrl: result.imageUrl,
+          createdAt: new Date().toISOString(),
+          canDelete: false,
+        })
+      )[0] ??
     null;
 
   const textSettingsPanel = (mode: TextGenerationMode) => {
@@ -7190,13 +7238,7 @@ export function CreatePageClient({
           <section className="mt-8 mb-10 space-y-4">
             <button
               type="button"
-              onClick={() =>
-                setSelectedRecentId(
-                  recent.some((item) => item.id === modeResult.generationId)
-                    ? modeResult.generationId
-                    : null
-                )
-              }
+              onClick={() => setSelectedRecentId(modeResult.generationId)}
               className="group relative mx-auto block w-full max-w-2xl overflow-hidden rounded-lg border bg-muted"
               style={{
                 aspectRatio: `${parseImageSize(modeResult.size)?.width || defaultDimensions.width} / ${
@@ -8586,7 +8628,7 @@ export function CreatePageClient({
                                           )}
                                         >
                                           <Image
-                                            src={variant.imageUrl}
+                                            src={thumbSrc(variant.imageUrl, 256)}
                                             alt={variant.prompt}
                                             fill
                                             sizes="40px"
@@ -9012,7 +9054,7 @@ export function CreatePageClient({
                           title={copy("Open image preview", "打开图片预览")}
                         >
                           <Image
-                            src={card.imageUrl}
+                            src={thumbSrc(card.imageUrl, 640)}
                             alt={card.prompt}
                             width={640}
                             height={640}
@@ -9187,7 +9229,7 @@ export function CreatePageClient({
                 >
                   {g.imageUrl ? (
                     <Image
-                      src={g.imageUrl}
+                      src={thumbSrc(g.imageUrl, 320)}
                       alt={g.prompt}
                       fill
                       sizes="80px"

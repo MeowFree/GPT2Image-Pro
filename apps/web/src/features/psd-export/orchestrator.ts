@@ -1,27 +1,27 @@
 /**
- * PSD 导出编排:用 LayerD 把一张已生成的底图分解成分层 PSD,存储并返回签名下载链接。
+ * 分层 PSD 导出编排:把一次"生成即分层"的 agent 产物组装成可编辑的分层 PSD,存储并返回签名下载链接。
  *
- * WHY:把"原图分解成可编辑分层"是图像分解问题;LayerD(Python:BiRefNet 抠图 + LaMa 补全)
- * 直接输出分层 PSD。本编排把底图写临时文件 → 调 LayerD CLI(子进程,见 layerd.ts)→ 读回 .psd
- * → 存入与底图同一存储桶。**不生成任何新图、不扣费**。
+ * WHY:分层由生成阶段完成——agent 先出整图,再逐层生成(背景一张、各前景元素各一张,元素在纯白底上)。
+ * 各层产物已随 generation 落库,角色记录在 metadata.outputImage.layered(见 image-generation/operations.ts)。
+ * 本编排只负责"取层 → 元素层抠白底转透明 → ag-psd 组装"(见 assemble-layers.ts),**不生成新图、不扣费**。
  *
- * 使用方:apps/web 的 server action / UOL image.exportPsd。CPU ~20-60s,由异步导出 + 前端轮询承载。
+ * 注意:这是"生成式分层",层与层之间可能有尺度/位置漂移,标准叠加为近似还原而非像素级还原。
+ *
+ * 使用方:apps/web 的 server action / UOL image.exportPsd。CPU 主要花在逐元素 ISNet 抠图 + ag-psd 写盘。
  */
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { buildSignedStorageImageUrl } from "@repo/shared/storage";
 import { getStorageProvider } from "@repo/shared/storage/providers";
 import { nanoid } from "nanoid";
 import { getGenerationById } from "@/features/image-generation/queries";
-import { runLayerD } from "./layerd";
+import { assembleLayeredPsd, type LayerSpec } from "./assemble-layers";
+import { readLayeredMeta } from "./layered-meta";
 
 /** PSD 签名下载链接有效期(秒)。 */
 const PSD_SIGNED_URL_TTL_SECONDS = 7200;
 
 export type ExportLayeredPsdInput = {
   userId: string;
-  /** 底图所属 generation。 */
+  /** 分层产物所属 generation。 */
   generationId: string;
   /** 预先算好的 PSD 存储 key(异步导出:action 先返回签名 URL,后台用同一 key 写入)。 */
   psdStorageKey?: string;
@@ -33,48 +33,71 @@ export type ExportLayeredPsdResult = {
 };
 
 /**
- * 执行 PSD 导出:底图 → LayerD 分层 → 存储 → 返回签名下载链接。
+ * 执行分层 PSD 导出:取各层 → 元素层抠白底 → 组装 → 存储 → 返回签名下载链接。
  *
- * @throws 底图不存在/无权/未完成,或 LayerD 失败时抛错。
+ * @throws 产物不存在/无权/未完成、非分层生成、或可用层不足时抛错。
  */
 export async function exportLayeredPsdForUser(
   input: ExportLayeredPsdInput
 ): Promise<ExportLayeredPsdResult> {
   const base = await getGenerationById(input.generationId);
   if (!base || base.userId !== input.userId) {
-    throw new Error("底图不存在或无权访问");
+    throw new Error("产物不存在或无权访问");
   }
-  if (base.status !== "completed" || !base.storageKey) {
-    throw new Error("底图尚未完成,无法导出 PSD");
+  if (base.status !== "completed") {
+    throw new Error("产物尚未完成,无法导出 PSD");
   }
+
+  const layeredMeta = readLayeredMeta(base.metadata);
+  if (!layeredMeta) {
+    throw new Error("该图不是分层生成产物,无法导出分层 PSD");
+  }
+
   const bucket = base.storageBucket || "generations";
   const storage = await getStorageProvider();
-  const baseBytes = await storage.getObject(base.storageKey, bucket);
 
-  const dir = await mkdtemp(path.join(tmpdir(), "psd-export-"));
-  try {
-    const inputPath = path.join(dir, "input.png");
-    const outputPath = path.join(dir, "output.psd");
-    await writeFile(inputPath, baseBytes);
-    await runLayerD(inputPath, outputPath);
-    const psdBuffer = await readFile(outputPath);
+  // 取背景层 + 各前景元素层(整图仅作合成预览,不入图层)。按 order 自底向上排序。
+  const stackLayers = layeredMeta.layers
+    .filter((layer) => layer.role !== "composite")
+    .sort((a, b) => a.order - b.order);
+  if (stackLayers.length === 0) {
+    throw new Error("分层产物缺少可组装的图层");
+  }
 
-    const psdStorageKey =
-      input.psdStorageKey || `${input.userId}/${nanoid(32)}.psd`;
-    await storage.putObject(
+  let elementIndex = 0;
+  const layers: LayerSpec[] = await Promise.all(
+    stackLayers.map(async (layer) => {
+      const image = await storage.getObject(layer.storageKey, bucket);
+      const opaque = layer.role === "background";
+      const name = opaque ? "背景" : `元素 ${(elementIndex += 1)}`;
+      // 背景层不抠图、铺满不透明;元素层(白底生成)交给组装环节抠白底转透明。
+      return { name, image, opaque };
+    })
+  );
+
+  // 合成预览:优先用整图层,否则退化为背景层(assemble 内部兜底)。
+  const compositeLayer = layeredMeta.layers.find(
+    (layer) => layer.role === "composite"
+  );
+  const composite = compositeLayer
+    ? await storage.getObject(compositeLayer.storageKey, bucket)
+    : undefined;
+
+  const psdBuffer = await assembleLayeredPsd({ layers, composite });
+
+  const psdStorageKey =
+    input.psdStorageKey || `${input.userId}/${nanoid(32)}.psd`;
+  await storage.putObject(
+    psdStorageKey,
+    bucket,
+    psdBuffer,
+    "image/vnd.adobe.photoshop"
+  );
+  const psdSignedUrl =
+    buildSignedStorageImageUrl(
       psdStorageKey,
       bucket,
-      psdBuffer,
-      "image/vnd.adobe.photoshop"
-    );
-    const psdSignedUrl =
-      buildSignedStorageImageUrl(
-        psdStorageKey,
-        bucket,
-        PSD_SIGNED_URL_TTL_SECONDS
-      ) || "";
-    return { psdStorageKey, psdSignedUrl };
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+      PSD_SIGNED_URL_TTL_SECONDS
+    ) || "";
+  return { psdStorageKey, psdSignedUrl };
 }

@@ -49,6 +49,7 @@ export interface HistoryGeneration {
   storageBucket: string | null;
   imageUrl: string | null;
   referenceImages?: LightboxReferenceImage[];
+  isLayered?: boolean;
 }
 
 export interface HistoryClientProps {

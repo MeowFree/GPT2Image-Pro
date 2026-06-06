@@ -39,6 +39,7 @@ export interface GenerationWithUrl {
   imageUrl: string | null;
   outputRole?: "final" | "agent_draft" | "upload";
   referenceImages?: LightboxReferenceImage[];
+  isLayered?: boolean;
 }
 
 export interface GalleryClientProps {

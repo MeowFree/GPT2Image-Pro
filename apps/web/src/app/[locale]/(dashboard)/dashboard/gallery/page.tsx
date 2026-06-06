@@ -11,6 +11,7 @@ import {
   extractGenerationReferenceImages,
   extractPromptRepairNotice,
 } from "@/features/image-generation/generation-metadata";
+import { hasLayeredMeta } from "@/features/psd-export/layered-meta";
 
 interface GalleryPageProps {
   searchParams: Promise<{ page?: string; tab?: string }>;
@@ -238,6 +239,7 @@ export default async function GalleryPage({ searchParams }: GalleryPageProps) {
             createdAt: g.createdAt.toISOString(),
             outputRole: "final" as GalleryOutputRole,
             referenceImages: extractGenerationReferenceImages(g.metadata),
+            isLayered: hasLayeredMeta(g.metadata),
           }));
 
   const finalCount =

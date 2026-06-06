@@ -292,6 +292,7 @@ export type ImageGenerationOperationResult = {
   responseAgent?: string;
   agentEvents?: GenerateImageResult["agentEvents"];
   agentRoundCount?: GenerateImageResult["agentRoundCount"];
+  layered?: GenerateImageResult["layered"];
   webConversation?: GenerateImageResult["webConversation"];
   backendMember?: GenerateImageResult["backendMember"];
   responsesPreviousResponse?: GenerateImageResult["responsesPreviousResponse"];
@@ -2564,6 +2565,15 @@ async function runQueuedImageGenerationForUser({
     };
   }
 
+  // 分层生成("生成即分层"):agent 产出顺序为 [整图合成, 背景, 元素...]。
+  // 按生成顺序标注角色,供后续 PSD 组装识别(背景层不透明铺满、元素层需抠白底转透明)。
+  // 仅 chat+agent+layered 且至少有"整图+背景"两张时记录。
+  const isLayeredRun =
+    input.mode === "chat" &&
+    Boolean(input.agentMode) &&
+    Boolean(input.layeredGeneration) &&
+    storedOutputs.length >= 2;
+
   const selectedWebChoiceId = result.webConversation?.selectedImageMessageId;
   const selectedOutputIndex =
     selectedWebChoiceId && storedOutputs.length > 1
@@ -2571,9 +2581,14 @@ async function runQueuedImageGenerationForUser({
           (output) => output.webImageMessageId === selectedWebChoiceId
         )
       : -1;
+  // 分层生成的主图应为整图合成(第 0 张),而非最后一张元素;否则画廊缩略图/下载会变成单个元素。
   const primaryOutput =
     storedOutputs[
-      selectedOutputIndex >= 0 ? selectedOutputIndex : storedOutputs.length - 1
+      selectedOutputIndex >= 0
+        ? selectedOutputIndex
+        : isLayeredRun
+          ? 0
+          : storedOutputs.length - 1
     ]!;
   const upstreamImageOutputCount = Math.max(
     Math.floor(result.imageOutputCount || 0),
@@ -2796,6 +2811,23 @@ async function runQueuedImageGenerationForUser({
                 }),
               primary: output.generationId === primaryOutput.generationId,
             })),
+            layered: isLayeredRun
+              ? {
+                  version: 1,
+                  layers: storedOutputs.map((output, index) => ({
+                    storageKey: output.storageKey,
+                    size: output.size,
+                    // 0=整图合成(预览),1=背景(不透明),>=2=前景元素(抠白底)
+                    role:
+                      index === 0
+                        ? "composite"
+                        : index === 1
+                          ? "background"
+                          : "element",
+                    order: index,
+                  })),
+                }
+              : undefined,
           },
         })
       )}::jsonb`,
@@ -2833,6 +2865,7 @@ async function runQueuedImageGenerationForUser({
     responseAgent: result.responseAgent,
     agentEvents: result.agentEvents,
     agentRoundCount: result.agentRoundCount,
+    layered: isLayeredRun,
     webConversation: result.webConversation,
     backendMember: result.backendMember,
     responsesPreviousResponse: result.responsesPreviousResponse,

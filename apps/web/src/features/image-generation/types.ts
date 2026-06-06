@@ -36,6 +36,8 @@ export interface GenerateImageResult {
   responseAgent?: string;
   agentEvents?: AgentRunEvent[];
   agentRoundCount?: number;
+  /** 是否为"生成即分层"产物(可导出分层 PSD)。 */
+  layered?: boolean;
   webConversation?: ChatGptWebConversationState;
   backendMember?: StickyBackendMemberState;
   responsesPreviousResponse?: ResponsesPreviousResponseState;

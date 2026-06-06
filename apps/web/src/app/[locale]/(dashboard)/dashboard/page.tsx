@@ -22,6 +22,7 @@ import {
   listImageBackendGroupOptions,
 } from "@/features/image-backend-pool/service";
 import { RecentCreationsClient } from "@/features/image-generation/components/recent-creations-client";
+import { hasLayeredMeta } from "@/features/psd-export/layered-meta";
 import { getRuntimeImageBaseCreditPricing } from "@/features/image-generation/pricing-settings";
 import { getImageBaseCreditPricing } from "@/features/image-generation/resolution";
 import { Link } from "@/i18n/routing";
@@ -95,6 +96,7 @@ export default async function DashboardPage() {
     storageKey: gen.storageKey,
     storageBucket: gen.storageBucket,
     imageUrl: buildSignedStorageImageUrl(gen.storageKey, gen.storageBucket),
+    isLayered: hasLayeredMeta(gen.metadata),
     createdAt: gen.createdAt.toISOString(),
   }));
 

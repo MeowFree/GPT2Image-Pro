@@ -3,10 +3,11 @@
 /**
  * 「导出 PSD」弹窗(异步)。
  *
- * 挂在出图详情(image-lightbox):把当前图用 LayerD 分解成可编辑分层 PSD。触发 exportPsdAction
- * (后台异步分解,立即返回签名 URL),前端轮询该 URL(404=未好、200=好了 → 取 blob 下载)。
+ * 挂在出图详情(image-lightbox):把"生成即分层"的产物组装成可编辑分层 PSD。触发 exportPsdAction
+ * (后台异步组装,立即返回签名 URL),前端轮询该 URL(404=未好、200=好了 → 取 blob 下载)。
+ * 仅分层生成的产物可导出;非分层产物 action 会直接报错。
  *
- * WHY 轮询:LayerD 在 CPU 上数十秒,同步会超 Cloudflare 100s。不生成新图、不扣费。
+ * WHY 轮询:逐元素抠图 + 组装在 CPU 上数十秒,同步会超 Cloudflare 100s。不生成新图、不扣费。
  */
 import { Button } from "@repo/ui/components/button";
 import { Dialog, DialogContent, DialogTitle } from "@repo/ui/components/dialog";
@@ -18,7 +19,7 @@ import { exportPsdAction } from "../actions";
 
 type Phase = "idle" | "generating" | "ready" | "failed";
 
-/** 轮询上限:LayerD 分解可能数十秒至数分钟,给足余量。 */
+/** 轮询上限:逐元素抠图 + 组装可能数十秒至数分钟,给足余量。 */
 const POLL_DEADLINE_MS = 12 * 60 * 1000;
 const POLL_INTERVAL_MS = 4000;
 
