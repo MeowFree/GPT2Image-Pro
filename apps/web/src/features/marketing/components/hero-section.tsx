@@ -4,10 +4,14 @@ import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 import { Link } from "@/i18n/routing";
 
 export function HeroSection() {
   const t = useTranslations("Hero");
+  // 已登录用户点"开始创作"应直接进创作页,而非被带去注册/登录页(见 issue #20)。
+  const { data: session } = useCurrentSession();
+  const getStartedHref = session?.user ? "/dashboard/create" : "/sign-up";
 
   return (
     <section className="container relative overflow-hidden py-20 md:py-28 lg:py-32">
@@ -36,7 +40,7 @@ export function HeroSection() {
         {/* CTAs */}
         <div className="mb-16 flex flex-col gap-4 sm:flex-row">
           <Button size="lg" className="gap-2 px-8" asChild>
-            <Link href="/sign-up">
+            <Link href={getStartedHref}>
               {t("getStarted")}
               <ArrowRight className="h-4 w-4" />
             </Link>
