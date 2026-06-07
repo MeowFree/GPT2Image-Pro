@@ -53,6 +53,8 @@ type BillingTransaction = {
   amount: number;
   description: string | null;
   metadata: Record<string, unknown> | null;
+  /** 该笔消耗对应的外部 API Key 名称(issue #26),非 API Key 消耗或历史记录为 null。 */
+  apiKeyName?: string | null;
   createdAt: Date | string;
 };
 
@@ -431,11 +433,21 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
                   <div className="col-span-3 text-muted-foreground">
                     {formatDate(tx.createdAt, locale, timeZone)}
                   </div>
-                  <div
-                    className="col-span-4 truncate"
-                    title={getBillingDescription(tx, locale)}
-                  >
-                    {getBillingDescription(tx, locale)}
+                  <div className="col-span-4 min-w-0">
+                    <div
+                      className="truncate"
+                      title={getBillingDescription(tx, locale)}
+                    >
+                      {getBillingDescription(tx, locale)}
+                    </div>
+                    {tx.apiKeyName ? (
+                      <div
+                        className="truncate text-xs text-muted-foreground"
+                        title={tx.apiKeyName}
+                      >
+                        API Key: {tx.apiKeyName}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="col-span-2 text-right font-medium">
                     {getBillingAmount(tx)}
