@@ -8,10 +8,10 @@
 
 import { z } from "zod";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@repo/database";
-import { creditsTransaction } from "@repo/database/schema";
+import { creditsTransaction, externalApiKey } from "@repo/database/schema";
 import { getBaseUrl } from "../config/payment";
 import {
   isPlanAtLeast,
@@ -212,17 +212,59 @@ export const getMyTransactions = withProtectedCreditsAction("getMyTransactions")
       getUserTransactionsCount(userId),
     ]);
 
+    // 解析每条交易是哪个外部 API Key 消耗的(issue #26):从 metadata.externalApiKeyId 收集后批量查
+    // external_api_key(限定本人,防越权读他人 key),映射成"名称 (••后四位)"。历史无此字段的记录不显示。
+    const apiKeyIds = Array.from(
+      new Set(
+        transactions
+          .map((tx) => {
+            const id = (tx.metadata as Record<string, unknown> | null)
+              ?.externalApiKeyId;
+            return typeof id === "string" ? id : null;
+          })
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+    const apiKeyNameById = new Map<string, string>();
+    if (apiKeyIds.length > 0) {
+      const keys = await db
+        .select({
+          id: externalApiKey.id,
+          name: externalApiKey.name,
+          lastFour: externalApiKey.lastFour,
+        })
+        .from(externalApiKey)
+        .where(
+          and(
+            eq(externalApiKey.userId, userId),
+            inArray(externalApiKey.id, apiKeyIds)
+          )
+        );
+      for (const key of keys) {
+        apiKeyNameById.set(key.id, `${key.name} (••${key.lastFour})`);
+      }
+    }
+
     return {
-      transactions: transactions.map((tx) => ({
-        id: tx.id,
-        type: tx.type,
-        amount: tx.amount,
-        debitAccount: tx.debitAccount,
-        creditAccount: tx.creditAccount,
-        description: tx.description,
-        metadata: tx.metadata as Record<string, unknown> | null,
-        createdAt: tx.createdAt,
-      })),
+      transactions: transactions.map((tx) => {
+        const metadata = tx.metadata as Record<string, unknown> | null;
+        const apiKeyId = metadata?.externalApiKeyId;
+        const apiKeyName =
+          typeof apiKeyId === "string"
+            ? (apiKeyNameById.get(apiKeyId) ?? null)
+            : null;
+        return {
+          id: tx.id,
+          type: tx.type,
+          amount: tx.amount,
+          debitAccount: tx.debitAccount,
+          creditAccount: tx.creditAccount,
+          description: tx.description,
+          metadata,
+          apiKeyName,
+          createdAt: tx.createdAt,
+        };
+      }),
       totalCount,
     };
   });
