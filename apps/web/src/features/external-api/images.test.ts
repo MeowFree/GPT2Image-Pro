@@ -323,6 +323,18 @@ describe("external API error classification", () => {
     });
   });
 
+  it("maps insufficient credits (中文 CreditError) to a 402 billing error, not a 502 retryable upstream error", () => {
+    // 真实文案来自 credits/core.ts 的 CreditError:"积分不足: 需要 X，可用 Y"。
+    // 必须归为 402 insufficient_quota,否则落 502 upstream_error 兜底被客户端反复重试。
+    expect(
+      toOpenAIErrorPayload("积分不足: 需要 6.46，可用 5.21").error
+    ).toMatchObject({
+      type: "insufficient_quota",
+      code: "insufficient_credits",
+      status: 402,
+    });
+  });
+
   it("maps queue and concurrency failures to rate limit errors", () => {
     expect(
       toOpenAIErrorPayload(

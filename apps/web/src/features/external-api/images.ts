@@ -536,7 +536,12 @@ function classifyExternalApiError(message: string) {
     };
   }
 
-  if (normalized.includes("insufficient credits")) {
+  if (
+    normalized.includes("insufficient credits") ||
+    // 积分不足是 CreditError 的中文文案(credits/core.ts),需归为客户端计费错误,
+    // 否则落到 502 upstream_error 兜底,被客户端当成可重试故障而疯狂重试。
+    normalized.includes("积分不足")
+  ) {
     return {
       type: "insufficient_quota",
       code: "insufficient_credits",
