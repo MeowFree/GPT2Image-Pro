@@ -1884,10 +1884,16 @@ async function runQueuedImageGenerationForUser({
       };
     };
 
-  const repairEnabled = await getRuntimeSettingBoolean(
-    "IMAGE_MODERATION_PROMPT_REPAIR_ENABLED",
-    true
-  );
+  // 审核改写重试开关:请求显式传 moderationPromptRepair=false 时,该次生成不做"审核拦截→自动改写
+  // 提示词→重试",失败直接返回真实错误(见 issue #24:用户希望可关闭、避免反复重试耗时、看到真实原因)。
+  // 未显式指定则沿用全局 IMAGE_MODERATION_PROMPT_REPAIR_ENABLED。
+  const repairEnabled =
+    input.moderationPromptRepair === false
+      ? false
+      : await getRuntimeSettingBoolean(
+          "IMAGE_MODERATION_PROMPT_REPAIR_ENABLED",
+          true
+        );
   const configuredRepairRetries = await getRuntimeSettingNumber(
     "IMAGE_MODERATION_PROMPT_REPAIR_MAX_RETRIES",
     1,

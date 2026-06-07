@@ -19,6 +19,8 @@ export interface GenerateImageParams {
   mixWebFirst?: boolean;
   forceWebBackend?: boolean;
   requiresResponsesBackend?: boolean;
+  /** 审核改写重试:显式 false 时本次失败不自动改写提示词重试,直接返回真实错误(issue #24)。 */
+  moderationPromptRepair?: boolean;
 }
 
 export interface GenerateImageResult {
@@ -168,6 +170,8 @@ export interface EditImageParams {
   mixWebFirst?: boolean;
   forceWebBackend?: boolean;
   requiresResponsesBackend?: boolean;
+  /** 审核改写重试:显式 false 时本次失败不自动改写提示词重试,直接返回真实错误(issue #24)。 */
+  moderationPromptRepair?: boolean;
 }
 
 export interface ChatImageParams {
@@ -203,6 +207,8 @@ export interface ChatImageParams {
   chatCompletionsUpstreamMode?: "responses" | "chat_completions";
   mixWebFirst?: boolean;
   requiresResponsesBackend?: boolean;
+  /** 审核改写重试:显式 false 时本次失败不自动改写提示词重试,直接返回真实错误(issue #24)。 */
+  moderationPromptRepair?: boolean;
 }
 
 export interface ChatGptWebConversationState {
