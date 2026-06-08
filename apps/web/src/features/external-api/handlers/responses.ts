@@ -103,6 +103,12 @@ const responseSchema = z.object({
   moderation: z.enum(["auto", "low"]).optional(),
   output_format: z.enum(["png", "jpeg", "webp"]).optional(),
   output_compression: z.number().int().min(0).max(100).optional(),
+  background: z.enum(["transparent", "opaque", "auto"]).optional(),
+  transparentMatte: z.boolean().optional(),
+  transparent_matte: z.boolean().optional(),
+  // 审核改写重试开关(issue #24):传 false 时,审核拦截后不自动改写提示词重试,直接返回真实错误。
+  promptRepair: z.boolean().optional(),
+  prompt_repair: z.boolean().optional(),
   reasoning: z
     .object({
       effort: z
@@ -893,6 +899,13 @@ export const postExternalResponses = withApiLogging(
       outputCompression:
         normalizeOutputCompression(parsed.data.output_compression) ??
         getRequestedToolOutputCompression(parsed.data.tools),
+      background: parsed.data.background,
+      // 透明背景抠图回退显式开关(issue #27)。
+      transparentMatte:
+        parsed.data.transparentMatte ?? parsed.data.transparent_matte,
+      // 审核改写重试开关(issue #24)。
+      moderationPromptRepair:
+        parsed.data.promptRepair ?? parsed.data.prompt_repair,
       thinking: normalizeThinking(parsed.data.reasoning?.effort),
       stream: undefined,
       rawResponsesBody: parsed.data,

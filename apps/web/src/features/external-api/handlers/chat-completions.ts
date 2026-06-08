@@ -100,6 +100,9 @@ const chatCompletionSchema = z
     transparent_matte: z.boolean().optional(),
     promptOptimization: z.boolean().optional(),
     prompt_optimization: z.boolean().optional(),
+    // 审核改写重试开关(issue #24):传 false 时,审核拦截后不自动改写提示词重试,直接返回真实错误。
+    promptRepair: z.boolean().optional(),
+    prompt_repair: z.boolean().optional(),
     imageModel: z.string().optional(),
     image_model: z.string().optional(),
     thinking: z
@@ -469,6 +472,9 @@ export const postExternalChatCompletions = withApiLogging(
       apiPrompt,
       promptOptimization:
         parsed.data.promptOptimization ?? parsed.data.prompt_optimization,
+      // 审核改写重试开关(issue #24):传 false 时,审核拦截后不自动改写提示词重试,直接返回真实错误。
+      moderationPromptRepair:
+        parsed.data.promptRepair ?? parsed.data.prompt_repair,
       history,
       maxChatContextChars: limits.maxChatContextChars,
       images,

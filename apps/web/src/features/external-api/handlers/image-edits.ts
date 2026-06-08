@@ -86,6 +86,8 @@ const JSON_SCALAR_FIELDS = [
   "prompt",
   "promptOptimization",
   "prompt_optimization",
+  "promptRepair",
+  "prompt_repair",
   "size",
   "quality",
   "moderation",
@@ -587,6 +589,12 @@ export const postExternalImageEdits = withApiLogging(
       "promptOptimization",
       "prompt_optimization"
     );
+    // 审核改写重试开关(issue #24):传 false 时,审核拦截后不自动改写提示词重试,直接返回真实错误。
+    const moderationPromptRepair = getOptionalBoolean(
+      formData,
+      "promptRepair",
+      "prompt_repair"
+    );
 
     const size = getText(formData, "size") || undefined;
     if (size) {
@@ -766,6 +774,7 @@ export const postExternalImageEdits = withApiLogging(
             backendRequestKind: "image_edit" as const,
             prompt,
             promptOptimization,
+            moderationPromptRepair,
             moderationBlockRiskLevel: auth.moderationBlockRiskLevel,
             size,
             model,

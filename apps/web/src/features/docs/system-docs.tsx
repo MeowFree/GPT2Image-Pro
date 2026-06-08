@@ -557,6 +557,20 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
               description: "控制是否使用本站提示词优化。",
             },
             {
+              name: "promptRepair / prompt_repair",
+              requirement: "可选",
+              custom: true,
+              description:
+                "本站扩展：审核改写重试开关。false 时审核失败直接返回真实错误，不自动改写提示词重试；与 /v1/images/generations 同义。",
+            },
+            {
+              name: "background / transparent_matte",
+              requirement: "可选",
+              custom: true,
+              description:
+                "与图片接口相同（chat 模式适用，不含 agent 分层）：background 取 transparent、opaque、auto；transparent_matte=true 时若后端不支持透明返回 400，则自动改不透明重绘并在服务端用 ISNet 抠图得到透明 PNG。详见 /v1/images/generations 说明。",
+            },
+            {
               name: "thinking / reasoning.effort",
               requirement: "可选",
               custom: true,
@@ -849,6 +863,13 @@ curl https://your-domain.example/v1/images/task_... \\
               custom: true,
               description:
                 "控制平台是否继续优化 prompt。若 prompt 已是优化后的最终提示词，建议传 false。",
+            },
+            {
+              name: "promptRepair / prompt_repair",
+              requirement: "可选",
+              custom: true,
+              description:
+                "审核改写重试开关（issue #24）。默认按平台设置（通常启用）：本地审核拦截或上游安全拒绝导致无图输出时，系统会先用 Responses 改写提示词，再在同一生成任务内重新审核并重试；显式传 false 时关闭该自动改写重试，审核失败直接返回真实错误，不再改写提示词。详见下方“审核失败自动修剪重试”说明。",
             },
             {
               name: "gptModel / gpt_model",
@@ -1153,6 +1174,13 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
                 "控制平台是否继续优化 prompt。若 prompt 已是优化后的最终提示词，建议传 false。",
             },
             {
+              name: "promptRepair / prompt_repair",
+              requirement: "可选",
+              custom: true,
+              description:
+                "审核改写重试开关（issue #24）。默认按平台设置（通常启用）：本地审核拦截或上游安全拒绝导致无图输出时，系统会先用 Responses 改写提示词，再在同一生成任务内重新审核并重试；显式传 false 时关闭该自动改写重试，审核失败直接返回真实错误，不再改写提示词。详见下方“审核失败自动修剪重试”说明。",
+            },
+            {
               name: "gptModel / gpt_model",
               requirement: "可选",
               custom: true,
@@ -1362,10 +1390,10 @@ data: {"type":"agent.completed","generation_id":"...","generationId":"...","agen
                 "Agent 接口一次只跑一个任务；传入时必须为 1。需要多任务请并发调用接口。",
             },
             {
-              name: "size / quality / moderation / output_format / output_compression",
+              name: "size / quality / moderation / output_format / output_compression / background / transparent_matte / promptRepair",
               requirement: "可选",
               description:
-                "同 image 接口，作为 Agent 内 image_generation 工具运行参数。",
+                "同 image 接口，作为 Agent 内 image_generation 工具运行参数；其中 transparent_matte 抠图回退不含 agent 分层模式，promptRepair=false 时关闭审核改写重试、审核失败直接返回真实错误。",
             },
             {
               name: "thinking",
@@ -1598,6 +1626,20 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
               custom: true,
               description:
                 "本站便捷字段：未在 image_generation tool 内指定压缩率时，作为本次 output_compression 使用。",
+            },
+            {
+              name: "background / transparent_matte",
+              requirement: "可选",
+              custom: true,
+              description:
+                "本站便捷字段：background 取 transparent、opaque、auto；transparent_matte=true 时若后端不支持透明返回 400，则自动改不透明重绘并用 ISNet 抠图得到透明 PNG。详见 /v1/images/generations 说明。",
+            },
+            {
+              name: "promptRepair / prompt_repair",
+              requirement: "可选",
+              custom: true,
+              description:
+                "本站便捷字段：审核改写重试开关。false 时审核失败直接返回真实错误，不自动改写提示词重试。",
             },
           ],
           responses: [

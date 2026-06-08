@@ -142,6 +142,43 @@ describe("external chat completions handler streaming bridge", () => {
     );
   });
 
+  it("passes prompt_repair=false through as moderationPromptRepair", async () => {
+    const { postExternalChatCompletions } = await import("./chat-completions");
+
+    const response = await postExternalChatCompletions(
+      chatCompletionsRequest({
+        model: "gpt-image-2",
+        messages: [{ role: "user", content: "draw a poster" }],
+        prompt_repair: false,
+      }) as never
+    );
+    await response.json();
+
+    const call = mocks.runImageGenerationForUser.mock.calls[0];
+    if (!call) throw new Error("expected image generation to be called");
+    const [input] = call;
+    expect(input).toEqual(
+      expect.objectContaining({ moderationPromptRepair: false })
+    );
+  });
+
+  it("leaves moderationPromptRepair undefined when prompt_repair is omitted", async () => {
+    const { postExternalChatCompletions } = await import("./chat-completions");
+
+    const response = await postExternalChatCompletions(
+      chatCompletionsRequest({
+        model: "gpt-image-2",
+        messages: [{ role: "user", content: "draw a poster" }],
+      }) as never
+    );
+    await response.json();
+
+    const call = mocks.runImageGenerationForUser.mock.calls[0];
+    if (!call) throw new Error("expected image generation to be called");
+    const [input] = call;
+    expect(input.moderationPromptRepair).toBeUndefined();
+  });
+
   it("does not force upstream streaming for downstream stream callers", async () => {
     const { postExternalChatCompletions } = await import("./chat-completions");
 

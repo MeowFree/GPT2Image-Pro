@@ -134,6 +134,8 @@ const JSON_SCALAR_FIELDS = [
   "api_prompt",
   "promptOptimization",
   "prompt_optimization",
+  "promptRepair",
+  "prompt_repair",
   "model",
   "gptModel",
   "gpt_model",
@@ -148,6 +150,9 @@ const JSON_SCALAR_FIELDS = [
   "outputFormat",
   "output_compression",
   "outputCompression",
+  "background",
+  "transparentMatte",
+  "transparent_matte",
   "stream",
   "n",
   "count",
@@ -933,6 +938,12 @@ export const postExternalAgentImages = withApiLogging(
       "promptOptimization",
       "prompt_optimization"
     );
+    // 审核改写重试开关(issue #24):传 false 时,审核拦截后不自动改写提示词重试,直接返回真实错误。
+    const moderationPromptRepair = getOptionalBoolean(
+      formData,
+      "promptRepair",
+      "prompt_repair"
+    );
 
     let agentMaxRounds: number | undefined;
     try {
@@ -989,6 +1000,26 @@ export const postExternalAgentImages = withApiLogging(
     const outputCompression = normalizeOutputCompression(
       getText(formData, "output_compression") ||
         getText(formData, "outputCompression")
+    );
+    // 透明背景控制(issue #27):与图片接口同义,chat/agent 模式适用。
+    const backgroundValue = getText(formData, "background") || undefined;
+    if (
+      backgroundValue &&
+      backgroundValue !== "transparent" &&
+      backgroundValue !== "opaque" &&
+      backgroundValue !== "auto"
+    ) {
+      return openAIImageError("Invalid background.");
+    }
+    const background = backgroundValue as
+      | "transparent"
+      | "opaque"
+      | "auto"
+      | undefined;
+    const transparentMatte = getOptionalBoolean(
+      formData,
+      "transparentMatte",
+      "transparent_matte"
     );
     const responseFormat =
       getText(formData, "response_format") === "b64_json" ? "b64_json" : "url";
@@ -1134,6 +1165,7 @@ export const postExternalAgentImages = withApiLogging(
             fileContext,
             files: responseInputFiles,
             promptOptimization,
+            moderationPromptRepair,
             images: await buildImages(),
             history,
             preferredBackendMemberId: preferredBackendMember?.id,
@@ -1148,6 +1180,8 @@ export const postExternalAgentImages = withApiLogging(
             moderation,
             outputFormat,
             outputCompression,
+            background,
+            transparentMatte,
             stream: undefined,
             thinking,
             agentMode: true,
