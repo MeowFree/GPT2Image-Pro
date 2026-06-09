@@ -4596,6 +4596,9 @@ async function getExistingSub2ApiSyncedAccountState(
       lastError: imageBackendAccount.lastError,
       lastErrorAt: imageBackendAccount.lastErrorAt,
       isEnabled: imageBackendAccount.isEnabled,
+      // 优先级与最大并发是本地自定义参数，同步时要保留本地值，见下方 upsert。
+      priority: imageBackendAccount.priority,
+      concurrency: imageBackendAccount.concurrency,
     })
     .from(imageBackendAccount)
     .where(
@@ -5692,8 +5695,10 @@ export async function syncImageBackendAccountsFromSub2Api(input: {
             model: null,
             contentSafetyEnabled: input.contentSafetyEnabled,
             isEnabled: healthUpdate.isEnabled,
-            priority: account.priority ?? 50,
-            concurrency: Math.max(1, Math.min(100, account.concurrency ?? 1)),
+            // 优先级/最大并发属本地自定义参数，不从 sub2api 同步覆盖：
+            // 已存在账号保留本地值，仅新建账号用默认值(50/1)初始化。
+            priority: existing?.priority ?? 50,
+            concurrency: existing?.concurrency ?? 1,
             status: healthUpdate.status,
             cooldownUntil: healthUpdate.cooldownUntil,
             lastError: healthUpdate.lastError,
