@@ -572,8 +572,9 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
             {
               name: "transparent_matte",
               requirement: "可选",
+              custom: true,
               description:
-                "默认 false。仅当 background=transparent 且显式设为 true 时生效：命中的后端不支持透明返回 400 时自动改不透明重绘，再在服务端用 ISNet 抠图得到透明 PNG。详见 /v1/images/generations 说明。",
+                "默认 false。仅当 background=transparent 且显式设为 true 时生效：命中的后端不支持透明返回 400 时自动改不透明重绘，再在服务端用 ISNet 抠图得到透明 PNG；agent 分层模式下不生效。详见 /v1/images/generations 说明。",
             },
             {
               name: "thinking / reasoning.effort",
@@ -728,6 +729,21 @@ curl https://your-domain.example/v1/images/generations \\
     "background": "transparent",
     "async": true,
     "callback_url": "https://your-server.example/callback"
+  }'
+
+# 7. 本站扩展：透明背景 + ISNet 兜底抠图，并关闭审核改写重试
+curl https://your-domain.example/v1/images/generations \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "一张透明背景的产品图标",
+    "size": "1024x1024",
+    "response_format": "url",
+    "output_format": "png",
+    "background": "transparent",
+    "transparent_matte": true,
+    "prompt_repair": false
   }'`,
           responseExample: `{
   "created": 1713833628,
@@ -842,6 +858,7 @@ curl https://your-domain.example/v1/images/task_... \\
             {
               name: "transparent_matte",
               requirement: "可选",
+              custom: true,
               description:
                 "默认 false。仅当 background=transparent 且显式设为 true 时生效：若命中的后端不支持透明而返回 400，则自动改为不透明重新生成，再在服务端用 ISNet 抠图得到透明 PNG。关闭时透明请求直接透传，后端不支持即返回真实 400 错误。注意只对单张生成/编辑/对话生效，不含 agent 分层模式。",
             },
@@ -1138,6 +1155,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             {
               name: "transparent_matte",
               requirement: "可选",
+              custom: true,
               description:
                 "默认 false。仅当 background=transparent 且显式设为 true 时生效：若命中的后端不支持透明而返回 400，则自动改为不透明重新生成，再在服务端用 ISNet 抠图得到透明 PNG。关闭时透明请求直接透传，后端不支持即返回真实 400 错误。注意只对单张生成/编辑/对话生效，不含 agent 分层模式。",
             },
@@ -1409,8 +1427,9 @@ data: {"type":"agent.completed","generation_id":"...","generationId":"...","agen
             {
               name: "transparent_matte",
               requirement: "可选",
+              custom: true,
               description:
-                "默认 false。后端不支持透明返回 400 时自动改不透明重绘并用 ISNet 抠图得到透明 PNG；注意 agent 分层模式下不生效。详见 /v1/images/generations 说明。",
+                "默认 false。仅当 background=transparent 且设为 true 时：后端不支持透明返回 400 时自动改不透明重绘并用 ISNet 抠图得到透明 PNG；注意 agent 分层模式下不生效。详见 /v1/images/generations 说明。",
             },
             {
               name: "promptRepair / prompt_repair",
@@ -1660,8 +1679,9 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
             {
               name: "transparent_matte",
               requirement: "可选",
+              custom: true,
               description:
-                "默认 false。仅当 background=transparent 且设为 true 时：命中的后端不支持透明返回 400 后自动改不透明重绘，再用 ISNet 抠图得到透明 PNG。详见 /v1/images/generations 说明。",
+                "默认 false。仅当 background=transparent 且设为 true 时：命中的后端不支持透明返回 400 后自动改不透明重绘，再用 ISNet 抠图得到透明 PNG；agent 分层模式下不生效。详见 /v1/images/generations 说明。",
             },
             {
               name: "promptRepair / prompt_repair",
@@ -2349,6 +2369,26 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
               description: "Controls GPT2IMAGE prompt optimization.",
             },
             {
+              name: "promptRepair / prompt_repair",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "GPT2IMAGE extension: safety prompt-repair retry toggle. When false, a moderation failure returns the real error directly instead of rewriting the prompt and retrying. Same meaning as /v1/images/generations.",
+            },
+            {
+              name: "background",
+              requirement: "Optional",
+              description:
+                "transparent, opaque, or auto. Same meaning as /v1/images/generations; applies to chat mode, without agent layering.",
+            },
+            {
+              name: "transparent_matte",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "Defaults to false. Only takes effect when background=transparent and explicitly set to true: if the selected backend rejects transparent with a 400, the request is regenerated opaque and matted server-side (ISNet) into a transparent PNG; not effective in the agent layered mode. See /v1/images/generations.",
+            },
+            {
               name: "thinking / reasoning.effort",
               requirement: "Optional",
               custom: true,
@@ -2501,6 +2541,21 @@ curl https://your-domain.example/v1/images/generations \\
     "background": "transparent",
     "async": true,
     "callback_url": "https://your-server.example/callback"
+  }'
+
+# 7. GPT2IMAGE extensions: transparent background + ISNet matte fallback, with safety prompt-repair retry disabled.
+curl https://your-domain.example/v1/images/generations \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "A transparent-background product icon",
+    "size": "1024x1024",
+    "response_format": "url",
+    "output_format": "png",
+    "background": "transparent",
+    "transparent_matte": true,
+    "prompt_repair": false
   }'`,
           responseExample: `{
   "created": 1713833628,
@@ -2615,6 +2670,7 @@ curl https://your-domain.example/v1/images/task_... \\
             {
               name: "transparent_matte",
               requirement: "Optional",
+              custom: true,
               description:
                 "Defaults to false. Only takes effect when background=transparent and explicitly set to true: if the selected backend rejects transparent with a 400, the request is regenerated opaque and matted server-side (ISNet) into a transparent PNG. When off, transparent is passed through and an unsupported backend returns the real 400 error. Applies to single image generation/edit/chat only, not the agent layered mode.",
             },
@@ -2641,6 +2697,13 @@ curl https://your-domain.example/v1/images/task_... \\
               custom: true,
               description:
                 "Controls whether GPT2IMAGE may further optimize prompt. If prompt is already the final optimized prompt, pass false.",
+            },
+            {
+              name: "promptRepair / prompt_repair",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "Safety prompt-repair retry toggle (issue #24). Defaults to the platform setting (usually enabled): when local moderation or an upstream safety refusal yields no image, the system rewrites the prompt through Responses and re-moderates and retries inside the same task. When explicitly false, this automatic rewrite-retry is disabled and a moderation failure returns the real error without rewriting the prompt. See \"Safety Prompt Repair Retry\" below.",
             },
             {
               name: "gptModel / gpt_model",
@@ -2907,6 +2970,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             {
               name: "transparent_matte",
               requirement: "Optional",
+              custom: true,
               description:
                 "Defaults to false. Only takes effect when background=transparent and explicitly set to true: if the selected backend rejects transparent with a 400, the request is regenerated opaque and matted server-side (ISNet) into a transparent PNG. When off, transparent is passed through and an unsupported backend returns the real 400 error. Applies to single image generation/edit/chat only, not the agent layered mode.",
             },
@@ -2946,6 +3010,13 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               custom: true,
               description:
                 "Controls whether GPT2IMAGE may further optimize prompt. If prompt is already the final optimized prompt, pass false.",
+            },
+            {
+              name: "promptRepair / prompt_repair",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "Safety prompt-repair retry toggle (issue #24). Defaults to the platform setting (usually enabled): when local moderation or an upstream safety refusal yields no image, the system rewrites the prompt through Responses and re-moderates and retries inside the same task. When explicitly false, this automatic rewrite-retry is disabled and a moderation failure returns the real error without rewriting the prompt. See \"Safety Prompt Repair Retry\" below.",
             },
             {
               name: "gptModel / gpt_model",
@@ -3162,6 +3233,26 @@ data: {"type":"agent.completed","generation_id":"...","generationId":"...","agen
               requirement: "Optional",
               description:
                 "Same as image endpoints; used as runtime image_generation parameters inside Agent.",
+            },
+            {
+              name: "background",
+              requirement: "Optional",
+              description:
+                "transparent, opaque, or auto. Same meaning as /v1/images/generations.",
+            },
+            {
+              name: "transparent_matte",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "Defaults to false. Only when background=transparent and set to true: if the selected backend rejects transparent with a 400, the request is regenerated opaque and matted server-side (ISNet) into a transparent PNG; not effective in the agent layered mode. See /v1/images/generations.",
+            },
+            {
+              name: "promptRepair / prompt_repair",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "GPT2IMAGE extension: safety prompt-repair retry toggle. When false, a moderation failure returns the real error directly instead of rewriting the prompt and retrying.",
             },
             {
               name: "thinking",
@@ -3397,6 +3488,26 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
               custom: true,
               description:
                 "Convenience field used as the run-time output_compression when the image_generation tool does not provide one.",
+            },
+            {
+              name: "background",
+              requirement: "Optional",
+              description:
+                "transparent, opaque, or auto, used as this run's background. See /v1/images/generations.",
+            },
+            {
+              name: "transparent_matte",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "Defaults to false. Only when background=transparent and set to true: if the selected backend rejects transparent with a 400, the request is regenerated opaque and matted server-side (ISNet) into a transparent PNG; not effective in the agent layered mode. See /v1/images/generations.",
+            },
+            {
+              name: "promptRepair / prompt_repair",
+              requirement: "Optional",
+              custom: true,
+              description:
+                "Convenience field: safety prompt-repair retry toggle. When false, a moderation failure returns the real error directly instead of rewriting the prompt and retrying.",
             },
           ],
           responses: [
