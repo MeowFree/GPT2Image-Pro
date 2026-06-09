@@ -46,7 +46,10 @@ import {
   editImageWithChatGptWeb,
   generateImageWithChatGptWeb,
 } from "./chatgpt-web";
-import { getInputImageUrl } from "./input-image-url";
+import {
+  getInputImageUrl,
+  isImageDownloadUpstreamError,
+} from "./input-image-url";
 import { buildOpenAIPromptCacheKey } from "./openai-prompt-cache";
 import {
   normalizeImageBackground,
@@ -1362,7 +1365,19 @@ type ChatCompletionImageItem = {
   generationId?: unknown;
 };
 
-function buildChatCompletionContent(text?: string, images?: ImageInputFile[]) {
+/**
+ * 是否存在至少一张带字节的输入图。base64 兜底重试的前置条件：无字节则无法内联，
+ * 重试也救不了，直接放弃（历史图为空 Buffer，不计入）。
+ */
+function hasInputImageBytes(images?: ImageInputFile[]): boolean {
+  return Boolean(images?.some((image) => image.data?.length));
+}
+
+function buildChatCompletionContent(
+  text?: string,
+  images?: ImageInputFile[],
+  forceBase64?: boolean
+) {
   const parts: Array<Record<string, unknown>> = [];
   if (text?.trim()) {
     parts.push({ type: "text", text: text.trim() });
@@ -1370,7 +1385,7 @@ function buildChatCompletionContent(text?: string, images?: ImageInputFile[]) {
   for (const image of images || []) {
     parts.push({
       type: "image_url",
-      image_url: { url: getInputImageUrl(image) },
+      image_url: { url: getInputImageUrl(image, { forceBase64 }) },
     });
   }
   if (parts.length === 1 && parts[0]?.type === "text") {
@@ -1379,7 +1394,10 @@ function buildChatCompletionContent(text?: string, images?: ImageInputFile[]) {
   return parts;
 }
 
-function buildChatCompletionsMessages(params: ChatImageParams) {
+function buildChatCompletionsMessages(
+  params: ChatImageParams,
+  forceBase64?: boolean
+) {
   const messages: Array<Record<string, unknown>> = [];
   if (params.apiPrompt?.trim()) {
     messages.push({ role: "system", content: params.apiPrompt.trim() });
@@ -1391,16 +1409,22 @@ function buildChatCompletionsMessages(params: ChatImageParams) {
       type: "image/png",
       url,
     }));
+    // 历史图为空 Buffer，无字节，forceBase64 对其自动失效（保持透传原 url）。
     messages.push({
       role: item.role,
-      content: buildChatCompletionContent(item.text, historyImages),
+      content: buildChatCompletionContent(
+        item.text,
+        historyImages,
+        forceBase64
+      ),
     });
   }
   messages.push({
     role: "user",
     content: buildChatCompletionContent(
       getEffectivePrompt(params),
-      params.images
+      params.images,
+      forceBase64
     ),
   });
   return messages;
@@ -1646,69 +1670,94 @@ async function generateChatImageWithChatCompletions(
     isPlainRecord(params.rawChatCompletionsBody)
       ? params.rawChatCompletionsBody
       : null;
-  const body = {
-    ...(rawBody || {}),
-    model,
-    messages: rawBody?.messages || buildChatCompletionsMessages(params),
-    prompt_cache_key:
-      rawBody?.prompt_cache_key ||
-      buildOpenAIPromptCacheKey(config, {
-        scope: "chat-completions",
-        model,
-        imageModel: params.imageModel,
-        promptOptimization: params.promptOptimization,
-      }),
-    ...(stream ? { stream: true } : {}),
-  };
-  delete (body as Record<string, unknown>).size;
-  delete (body as Record<string, unknown>).quality;
-  delete (body as Record<string, unknown>).moderation;
-  delete (body as Record<string, unknown>).output_format;
-  delete (body as Record<string, unknown>).output_compression;
-  delete (body as Record<string, unknown>).promptOptimization;
-  delete (body as Record<string, unknown>).prompt_optimization;
-  delete (body as Record<string, unknown>).imageModel;
-  delete (body as Record<string, unknown>).image_model;
-  delete (body as Record<string, unknown>).thinking;
-  delete (body as Record<string, unknown>).mixWebFirst;
-  delete (body as Record<string, unknown>).mix_web_first;
-  delete (body as Record<string, unknown>).requiresResponsesBackend;
-  delete (body as Record<string, unknown>).requires_responses_backend;
 
-  try {
-    const response = await fetch(
-      `${stripTrailingSlash(config.baseUrl)}/chat/completions`,
-      {
-        method: "POST",
-        redirect: "manual",
-        signal: params.signal,
-        cache: stream ? "no-store" : "default",
-        headers: getHeaders(config, {
-          "Content-Type": "application/json",
-          Accept: stream ? "text/event-stream" : "application/json",
-          ...(stream
-            ? {
-                "Accept-Encoding": "identity",
-                "Cache-Control": "no-cache",
-              }
-            : {}),
-        }),
-        body: JSON.stringify(body),
-      }
-    );
-    return await parseChatCompletionsResponse(response, callbacks);
-  } catch (error) {
-    logImageRequestError(error, {
-      operation: "chat",
-      baseUrl: config.baseUrl,
-      path: "/chat/completions",
+  // 单次转发：按 forceBase64 重建 messages（仅我方构造时可重建；rawBody 自带
+  // messages 则无图可换，retry 退化为同一请求，因此不重试）。
+  const attempt = async (
+    forceBase64: boolean
+  ): Promise<GenerateImageResult> => {
+    const body = {
+      ...(rawBody || {}),
       model,
-      useStream: stream,
-    });
-    return {
-      error: error instanceof Error ? error.message : "Unknown error occurred",
+      messages:
+        rawBody?.messages || buildChatCompletionsMessages(params, forceBase64),
+      prompt_cache_key:
+        rawBody?.prompt_cache_key ||
+        buildOpenAIPromptCacheKey(config, {
+          scope: "chat-completions",
+          model,
+          imageModel: params.imageModel,
+          promptOptimization: params.promptOptimization,
+        }),
+      ...(stream ? { stream: true } : {}),
     };
+    delete (body as Record<string, unknown>).size;
+    delete (body as Record<string, unknown>).quality;
+    delete (body as Record<string, unknown>).moderation;
+    delete (body as Record<string, unknown>).output_format;
+    delete (body as Record<string, unknown>).output_compression;
+    delete (body as Record<string, unknown>).promptOptimization;
+    delete (body as Record<string, unknown>).prompt_optimization;
+    delete (body as Record<string, unknown>).imageModel;
+    delete (body as Record<string, unknown>).image_model;
+    delete (body as Record<string, unknown>).thinking;
+    delete (body as Record<string, unknown>).mixWebFirst;
+    delete (body as Record<string, unknown>).mix_web_first;
+    delete (body as Record<string, unknown>).requiresResponsesBackend;
+    delete (body as Record<string, unknown>).requires_responses_backend;
+
+    try {
+      const response = await fetch(
+        `${stripTrailingSlash(config.baseUrl)}/chat/completions`,
+        {
+          method: "POST",
+          redirect: "manual",
+          signal: params.signal,
+          cache: stream ? "no-store" : "default",
+          headers: getHeaders(config, {
+            "Content-Type": "application/json",
+            Accept: stream ? "text/event-stream" : "application/json",
+            ...(stream
+              ? {
+                  "Accept-Encoding": "identity",
+                  "Cache-Control": "no-cache",
+                }
+              : {}),
+          }),
+          body: JSON.stringify(body),
+        }
+      );
+      return await parseChatCompletionsResponse(response, callbacks);
+    } catch (error) {
+      logImageRequestError(error, {
+        operation: "chat",
+        baseUrl: config.baseUrl,
+        path: "/chat/completions",
+        model,
+        useStream: stream,
+      });
+      return {
+        error:
+          error instanceof Error ? error.message : "Unknown error occurred",
+      };
+    }
+  };
+
+  const result = await attempt(false);
+  // 一次性同后端兜底：上游下载我方输入图 URL 失败（如 407）且我方有字节，
+  // 重发同一请求并把输入图强制内联 base64。仅当我方构造 messages 时可重建。
+  if (
+    isImageDownloadUpstreamError(result.error) &&
+    !rawBody?.messages &&
+    hasInputImageBytes(params.images)
+  ) {
+    logWarn("上游下载输入图失败，改用 base64 内联重试（chat/completions）", {
+      baseUrl: config.baseUrl,
+      model,
+    });
+    return await attempt(true);
   }
+  return result;
 }
 
 function stripToolTypes(
@@ -3942,24 +3991,37 @@ export async function editImage(
   }
   if (isResponsesBackend(config)) {
     try {
-      return requireImageOutput(
-        applyPromptOptimizationResultVisibility(
-          await postResponsesImageRequestWithToolChoiceFallback(
+      const gptModel =
+        params.gptModel ||
+        (await getDefaultImageGptModel(config, { allowGpt55: true }));
+      // 单次转发：按 forceBase64 重建请求并提交。
+      const attempt = (forceBase64: boolean) =>
+        postResponsesImageRequestWithToolChoiceFallback(
+          config,
+          buildResponsesImageEditRequest(
             config,
-            buildResponsesImageEditRequest(config, {
-              ...paramsWithResolvedPrompt,
-              model,
-              gptModel:
-                params.gptModel ||
-                (await getDefaultImageGptModel(config, {
-                  allowGpt55: true,
-                })),
-            }),
-            { signal: params.signal },
-            callbacks
-          )
-        )
-      );
+            { ...paramsWithResolvedPrompt, model, gptModel },
+            forceBase64
+          ),
+          { signal: params.signal },
+          callbacks
+        );
+
+      let result = await attempt(false);
+      // 一次性同后端兜底：上游下载我方输入图 URL 失败（如 407）且我方有字节，
+      // 重发同一请求并把输入图与 mask 强制内联 base64。
+      if (
+        isImageDownloadUpstreamError(result.error) &&
+        (hasInputImageBytes(paramsWithResolvedPrompt.images) ||
+          paramsWithResolvedPrompt.mask?.data?.length)
+      ) {
+        logWarn("上游下载输入图失败，改用 base64 内联重试（responses 改图）", {
+          baseUrl: config.baseUrl,
+          model,
+        });
+        result = await attempt(true);
+      }
+      return requireImageOutput(applyPromptOptimizationResultVisibility(result));
     } catch (error) {
       logImageRequestError(error, {
         operation: "edit",
@@ -4107,433 +4169,467 @@ export async function generateChatImage(
     );
   }
   try {
-    const currentBackendMember = getStickyBackendMember(config);
-    const promptRefs = resolvePromptImageReferences({
-      prompt: getEffectivePrompt(params),
-      images: params.images,
-      history: params.history,
-      currentBackendMember,
-    });
-    const prompt = promptRefs.prompt;
-    const size = params.size || DEFAULT_IMAGE_SIZE;
-    const responsesPreviousResponseEnabled =
-      shouldEnableResponsesPreviousResponse({
-        settingEnabled: await getRuntimeSettingBoolean(
-          "IMAGE_RESPONSES_PREVIOUS_RESPONSE_ENABLED",
-          false
-        ),
-        rawResponsesBody: params.rawResponsesBody,
-        currentBackendMember,
-        files: params.files,
-      });
-    const { previousState: previousResponsesState, canUsePreviousResponseId } =
-      resolveResponsesNativeState({
-        enabled: responsesPreviousResponseEnabled,
-        currentBackendMember,
+    // 单次转发：按 forceBase64 重建 responses 输入并跑完整条 responses 路径（含 agent
+    // 多轮 / 非 agent 单轮）。上游下载我方输入图 URL 失败（如 407）时，调用方据此用
+    // base64 内联当前输入图重发一次（下载失败意味着尚未产出图/分块，重发安全）。
+    const attempt = async (
+      forceBase64: boolean
+    ): Promise<GenerateImageResult> => {
+      const currentBackendMember = getStickyBackendMember(config);
+      const promptRefs = resolvePromptImageReferences({
+        prompt: getEffectivePrompt(params),
+        images: params.images,
         history: params.history,
-      });
-    const responseImageRoundIndex = getNextAssistantImageRoundIndex(
-      params.history
-    );
-    const generatedImageReferenceInstruction =
-      buildGeneratedImageReferenceInstruction({
-        roundIndex: responseImageRoundIndex,
-      });
-    const manualHistoryInput = buildResponsesInput(
-      prompt,
-      params.images,
-      params.files,
-      params.history,
-      {
-        extraCurrentImageReferences: promptRefs.historyImageReferences,
-        generatedImageReferenceInstruction,
         currentBackendMember,
-      }
-    );
-    const input = canUsePreviousResponseId
-      ? [
-          {
-            role: "user" as const,
-            content: buildCurrentResponsesContent(
-              prompt,
-              params.images,
-              params.files,
-              {
-                extraImageReferences: promptRefs.historyImageReferences,
-                generatedImageReferenceInstruction,
-              }
-            ),
-          },
-        ]
-      : manualHistoryInput;
-    // 分层生成:agent 模式下走专用"生成即分层"指令(先出整图、逐层生成)。
-    const useLayered = Boolean(params.agentMode && params.layeredGeneration);
-    const baseInstructions = useLayered
-      ? LAYERED_RESPONSES_IMAGE_INSTRUCTIONS
-      : params.promptOptimization === false
-        ? params.agentMode
-          ? ORIGINAL_PROMPT_RESPONSES_IMAGE_INSTRUCTIONS
-          : ORIGINAL_PROMPT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS
-        : params.agentMode
-          ? DEFAULT_RESPONSES_IMAGE_INSTRUCTIONS
-          : DEFAULT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS;
-    const instructions =
-      withResponsesImageReferenceInstructions(baseInstructions);
-    const tool: {
-      type: "image_generation";
-      action: "auto";
-      model?: string;
-      partial_images?: number;
-      size?: string;
-      quality?: ImageQuality;
-      moderation?: ImageModeration;
-      output_format?: ImageOutputFormat;
-      output_compression?: number;
-      background?: string;
-    } = {
-      type: "image_generation",
-      action: "auto",
-      partial_images: 2,
-    };
-
-    const toolModel = getImageModel(params.imageModel) || DEFAULT_IMAGE_MODEL;
-    if (toolModel) {
-      tool.model = toolModel;
-    }
-    if (size && size !== AUTO_IMAGE_SIZE) {
-      tool.size = size;
-    }
-    const quality = normalizeQuality(params.quality);
-    if (quality) tool.quality = quality;
-    const moderation = normalizeModeration(params.moderation);
-    if (moderation) tool.moderation = moderation;
-    const outputFormat = normalizeOutputFormat(params.outputFormat);
-    if (outputFormat) tool.output_format = outputFormat;
-    const outputCompression = normalizeOutputCompression(
-      params.outputCompression
-    );
-    if (outputCompression !== undefined) {
-      tool.output_compression = outputCompression;
-    }
-    const background = normalizeImageBackground(params.background);
-    if (background) tool.background = background;
-
-    const thinking = normalizeThinking(params.thinking);
-    const reasoning: ReasoningConfig | undefined = thinking
-      ? { effort: thinking, summary: "concise" }
-      : undefined;
-
-    const stream = Boolean(params.stream || config.useStream);
-    const defaultAdditionalTools = params.agentMode
-      ? createDefaultAgentAdditionalTools()
-      : [];
-    const promptCacheKey = buildOpenAIPromptCacheKey(config, {
-      scope: params.agentMode ? "responses-agent" : "responses-chat",
-      model,
-      imageModel: toolModel,
-      agentMode: params.agentMode,
-      promptOptimization: params.promptOptimization,
-      toolSignature: responseToolCacheSignature({
-        tool,
-        additionalTools: defaultAdditionalTools,
-      }),
-    });
-    const requestBody: ResponsesStreamRequestBody =
-      params.rawResponsesBody && isPlainRecord(params.rawResponsesBody)
-        ? normalizeResponsesImageRequestBody(params.rawResponsesBody, {
-            fallbackTool: tool,
-            additionalTools: defaultAdditionalTools,
-            instructions,
-            stream,
-          })
-        : {
-            model,
-            input,
-            tools: [tool, ...defaultAdditionalTools],
-            instructions,
-            store: responsesPreviousResponseEnabled,
-            prompt_cache_key: promptCacheKey,
-            ...(canUsePreviousResponseId
-              ? { previous_response_id: previousResponsesState?.responseId }
-              : {}),
-            ...(reasoning ? { reasoning } : {}),
-            ...(stream ? { stream: true } : {}),
-          };
-
-    let result: ResponsesResultWithOutput | undefined;
-    if (params.agentMode && !params.rawResponsesBody) {
-      // 分层生成需"整图 + 背景 + 每个元素"各一轮,层数由模型规划、事先未知,用上限轮数(8)给足,
-      // 让其逐层跑完(模型生成完最后一层不再调 continue_generation 会自行提前停),避免被用户的小
-      // 轮数(默认 3)截断而丢层(如"没有狗")。分层也不强制跑满轮数(否则会硬凑出多余层)。
-      const maxRounds = useLayered
-        ? 8
-        : normalizeAgentMaxRounds(params.agentMaxRounds) ||
-          (await getAgentMaxRounds());
-      const forceMaxRounds = useLayered
-        ? false
-        : (params.agentForceMaxRounds ?? (await getAgentForceMaxRounds()));
-      const roundResults: ResponsesResultWithOutput[] = [];
-      let nextInput = input;
-      let agentPreviousResponseEnabled = responsesPreviousResponseEnabled;
-      let agentPreviousResponseId = canUsePreviousResponseId
-        ? previousResponsesState?.responseId
-        : undefined;
-      const disableAgentNativeState = () => {
-        agentPreviousResponseEnabled = false;
-        agentPreviousResponseId = undefined;
+      });
+      const prompt = promptRefs.prompt;
+      const size = params.size || DEFAULT_IMAGE_SIZE;
+      const responsesPreviousResponseEnabled =
+        shouldEnableResponsesPreviousResponse({
+          settingEnabled: await getRuntimeSettingBoolean(
+            "IMAGE_RESPONSES_PREVIOUS_RESPONSE_ENABLED",
+            false
+          ),
+          rawResponsesBody: params.rawResponsesBody,
+          currentBackendMember,
+          files: params.files,
+        });
+      const { previousState: previousResponsesState, canUsePreviousResponseId } =
+        resolveResponsesNativeState({
+          enabled: responsesPreviousResponseEnabled,
+          currentBackendMember,
+          history: params.history,
+        });
+      const responseImageRoundIndex = getNextAssistantImageRoundIndex(
+        params.history
+      );
+      const generatedImageReferenceInstruction =
+        buildGeneratedImageReferenceInstruction({
+          roundIndex: responseImageRoundIndex,
+        });
+      const manualHistoryInput = buildResponsesInput(
+        prompt,
+        params.images,
+        params.files,
+        params.history,
+        {
+          extraCurrentImageReferences: promptRefs.historyImageReferences,
+          generatedImageReferenceInstruction,
+          currentBackendMember,
+          forceBase64,
+        }
+      );
+      const input = canUsePreviousResponseId
+        ? [
+            {
+              role: "user" as const,
+              content: buildCurrentResponsesContent(
+                prompt,
+                params.images,
+                params.files,
+                {
+                  extraImageReferences: promptRefs.historyImageReferences,
+                  generatedImageReferenceInstruction,
+                  forceBase64,
+                }
+              ),
+            },
+          ]
+        : manualHistoryInput;
+      // 分层生成:agent 模式下走专用"生成即分层"指令(先出整图、逐层生成)。
+      const useLayered = Boolean(params.agentMode && params.layeredGeneration);
+      const baseInstructions = useLayered
+        ? LAYERED_RESPONSES_IMAGE_INSTRUCTIONS
+        : params.promptOptimization === false
+          ? params.agentMode
+            ? ORIGINAL_PROMPT_RESPONSES_IMAGE_INSTRUCTIONS
+            : ORIGINAL_PROMPT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS
+          : params.agentMode
+            ? DEFAULT_RESPONSES_IMAGE_INSTRUCTIONS
+            : DEFAULT_CHAT_RESPONSES_IMAGE_INSTRUCTIONS;
+      const instructions =
+        withResponsesImageReferenceInstructions(baseInstructions);
+      const tool: {
+        type: "image_generation";
+        action: "auto";
+        model?: string;
+        partial_images?: number;
+        size?: string;
+        quality?: ImageQuality;
+        moderation?: ImageModeration;
+        output_format?: ImageOutputFormat;
+        output_compression?: number;
+        background?: string;
+      } = {
+        type: "image_generation",
+        action: "auto",
+        partial_images: 2,
       };
 
-      for (let round = 1; round <= maxRounds; round += 1) {
-        const roundRequestBody: ResponsesStreamRequestBody = {
-          ...requestBody,
-          input: nextInput,
-          store: agentPreviousResponseEnabled,
-          previous_response_id: agentPreviousResponseEnabled
-            ? agentPreviousResponseId
-            : undefined,
-          instructions:
-            round === 1
-              ? requestBody.instructions
-              : `${requestBody.instructions || instructions}\n\n${
-                  useLayered
-                    ? LAYERED_CONTINUE_INSTRUCTIONS
-                    : AGENT_CONTINUE_INSTRUCTIONS
-                }`,
+      const toolModel = getImageModel(params.imageModel) || DEFAULT_IMAGE_MODEL;
+      if (toolModel) {
+        tool.model = toolModel;
+      }
+      if (size && size !== AUTO_IMAGE_SIZE) {
+        tool.size = size;
+      }
+      const quality = normalizeQuality(params.quality);
+      if (quality) tool.quality = quality;
+      const moderation = normalizeModeration(params.moderation);
+      if (moderation) tool.moderation = moderation;
+      const outputFormat = normalizeOutputFormat(params.outputFormat);
+      if (outputFormat) tool.output_format = outputFormat;
+      const outputCompression = normalizeOutputCompression(
+        params.outputCompression
+      );
+      if (outputCompression !== undefined) {
+        tool.output_compression = outputCompression;
+      }
+      const background = normalizeImageBackground(params.background);
+      if (background) tool.background = background;
+
+      const thinking = normalizeThinking(params.thinking);
+      const reasoning: ReasoningConfig | undefined = thinking
+        ? { effort: thinking, summary: "concise" }
+        : undefined;
+
+      const stream = Boolean(params.stream || config.useStream);
+      const defaultAdditionalTools = params.agentMode
+        ? createDefaultAgentAdditionalTools()
+        : [];
+      const promptCacheKey = buildOpenAIPromptCacheKey(config, {
+        scope: params.agentMode ? "responses-agent" : "responses-chat",
+        model,
+        imageModel: toolModel,
+        agentMode: params.agentMode,
+        promptOptimization: params.promptOptimization,
+        toolSignature: responseToolCacheSignature({
+          tool,
+          additionalTools: defaultAdditionalTools,
+        }),
+      });
+      const requestBody: ResponsesStreamRequestBody =
+        params.rawResponsesBody && isPlainRecord(params.rawResponsesBody)
+          ? normalizeResponsesImageRequestBody(params.rawResponsesBody, {
+              fallbackTool: tool,
+              additionalTools: defaultAdditionalTools,
+              instructions,
+              stream,
+            })
+          : {
+              model,
+              input,
+              tools: [tool, ...defaultAdditionalTools],
+              instructions,
+              store: responsesPreviousResponseEnabled,
+              prompt_cache_key: promptCacheKey,
+              ...(canUsePreviousResponseId
+                ? { previous_response_id: previousResponsesState?.responseId }
+                : {}),
+              ...(reasoning ? { reasoning } : {}),
+              ...(stream ? { stream: true } : {}),
+            };
+
+      let result: ResponsesResultWithOutput | undefined;
+      if (params.agentMode && !params.rawResponsesBody) {
+        // 分层生成需"整图 + 背景 + 每个元素"各一轮,层数由模型规划、事先未知,用上限轮数(8)给足,
+        // 让其逐层跑完(模型生成完最后一层不再调 continue_generation 会自行提前停),避免被用户的小
+        // 轮数(默认 3)截断而丢层(如"没有狗")。分层也不强制跑满轮数(否则会硬凑出多余层)。
+        const maxRounds = useLayered
+          ? 8
+          : normalizeAgentMaxRounds(params.agentMaxRounds) ||
+            (await getAgentMaxRounds());
+        const forceMaxRounds = useLayered
+          ? false
+          : (params.agentForceMaxRounds ?? (await getAgentForceMaxRounds()));
+        const roundResults: ResponsesResultWithOutput[] = [];
+        let nextInput = input;
+        let agentPreviousResponseEnabled = responsesPreviousResponseEnabled;
+        let agentPreviousResponseId = canUsePreviousResponseId
+          ? previousResponsesState?.responseId
+          : undefined;
+        const disableAgentNativeState = () => {
+          agentPreviousResponseEnabled = false;
+          agentPreviousResponseId = undefined;
         };
-        await emitAgentProgress(callbacks, {
-          kind: "message",
-          status: "started",
-          title: `Agent 第 ${round} 轮开始`,
-          detail:
-            round === 1
-              ? "分析请求并按需调用工具"
-              : "根据上一版结果继续判断是否迭代",
-          timestamp: new Date().toISOString(),
-        });
 
-        await emitAgentRoundRequestStatus(callbacks, {
-          round,
-          status: "running",
-          detail: "已发送请求，等待模型返回工具调用、文本或图片",
-        });
-        const roundRequestTracker = createAgentRoundRequestTracker(
-          callbacks,
-          round
-        );
-        const roundCallbacks = roundRequestTracker.wrapCallbacks();
-        let roundResult: ResponsesResultWithOutput;
-        try {
-          roundResult = await fetchAgentRoundResponses({
-            config,
-            requestBody: roundRequestBody,
-            signal: params.signal,
-            stream,
-            callbacks: roundCallbacks,
-            storeFalseFallbackInput: manualHistoryInput,
-            onStoreDisabledFallback: disableAgentNativeState,
-          });
-          if (
-            round === 1 &&
-            roundResult.error &&
-            canUsePreviousResponseId &&
-            isPreviousResponseStateError(roundResult.error)
-          ) {
-            agentPreviousResponseId = undefined;
-            roundResult = await fetchAgentRoundResponses({
-              config,
-              requestBody: {
-                ...roundRequestBody,
-                input: manualHistoryInput,
-                previous_response_id: undefined,
-              },
-              signal: params.signal,
-              stream,
-              callbacks: roundCallbacks,
-              storeFalseFallbackInput: manualHistoryInput,
-              onStoreDisabledFallback: disableAgentNativeState,
-            });
-          }
-          if (
-            round === 1 &&
-            agentPreviousResponseEnabled &&
-            roundResult.error &&
-            isResponsesStoreUnsupportedError(roundResult.error)
-          ) {
-            disableAgentNativeState();
-            roundResult = await fetchAgentRoundResponses({
-              config,
-              requestBody: {
-                ...roundRequestBody,
-                input: manualHistoryInput,
-                previous_response_id: undefined,
-                store: false,
-              },
-              signal: params.signal,
-              stream,
-              callbacks: roundCallbacks,
-              storeFalseFallbackInput: manualHistoryInput,
-              onStoreDisabledFallback: disableAgentNativeState,
-            });
-          }
-          if (
-            round > 1 &&
-            agentPreviousResponseEnabled &&
-            roundResult.error &&
-            shouldRetryAgentRoundWithManualHistory(roundResult.error)
-          ) {
-            await emitAgentDecision(callbacks, {
-              status: "completed",
-              title: "Agent 上下文重试",
-              detail:
-                "上游原生会话状态返回异常，已改用手动历史和上一版图片重试当前轮",
-            });
-            disableAgentNativeState();
-            roundResult = await fetchAgentRoundResponses({
-              config,
-              requestBody: {
-                ...roundRequestBody,
-                input: buildAgentContinuationInput({
-                  baseInput: input,
-                  previousResult: mergeGenerateImageResults(roundResults),
-                  currentRound: round - 1,
-                  maxRounds,
-                  outputFormat,
-                  historyRoundIndex: responseImageRoundIndex,
-                  includeImageEntities: true,
-                }),
-                previous_response_id: undefined,
-                store: false,
-              },
-              signal: params.signal,
-              stream,
-              callbacks: roundCallbacks,
-              onStoreDisabledFallback: disableAgentNativeState,
-            });
-          }
-        } catch (error) {
-          roundResult = {
-            error:
-              error instanceof Error ? error.message : "Unknown error occurred",
+        for (let round = 1; round <= maxRounds; round += 1) {
+          const roundRequestBody: ResponsesStreamRequestBody = {
+            ...requestBody,
+            input: nextInput,
+            store: agentPreviousResponseEnabled,
+            previous_response_id: agentPreviousResponseEnabled
+              ? agentPreviousResponseId
+              : undefined,
+            instructions:
+              round === 1
+                ? requestBody.instructions
+                : `${requestBody.instructions || instructions}\n\n${
+                    useLayered
+                      ? LAYERED_CONTINUE_INSTRUCTIONS
+                      : AGENT_CONTINUE_INSTRUCTIONS
+                  }`,
           };
-        }
-        await roundRequestTracker.finish({ error: roundResult.error });
-        roundResults.push(roundResult);
-        if (roundResult.responsesStoreDisabledFallback) {
-          disableAgentNativeState();
-        }
-        if (
-          agentPreviousResponseEnabled &&
-          !roundResult.responsesStoreDisabledFallback &&
-          roundResult.responseId
-        ) {
-          agentPreviousResponseId = roundResult.responseId;
-        }
+          await emitAgentProgress(callbacks, {
+            kind: "message",
+            status: "started",
+            title: `Agent 第 ${round} 轮开始`,
+            detail:
+              round === 1
+                ? "分析请求并按需调用工具"
+                : "根据上一版结果继续判断是否迭代",
+            timestamp: new Date().toISOString(),
+          });
 
-        if (roundResult.error) {
-          if (roundResults.slice(0, -1).some(hasAgentImage)) {
-            const partial = mergeGenerateImageResults(
-              roundResults.slice(0, -1)
-            );
-            // 续轮遇到"可切换"上游错误(如 token 失效/限流/账号不可用)时,上抛 error,交由外层
-            // retryPoolBackendResult 换号重跑整个 agent(多轮任务如分层尤其需要:否则只会停在
-            // 第一轮)。同时保留已产出的图,池子彻底耗尽时仍把这版返回。非切换类错误(如内容审核)
-            // 维持原"保留上一版、不重试"语义。
-            if (isImageBackendSwitchableError(roundResult.error)) {
+          await emitAgentRoundRequestStatus(callbacks, {
+            round,
+            status: "running",
+            detail: "已发送请求，等待模型返回工具调用、文本或图片",
+          });
+          const roundRequestTracker = createAgentRoundRequestTracker(
+            callbacks,
+            round
+          );
+          const roundCallbacks = roundRequestTracker.wrapCallbacks();
+          let roundResult: ResponsesResultWithOutput;
+          try {
+            roundResult = await fetchAgentRoundResponses({
+              config,
+              requestBody: roundRequestBody,
+              signal: params.signal,
+              stream,
+              callbacks: roundCallbacks,
+              storeFalseFallbackInput: manualHistoryInput,
+              onStoreDisabledFallback: disableAgentNativeState,
+            });
+            if (
+              round === 1 &&
+              roundResult.error &&
+              canUsePreviousResponseId &&
+              isPreviousResponseStateError(roundResult.error)
+            ) {
+              agentPreviousResponseId = undefined;
+              roundResult = await fetchAgentRoundResponses({
+                config,
+                requestBody: {
+                  ...roundRequestBody,
+                  input: manualHistoryInput,
+                  previous_response_id: undefined,
+                },
+                signal: params.signal,
+                stream,
+                callbacks: roundCallbacks,
+                storeFalseFallbackInput: manualHistoryInput,
+                onStoreDisabledFallback: disableAgentNativeState,
+              });
+            }
+            if (
+              round === 1 &&
+              agentPreviousResponseEnabled &&
+              roundResult.error &&
+              isResponsesStoreUnsupportedError(roundResult.error)
+            ) {
+              disableAgentNativeState();
+              roundResult = await fetchAgentRoundResponses({
+                config,
+                requestBody: {
+                  ...roundRequestBody,
+                  input: manualHistoryInput,
+                  previous_response_id: undefined,
+                  store: false,
+                },
+                signal: params.signal,
+                stream,
+                callbacks: roundCallbacks,
+                storeFalseFallbackInput: manualHistoryInput,
+                onStoreDisabledFallback: disableAgentNativeState,
+              });
+            }
+            if (
+              round > 1 &&
+              agentPreviousResponseEnabled &&
+              roundResult.error &&
+              shouldRetryAgentRoundWithManualHistory(roundResult.error)
+            ) {
+              await emitAgentDecision(callbacks, {
+                status: "completed",
+                title: "Agent 上下文重试",
+                detail:
+                  "上游原生会话状态返回异常，已改用手动历史和上一版图片重试当前轮",
+              });
+              disableAgentNativeState();
+              roundResult = await fetchAgentRoundResponses({
+                config,
+                requestBody: {
+                  ...roundRequestBody,
+                  input: buildAgentContinuationInput({
+                    baseInput: input,
+                    previousResult: mergeGenerateImageResults(roundResults),
+                    currentRound: round - 1,
+                    maxRounds,
+                    outputFormat,
+                    historyRoundIndex: responseImageRoundIndex,
+                    includeImageEntities: true,
+                  }),
+                  previous_response_id: undefined,
+                  store: false,
+                },
+                signal: params.signal,
+                stream,
+                callbacks: roundCallbacks,
+                onStoreDisabledFallback: disableAgentNativeState,
+              });
+            }
+          } catch (error) {
+            roundResult = {
+              error:
+                error instanceof Error ? error.message : "Unknown error occurred",
+            };
+          }
+          await roundRequestTracker.finish({ error: roundResult.error });
+          roundResults.push(roundResult);
+          if (roundResult.responsesStoreDisabledFallback) {
+            disableAgentNativeState();
+          }
+          if (
+            agentPreviousResponseEnabled &&
+            !roundResult.responsesStoreDisabledFallback &&
+            roundResult.responseId
+          ) {
+            agentPreviousResponseId = roundResult.responseId;
+          }
+
+          if (roundResult.error) {
+            if (roundResults.slice(0, -1).some(hasAgentImage)) {
+              const partial = mergeGenerateImageResults(
+                roundResults.slice(0, -1)
+              );
+              // 续轮遇到"可切换"上游错误(如 token 失效/限流/账号不可用)时,上抛 error,交由外层
+              // retryPoolBackendResult 换号重跑整个 agent(多轮任务如分层尤其需要:否则只会停在
+              // 第一轮)。同时保留已产出的图,池子彻底耗尽时仍把这版返回。非切换类错误(如内容审核)
+              // 维持原"保留上一版、不重试"语义。
+              if (isImageBackendSwitchableError(roundResult.error)) {
+                await emitAgentProgress(callbacks, {
+                  kind: "message",
+                  status: "failed",
+                  title: `Agent 第 ${round} 轮失败`,
+                  detail: `后续迭代上游错误，尝试切换账号重试：${roundResult.error}`,
+                  timestamp: new Date().toISOString(),
+                });
+                result = {
+                  ...partial,
+                  error: roundResult.error,
+                  upstreamResetAt: roundResult.upstreamResetAt,
+                  retryAfterSeconds: roundResult.retryAfterSeconds,
+                  partialAgentError: roundResult.error,
+                };
+                break;
+              }
+              await reportPoolBackendResult(config, {
+                error: roundResult.error,
+                upstreamResetAt: roundResult.upstreamResetAt,
+                retryAfterSeconds: roundResult.retryAfterSeconds,
+              });
               await emitAgentProgress(callbacks, {
                 kind: "message",
                 status: "failed",
-                title: `Agent 第 ${round} 轮失败`,
-                detail: `后续迭代上游错误，尝试切换账号重试：${roundResult.error}`,
+                title: `Agent 第 ${round} 轮停止`,
+                detail: `后续迭代失败，已保留上一版图片：${roundResult.error}`,
                 timestamp: new Date().toISOString(),
               });
               result = {
                 ...partial,
-                error: roundResult.error,
-                upstreamResetAt: roundResult.upstreamResetAt,
-                retryAfterSeconds: roundResult.retryAfterSeconds,
                 partialAgentError: roundResult.error,
               };
               break;
             }
-            await reportPoolBackendResult(config, {
-              error: roundResult.error,
-              upstreamResetAt: roundResult.upstreamResetAt,
-              retryAfterSeconds: roundResult.retryAfterSeconds,
-            });
-            await emitAgentProgress(callbacks, {
-              kind: "message",
-              status: "failed",
-              title: `Agent 第 ${round} 轮停止`,
-              detail: `后续迭代失败，已保留上一版图片：${roundResult.error}`,
-              timestamp: new Date().toISOString(),
-            });
-            result = {
-              ...partial,
-              partialAgentError: roundResult.error,
-            };
+            result = mergeGenerateImageResults(roundResults);
             break;
           }
-          result = mergeGenerateImageResults(roundResults);
-          break;
-        }
 
-        await emitAgentProgress(callbacks, {
-          kind: "message",
-          status: "completed",
-          title: `Agent 第 ${round} 轮完成`,
-          detail: hasAgentImage(roundResult)
-            ? "已生成图片，正在判断是否继续"
-            : "未生成图片，继续推动执行",
-          timestamp: new Date().toISOString(),
-        });
-
-        const continueCalls = getContinueGenerationFunctionCalls(
-          roundResult.outputItems
-        );
-        const continueFunctionCallItems =
-          buildContinueGenerationFunctionCallItems({
-            outputItems: roundResult.outputItems,
-            includeFunctionCallInputs: !agentPreviousResponseEnabled,
-          });
-        const continueReason = continueCalls
-          .map((call) => call.reason)
-          .find((reason): reason is string => Boolean(reason));
-        const shouldForceContinue = forceMaxRounds && round < maxRounds;
-        if (continueCalls.length > 0) {
           await emitAgentProgress(callbacks, {
-            kind: "tool",
+            kind: "message",
             status: "completed",
-            title: "Agent 请求继续",
-            detail: continueReason,
+            title: `Agent 第 ${round} 轮完成`,
+            detail: hasAgentImage(roundResult)
+              ? "已生成图片，正在判断是否继续"
+              : "未生成图片，继续推动执行",
             timestamp: new Date().toISOString(),
-            toolType: "continue_generation",
           });
-        } else if (forceMaxRounds) {
-          await emitAgentDecision(callbacks, {
-            status: "completed",
-            title: shouldForceContinue
-              ? "Agent 强制继续"
-              : "Agent 强制轮数完成",
-            detail: shouldForceContinue
-              ? `系统已开启强制迭代，将继续执行第 ${round + 1} 轮`
-              : `已完成强制迭代轮数 ${maxRounds}`,
-          });
-        }
 
-        if (round >= maxRounds) {
+          const continueCalls = getContinueGenerationFunctionCalls(
+            roundResult.outputItems
+          );
+          const continueFunctionCallItems =
+            buildContinueGenerationFunctionCallItems({
+              outputItems: roundResult.outputItems,
+              includeFunctionCallInputs: !agentPreviousResponseEnabled,
+            });
+          const continueReason = continueCalls
+            .map((call) => call.reason)
+            .find((reason): reason is string => Boolean(reason));
+          const shouldForceContinue = forceMaxRounds && round < maxRounds;
           if (continueCalls.length > 0) {
+            await emitAgentProgress(callbacks, {
+              kind: "tool",
+              status: "completed",
+              title: "Agent 请求继续",
+              detail: continueReason,
+              timestamp: new Date().toISOString(),
+              toolType: "continue_generation",
+            });
+          } else if (forceMaxRounds) {
             await emitAgentDecision(callbacks, {
               status: "completed",
-              title: "Agent 最大轮数完成",
-              detail: `模型请求继续，但已达到最大轮数 ${maxRounds}`,
+              title: shouldForceContinue
+                ? "Agent 强制继续"
+                : "Agent 强制轮数完成",
+              detail: shouldForceContinue
+                ? `系统已开启强制迭代，将继续执行第 ${round + 1} 轮`
+                : `已完成强制迭代轮数 ${maxRounds}`,
             });
           }
-          result = mergeGenerateImageResults(roundResults);
-          break;
-        }
 
-        if (hasAgentImage(roundResult)) {
-          if (continueCalls.length === 0 && !shouldForceContinue) {
+          if (round >= maxRounds) {
+            if (continueCalls.length > 0) {
+              await emitAgentDecision(callbacks, {
+                status: "completed",
+                title: "Agent 最大轮数完成",
+                detail: `模型请求继续，但已达到最大轮数 ${maxRounds}`,
+              });
+            }
+            result = mergeGenerateImageResults(roundResults);
+            break;
+          }
+
+          if (hasAgentImage(roundResult)) {
+            if (continueCalls.length === 0 && !shouldForceContinue) {
+              await emitAgentDecision(callbacks, {
+                status: "completed",
+                title: "Agent 自检完成",
+                detail: "模型未请求继续，已停止迭代",
+              });
+              result = mergeGenerateImageResults(roundResults);
+              break;
+            }
+            nextInput = buildAgentContinuationInput({
+              baseInput: agentPreviousResponseEnabled ? [] : input,
+              previousResult: mergeGenerateImageResults(roundResults),
+              currentRound: round,
+              maxRounds,
+              outputFormat,
+              historyRoundIndex: responseImageRoundIndex,
+              includeImageEntities: !agentPreviousResponseEnabled,
+              functionCallItems: continueFunctionCallItems,
+            });
+            continue;
+          }
+
+          if (
+            roundResults.some(hasAgentImage) &&
+            continueCalls.length === 0 &&
+            !shouldForceContinue
+          ) {
             await emitAgentDecision(callbacks, {
               status: "completed",
               title: "Agent 自检完成",
@@ -4542,6 +4638,15 @@ export async function generateChatImage(
             result = mergeGenerateImageResults(roundResults);
             break;
           }
+
+          const textOnly = Boolean(
+            roundResult.responseText?.trim() || roundResult.responseAgent?.trim()
+          );
+          if (!textOnly) {
+            result = mergeGenerateImageResults(roundResults);
+            break;
+          }
+
           nextInput = buildAgentContinuationInput({
             baseInput: agentPreviousResponseEnabled ? [] : input,
             previousResult: mergeGenerateImageResults(roundResults),
@@ -4552,110 +4657,91 @@ export async function generateChatImage(
             includeImageEntities: !agentPreviousResponseEnabled,
             functionCallItems: continueFunctionCallItems,
           });
-          continue;
         }
 
-        if (
-          roundResults.some(hasAgentImage) &&
-          continueCalls.length === 0 &&
-          !shouldForceContinue
-        ) {
-          await emitAgentDecision(callbacks, {
-            status: "completed",
-            title: "Agent 自检完成",
-            detail: "模型未请求继续，已停止迭代",
-          });
+        if (!result) {
           result = mergeGenerateImageResults(roundResults);
-          break;
         }
-
-        const textOnly = Boolean(
-          roundResult.responseText?.trim() || roundResult.responseAgent?.trim()
+        const completedRounds =
+          result.agentRoundCount ||
+          roundResults.filter((item) => !item.error).length;
+        const finalAgentEvent: AgentRunEvent = {
+          kind: "message",
+          status: result.error ? "failed" : "completed",
+          title: result.error ? "Agent 执行失败" : "Agent 执行完成",
+          detail: result.error
+            ? result.error
+            : `已完成 ${completedRounds || roundResults.length} 轮 Agent 执行`,
+          timestamp: new Date().toISOString(),
+        };
+        await emitAgentProgress(callbacks, finalAgentEvent);
+        result = {
+          ...result,
+          agentEvents: mergeAgentEvents(result.agentEvents, [finalAgentEvent]),
+        };
+      } else {
+        result = await fetchResponsesWithPreviousResponseFallback(
+          config,
+          requestBody,
+          manualHistoryInput,
+          {
+            signal: params.signal,
+            stream,
+            previousResponseUsed: canUsePreviousResponseId,
+          },
+          callbacks
         );
-        if (!textOnly) {
-          result = mergeGenerateImageResults(roundResults);
-          break;
-        }
-
-        nextInput = buildAgentContinuationInput({
-          baseInput: agentPreviousResponseEnabled ? [] : input,
-          previousResult: mergeGenerateImageResults(roundResults),
-          currentRound: round,
-          maxRounds,
-          outputFormat,
-          historyRoundIndex: responseImageRoundIndex,
-          includeImageEntities: !agentPreviousResponseEnabled,
-          functionCallItems: continueFunctionCallItems,
-        });
       }
 
       if (!result) {
-        result = mergeGenerateImageResults(roundResults);
+        result = { error: "API returned no image data" };
       }
-      const completedRounds =
-        result.agentRoundCount ||
-        roundResults.filter((item) => !item.error).length;
-      const finalAgentEvent: AgentRunEvent = {
-        kind: "message",
-        status: result.error ? "failed" : "completed",
-        title: result.error ? "Agent 执行失败" : "Agent 执行完成",
-        detail: result.error
-          ? result.error
-          : `已完成 ${completedRounds || roundResults.length} 轮 Agent 执行`,
-        timestamp: new Date().toISOString(),
-      };
-      await emitAgentProgress(callbacks, finalAgentEvent);
-      result = {
-        ...result,
-        agentEvents: mergeAgentEvents(result.agentEvents, [finalAgentEvent]),
-      };
-    } else {
-      result = await fetchResponsesWithPreviousResponseFallback(
+
+      if (params.agentMode && params.rawResponsesBody) {
+        const unsupportedTools = getUnsupportedToolTypes(result);
+        if (unsupportedTools.size > 0) {
+          result = await fetchAgentRoundResponses({
+            config,
+            requestBody,
+            signal: params.signal,
+            stream,
+            callbacks,
+          });
+        }
+      }
+
+      const resultWithNativeState = attachResponsesPreviousResponseState(
         config,
-        requestBody,
-        manualHistoryInput,
-        {
-          signal: params.signal,
-          stream,
-          previousResponseUsed: canUsePreviousResponseId,
-        },
-        callbacks
+        result,
+        responsesPreviousResponseEnabled
       );
-    }
-
-    if (!result) {
-      result = { error: "API returned no image data" };
-    }
-
-    if (params.agentMode && params.rawResponsesBody) {
-      const unsupportedTools = getUnsupportedToolTypes(result);
-      if (unsupportedTools.size > 0) {
-        result = await fetchAgentRoundResponses({
-          config,
-          requestBody,
-          signal: params.signal,
-          stream,
-          callbacks,
+      if (resultWithNativeState.responsesPreviousResponse) {
+        await bindImageBackendStickyMember({
+          layer: "previous_response_id",
+          key: resultWithNativeState.responsesPreviousResponse.responseId,
+          member: resultWithNativeState.responsesPreviousResponse.backendMember,
+          metadata: {
+            source: params.agentMode ? "responses-agent" : "responses-chat",
+          },
         });
       }
-    }
+      return applyPromptOptimizationResultVisibility(resultWithNativeState);
+    };
 
-    const resultWithNativeState = attachResponsesPreviousResponseState(
-      config,
-      result,
-      responsesPreviousResponseEnabled
-    );
-    if (resultWithNativeState.responsesPreviousResponse) {
-      await bindImageBackendStickyMember({
-        layer: "previous_response_id",
-        key: resultWithNativeState.responsesPreviousResponse.responseId,
-        member: resultWithNativeState.responsesPreviousResponse.backendMember,
-        metadata: {
-          source: params.agentMode ? "responses-agent" : "responses-chat",
-        },
+    let result = await attempt(false);
+    // 一次性同后端兜底：上游下载我方当前输入图 URL 失败（如 407）且我方有字节，
+    // 用 base64 内联当前输入图重发同一请求（仅限 responses 聊天/agent 路径）。
+    if (
+      isImageDownloadUpstreamError(result.error) &&
+      hasInputImageBytes(params.images)
+    ) {
+      logWarn("上游下载输入图失败，改用 base64 内联重试（responses 聊天/agent）", {
+        baseUrl: config.baseUrl,
+        model,
       });
+      result = await attempt(true);
     }
-    return applyPromptOptimizationResultVisibility(resultWithNativeState);
+    return result;
   } catch (error) {
     logImageRequestError(error, {
       operation: "chat",

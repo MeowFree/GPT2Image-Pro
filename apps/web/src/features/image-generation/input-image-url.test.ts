@@ -80,4 +80,60 @@ describe("getInputImageUrl", () => {
     const url = getInputImageUrl(makeImage({ url: dataUrl }));
     expect(url).toBe(dataUrl);
   });
+
+  it("forces base64 even when a storage key / url are set, if bytes exist", async () => {
+    const { getInputImageUrl } = await import("./input-image-url");
+    const bytes = Buffer.from([1, 2, 3]);
+    const image = makeImage({
+      storageKey: "user-1/abc.png",
+      storageBucket: "generations",
+      url: `${APP_URL}/api/storage/generations/user-1/abc.png?sig=x&exp=1`,
+      data: bytes,
+      type: "image/png",
+    });
+
+    // 无 forceBase64：仍走站内签名 URL（既有行为不变）。
+    const normalUrl = getInputImageUrl(image);
+    expect(normalUrl).toContain(
+      `${APP_URL}/api/storage/generations/user-1/abc.png`
+    );
+
+    // forceBase64：跳过 URL 选择，直接内联 base64。
+    const forcedUrl = getInputImageUrl(image, { forceBase64: true });
+    expect(forcedUrl).toBe(
+      `data:image/png;base64,${bytes.toString("base64")}`
+    );
+  });
+
+  it("ignores forceBase64 when there are no bytes (keeps url passthrough)", async () => {
+    const { getInputImageUrl } = await import("./input-image-url");
+    const external = "https://cdn.thirdparty.example/history.png";
+    const url = getInputImageUrl(makeImage({ url: external }), {
+      forceBase64: true,
+    });
+    expect(url).toBe(external);
+  });
+});
+
+describe("isImageDownloadUpstreamError", () => {
+  it("matches the upstream download-failure messages", async () => {
+    const { isImageDownloadUpstreamError } = await import("./input-image-url");
+    expect(
+      isImageDownloadUpstreamError(
+        "Error while downloading file. Upstream status code: 407."
+      )
+    ).toBe(true);
+    expect(
+      isImageDownloadUpstreamError(
+        "Unable to download content from the provided URL"
+      )
+    ).toBe(true);
+  });
+
+  it("does not match unrelated errors or empty input", async () => {
+    const { isImageDownloadUpstreamError } = await import("./input-image-url");
+    expect(isImageDownloadUpstreamError("moderation_blocked")).toBe(false);
+    expect(isImageDownloadUpstreamError(undefined)).toBe(false);
+    expect(isImageDownloadUpstreamError("")).toBe(false);
+  });
 });

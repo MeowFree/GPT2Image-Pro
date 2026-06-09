@@ -70,11 +70,14 @@ const RESPONSES_IMAGE_INSTRUCTIONS =
 const RESPONSES_IMAGE_ORIGINAL_PROMPT_INSTRUCTIONS =
   "Use the user's original image prompt exactly as written for image generation. Do not rewrite, expand, translate, polish, or optimize the prompt before calling the image_generation tool.";
 
-function getInputImageContent(image: ImageInputFile) {
+function getInputImageContent(image: ImageInputFile, forceBase64?: boolean) {
   if (image.imageFileId?.trim()) {
     return { type: "input_image" as const, file_id: image.imageFileId.trim() };
   }
-  return { type: "input_image" as const, image_url: getInputImageUrl(image) };
+  return {
+    type: "input_image" as const,
+    image_url: getInputImageUrl(image, { forceBase64 }),
+  };
 }
 
 function referenceTag(refId: string, prompt?: string) {
@@ -97,7 +100,7 @@ function getEditReferenceLabel(
   return `@图${imageNumber} / ${referenceTag(refId, prompt)}`;
 }
 
-function getEditImageContent(images: ImageInputFile[]) {
+function getEditImageContent(images: ImageInputFile[], forceBase64?: boolean) {
   return images.flatMap((image, index) => {
     const imageNumber = index + 1;
     const refId = `edit-reference-${imageNumber}`;
@@ -107,7 +110,7 @@ function getEditImageContent(images: ImageInputFile[]) {
         type: "input_text" as const,
         text: `The next source image is labeled ${label}. Use this label when the user refers to this exact source image.`,
       },
-      getInputImageContent(image),
+      getInputImageContent(image, forceBase64),
       {
         type: "input_text" as const,
         text: `The source image above is ${label}.`,
@@ -191,9 +194,14 @@ function normalizeThinking(thinking?: string): ThinkingLevel {
   return "medium";
 }
 
+/**
+ * 构造 Responses 生图请求。生图无输入图，forceBase64 仅为与 edit 路径签名对齐，
+ * 当前无实际作用（保留以便调用方统一传参）。
+ */
 export function buildResponsesImageGenerationRequest(
   config: ApiConfig,
-  params: GenerateImageParams
+  params: GenerateImageParams,
+  _forceBase64?: boolean
 ): ResponsesImageRequest {
   const prompt = getPrompt(params);
   const size = params.size || DEFAULT_IMAGE_SIZE;
@@ -250,9 +258,14 @@ export function buildResponsesImageGenerationRequest(
   };
 }
 
+/**
+ * 构造 Responses 改图请求。forceBase64=true 时把输入图与 mask 强制内联为 base64
+ * （上游下载我方 URL 失败时的一次性兜底，详见 input-image-url.ts）。
+ */
 export function buildResponsesImageEditRequest(
   config: ApiConfig,
-  params: EditImageParams
+  params: EditImageParams,
+  forceBase64?: boolean
 ): ResponsesImageRequest {
   const prompt = resolvePromptImageReferences({
     prompt: getPrompt(params),
@@ -284,7 +297,9 @@ export function buildResponsesImageEditRequest(
   const background = normalizeImageBackground(params.background);
   if (background) tool.background = background;
   if (params.mask) {
-    tool.input_image_mask = { image_url: getInputImageUrl(params.mask) };
+    tool.input_image_mask = {
+      image_url: getInputImageUrl(params.mask, { forceBase64 }),
+    };
   }
 
   const instructions = withResponsesImageReferenceInstructions(
@@ -299,7 +314,7 @@ export function buildResponsesImageEditRequest(
         type: "message",
         role: "user",
         content: [
-          ...getEditImageContent(params.images),
+          ...getEditImageContent(params.images, forceBase64),
           { type: "input_text", text: `User edit request: ${prompt}` },
         ],
       },

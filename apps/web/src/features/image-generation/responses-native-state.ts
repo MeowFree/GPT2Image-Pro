@@ -347,6 +347,9 @@ export function buildCurrentResponsesContent(
     extraImageReferences?: ResponsesImageReference[];
     includeExtraImageEntities?: boolean;
     generatedImageReferenceInstruction?: string;
+    // forceBase64：上游下载我方输入图 URL 失败（如 407）时的一次性兜底，
+    // 把有字节的当前输入图强制内联 base64；默认 undefined/false 保持原 URL 选择。
+    forceBase64?: boolean;
   }
 ): ResponsesRequestContent[] {
   const content: ResponsesRequestContent[] = [];
@@ -364,7 +367,9 @@ export function buildCurrentResponsesContent(
   for (const [index, image] of (images || []).entries()) {
     const refId = `current-reference-${index + 1}`;
     const imageContent = getInputImageContent({
-      imageUrl: image.imageFileId ? undefined : getDataUrl(image),
+      imageUrl: image.imageFileId
+        ? undefined
+        : getDataUrl(image, { forceBase64: options?.forceBase64 }),
       imageFileId: image.imageFileId,
     });
     if (imageContent) {
@@ -410,6 +415,9 @@ export function buildResponsesInput(
     extraCurrentImageReferences?: ResponsesImageReference[];
     generatedImageReferenceInstruction?: string;
     currentBackendMember?: StickyBackendMemberState;
+    // forceBase64：仅作用于当前轮输入图（buildCurrentResponsesContent），上游下载
+    // 我方 URL 失败时一次性把有字节的当前图强制内联；历史图（无字节）不受影响。
+    forceBase64?: boolean;
   }
 ): ResponsesRequestInputItem[] {
   const input: ResponsesRequestInputItem[] = [];
@@ -485,6 +493,7 @@ export function buildResponsesInput(
       extraImageReferences: options?.extraCurrentImageReferences,
       generatedImageReferenceInstruction:
         options?.generatedImageReferenceInstruction,
+      forceBase64: options?.forceBase64,
     }),
   });
 

@@ -575,6 +575,62 @@ describe("Responses image references", () => {
     ).toBe(true);
   });
 
+  it("inlines current input images as base64 only when forceBase64 is set", () => {
+    const previousAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const previousSecret = process.env.BETTER_AUTH_SECRET;
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.example.test";
+    process.env.BETTER_AUTH_SECRET = "test-secret";
+    try {
+      const storedImage: ImageInputFile = {
+        ...testImage,
+        url: "https://app.example.test/api/storage/generations/user/requests/ref.png?sig=old&exp=1",
+        storageBucket: "generations",
+        storageKey: "user/requests/ref.png",
+      };
+
+      // 默认（无 forceBase64）：第一方签名站内 URL，不内联。
+      const normal = buildResponsesInput(
+        "edit it",
+        [storedImage],
+        undefined,
+        undefined
+      );
+      const normalImage = normal
+        .flatMap((message) => ("content" in message ? message.content : []))
+        .find((part) => part.type === "input_image");
+      expect(
+        normalImage?.type === "input_image" &&
+          typeof normalImage.image_url === "string" &&
+          normalImage.image_url.startsWith("https://app.example.test/api/storage/")
+      ).toBe(true);
+
+      // forceBase64 + 有字节：跳过 URL 选择，强制内联 base64（上游下载我方 URL 失败兜底）。
+      const inlined = buildResponsesInput(
+        "edit it",
+        [storedImage],
+        undefined,
+        undefined,
+        { forceBase64: true }
+      );
+      expect(
+        inlined.some(
+          (message) =>
+            "content" in message &&
+            message.content.some(
+              (part) =>
+                part.type === "input_image" &&
+                part.image_url === "data:image/png;base64,aW1hZ2UtYnl0ZXM="
+            )
+        )
+      ).toBe(true);
+    } finally {
+      if (previousAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+      else process.env.NEXT_PUBLIC_APP_URL = previousAppUrl;
+      if (previousSecret === undefined) delete process.env.BETTER_AUTH_SECRET;
+      else process.env.BETTER_AUTH_SECRET = previousSecret;
+    }
+  });
+
   it("uses signed temporary URLs for current uploaded images when available", () => {
     const previousAppUrl = process.env.NEXT_PUBLIC_APP_URL;
     const previousSecret = process.env.BETTER_AUTH_SECRET;
