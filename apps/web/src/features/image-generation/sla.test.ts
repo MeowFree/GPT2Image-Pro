@@ -18,7 +18,22 @@ describe("generation SLA error classification", () => {
     expect(
       classifyGenerationError("API key quota exceeded: required 2, remaining 0")
     ).toBe("user_request");
-    expect(classifyGenerationError("insufficient_quota")).toBe("user_request");
+  });
+
+  it("keeps pool quota exhaustion and credential failures as platform errors", () => {
+    // 裸 insufficient_quota/unauthorized 来自平台自有池(上游配额耗尽/池账号 401)，
+    // 不能归 user_request 从 SLA 成功率分母中剔除。
+    expect(
+      classifyGenerationError(
+        "Upstream Images API returned HTTP 429: no available image quota | insufficient_quota"
+      )
+    ).toBe("platform");
+    expect(classifyGenerationError("insufficient_quota")).toBe("platform");
+    expect(
+      classifyGenerationError(
+        "Upstream Responses API returned HTTP 401: Unauthorized"
+      )
+    ).toBe("platform");
   });
 
   it("keeps invalid request parameters out of moderation errors", () => {

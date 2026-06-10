@@ -3,10 +3,13 @@ export type GenerationErrorCategory =
   | "moderation"
   | "user_request";
 
+// 注意：不要把裸 "insufficient quota"/"insufficient_quota"/"unauthorized" 放进
+// 来——生产中这些文案几乎都来自平台自有池(上游配额耗尽如 "no available image
+// quota | insufficient_quota"、池账号 401)，归 user_request 会把平台事故从
+// SLA 成功率分母中剔除。用户侧额度问题用更具体的模式(积分不足/api key
+// quota exceeded/invalid or missing api key 等)匹配。
 const USER_REQUEST_PATTERNS = [
   "积分不足",
-  "insufficient quota",
-  "insufficient_quota",
   "insufficient credits",
   "insufficient_credits",
   "api key quota exceeded",
@@ -39,7 +42,6 @@ const USER_REQUEST_PATTERNS = [
   "total upload size",
   "upload is too large",
   "invalid or missing api key",
-  "unauthorized",
   "account frozen",
 ];
 
