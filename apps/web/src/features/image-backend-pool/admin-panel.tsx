@@ -1,5 +1,7 @@
 "use client";
 
+import type { SubscriptionPlan } from "@repo/shared/config/subscription-plan";
+import { formatDateInTimeZone } from "@repo/shared/time-zone";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import {
@@ -37,15 +39,15 @@ import { cn } from "@repo/ui/utils";
 import {
   Activity,
   Ban,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  CheckCircle2,
   CircleAlert,
-  Infinity as InfinityIcon,
   CircleOff,
   Database,
   ExternalLink,
   FolderTree,
+  Infinity as InfinityIcon,
   Loader2,
   Pencil,
   Plug,
@@ -59,8 +61,6 @@ import {
 import { useAction } from "next-safe-action/hooks";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import type { SubscriptionPlan } from "@repo/shared/config/subscription-plan";
-import { formatDateInTimeZone } from "@repo/shared/time-zone";
 
 import {
   bulkDeleteImageBackendAccountsAction,
@@ -77,8 +77,8 @@ import {
   importImageBackendWebAccountsFromAccessTokensAction,
   refreshImageBackendAccountInfoAction,
   refreshImageBackendAccountsInfoAction,
-  runSub2ApiManualSyncAction,
   runSub2ApiAutoSyncTaskNowAction,
+  runSub2ApiManualSyncAction,
   saveImageBackendAccountAction,
   saveImageBackendApiAction,
   saveImageBackendGroupAction,
@@ -182,9 +182,7 @@ type ContentSafetyFormValue = "inherit" | "enabled" | "disabled";
 type AccountBackendFormValue = "web" | "responses";
 type GroupBackendTypeFormValue = ImageBackendGroupBackendType;
 type ApiInterfaceModeFormValue = ImageBackendApiInterfaceMode;
-type ChatCompletionsUpstreamModeFormValue =
-  | "responses"
-  | "chat_completions";
+type ChatCompletionsUpstreamModeFormValue = "responses" | "chat_completions";
 type ImagesUpstreamModeFormValue = ImagesUpstreamMode;
 type TokenSyncMode = "web" | "responses" | "both";
 type Sub2ApiPlanFilter = "all" | "free" | "plus" | "pro" | "non_free";
@@ -454,8 +452,8 @@ function groupBackendTypeLabel(value: ImageBackendGroupBackendType) {
 
 function apiInterfaceModeLabel(value: ImageBackendApiInterfaceMode) {
   return (
-    API_INTERFACE_MODE_OPTIONS.find((option) => option.value === value)?.label ||
-    "仅 Images"
+    API_INTERFACE_MODE_OPTIONS.find((option) => option.value === value)
+      ?.label || "仅 Images"
   );
 }
 
@@ -471,10 +469,15 @@ function childGroupNames(groups: Group[], childGroupIds: string[]) {
 
 function formatDate(value: Date | string | null, timeZone?: string) {
   if (!value) return "从未使用";
-  return formatDateInTimeZone(value, "zh", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }, timeZone);
+  return formatDateInTimeZone(
+    value,
+    "zh",
+    {
+      dateStyle: "medium",
+      timeStyle: "short",
+    },
+    timeZone
+  );
 }
 
 function formatOptionalDate(value: Date | string | null, timeZone?: string) {
@@ -885,7 +888,9 @@ export function ImageBackendPoolAdminPanel({
         bulkAccountForm.selectionGroupId === "all" ||
         (bulkAccountForm.selectionGroupId === "default"
           ? accountGroupIds(account).length === 0
-          : accountGroupIds(account).includes(bulkAccountForm.selectionGroupId));
+          : accountGroupIds(account).includes(
+              bulkAccountForm.selectionGroupId
+            ));
       const modeMatches =
         bulkAccountForm.selectionMode === "all" ||
         account.implementationMode === bulkAccountForm.selectionMode;
@@ -1416,9 +1421,7 @@ export function ImageBackendPoolAdminPanel({
       toast.success(
         `立即同步完成：写入 ${data?.syncedCount || 0} 个，失败 ${
           data?.failed || 0
-        } 个${
-          data?.deletedCount ? `，删除 ${data.deletedCount} 个` : ""
-        }`
+        } 个${data?.deletedCount ? `，删除 ${data.deletedCount} 个` : ""}`
       );
       setRunningSub2ApiSyncTaskId(null);
       loadSub2ApiSyncTasks();
@@ -1607,7 +1610,10 @@ export function ImageBackendPoolAdminPanel({
         const processed = Math.min(offset + batch.length, refreshTokens.length);
         setManualImportProgress({
           status: "running",
-          value: Math.min(99, Math.round((processed / refreshTokens.length) * 100)),
+          value: Math.min(
+            99,
+            Math.round((processed / refreshTokens.length) * 100)
+          ),
           message: `已处理 ${processed}/${refreshTokens.length}；写入 ${syncedCount}，失败 ${failedCount}`,
         });
       }
@@ -1659,41 +1665,47 @@ export function ImageBackendPoolAdminPanel({
     // 渐进动画兜底:全量同步是单次后端调用(后端还做 cleanup/建任务等原子操作,不宜
     // 客户端分批),没有真实进度时进度条平滑爬向 ~90% 表示"在跑",完成跳 100%。
     const syncStartedAt = Date.now();
-    let progressTimer: ReturnType<typeof setInterval> | null = setInterval(() => {
-      setSyncProgress((prev) =>
-        prev.status === "running" && prev.value < 90
-          ? {
-              ...prev,
-              value: Math.min(
-                90,
-                prev.value + Math.max(1, Math.round((90 - prev.value) / 12))
-              ),
-            }
-          : prev
-      );
-    }, 700);
+    let progressTimer: ReturnType<typeof setInterval> | null = setInterval(
+      () => {
+        setSyncProgress((prev) =>
+          prev.status === "running" && prev.value < 90
+            ? {
+                ...prev,
+                value: Math.min(
+                  90,
+                  prev.value + Math.max(1, Math.round((90 - prev.value) / 12))
+                ),
+              }
+            : prev
+        );
+      },
+      700
+    );
     // 真实进度:轮询服务端进程内进度槽(逐账号),拿到就覆盖动画、显示真实百分比与计数。
     // startedAt 用于过滤上一次同步的残留进度。轮询取不到(如打到别的实例)时退回动画。
-    let pollTimer: ReturnType<typeof setInterval> | null = setInterval(async () => {
-      try {
-        const res = await fetchSub2ApiSyncProgress();
-        const p = res?.data?.progress;
-        if (p && p.total > 0 && p.startedAt >= syncStartedAt - 3000) {
-          const pct = Math.min(95, Math.round((p.processed / p.total) * 95));
-          setSyncProgress((prev) =>
-            prev.status === "running"
-              ? {
-                  ...prev,
-                  value: Math.max(prev.value, pct),
-                  message: `正在同步账号 ${p.processed}/${p.total}`,
-                }
-              : prev
-          );
+    let pollTimer: ReturnType<typeof setInterval> | null = setInterval(
+      async () => {
+        try {
+          const res = await fetchSub2ApiSyncProgress();
+          const p = res?.data?.progress;
+          if (p && p.total > 0 && p.startedAt >= syncStartedAt - 3000) {
+            const pct = Math.min(95, Math.round((p.processed / p.total) * 95));
+            setSyncProgress((prev) =>
+              prev.status === "running"
+                ? {
+                    ...prev,
+                    value: Math.max(prev.value, pct),
+                    message: `正在同步账号 ${p.processed}/${p.total}`,
+                  }
+                : prev
+            );
+          }
+        } catch {
+          // 轮询失败忽略,继续用动画兜底。
         }
-      } catch {
-        // 轮询失败忽略,继续用动画兜底。
-      }
-    }, 900);
+      },
+      900
+    );
     const stopSyncProgressTimer = () => {
       if (progressTimer) {
         clearInterval(progressTimer);
@@ -1761,9 +1773,7 @@ export function ImageBackendPoolAdminPanel({
       toast.success(
         `同步完成：写入 ${data.syncedCount || 0} 个，跳过 ${skippedCount} 个，失败 ${
           data.failed || 0
-        } 个${
-          data.deletedCount ? `，删除 ${data.deletedCount} 个` : ""
-        }`
+        } 个${data.deletedCount ? `，删除 ${data.deletedCount} 个` : ""}`
       );
       loadSub2ApiSyncTasks();
       reload();
@@ -1964,273 +1974,277 @@ export function ImageBackendPoolAdminPanel({
           )}
         >
           {!readOnly && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                {groupForm.id ? "编辑分组" : "新增分组"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Input
-                placeholder="分组名称"
-                value={groupForm.name}
-                onChange={(event) =>
-                  setGroupForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-              />
-              <Textarea
-                placeholder="说明"
-                value={groupForm.description}
-                onChange={(event) =>
-                  setGroupForm((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <Label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={groupForm.isEnabled}
-                    onCheckedChange={(checked) =>
-                      setGroupForm((current) => ({
-                        ...current,
-                        isEnabled: Boolean(checked),
-                      }))
-                    }
-                  />
-                  启用
-                </Label>
-                <Label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={groupForm.isDefault}
-                    onCheckedChange={(checked) =>
-                      setGroupForm((current) => ({
-                        ...current,
-                        isDefault: Boolean(checked),
-                      }))
-                    }
-                  />
-                  默认
-                </Label>
-                <Label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={groupForm.isUserSelectable}
-                    onCheckedChange={(checked) =>
-                      setGroupForm((current) => ({
-                        ...current,
-                        isUserSelectable: Boolean(checked),
-                      }))
-                    }
-                  />
-                  用户可选
-                </Label>
-              </div>
-              <div className="space-y-2">
-                <Label>内容安全</Label>
-                <Select
-                  value={groupForm.contentSafety}
-                  onValueChange={(value) =>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  {groupForm.id ? "编辑分组" : "新增分组"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Input
+                  placeholder="分组名称"
+                  value={groupForm.name}
+                  onChange={(event) =>
                     setGroupForm((current) => ({
                       ...current,
-                      contentSafety: value as ContentSafetyFormValue,
+                      name: event.target.value,
                     }))
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="inherit">继承成员</SelectItem>
-                    <SelectItem value="enabled">强制开启</SelectItem>
-                    <SelectItem value="disabled">强制关闭</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>分组类型</Label>
-                <Select
-                  value={groupForm.backendType}
-                  onValueChange={(value) =>
+                />
+                <Textarea
+                  placeholder="说明"
+                  value={groupForm.description}
+                  onChange={(event) =>
                     setGroupForm((current) => ({
                       ...current,
-                      backendType: value as GroupBackendTypeFormValue,
-                      childGroupIds:
-                        value === "mixed" ? current.childGroupIds : [],
+                      description: event.target.value,
                     }))
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GROUP_BACKEND_TYPE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {
-                    GROUP_BACKEND_TYPE_OPTIONS.find(
-                      (option) => option.value === groupForm.backendType
-                    )?.detail
-                  }
-                </p>
-              </div>
-              <div
-                className={cn(
-                  "space-y-2 rounded-md border p-3",
-                  groupForm.backendType !== "mixed" &&
-                    "bg-muted/30 text-muted-foreground"
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <FolderTree className="h-4 w-4 text-muted-foreground" />
-                  <Label>嵌套子分组</Label>
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <Label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={groupForm.isEnabled}
+                      onCheckedChange={(checked) =>
+                        setGroupForm((current) => ({
+                          ...current,
+                          isEnabled: Boolean(checked),
+                        }))
+                      }
+                    />
+                    启用
+                  </Label>
+                  <Label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={groupForm.isDefault}
+                      onCheckedChange={(checked) =>
+                        setGroupForm((current) => ({
+                          ...current,
+                          isDefault: Boolean(checked),
+                        }))
+                      }
+                    />
+                    默认
+                  </Label>
+                  <Label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={groupForm.isUserSelectable}
+                      onCheckedChange={(checked) =>
+                        setGroupForm((current) => ({
+                          ...current,
+                          isUserSelectable: Boolean(checked),
+                        }))
+                      }
+                    />
+                    用户可选
+                  </Label>
                 </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  仅 mixed 分组可嵌套一层子分组，子分组必须是仅 Web 或仅
-                  Codex/Responses。调度时会先进入 mixed
-                  父组，再按请求类型筛选父组和子组内的可用成员。
-                </p>
-                {groupForm.backendType === "mixed" ? (
-                  childGroupOptions.length ? (
-                    <div className="grid max-h-52 gap-2 overflow-y-auto pr-1">
-                      {childGroupOptions.map((group) => (
-                        <Label
-                          key={group.id}
-                          className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm"
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate">{group.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {groupBackendTypeLabel(group.backendType)} · 账号{" "}
-                              {group.accountCount} · API {group.apiCount}
-                            </span>
-                          </span>
-                          <Checkbox
-                            checked={groupForm.childGroupIds.includes(group.id)}
-                            onCheckedChange={(checked) =>
-                              setGroupForm((current) => ({
-                                ...current,
-                                childGroupIds: checked
-                                  ? Array.from(
-                                      new Set([
-                                        ...current.childGroupIds,
-                                        group.id,
-                                      ])
-                                    )
-                                  : current.childGroupIds.filter(
-                                      (childGroupId) =>
-                                        childGroupId !== group.id
-                                    ),
-                              }))
-                            }
-                          />
-                        </Label>
+                <div className="space-y-2">
+                  <Label>内容安全</Label>
+                  <Select
+                    value={groupForm.contentSafety}
+                    onValueChange={(value) =>
+                      setGroupForm((current) => ({
+                        ...current,
+                        contentSafety: value as ContentSafetyFormValue,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inherit">继承成员</SelectItem>
+                      <SelectItem value="enabled">强制开启</SelectItem>
+                      <SelectItem value="disabled">强制关闭</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>分组类型</Label>
+                  <Select
+                    value={groupForm.backendType}
+                    onValueChange={(value) =>
+                      setGroupForm((current) => ({
+                        ...current,
+                        backendType: value as GroupBackendTypeFormValue,
+                        childGroupIds:
+                          value === "mixed" ? current.childGroupIds : [],
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GROUP_BACKEND_TYPE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
                       ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-                      暂无可嵌套的非 mixed 分组。
-                    </div>
-                  )
-                ) : (
-                  <div className="rounded-md border border-dashed p-3 text-xs">
-                    当前分组类型不能嵌套子分组。
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {
+                      GROUP_BACKEND_TYPE_OPTIONS.find(
+                        (option) => option.value === groupForm.backendType
+                      )?.detail
+                    }
+                  </p>
+                </div>
+                <div
+                  className={cn(
+                    "space-y-2 rounded-md border p-3",
+                    groupForm.backendType !== "mixed" &&
+                      "bg-muted/30 text-muted-foreground"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <FolderTree className="h-4 w-4 text-muted-foreground" />
+                    <Label>嵌套子分组</Label>
                   </div>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label>最低套餐</Label>
-                <Select
-                  value={groupForm.minPlan}
-                  onValueChange={(value) =>
-                    setGroupForm((current) => ({
-                      ...current,
-                      minPlan: value as SubscriptionPlan,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PLAN_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  用户套餐低于该档位时不可选择此后端分组，外接 API Key
-                  也不能绑定。
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                <Label>计费倍率</Label>
-                <Input
-                  type="number"
-                  min={0.01}
-                  max={100}
-                  step={0.01}
-                  value={groupForm.billingMultiplier}
-                  onChange={(event) =>
-                    setGroupForm((current) => ({
-                      ...current,
-                      billingMultiplier: Number(event.target.value),
-                    }))
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  该分组被用户选中或设为默认时，本站积分按此倍率结算；mixed
-                  父分组调度到子分组成员时，父分组倍率和实际命中的子分组倍率会相乘生效。
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                <Label>分组优先级</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={groupForm.priority}
-                  onChange={(event) =>
-                    setGroupForm((current) => ({
-                      ...current,
-                      priority: Number(event.target.value),
-                    }))
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  数字越小，默认分组候选和分组列表越靠前；账号调度仍会继续比较账号优先级和负载。
-                </p>
-              </div>
-              <Button
-                className="w-full"
-                onClick={() => saveGroup(groupForm)}
-                disabled={isSavingGroup || !groupForm.name}
-              >
-                {isSavingGroup && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                保存分组
-              </Button>
-              {groupForm.id && (
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    仅 mixed 分组可嵌套一层子分组，子分组必须是仅 Web 或仅
+                    Codex/Responses。调度时会先进入 mixed
+                    父组，再按请求类型筛选父组和子组内的可用成员。
+                  </p>
+                  {groupForm.backendType === "mixed" ? (
+                    childGroupOptions.length ? (
+                      <div className="grid max-h-52 gap-2 overflow-y-auto pr-1">
+                        {childGroupOptions.map((group) => (
+                          <Label
+                            key={group.id}
+                            className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate">
+                                {group.name}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {groupBackendTypeLabel(group.backendType)} ·
+                                账号 {group.accountCount} · API {group.apiCount}
+                              </span>
+                            </span>
+                            <Checkbox
+                              checked={groupForm.childGroupIds.includes(
+                                group.id
+                              )}
+                              onCheckedChange={(checked) =>
+                                setGroupForm((current) => ({
+                                  ...current,
+                                  childGroupIds: checked
+                                    ? Array.from(
+                                        new Set([
+                                          ...current.childGroupIds,
+                                          group.id,
+                                        ])
+                                      )
+                                    : current.childGroupIds.filter(
+                                        (childGroupId) =>
+                                          childGroupId !== group.id
+                                      ),
+                                }))
+                              }
+                            />
+                          </Label>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                        暂无可嵌套的非 mixed 分组。
+                      </div>
+                    )
+                  ) : (
+                    <div className="rounded-md border border-dashed p-3 text-xs">
+                      当前分组类型不能嵌套子分组。
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>最低套餐</Label>
+                  <Select
+                    value={groupForm.minPlan}
+                    onValueChange={(value) =>
+                      setGroupForm((current) => ({
+                        ...current,
+                        minPlan: value as SubscriptionPlan,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PLAN_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    用户套餐低于该档位时不可选择此后端分组，外接 API Key
+                    也不能绑定。
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>计费倍率</Label>
+                  <Input
+                    type="number"
+                    min={0.01}
+                    max={100}
+                    step={0.01}
+                    value={groupForm.billingMultiplier}
+                    onChange={(event) =>
+                      setGroupForm((current) => ({
+                        ...current,
+                        billingMultiplier: Number(event.target.value),
+                      }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    该分组被用户选中或设为默认时，本站积分按此倍率结算；mixed
+                    父分组调度到子分组成员时，父分组倍率和实际命中的子分组倍率会相乘生效。
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>分组优先级</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={groupForm.priority}
+                    onChange={(event) =>
+                      setGroupForm((current) => ({
+                        ...current,
+                        priority: Number(event.target.value),
+                      }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    数字越小，默认分组候选和分组列表越靠前；账号调度仍会继续比较账号优先级和负载。
+                  </p>
+                </div>
                 <Button
-                  variant="outline"
                   className="w-full"
-                  onClick={resetGroupForm}
+                  onClick={() => saveGroup(groupForm)}
+                  disabled={isSavingGroup || !groupForm.name}
                 >
-                  取消编辑
+                  {isSavingGroup && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  保存分组
                 </Button>
-              )}
-            </CardContent>
-          </Card>
+                {groupForm.id && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={resetGroupForm}
+                  >
+                    取消编辑
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           <div className="grid gap-3">
@@ -2321,227 +2335,229 @@ export function ImageBackendPoolAdminPanel({
           )}
         >
           {!readOnly && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                {accountForm.id ? "编辑账号" : "新增账号"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Input
-                placeholder="名称"
-                value={accountForm.name}
-                onChange={(event) =>
-                  setAccountForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-              />
-              <Input
-                placeholder="邮箱"
-                value={accountForm.email}
-                onChange={(event) =>
-                  setAccountForm((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-              />
-              <Textarea
-                placeholder={
-                  accountForm.id
-                    ? "Access Token，留空不修改"
-                    : "Access Token，可选；优先使用 RT 自动换取"
-                }
-                value={accountForm.accessToken}
-                onChange={(event) =>
-                  setAccountForm((current) => ({
-                    ...current,
-                    accessToken: event.target.value,
-                  }))
-                }
-              />
-              {!editingSub2ApiAccount ? (
-                <Textarea
-                  placeholder={
-                    accountForm.id
-                      ? "Refresh Token，留空不修改；填写后会重新换取 AT"
-                      : "Refresh Token，推荐填写；保存时自动换取 AT"
-                  }
-                  value={accountForm.refreshToken}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  {accountForm.id ? "编辑账号" : "新增账号"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Input
+                  placeholder="名称"
+                  value={accountForm.name}
                   onChange={(event) =>
                     setAccountForm((current) => ({
                       ...current,
-                      refreshToken: event.target.value,
+                      name: event.target.value,
                     }))
                   }
                 />
-              ) : (
-                <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                  Sub2API 来源账号的 RT 由 Sub2API 管理，本站不允许修改。
-                </div>
-              )}
-              <div className="space-y-2 rounded-md border p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <Label>所属分组</Label>
-                  <span className="text-xs text-muted-foreground">可多选</span>
-                </div>
-                <div className="grid max-h-40 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                  {groups.map((group) => (
-                    <Label
-                      key={group.id}
-                      className="flex min-h-9 items-center gap-2 rounded-md border px-2 text-sm"
-                    >
-                      <Checkbox
-                        checked={accountForm.groupIds.includes(group.id)}
-                        onCheckedChange={(checked) =>
-                          toggleAccountFormGroup(group.id, Boolean(checked))
-                        }
-                      />
-                      <span className="truncate">{group.name}</span>
-                    </Label>
-                  ))}
-                  {!groups.length && (
-                    <p className="text-xs text-muted-foreground">
-                      还没有可选分组。
-                    </p>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  取消全部分组即为未分组；同一账号可同时被多个分组调度。
-                </p>
-              </div>
-              <Select
-                value={accountForm.implementationMode}
-                onValueChange={(value) =>
-                  setAccountForm((current) => ({
-                    ...current,
-                    implementationMode: value as AccountBackendFormValue,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="web">Web 账号</SelectItem>
-                  <SelectItem value="responses">
-                    Codex/Responses 账号
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                placeholder="模型，可选"
-                value={accountForm.model}
-                onChange={(event) =>
-                  setAccountForm((current) => ({
-                    ...current,
-                    model: event.target.value,
-                  }))
-                }
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>优先级</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={accountForm.priority}
+                <Input
+                  placeholder="邮箱"
+                  value={accountForm.email}
+                  onChange={(event) =>
+                    setAccountForm((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                />
+                <Textarea
+                  placeholder={
+                    accountForm.id
+                      ? "Access Token，留空不修改"
+                      : "Access Token，可选；优先使用 RT 自动换取"
+                  }
+                  value={accountForm.accessToken}
+                  onChange={(event) =>
+                    setAccountForm((current) => ({
+                      ...current,
+                      accessToken: event.target.value,
+                    }))
+                  }
+                />
+                {!editingSub2ApiAccount ? (
+                  <Textarea
+                    placeholder={
+                      accountForm.id
+                        ? "Refresh Token，留空不修改；填写后会重新换取 AT"
+                        : "Refresh Token，推荐填写；保存时自动换取 AT"
+                    }
+                    value={accountForm.refreshToken}
                     onChange={(event) =>
                       setAccountForm((current) => ({
                         ...current,
-                        priority: Number(event.target.value),
+                        refreshToken: event.target.value,
                       }))
                     }
                   />
-                  <p className="text-xs text-muted-foreground">
-                    数字越小越先调度；同优先级再看当前负载、运行中数量和最近使用时间。
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>最大并发数</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={accountForm.concurrency}
-                    onChange={(event) =>
-                      setAccountForm((current) => ({
-                        ...current,
-                        concurrency: Number(event.target.value),
-                      }))
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    作为负载分母：运行中请求数 /
-                    最大并发数。值越大，同优先级下越容易分到更多请求。
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between rounded-md border p-3">
-                <Label>接入内容安全审核</Label>
-                <Switch
-                  checked={accountForm.contentSafetyEnabled}
-                  onCheckedChange={(checked) =>
-                    setAccountForm((current) => ({
-                      ...current,
-                      contentSafetyEnabled: checked,
-                    }))
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4 rounded-md border p-3">
-                <div>
-                  <Label>遇错仍保持可用（永不冷却）</Label>
-                  <p className="text-xs text-muted-foreground">
-                    开启后该账号不会因失败被自动下线或冷却，始终参与调度；失败仍会
-                    记录并切换到其他后端。需与「是否启用」同时开启才生效。
-                  </p>
-                </div>
-                <Switch
-                  checked={accountForm.alwaysActive}
-                  onCheckedChange={(checked) =>
-                    setAccountForm((current) => ({
-                      ...current,
-                      alwaysActive: checked,
-                    }))
-                  }
-                />
-              </div>
-              <Button
-                className="w-full"
-                onClick={() =>
-                  saveAccount({
-                    ...accountForm,
-                    groupId: accountForm.groupIds[0] || "default",
-                    groupIds: accountForm.groupIds,
-                  })
-                }
-                disabled={
-                  isSavingAccount ||
-                  !accountForm.name ||
-                  (!accountForm.id &&
-                    !accountForm.accessToken &&
-                    !accountForm.refreshToken)
-                }
-              >
-                {isSavingAccount && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    Sub2API 来源账号的 RT 由 Sub2API 管理，本站不允许修改。
+                  </div>
                 )}
-                保存账号
-              </Button>
-              {accountForm.id && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={resetAccountForm}
+                <div className="space-y-2 rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>所属分组</Label>
+                    <span className="text-xs text-muted-foreground">
+                      可多选
+                    </span>
+                  </div>
+                  <div className="grid max-h-40 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                    {groups.map((group) => (
+                      <Label
+                        key={group.id}
+                        className="flex min-h-9 items-center gap-2 rounded-md border px-2 text-sm"
+                      >
+                        <Checkbox
+                          checked={accountForm.groupIds.includes(group.id)}
+                          onCheckedChange={(checked) =>
+                            toggleAccountFormGroup(group.id, Boolean(checked))
+                          }
+                        />
+                        <span className="truncate">{group.name}</span>
+                      </Label>
+                    ))}
+                    {!groups.length && (
+                      <p className="text-xs text-muted-foreground">
+                        还没有可选分组。
+                      </p>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    取消全部分组即为未分组；同一账号可同时被多个分组调度。
+                  </p>
+                </div>
+                <Select
+                  value={accountForm.implementationMode}
+                  onValueChange={(value) =>
+                    setAccountForm((current) => ({
+                      ...current,
+                      implementationMode: value as AccountBackendFormValue,
+                    }))
+                  }
                 >
-                  取消编辑
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="web">Web 账号</SelectItem>
+                    <SelectItem value="responses">
+                      Codex/Responses 账号
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  placeholder="模型，可选"
+                  value={accountForm.model}
+                  onChange={(event) =>
+                    setAccountForm((current) => ({
+                      ...current,
+                      model: event.target.value,
+                    }))
+                  }
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>优先级</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={accountForm.priority}
+                      onChange={(event) =>
+                        setAccountForm((current) => ({
+                          ...current,
+                          priority: Number(event.target.value),
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      数字越小越先调度；同优先级再看当前负载、运行中数量和最近使用时间。
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>最大并发数</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={accountForm.concurrency}
+                      onChange={(event) =>
+                        setAccountForm((current) => ({
+                          ...current,
+                          concurrency: Number(event.target.value),
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      作为负载分母：运行中请求数 /
+                      最大并发数。值越大，同优先级下越容易分到更多请求。
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <Label>接入内容安全审核</Label>
+                  <Switch
+                    checked={accountForm.contentSafetyEnabled}
+                    onCheckedChange={(checked) =>
+                      setAccountForm((current) => ({
+                        ...current,
+                        contentSafetyEnabled: checked,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                  <div>
+                    <Label>遇错仍保持可用（永不冷却）</Label>
+                    <p className="text-xs text-muted-foreground">
+                      开启后该账号不会因失败被自动下线或冷却，始终参与调度；失败仍会
+                      记录并切换到其他后端。需与「是否启用」同时开启才生效。
+                    </p>
+                  </div>
+                  <Switch
+                    checked={accountForm.alwaysActive}
+                    onCheckedChange={(checked) =>
+                      setAccountForm((current) => ({
+                        ...current,
+                        alwaysActive: checked,
+                      }))
+                    }
+                  />
+                </div>
+                <Button
+                  className="w-full"
+                  onClick={() =>
+                    saveAccount({
+                      ...accountForm,
+                      groupId: accountForm.groupIds[0] || "default",
+                      groupIds: accountForm.groupIds,
+                    })
+                  }
+                  disabled={
+                    isSavingAccount ||
+                    !accountForm.name ||
+                    (!accountForm.id &&
+                      !accountForm.accessToken &&
+                      !accountForm.refreshToken)
+                  }
+                >
+                  {isSavingAccount && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  保存账号
                 </Button>
-              )}
-            </CardContent>
-          </Card>
+                {accountForm.id && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={resetAccountForm}
+                  >
+                    取消编辑
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           <div className="grid gap-3">
@@ -2578,19 +2594,20 @@ export function ImageBackendPoolAdminPanel({
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                     调度会先排除停用、错误、限流/冷却、分组类型或请求类型不匹配的账号；剩余后端按优先级从小到大选择。同优先级比较当前负载率（运行中请求数
                     / 最大并发数），再比较运行中请求数和最近使用时间。账号与 API
-                    后端均可各自配置最大并发数（整池可并发 = 各后端最大并发数之和）。
+                    后端均可各自配置最大并发数（整池可并发 =
+                    各后端最大并发数之和）。
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <Label className="flex items-center gap-2 text-sm">
-                      {!readOnly && (
-                        <Checkbox
-                          checked={allAccountsSelected}
-                          onCheckedChange={(checked) =>
-                            toggleAllAccounts(Boolean(checked))
-                          }
-                        />
-                      )}
+                    {!readOnly && (
+                      <Checkbox
+                        checked={allAccountsSelected}
+                        onCheckedChange={(checked) =>
+                          toggleAllAccounts(Boolean(checked))
+                        }
+                      />
+                    )}
                     {readOnly
                       ? `账号 ${filteredAccounts.length} / ${accounts.length} 个`
                       : `已选 ${selectedAccountCount} 个账号`}
@@ -2721,100 +2738,100 @@ export function ImageBackendPoolAdminPanel({
                   </span>
                   <div className="flex flex-wrap items-center gap-2">
                     {!readOnly && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        runBulkRefreshAccountInfo(
-                          selectedWebAccountIds,
-                          "请先选择 Web 账号"
-                        )
-                      }
-                      disabled={
-                        selectedWebAccountIds.length === 0 ||
-                        isRefreshingAccounts
-                      }
-                    >
-                      {isRefreshingAccounts ? (
-                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="mr-1 h-4 w-4" />
-                      )}
-                      刷新选中额度
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          runBulkRefreshAccountInfo(
+                            selectedWebAccountIds,
+                            "请先选择 Web 账号"
+                          )
+                        }
+                        disabled={
+                          selectedWebAccountIds.length === 0 ||
+                          isRefreshingAccounts
+                        }
+                      >
+                        {isRefreshingAccounts ? (
+                          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-1 h-4 w-4" />
+                        )}
+                        刷新选中额度
+                      </Button>
                     )}
                     {!readOnly && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        runBulkRefreshAccountInfo(
-                          filteredWebAccountIds,
-                          "当前筛选结果中没有 Web 账号"
-                        )
-                      }
-                      disabled={
-                        filteredWebAccountIds.length === 0 ||
-                        isRefreshingAccounts
-                      }
-                    >
-                      {isRefreshingAccounts ? (
-                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="mr-1 h-4 w-4" />
-                      )}
-                      刷新当前筛选 Web
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          runBulkRefreshAccountInfo(
+                            filteredWebAccountIds,
+                            "当前筛选结果中没有 Web 账号"
+                          )
+                        }
+                        disabled={
+                          filteredWebAccountIds.length === 0 ||
+                          isRefreshingAccounts
+                        }
+                      >
+                        {isRefreshingAccounts ? (
+                          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-1 h-4 w-4" />
+                        )}
+                        刷新当前筛选 Web
+                      </Button>
                     )}
                     {!readOnly && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive"
-                      onClick={runDeleteErrorAccounts}
-                      disabled={
-                        errorAccountIds.length === 0 || isBulkDeletingAccounts
-                      }
-                    >
-                      {isBulkDeletingAccounts ? (
-                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="mr-1 h-4 w-4" />
-                      )}
-                      移除错误账号
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive"
+                        onClick={runDeleteErrorAccounts}
+                        disabled={
+                          errorAccountIds.length === 0 || isBulkDeletingAccounts
+                        }
+                      >
+                        {isBulkDeletingAccounts ? (
+                          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="mr-1 h-4 w-4" />
+                        )}
+                        移除错误账号
+                      </Button>
                     )}
                     {!readOnly && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={runResetSelectedAccounts}
-                      disabled={
-                        selectedAccountCount === 0 || isBulkUpdatingAccounts
-                      }
-                    >
-                      {isBulkUpdatingAccounts ? (
-                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="mr-1 h-4 w-4" />
-                      )}
-                      重置为可用
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={runResetSelectedAccounts}
+                        disabled={
+                          selectedAccountCount === 0 || isBulkUpdatingAccounts
+                        }
+                      >
+                        {isBulkUpdatingAccounts ? (
+                          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="mr-1 h-4 w-4" />
+                        )}
+                        重置为可用
+                      </Button>
                     )}
                     {!readOnly && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedAccountIds([])}
-                      disabled={selectedAccountCount === 0}
-                    >
-                      清空选择
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedAccountIds([])}
+                        disabled={selectedAccountCount === 0}
+                      >
+                        清空选择
+                      </Button>
                     )}
                     <Button
                       type="button"
@@ -2848,244 +2865,248 @@ export function ImageBackendPoolAdminPanel({
                   和 accounts/check 获取邮箱、套餐与默认模型。
                 </p>
                 {!readOnly && (
-                <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
-                      <Checkbox
-                        checked={bulkAccountForm.setGroup}
-                        disabled={bulkAccountForm.deleteSelected}
-                        onCheckedChange={(checked) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            setGroup: Boolean(checked),
-                          }))
-                        }
-                      />
-                      改分组
-                      <Select
-                        value={bulkAccountForm.groupId}
-                        disabled={!bulkAccountForm.setGroup}
-                        onValueChange={(value) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            groupId: value,
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="ml-auto w-36">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {groupOptions.map((group) => (
-                            <SelectItem key={group.id} value={group.id}>
-                              {group.name}
+                  <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
+                        <Checkbox
+                          checked={bulkAccountForm.setGroup}
+                          disabled={bulkAccountForm.deleteSelected}
+                          onCheckedChange={(checked) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              setGroup: Boolean(checked),
+                            }))
+                          }
+                        />
+                        改分组
+                        <Select
+                          value={bulkAccountForm.groupId}
+                          disabled={!bulkAccountForm.setGroup}
+                          onValueChange={(value) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              groupId: value,
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="ml-auto w-36">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {groupOptions.map((group) => (
+                              <SelectItem key={group.id} value={group.id}>
+                                {group.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Label>
+                      <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
+                        <Checkbox
+                          checked={bulkAccountForm.setMode}
+                          disabled={bulkAccountForm.deleteSelected}
+                          onCheckedChange={(checked) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              setMode: Boolean(checked),
+                            }))
+                          }
+                        />
+                        切接口
+                        <Select
+                          value={bulkAccountForm.implementationMode}
+                          disabled={!bulkAccountForm.setMode}
+                          onValueChange={(value) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              implementationMode:
+                                value as AccountBackendFormValue,
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="ml-auto w-40">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="web">Web 账号</SelectItem>
+                            <SelectItem value="responses">
+                              Codex/Responses
                             </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Label>
-                    <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
-                      <Checkbox
-                        checked={bulkAccountForm.setMode}
-                        disabled={bulkAccountForm.deleteSelected}
-                        onCheckedChange={(checked) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            setMode: Boolean(checked),
-                          }))
-                        }
-                      />
-                      切接口
-                      <Select
-                        value={bulkAccountForm.implementationMode}
-                        disabled={!bulkAccountForm.setMode}
-                        onValueChange={(value) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            implementationMode:
-                              value as AccountBackendFormValue,
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="ml-auto w-40">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="web">Web 账号</SelectItem>
-                          <SelectItem value="responses">
-                            Codex/Responses
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Label>
-                    <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
-                      <Checkbox
-                        checked={bulkAccountForm.setEnabled}
-                        disabled={bulkAccountForm.deleteSelected}
-                        onCheckedChange={(checked) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            setEnabled: Boolean(checked),
-                          }))
-                        }
-                      />
-                      启停
-                      <Select
-                        value={
-                          bulkAccountForm.isEnabled ? "enabled" : "disabled"
-                        }
-                        disabled={!bulkAccountForm.setEnabled}
-                        onValueChange={(value) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            isEnabled: value === "enabled",
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="ml-auto w-28">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="enabled">启用</SelectItem>
-                          <SelectItem value="disabled">停用</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Label>
-                    <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
-                      <Checkbox
-                        checked={bulkAccountForm.setContentSafety}
-                        disabled={bulkAccountForm.deleteSelected}
-                        onCheckedChange={(checked) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            setContentSafety: Boolean(checked),
-                          }))
-                        }
-                      />
-                      内容安全
-                      <Select
-                        value={
-                          bulkAccountForm.contentSafetyEnabled
-                            ? "enabled"
-                            : "disabled"
-                        }
-                        disabled={!bulkAccountForm.setContentSafety}
-                        onValueChange={(value) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            contentSafetyEnabled: value === "enabled",
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="ml-auto w-28">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="enabled">开启</SelectItem>
-                          <SelectItem value="disabled">关闭</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Label>
-                    <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
-                      <Checkbox
-                        checked={bulkAccountForm.setPriority}
-                        disabled={bulkAccountForm.deleteSelected}
-                        onCheckedChange={(checked) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            setPriority: Boolean(checked),
-                          }))
-                        }
-                      />
-                      改优先级
-                      <Input
-                        className="ml-auto w-24"
-                        type="number"
-                        min={0}
-                        max={10000}
-                        step={1}
-                        value={bulkAccountForm.priority}
-                        disabled={!bulkAccountForm.setPriority}
-                        onChange={(event) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            priority: Number(event.target.value),
-                          }))
-                        }
-                      />
-                    </Label>
-                    <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
-                      <Checkbox
-                        checked={bulkAccountForm.setConcurrency}
-                        disabled={bulkAccountForm.deleteSelected}
-                        onCheckedChange={(checked) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            setConcurrency: Boolean(checked),
-                          }))
-                        }
-                      />
-                      改最大并发数
-                      <Input
-                        className="ml-auto w-24"
-                        type="number"
-                        min={1}
-                        max={100}
-                        step={1}
-                        value={bulkAccountForm.concurrency}
-                        disabled={!bulkAccountForm.setConcurrency}
-                        onChange={(event) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            concurrency: Number(event.target.value),
-                          }))
-                        }
-                      />
-                    </Label>
-                    <Label className="flex min-h-10 items-center gap-2 rounded-md border border-destructive/40 px-3 text-sm text-destructive md:col-span-2">
-                      <Checkbox
-                        checked={bulkAccountForm.deleteSelected}
-                        onCheckedChange={(checked) =>
-                          setBulkAccountForm((current) => ({
-                            ...current,
-                            deleteSelected: Boolean(checked),
-                            setGroup: checked ? false : current.setGroup,
-                            setMode: checked ? false : current.setMode,
-                            setEnabled: checked ? false : current.setEnabled,
-                            setContentSafety: checked
-                              ? false
-                              : current.setContentSafety,
-                            setPriority: checked ? false : current.setPriority,
-                            setConcurrency: checked
-                              ? false
-                              : current.setConcurrency,
-                          }))
-                        }
-                      />
-                      删除选中账号
-                      <span className="text-xs text-muted-foreground">
-                        只删除本站后端池记录，不删除 Sub2API 源库账号。
-                      </span>
-                    </Label>
+                          </SelectContent>
+                        </Select>
+                      </Label>
+                      <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
+                        <Checkbox
+                          checked={bulkAccountForm.setEnabled}
+                          disabled={bulkAccountForm.deleteSelected}
+                          onCheckedChange={(checked) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              setEnabled: Boolean(checked),
+                            }))
+                          }
+                        />
+                        启停
+                        <Select
+                          value={
+                            bulkAccountForm.isEnabled ? "enabled" : "disabled"
+                          }
+                          disabled={!bulkAccountForm.setEnabled}
+                          onValueChange={(value) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              isEnabled: value === "enabled",
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="ml-auto w-28">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="enabled">启用</SelectItem>
+                            <SelectItem value="disabled">停用</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Label>
+                      <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
+                        <Checkbox
+                          checked={bulkAccountForm.setContentSafety}
+                          disabled={bulkAccountForm.deleteSelected}
+                          onCheckedChange={(checked) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              setContentSafety: Boolean(checked),
+                            }))
+                          }
+                        />
+                        内容安全
+                        <Select
+                          value={
+                            bulkAccountForm.contentSafetyEnabled
+                              ? "enabled"
+                              : "disabled"
+                          }
+                          disabled={!bulkAccountForm.setContentSafety}
+                          onValueChange={(value) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              contentSafetyEnabled: value === "enabled",
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="ml-auto w-28">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="enabled">开启</SelectItem>
+                            <SelectItem value="disabled">关闭</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Label>
+                      <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
+                        <Checkbox
+                          checked={bulkAccountForm.setPriority}
+                          disabled={bulkAccountForm.deleteSelected}
+                          onCheckedChange={(checked) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              setPriority: Boolean(checked),
+                            }))
+                          }
+                        />
+                        改优先级
+                        <Input
+                          className="ml-auto w-24"
+                          type="number"
+                          min={0}
+                          max={10000}
+                          step={1}
+                          value={bulkAccountForm.priority}
+                          disabled={!bulkAccountForm.setPriority}
+                          onChange={(event) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              priority: Number(event.target.value),
+                            }))
+                          }
+                        />
+                      </Label>
+                      <Label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
+                        <Checkbox
+                          checked={bulkAccountForm.setConcurrency}
+                          disabled={bulkAccountForm.deleteSelected}
+                          onCheckedChange={(checked) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              setConcurrency: Boolean(checked),
+                            }))
+                          }
+                        />
+                        改最大并发数
+                        <Input
+                          className="ml-auto w-24"
+                          type="number"
+                          min={1}
+                          max={100}
+                          step={1}
+                          value={bulkAccountForm.concurrency}
+                          disabled={!bulkAccountForm.setConcurrency}
+                          onChange={(event) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              concurrency: Number(event.target.value),
+                            }))
+                          }
+                        />
+                      </Label>
+                      <Label className="flex min-h-10 items-center gap-2 rounded-md border border-destructive/40 px-3 text-sm text-destructive md:col-span-2">
+                        <Checkbox
+                          checked={bulkAccountForm.deleteSelected}
+                          onCheckedChange={(checked) =>
+                            setBulkAccountForm((current) => ({
+                              ...current,
+                              deleteSelected: Boolean(checked),
+                              setGroup: checked ? false : current.setGroup,
+                              setMode: checked ? false : current.setMode,
+                              setEnabled: checked ? false : current.setEnabled,
+                              setContentSafety: checked
+                                ? false
+                                : current.setContentSafety,
+                              setPriority: checked
+                                ? false
+                                : current.setPriority,
+                              setConcurrency: checked
+                                ? false
+                                : current.setConcurrency,
+                            }))
+                          }
+                        />
+                        删除选中账号
+                        <span className="text-xs text-muted-foreground">
+                          只删除本站后端池记录，不删除 Sub2API 源库账号。
+                        </span>
+                      </Label>
+                    </div>
+                    <Button
+                      onClick={runBulkAccountOperation}
+                      disabled={
+                        selectedAccountCount === 0 ||
+                        !hasBulkAccountOperation ||
+                        isBulkUpdatingAccounts ||
+                        isBulkDeletingAccounts
+                      }
+                      variant={
+                        bulkAccountForm.deleteSelected
+                          ? "destructive"
+                          : "default"
+                      }
+                    >
+                      {(isBulkUpdatingAccounts || isBulkDeletingAccounts) && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      执行
+                    </Button>
                   </div>
-                  <Button
-                    onClick={runBulkAccountOperation}
-                    disabled={
-                      selectedAccountCount === 0 ||
-                      !hasBulkAccountOperation ||
-                      isBulkUpdatingAccounts ||
-                      isBulkDeletingAccounts
-                    }
-                    variant={
-                      bulkAccountForm.deleteSelected ? "destructive" : "default"
-                    }
-                  >
-                    {(isBulkUpdatingAccounts || isBulkDeletingAccounts) && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    执行
-                  </Button>
-                </div>
                 )}
                 {bulkAccountForm.setMode && selectedSub2ApiAccountCount > 0 && (
                   <p className="text-xs text-destructive">
@@ -3246,306 +3267,312 @@ export function ImageBackendPoolAdminPanel({
           )}
         >
           {!readOnly && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                {apiForm.id ? "编辑 API 后端" : "新增 API 后端"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Input
-                placeholder="名称"
-                value={apiForm.name}
-                onChange={(event) =>
-                  setApiForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-              />
-              <Input
-                placeholder="https://api.openai.com/v1"
-                value={apiForm.baseUrl}
-                onChange={(event) =>
-                  setApiForm((current) => ({
-                    ...current,
-                    baseUrl: event.target.value,
-                  }))
-                }
-              />
-              <Input
-                type="password"
-                placeholder={apiForm.id ? "API Key，留空不修改" : "API Key"}
-                value={apiForm.apiKey}
-                onChange={(event) =>
-                  setApiForm((current) => ({
-                    ...current,
-                    apiKey: event.target.value,
-                  }))
-                }
-              />
-              <div className="space-y-2 rounded-md border p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <Label>所属分组</Label>
-                  <span className="text-xs text-muted-foreground">可多选</span>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  {apiForm.id ? "编辑 API 后端" : "新增 API 后端"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Input
+                  placeholder="名称"
+                  value={apiForm.name}
+                  onChange={(event) =>
+                    setApiForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                />
+                <Input
+                  placeholder="https://api.openai.com/v1"
+                  value={apiForm.baseUrl}
+                  onChange={(event) =>
+                    setApiForm((current) => ({
+                      ...current,
+                      baseUrl: event.target.value,
+                    }))
+                  }
+                />
+                <Input
+                  type="password"
+                  placeholder={apiForm.id ? "API Key，留空不修改" : "API Key"}
+                  value={apiForm.apiKey}
+                  onChange={(event) =>
+                    setApiForm((current) => ({
+                      ...current,
+                      apiKey: event.target.value,
+                    }))
+                  }
+                />
+                <div className="space-y-2 rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>所属分组</Label>
+                    <span className="text-xs text-muted-foreground">
+                      可多选
+                    </span>
+                  </div>
+                  <div className="grid max-h-40 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                    {groups.map((group) => (
+                      <Label
+                        key={group.id}
+                        className="flex min-h-9 items-center gap-2 rounded-md border px-2 text-sm"
+                      >
+                        <Checkbox
+                          checked={apiForm.groupIds.includes(group.id)}
+                          onCheckedChange={(checked) =>
+                            toggleApiFormGroup(group.id, Boolean(checked))
+                          }
+                        />
+                        <span className="truncate">{group.name}</span>
+                      </Label>
+                    ))}
+                    {!groups.length && (
+                      <p className="text-xs text-muted-foreground">
+                        还没有可选分组。
+                      </p>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    取消全部分组即为未分组；同一 API 可同时被多个分组调度。
+                  </p>
                 </div>
-                <div className="grid max-h-40 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                  {groups.map((group) => (
-                    <Label
-                      key={group.id}
-                      className="flex min-h-9 items-center gap-2 rounded-md border px-2 text-sm"
-                    >
-                      <Checkbox
-                        checked={apiForm.groupIds.includes(group.id)}
-                        onCheckedChange={(checked) =>
-                          toggleApiFormGroup(group.id, Boolean(checked))
-                        }
-                      />
-                      <span className="truncate">{group.name}</span>
-                    </Label>
-                  ))}
-                  {!groups.length && (
+                <Input
+                  placeholder="默认模型，可选"
+                  value={apiForm.model}
+                  onChange={(event) =>
+                    setApiForm((current) => ({
+                      ...current,
+                      model: event.target.value,
+                    }))
+                  }
+                />
+                <div className="space-y-2">
+                  <Label>接口类型</Label>
+                  <Select
+                    value={apiForm.interfaceMode}
+                    onValueChange={(value) =>
+                      setApiForm((current) => ({
+                        ...current,
+                        interfaceMode: value as ApiInterfaceModeFormValue,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {API_INTERFACE_MODE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {
+                      API_INTERFACE_MODE_OPTIONS.find(
+                        (option) => option.value === apiForm.interfaceMode
+                      )?.detail
+                    }
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Images 上游</Label>
+                  <Select
+                    value={apiForm.imagesUpstreamMode}
+                    onValueChange={(value) =>
+                      setApiForm((current) => ({
+                        ...current,
+                        imagesUpstreamMode:
+                          value as ImagesUpstreamModeFormValue,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {IMAGES_UPSTREAM_MODE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {
+                      IMAGES_UPSTREAM_MODE_OPTIONS.find(
+                        (option) => option.value === apiForm.imagesUpstreamMode
+                      )?.detail
+                    }
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Chat Completions 上游</Label>
+                  <Select
+                    value={apiForm.chatCompletionsUpstreamMode}
+                    onValueChange={(value) =>
+                      setApiForm((current) => ({
+                        ...current,
+                        chatCompletionsUpstreamMode:
+                          value as ChatCompletionsUpstreamModeFormValue,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CHAT_COMPLETIONS_UPSTREAM_MODE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {
+                      CHAT_COMPLETIONS_UPSTREAM_MODE_OPTIONS.find(
+                        (option) =>
+                          option.value === apiForm.chatCompletionsUpstreamMode
+                      )?.detail
+                    }
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>优先级</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={apiForm.priority}
+                    onChange={(event) =>
+                      setApiForm((current) => ({
+                        ...current,
+                        priority: Number(event.target.value),
+                      }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    数字越小越先调度；同优先级下再按最大并发数（负载权重）比较负载。
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>最大并发数</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={apiForm.concurrency}
+                    onChange={(event) =>
+                      setApiForm((current) => ({
+                        ...current,
+                        concurrency: Number(event.target.value),
+                      }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    单后端最大同时在飞请求数（1-100）。同时也是同优先级下的负载权重：
+                    值越大越能分到更多请求。整池可并发 =
+                    各后端最大并发数之和；后端少时
+                    务必调大，否则高并发会被挡成「无可用账号或 API」。
+                  </p>
+                </div>
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <Label>流式调用</Label>
+                  <Switch
+                    checked={apiForm.useStream}
+                    onCheckedChange={(checked) =>
+                      setApiForm((current) => ({
+                        ...current,
+                        useStream: checked,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <Label>是否启用</Label>
+                  <Switch
+                    checked={apiForm.isEnabled}
+                    onCheckedChange={(checked) =>
+                      setApiForm((current) => ({
+                        ...current,
+                        isEnabled: checked,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                  <div>
+                    <Label>遇错仍保持可用（永不冷却）</Label>
                     <p className="text-xs text-muted-foreground">
-                      还没有可选分组。
+                      开启后该 API
+                      不会因失败被自动下线或冷却，始终参与调度；失败仍会
+                      记录并切换到其他后端。需与「是否启用」同时开启才生效。
                     </p>
-                  )}
+                  </div>
+                  <Switch
+                    checked={apiForm.alwaysActive}
+                    onCheckedChange={(checked) =>
+                      setApiForm((current) => ({
+                        ...current,
+                        alwaysActive: checked,
+                      }))
+                    }
+                  />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  取消全部分组即为未分组；同一 API 可同时被多个分组调度。
-                </p>
-              </div>
-              <Input
-                placeholder="默认模型，可选"
-                value={apiForm.model}
-                onChange={(event) =>
-                  setApiForm((current) => ({
-                    ...current,
-                    model: event.target.value,
-                  }))
-                }
-              />
-              <div className="space-y-2">
-                <Label>接口类型</Label>
-                <Select
-                  value={apiForm.interfaceMode}
-                  onValueChange={(value) =>
-                    setApiForm((current) => ({
-                      ...current,
-                      interfaceMode: value as ApiInterfaceModeFormValue,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {API_INTERFACE_MODE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {
-                    API_INTERFACE_MODE_OPTIONS.find(
-                      (option) => option.value === apiForm.interfaceMode
-                    )?.detail
-                  }
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Images 上游</Label>
-                <Select
-                  value={apiForm.imagesUpstreamMode}
-                  onValueChange={(value) =>
-                    setApiForm((current) => ({
-                      ...current,
-                      imagesUpstreamMode: value as ImagesUpstreamModeFormValue,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {IMAGES_UPSTREAM_MODE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {
-                    IMAGES_UPSTREAM_MODE_OPTIONS.find(
-                      (option) => option.value === apiForm.imagesUpstreamMode
-                    )?.detail
-                  }
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Chat Completions 上游</Label>
-                <Select
-                  value={apiForm.chatCompletionsUpstreamMode}
-                  onValueChange={(value) =>
-                    setApiForm((current) => ({
-                      ...current,
-                      chatCompletionsUpstreamMode:
-                        value as ChatCompletionsUpstreamModeFormValue,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CHAT_COMPLETIONS_UPSTREAM_MODE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {
-                    CHAT_COMPLETIONS_UPSTREAM_MODE_OPTIONS.find(
-                      (option) =>
-                        option.value === apiForm.chatCompletionsUpstreamMode
-                    )?.detail
-                  }
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                <Label>优先级</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={apiForm.priority}
-                  onChange={(event) =>
-                    setApiForm((current) => ({
-                      ...current,
-                      priority: Number(event.target.value),
-                    }))
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  数字越小越先调度；同优先级下再按最大并发数（负载权重）比较负载。
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                <Label>最大并发数</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={apiForm.concurrency}
-                  onChange={(event) =>
-                    setApiForm((current) => ({
-                      ...current,
-                      concurrency: Number(event.target.value),
-                    }))
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  单后端最大同时在飞请求数（1-100）。同时也是同优先级下的负载权重：
-                  值越大越能分到更多请求。整池可并发 = 各后端最大并发数之和；后端少时
-                  务必调大，否则高并发会被挡成「无可用账号或 API」。
-                </p>
-              </div>
-              <div className="flex items-center justify-between rounded-md border p-3">
-                <Label>流式调用</Label>
-                <Switch
-                  checked={apiForm.useStream}
-                  onCheckedChange={(checked) =>
-                    setApiForm((current) => ({
-                      ...current,
-                      useStream: checked,
-                    }))
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between rounded-md border p-3">
-                <Label>是否启用</Label>
-                <Switch
-                  checked={apiForm.isEnabled}
-                  onCheckedChange={(checked) =>
-                    setApiForm((current) => ({
-                      ...current,
-                      isEnabled: checked,
-                    }))
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4 rounded-md border p-3">
-                <div>
-                  <Label>遇错仍保持可用（永不冷却）</Label>
-                  <p className="text-xs text-muted-foreground">
-                    开启后该 API 不会因失败被自动下线或冷却，始终参与调度；失败仍会
-                    记录并切换到其他后端。需与「是否启用」同时开启才生效。
-                  </p>
+                <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                  <div>
+                    <Label>失败进入冷却</Label>
+                    <p className="text-xs text-muted-foreground">
+                      开启后该 API
+                      的瞬时/可恢复失败（5xx、超时、限流等）会进入定时
+                      冷却、暂时下线，到点自动恢复。关闭（默认）则不冷却，只有确定性
+                      错误（凭证废、缺图像工具、中转坏）会被踢出。常驻开启时本项无效。
+                    </p>
+                  </div>
+                  <Switch
+                    checked={apiForm.failureCooldownEnabled}
+                    onCheckedChange={(checked) =>
+                      setApiForm((current) => ({
+                        ...current,
+                        failureCooldownEnabled: checked,
+                      }))
+                    }
+                  />
                 </div>
-                <Switch
-                  checked={apiForm.alwaysActive}
-                  onCheckedChange={(checked) =>
-                    setApiForm((current) => ({
-                      ...current,
-                      alwaysActive: checked,
-                    }))
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4 rounded-md border p-3">
-                <div>
-                  <Label>失败进入冷却</Label>
-                  <p className="text-xs text-muted-foreground">
-                    开启后该 API 的瞬时/可恢复失败（5xx、超时、限流等）会进入定时
-                    冷却、暂时下线，到点自动恢复。关闭（默认）则不冷却，只有确定性
-                    错误（凭证废、缺图像工具、中转坏）会被踢出。常驻开启时本项无效。
-                  </p>
-                </div>
-                <Switch
-                  checked={apiForm.failureCooldownEnabled}
-                  onCheckedChange={(checked) =>
-                    setApiForm((current) => ({
-                      ...current,
-                      failureCooldownEnabled: checked,
-                    }))
-                  }
-                />
-              </div>
-              <Button
-                className="w-full"
-                onClick={() =>
-                  saveApi({
-                    ...apiForm,
-                    groupId: apiForm.groupIds[0] || "default",
-                    groupIds: apiForm.groupIds,
-                  })
-                }
-                disabled={
-                  isSavingApi ||
-                  !apiForm.name ||
-                  !apiForm.baseUrl ||
-                  (!apiForm.id && !apiForm.apiKey)
-                }
-              >
-                {isSavingApi && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                保存 API 后端
-              </Button>
-              {apiForm.id && (
                 <Button
-                  variant="outline"
                   className="w-full"
-                  onClick={resetApiForm}
+                  onClick={() =>
+                    saveApi({
+                      ...apiForm,
+                      groupId: apiForm.groupIds[0] || "default",
+                      groupIds: apiForm.groupIds,
+                    })
+                  }
+                  disabled={
+                    isSavingApi ||
+                    !apiForm.name ||
+                    !apiForm.baseUrl ||
+                    (!apiForm.id && !apiForm.apiKey)
+                  }
                 >
-                  取消编辑
+                  {isSavingApi && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  保存 API 后端
                 </Button>
-              )}
-            </CardContent>
-          </Card>
+                {apiForm.id && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={resetApiForm}
+                  >
+                    取消编辑
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           <div className="grid gap-3">
@@ -3584,8 +3611,7 @@ export function ImageBackendPoolAdminPanel({
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {api.baseUrl} · {groupNames(groups, apiGroupIds(api))} ·{" "}
-                      优先级{" "}
-                      {api.priority} · 最大并发数 {api.concurrency} ·{" "}
+                      优先级 {api.priority} · 最大并发数 {api.concurrency} ·{" "}
                       {formatDate(api.lastUsedAt, timeZone)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
@@ -3692,82 +3718,564 @@ export function ImageBackendPoolAdminPanel({
         </TabsContent>
 
         {!readOnly && (
-        <TabsContent value="import" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Database className="h-4 w-4" />
-                同步 Sub2API 账号
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                连接 Sub2API Postgres，只同步 OpenAI OAuth 账号。默认排除 free
-                套餐并只同步 Codex/Responses，复用 Sub2API 当前
-                access_token；勾选 Mobile RT 后才会把 Sub 中 mobile client
-                的当前 AT 同步为 Web/同时账号，不刷新也不回写 Sub2API 的 RT。
+          <TabsContent value="import" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Database className="h-4 w-4" />
+                  同步 Sub2API 账号
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  连接 Sub2API Postgres，只同步 OpenAI OAuth 账号。默认排除 free
+                  套餐并只同步 Codex/Responses，复用 Sub2API 当前
+                  access_token；勾选 Mobile RT 后才会把 Sub 中 mobile client
+                  的当前 AT 同步为 Web/同时账号，不刷新也不回写 Sub2API 的 RT。
+                </p>
+                {isSub2ApiSyncUnavailable && (
+                  <div className="flex gap-2 rounded-md border border-dashed border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800 dark:border-orange-900/60 dark:bg-orange-950/30 dark:text-orange-200">
+                    <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{sub2ApiUnavailableMessage}</span>
+                  </div>
+                )}
+                <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                  <Select
+                    value={importForm.sourceGroupId}
+                    onValueChange={(value) =>
+                      setImportForm((current) => ({
+                        ...current,
+                        sourceGroupId: value,
+                      }))
+                    }
+                    disabled={isSub2ApiSyncUnavailable}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sub2API 来源分组" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">
+                        全部 Sub2API OpenAI 账号
+                      </SelectItem>
+                      {sub2ApiSourceGroups.map((group) => (
+                        <SelectItem key={group.id} value={group.id}>
+                          {group.name} · {group.accountCount} 个账号
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => loadSub2ApiSourceGroups()}
+                    disabled={isSub2ApiSyncUnavailable || isLoadingSourceGroups}
+                  >
+                    {isLoadingSourceGroups ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    刷新来源
+                  </Button>
+                </div>
+                <div className="flex items-start justify-between gap-3 rounded-md border p-3">
+                  <div>
+                    <Label>Mobile RT 同步</Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      仅用于 Sub 中由 Mobile RT client
+                      同步的账号。关闭时强制只同步 Codex/Responses，避免误用普通
+                      Codex RT。
+                    </p>
+                  </div>
+                  <Switch
+                    checked={importForm.allowMobileRtImport}
+                    disabled={isSub2ApiSyncUnavailable}
+                    onCheckedChange={(checked) =>
+                      setImportForm((current) => ({
+                        ...current,
+                        allowMobileRtImport: checked,
+                        syncMode: checked ? current.syncMode : "responses",
+                      }))
+                    }
+                  />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Select
+                    value={importForm.planFilter}
+                    onValueChange={(value) =>
+                      setImportForm((current) => ({
+                        ...current,
+                        planFilter: value as Sub2ApiPlanFilter,
+                      }))
+                    }
+                    disabled={isSub2ApiSyncUnavailable}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="套餐筛选" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="non_free">排除 free</SelectItem>
+                      <SelectItem value="plus">只导入 plus</SelectItem>
+                      <SelectItem value="pro">只导入 pro</SelectItem>
+                      <SelectItem value="free">只导入 free</SelectItem>
+                      <SelectItem value="all">全部套餐</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
+                    默认排除 Sub2API 中 plan_type=free 的账号，避免将 team
+                    分组里的 free 账号再次导入生图站。
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Select
+                    value={effectiveImportSyncMode}
+                    onValueChange={(value) =>
+                      setImportForm((current) => ({
+                        ...current,
+                        syncMode: value as TokenSyncMode,
+                      }))
+                    }
+                    disabled={
+                      isSub2ApiSyncUnavailable ||
+                      !importForm.allowMobileRtImport
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="both">
+                        同时同步 Web 和 Codex AT
+                      </SelectItem>
+                      <SelectItem value="web">只同步 Web AT</SelectItem>
+                      <SelectItem value="responses">
+                        只同步 Codex/Responses AT
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center justify-between rounded-md border px-3">
+                    <Label>接入内容安全审核</Label>
+                    <Switch
+                      checked={importForm.contentSafetyEnabled}
+                      disabled={isSub2ApiSyncUnavailable}
+                      onCheckedChange={(checked) =>
+                        setImportForm((current) => ({
+                          ...current,
+                          contentSafetyEnabled: checked,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="flex items-start justify-between gap-3 rounded-md border p-3">
+                    <div>
+                      <Label>覆盖本站异常状态</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        同步时以 Sub2API
+                        当前状态为准，覆盖本站账号池里的错误、限流和冷却状态。
+                      </p>
+                    </div>
+                    <Switch
+                      checked={importForm.overwriteLocalUnavailableState}
+                      disabled={isSub2ApiSyncUnavailable}
+                      onCheckedChange={(checked) =>
+                        setImportForm((current) => ({
+                          ...current,
+                          overwriteLocalUnavailableState: checked,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="flex items-start justify-between gap-3 rounded-md border p-3">
+                  <div>
+                    <Label>创建自动同步任务</Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      开启后，本次手动同步会先创建或更新任务，再按任务 runner
+                      全量执行；Cron
+                      和“立即运行”使用同一配置同步新增、状态变化、移出分组或删除的账号。
+                    </p>
+                  </div>
+                  <Switch
+                    checked={importForm.createSyncTask}
+                    disabled={isSub2ApiSyncUnavailable}
+                    onCheckedChange={(checked) =>
+                      setImportForm((current) => ({
+                        ...current,
+                        createSyncTask: checked,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Select
+                    value={importForm.webGroupId}
+                    onValueChange={(value) =>
+                      setImportForm((current) => ({
+                        ...current,
+                        webGroupId: value,
+                      }))
+                    }
+                    disabled={
+                      isSub2ApiSyncUnavailable ||
+                      effectiveImportSyncMode === "responses"
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Web 账号分组" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groupOptions.map((group) => (
+                        <SelectItem key={group.id} value={group.id}>
+                          Web：{group.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={importForm.responsesGroupId}
+                    onValueChange={(value) =>
+                      setImportForm((current) => ({
+                        ...current,
+                        responsesGroupId: value,
+                      }))
+                    }
+                    disabled={
+                      isSub2ApiSyncUnavailable ||
+                      effectiveImportSyncMode === "web"
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Codex/Responses 账号分组" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groupOptions.map((group) => (
+                        <SelectItem key={group.id} value={group.id}>
+                          Codex：{group.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label>每批扫描数量</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={importForm.limit}
+                      disabled={isSub2ApiSyncUnavailable}
+                      onChange={(event) =>
+                        setImportForm((current) => ({
+                          ...current,
+                          limit: Number(event.target.value),
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      服务端分页批大小，不是同步总数上限。
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>自动同步间隔（分钟）</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={importForm.intervalMinutes}
+                      disabled={
+                        isSub2ApiSyncUnavailable || !importForm.createSyncTask
+                      }
+                      onChange={(event) =>
+                        setImportForm((current) => ({
+                          ...current,
+                          intervalMinutes: Number(event.target.value),
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      仅创建任务时保存；内置调度器到点后按任务间隔判断是否运行。
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <Button
+                    onClick={runSub2ApiSync}
+                    disabled={isSub2ApiSyncUnavailable || isSyncingSub2Api}
+                  >
+                    {isSyncingSub2Api && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    同步账号
+                  </Button>
+                  {(isSyncingSub2Api || syncProgress.status !== "idle") && (
+                    <div className="space-y-2 rounded-md border p-3">
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span>{syncProgress.message}</span>
+                        <span className="text-muted-foreground">
+                          {isSyncingSub2Api ? "同步中" : "已结束"}
+                        </span>
+                      </div>
+                      <Progress
+                        value={isSyncingSub2Api ? syncProgress.value : 100}
+                      />
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between gap-3 text-base">
+                  <span className="flex items-center gap-2">
+                    <TimerReset className="h-4 w-4" />
+                    自动同步任务
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loadSub2ApiSyncTasks()}
+                    disabled={isLoadingSyncTasks}
+                  >
+                    {isLoadingSyncTasks ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    刷新
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  任务由上方同步时创建。Cron
+                  会按任务保存的来源分组和筛选条件同步新增、状态变化和删除；删除任务只停止后续管理，不会删除已导入账号。
+                </p>
+                {!sub2ApiSyncTasks.length ? (
+                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                    暂无自动同步任务。
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sub2ApiSyncTasks.map((task) => {
+                      const sourceLabel =
+                        task.sourceGroupName ||
+                        task.sourceGroupId ||
+                        "全部 Sub2API OpenAI 账号";
+                      const isTaskRunning =
+                        runningSub2ApiSyncTaskId === task.id &&
+                        isRunningSub2ApiSyncTask;
+                      return (
+                        <div key={task.id} className="rounded-md border p-3">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="break-all font-medium">
+                                  {sourceLabel}
+                                </span>
+                                <Badge
+                                  variant={
+                                    task.enabled ? "default" : "secondary"
+                                  }
+                                >
+                                  {task.enabled ? "启用" : "停用"}
+                                </Badge>
+                                <Badge variant="outline">
+                                  {tokenSyncModeLabel(task.syncMode)}
+                                </Badge>
+                                <Badge variant="outline">
+                                  {sub2ApiPlanFilterLabel(task.planFilter)}
+                                </Badge>
+                              </div>
+                              <p className="break-all text-xs text-muted-foreground">
+                                任务 {task.id} · 目标 Codex{" "}
+                                {groupName(
+                                  groups,
+                                  task.responsesGroupId || null
+                                )}{" "}
+                                · 目标 Web{" "}
+                                {groupName(groups, task.webGroupId || null)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                管理账号 {task.managedAccountCount} · Mobile RT{" "}
+                                {task.allowMobileRtImport ? "允许" : "关闭"} ·
+                                审核{" "}
+                                {task.contentSafetyEnabled ? "开启" : "关闭"} ·
+                                覆盖异常{" "}
+                                {task.overwriteLocalUnavailableState
+                                  ? "开启"
+                                  : "关闭"}{" "}
+                                · 间隔 {task.intervalMinutes || 720} 分钟 ·
+                                上次运行{" "}
+                                {formatOptionalDate(
+                                  task.lastRunAt || null,
+                                  timeZone
+                                )}
+                              </p>
+                              {task.lastResult && (
+                                <p className="text-xs text-muted-foreground">
+                                  上次结果：来源 {task.lastResult.sourceCount}/
+                                  {task.lastResult.totalSourceCount} · 写入{" "}
+                                  {task.lastResult.syncedCount} · 失败{" "}
+                                  {task.lastResult.failed} · 删除{" "}
+                                  {task.lastResult.deletedCount}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex shrink-0 flex-col gap-2 text-xs text-muted-foreground">
+                              <Label className="flex items-center justify-between gap-3">
+                                启用
+                                <Switch
+                                  checked={task.enabled}
+                                  disabled={isUpdatingSyncTask}
+                                  onCheckedChange={(checked) =>
+                                    setSub2ApiTaskEnabled({
+                                      taskId: task.id,
+                                      enabled: checked,
+                                    })
+                                  }
+                                />
+                              </Label>
+                              <Label className="flex items-center justify-between gap-3">
+                                覆盖异常
+                                <Switch
+                                  checked={task.overwriteLocalUnavailableState}
+                                  disabled={isUpdatingSyncTaskOverwrite}
+                                  onCheckedChange={(checked) =>
+                                    setSub2ApiTaskOverwriteLocalUnavailableState(
+                                      {
+                                        taskId: task.id,
+                                        overwriteLocalUnavailableState: checked,
+                                      }
+                                    )
+                                  }
+                                />
+                              </Label>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={
+                                  isSub2ApiSyncUnavailable ||
+                                  isRunningSub2ApiSyncTask
+                                }
+                                onClick={() => runSub2ApiSyncTaskNow(task)}
+                              >
+                                {isTaskRunning ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="mr-2 h-4 w-4" />
+                                )}
+                                立即运行
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openSyncTaskEditor(task)}
+                              >
+                                <Pencil className="mr-2 h-4 w-4" />
+                                编辑
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={isDeletingSyncTask}
+                                onClick={() => runDeleteSub2ApiSyncTask(task)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                删除
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+      </Tabs>
+
+      {!readOnly && (
+        <Dialog open={isManualImportOpen} onOpenChange={setIsManualImportOpen}>
+          <DialogContent className="flex max-h-[88vh] w-[calc(100vw-2rem)] max-w-3xl flex-col overflow-hidden p-0">
+            <DialogHeader>
+              <DialogTitle className="px-6 pt-6">批量导入 RT</DialogTitle>
+            </DialogHeader>
+            <div className="min-w-0 flex-1 space-y-4 overflow-y-auto px-6 pb-6">
+              <p className="break-words text-sm text-muted-foreground">
+                支持直接粘贴 RT 列表，每行一个；也可以粘贴包含
+                refresh_token/refreshToken 的 Auth Session JSON。只有
+                accessToken 的 Auth Session 不会在这里导入，请使用“导入 Web
+                AT”。默认按 Codex CLI RT 导入；勾选 Mobile RT 后由本站使用
+                mobile client_id 换取 AT，并保存刷新后的
+                RT。这里导入的账号可在本站继续更新 RT，不会写入
+                Sub2API。最多处理前 {MANUAL_TOKEN_IMPORT_LIMIT.toLocaleString()}{" "}
+                条， 会按 {MANUAL_RT_IMPORT_BATCH_SIZE} 条一批导入，避免大批量
+                RT 换取 AT 时单次请求超时。
               </p>
-              {isSub2ApiSyncUnavailable && (
-                <div className="flex gap-2 rounded-md border border-dashed border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800 dark:border-orange-900/60 dark:bg-orange-950/30 dark:text-orange-200">
-                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{sub2ApiUnavailableMessage}</span>
+              <p className="break-words text-sm text-muted-foreground">
+                获取 Auth Session 可打开{" "}
+                <a
+                  className="inline-flex items-center gap-1 text-foreground underline underline-offset-4"
+                  href={authSessionUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Auth Session 接口
+                  <ExternalLink className="h-3 w-3" />
+                </a>{" "}
+                并粘贴页面返回的整段内容。
+              </p>
+              <Textarea
+                className="h-44 min-h-44 max-w-full resize-y overflow-x-hidden whitespace-pre-wrap break-all font-mono text-xs"
+                wrap="soft"
+                placeholder={`rt_...
+或粘贴包含 "refresh_token" / "refreshToken" 的 Auth Session JSON`}
+                value={manualImportForm.refreshTokensText}
+                onChange={(event) =>
+                  setManualImportForm((current) => ({
+                    ...current,
+                    refreshTokensText: event.target.value,
+                  }))
+                }
+              />
+              {(isImportingManualRefreshTokens ||
+                manualImportProgress.status !== "idle") && (
+                <div className="space-y-2 rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span>{manualImportProgress.message}</span>
+                    <span className="text-muted-foreground">
+                      {isImportingManualRefreshTokens ? "导入中" : "已结束"}
+                    </span>
+                  </div>
+                  <Progress
+                    value={
+                      isImportingManualRefreshTokens
+                        ? manualImportProgress.value
+                        : 100
+                    }
+                  />
                 </div>
               )}
-              <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                <Select
-                  value={importForm.sourceGroupId}
-                  onValueChange={(value) =>
-                    setImportForm((current) => ({
-                      ...current,
-                      sourceGroupId: value,
-                    }))
-                  }
-                  disabled={isSub2ApiSyncUnavailable}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sub2API 来源分组" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">
-                      全部 Sub2API OpenAI 账号
-                    </SelectItem>
-                    {sub2ApiSourceGroups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name} · {group.accountCount} 个账号
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => loadSub2ApiSourceGroups()}
-                  disabled={isSub2ApiSyncUnavailable || isLoadingSourceGroups}
-                >
-                  {isLoadingSourceGroups ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  刷新来源
-                </Button>
-              </div>
               <div className="flex items-start justify-between gap-3 rounded-md border p-3">
                 <div>
-                  <Label>Mobile RT 同步</Label>
+                  <Label>Mobile RT 导入</Label>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    仅用于 Sub 中由 Mobile RT client
-                    同步的账号。关闭时强制只同步 Codex/Responses，避免误用普通
-                    Codex RT。
+                    使用 mobile client_id 获取 AT。关闭时强制只导入
+                    Codex/Responses，避免普通 Codex RT 被误用于 Web。
                   </p>
                 </div>
                 <Switch
-                  checked={importForm.allowMobileRtImport}
-                  disabled={isSub2ApiSyncUnavailable}
+                  checked={manualImportForm.useMobileRt}
                   onCheckedChange={(checked) =>
-                    setImportForm((current) => ({
+                    setManualImportForm((current) => ({
                       ...current,
-                      allowMobileRtImport: checked,
+                      useMobileRt: checked,
                       syncMode: checked ? current.syncMode : "responses",
                     }))
                   }
@@ -3775,122 +4283,47 @@ export function ImageBackendPoolAdminPanel({
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Select
-                  value={importForm.planFilter}
+                  value={effectiveManualImportSyncMode}
                   onValueChange={(value) =>
-                    setImportForm((current) => ({
-                      ...current,
-                      planFilter: value as Sub2ApiPlanFilter,
-                    }))
-                  }
-                  disabled={isSub2ApiSyncUnavailable}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="套餐筛选" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="non_free">排除 free</SelectItem>
-                    <SelectItem value="plus">只导入 plus</SelectItem>
-                    <SelectItem value="pro">只导入 pro</SelectItem>
-                    <SelectItem value="free">只导入 free</SelectItem>
-                    <SelectItem value="all">全部套餐</SelectItem>
-                  </SelectContent>
-                </Select>
-                <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
-                  默认排除 Sub2API 中 plan_type=free 的账号，避免将 team
-                  分组里的 free 账号再次导入生图站。
-                </div>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Select
-                  value={effectiveImportSyncMode}
-                  onValueChange={(value) =>
-                    setImportForm((current) => ({
+                    setManualImportForm((current) => ({
                       ...current,
                       syncMode: value as TokenSyncMode,
                     }))
                   }
-                  disabled={
-                    isSub2ApiSyncUnavailable || !importForm.allowMobileRtImport
-                  }
+                  disabled={!manualImportForm.useMobileRt}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="both">
-                      同时同步 Web 和 Codex AT
-                    </SelectItem>
-                    <SelectItem value="web">只同步 Web AT</SelectItem>
                     <SelectItem value="responses">
-                      只同步 Codex/Responses AT
+                      只导入 Codex/Responses
                     </SelectItem>
+                    <SelectItem value="web">只导入 Web</SelectItem>
+                    <SelectItem value="both">同时导入 Web 和 Codex</SelectItem>
                   </SelectContent>
                 </Select>
-                <div className="flex items-center justify-between rounded-md border px-3">
-                  <Label>接入内容安全审核</Label>
-                  <Switch
-                    checked={importForm.contentSafetyEnabled}
-                    disabled={isSub2ApiSyncUnavailable}
-                    onCheckedChange={(checked) =>
-                      setImportForm((current) => ({
-                        ...current,
-                        contentSafetyEnabled: checked,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="flex items-start justify-between gap-3 rounded-md border p-3">
-                  <div>
-                    <Label>覆盖本站异常状态</Label>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      同步时以 Sub2API
-                      当前状态为准，覆盖本站账号池里的错误、限流和冷却状态。
-                    </p>
-                  </div>
-                  <Switch
-                    checked={importForm.overwriteLocalUnavailableState}
-                    disabled={isSub2ApiSyncUnavailable}
-                    onCheckedChange={(checked) =>
-                      setImportForm((current) => ({
-                        ...current,
-                        overwriteLocalUnavailableState: checked,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-              <div className="flex items-start justify-between gap-3 rounded-md border p-3">
-                <div>
-                  <Label>创建自动同步任务</Label>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    开启后，本次手动同步会先创建或更新任务，再按任务 runner
-                    全量执行；Cron 和“立即运行”使用同一配置同步新增、状态变化、移出分组或删除的账号。
-                  </p>
-                </div>
-                <Switch
-                  checked={importForm.createSyncTask}
-                  disabled={isSub2ApiSyncUnavailable}
-                  onCheckedChange={(checked) =>
-                    setImportForm((current) => ({
+                <Input
+                  placeholder="名称前缀"
+                  value={manualImportForm.namePrefix}
+                  onChange={(event) =>
+                    setManualImportForm((current) => ({
                       ...current,
-                      createSyncTask: checked,
+                      namePrefix: event.target.value,
                     }))
                   }
                 />
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Select
-                  value={importForm.webGroupId}
+                  value={manualImportForm.webGroupId}
                   onValueChange={(value) =>
-                    setImportForm((current) => ({
+                    setManualImportForm((current) => ({
                       ...current,
                       webGroupId: value,
                     }))
                   }
-                  disabled={
-                    isSub2ApiSyncUnavailable ||
-                    effectiveImportSyncMode === "responses"
-                  }
+                  disabled={effectiveManualImportSyncMode === "responses"}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Web 账号分组" />
@@ -3904,17 +4337,14 @@ export function ImageBackendPoolAdminPanel({
                   </SelectContent>
                 </Select>
                 <Select
-                  value={importForm.responsesGroupId}
+                  value={manualImportForm.responsesGroupId}
                   onValueChange={(value) =>
-                    setImportForm((current) => ({
+                    setManualImportForm((current) => ({
                       ...current,
                       responsesGroupId: value,
                     }))
                   }
-                  disabled={
-                    isSub2ApiSyncUnavailable ||
-                    effectiveImportSyncMode === "web"
-                  }
+                  disabled={effectiveManualImportSyncMode === "web"}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Codex/Responses 账号分组" />
@@ -3928,641 +4358,251 @@ export function ImageBackendPoolAdminPanel({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-1">
-                  <Label>每批扫描数量</Label>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label>模型</Label>
+                  <Input
+                    placeholder="可选"
+                    value={manualImportForm.model}
+                    onChange={(event) =>
+                      setManualImportForm((current) => ({
+                        ...current,
+                        model: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>优先级</Label>
                   <Input
                     type="number"
-                    min={1}
-                    max={500}
-                    value={importForm.limit}
-                    disabled={isSub2ApiSyncUnavailable}
+                    min={0}
+                    value={manualImportForm.priority}
                     onChange={(event) =>
-                      setImportForm((current) => ({
+                      setManualImportForm((current) => ({
                         ...current,
-                        limit: Number(event.target.value),
+                        priority: Number(event.target.value),
                       }))
                     }
                   />
                   <p className="text-xs text-muted-foreground">
-                    服务端分页批大小，不是同步总数上限。
+                    数字越小越先调度。
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <Label>自动同步间隔（分钟）</Label>
+                <div className="space-y-1.5">
+                  <Label>最大并发数</Label>
                   <Input
                     type="number"
                     min={1}
-                    value={importForm.intervalMinutes}
-                    disabled={
-                      isSub2ApiSyncUnavailable || !importForm.createSyncTask
-                    }
+                    max={100}
+                    value={manualImportForm.concurrency}
                     onChange={(event) =>
-                      setImportForm((current) => ({
+                      setManualImportForm((current) => ({
                         ...current,
-                        intervalMinutes: Number(event.target.value),
+                        concurrency: Number(event.target.value),
                       }))
                     }
                   />
                   <p className="text-xs text-muted-foreground">
-                    仅创建任务时保存；内置调度器到点后按任务间隔判断是否运行。
+                    作为负载分母，值越大越能分摊请求。
                   </p>
                 </div>
               </div>
-              <div className="space-y-3">
-                <Button
-                  onClick={runSub2ApiSync}
-                  disabled={isSub2ApiSyncUnavailable || isSyncingSub2Api}
-                >
-                  {isSyncingSub2Api && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  同步账号
-                </Button>
-                {(isSyncingSub2Api || syncProgress.status !== "idle") && (
-                  <div className="space-y-2 rounded-md border p-3">
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                      <span>{syncProgress.message}</span>
-                      <span className="text-muted-foreground">
-                        {isSyncingSub2Api ? "同步中" : "已结束"}
-                      </span>
-                    </div>
-                    <Progress
-                      value={isSyncingSub2Api ? syncProgress.value : 100}
-                    />
-                  </div>
-                )}
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <Label>接入内容安全审核</Label>
+                <Switch
+                  checked={manualImportForm.contentSafetyEnabled}
+                  onCheckedChange={(checked) =>
+                    setManualImportForm((current) => ({
+                      ...current,
+                      contentSafetyEnabled: checked,
+                    }))
+                  }
+                />
               </div>
-            </CardContent>
-          </Card>
-          <Card className="mt-4">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-3 text-base">
-                <span className="flex items-center gap-2">
-                  <TimerReset className="h-4 w-4" />
-                  自动同步任务
-                </span>
+              <div className="flex justify-end gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
-                  onClick={() => loadSub2ApiSyncTasks()}
-                  disabled={isLoadingSyncTasks}
+                  onClick={() => setIsManualImportOpen(false)}
+                  disabled={isImportingManualRefreshTokens}
                 >
-                  {isLoadingSyncTasks ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  刷新
+                  取消
                 </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                任务由上方同步时创建。Cron 会按任务保存的来源分组和筛选条件同步新增、状态变化和删除；删除任务只停止后续管理，不会删除已导入账号。
-              </p>
-              {!sub2ApiSyncTasks.length ? (
-                <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                  暂无自动同步任务。
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {sub2ApiSyncTasks.map((task) => {
-                    const sourceLabel =
-                      task.sourceGroupName ||
-                      task.sourceGroupId ||
-                      "全部 Sub2API OpenAI 账号";
-                    const isTaskRunning =
-                      runningSub2ApiSyncTaskId === task.id &&
-                      isRunningSub2ApiSyncTask;
-                    return (
-                      <div
-                        key={task.id}
-                        className="rounded-md border p-3"
-                      >
-                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                          <div className="min-w-0 space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="break-all font-medium">
-                                {sourceLabel}
-                              </span>
-                              <Badge
-                                variant={task.enabled ? "default" : "secondary"}
-                              >
-                                {task.enabled ? "启用" : "停用"}
-                              </Badge>
-                              <Badge variant="outline">
-                                {tokenSyncModeLabel(task.syncMode)}
-                              </Badge>
-                              <Badge variant="outline">
-                                {sub2ApiPlanFilterLabel(task.planFilter)}
-                              </Badge>
-                            </div>
-                            <p className="break-all text-xs text-muted-foreground">
-                              任务 {task.id} · 目标 Codex{" "}
-                              {groupName(groups, task.responsesGroupId || null)} ·
-                              目标 Web {groupName(groups, task.webGroupId || null)}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              管理账号 {task.managedAccountCount} · Mobile RT{" "}
-                              {task.allowMobileRtImport ? "允许" : "关闭"} · 审核{" "}
-                              {task.contentSafetyEnabled ? "开启" : "关闭"} ·
-                              覆盖异常{" "}
-                              {task.overwriteLocalUnavailableState
-                                ? "开启"
-                                : "关闭"} · 间隔{" "}
-                              {task.intervalMinutes || 720} 分钟 · 上次运行{" "}
-                              {formatOptionalDate(task.lastRunAt || null, timeZone)}
-                            </p>
-                            {task.lastResult && (
-                              <p className="text-xs text-muted-foreground">
-                                上次结果：来源 {task.lastResult.sourceCount}/
-                                {task.lastResult.totalSourceCount} · 写入{" "}
-                                {task.lastResult.syncedCount} · 失败{" "}
-                                {task.lastResult.failed} · 删除{" "}
-                                {task.lastResult.deletedCount}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex shrink-0 flex-col gap-2 text-xs text-muted-foreground">
-                            <Label className="flex items-center justify-between gap-3">
-                              启用
-                              <Switch
-                                checked={task.enabled}
-                                disabled={isUpdatingSyncTask}
-                                onCheckedChange={(checked) =>
-                                  setSub2ApiTaskEnabled({
-                                    taskId: task.id,
-                                    enabled: checked,
-                                  })
-                                }
-                              />
-                            </Label>
-                            <Label className="flex items-center justify-between gap-3">
-                              覆盖异常
-                              <Switch
-                                checked={task.overwriteLocalUnavailableState}
-                                disabled={isUpdatingSyncTaskOverwrite}
-                                onCheckedChange={(checked) =>
-                                  setSub2ApiTaskOverwriteLocalUnavailableState({
-                                    taskId: task.id,
-                                    overwriteLocalUnavailableState: checked,
-                                  })
-                                }
-                              />
-                            </Label>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={
-                                isSub2ApiSyncUnavailable ||
-                                isRunningSub2ApiSyncTask
-                              }
-                              onClick={() => runSub2ApiSyncTaskNow(task)}
-                            >
-                              {isTaskRunning ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              ) : (
-                                <RefreshCw className="mr-2 h-4 w-4" />
-                              )}
-                              立即运行
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openSyncTaskEditor(task)}
-                            >
-                              <Pencil className="mr-2 h-4 w-4" />
-                              编辑
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={isDeletingSyncTask}
-                              onClick={() => runDeleteSub2ApiSyncTask(task)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              删除
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        )}
-      </Tabs>
-
-      {!readOnly && (
-      <Dialog open={isManualImportOpen} onOpenChange={setIsManualImportOpen}>
-        <DialogContent className="flex max-h-[88vh] w-[calc(100vw-2rem)] max-w-3xl flex-col overflow-hidden p-0">
-          <DialogHeader>
-            <DialogTitle className="px-6 pt-6">批量导入 RT</DialogTitle>
-          </DialogHeader>
-          <div className="min-w-0 flex-1 space-y-4 overflow-y-auto px-6 pb-6">
-            <p className="break-words text-sm text-muted-foreground">
-              支持直接粘贴 RT 列表，每行一个；也可以粘贴包含
-              refresh_token/refreshToken 的 Auth Session JSON。只有 accessToken
-              的 Auth Session 不会在这里导入，请使用“导入 Web AT”。默认按 Codex
-              CLI RT 导入；勾选 Mobile RT 后由本站使用 mobile client_id 换取
-              AT，并保存刷新后的 RT。这里导入的账号可在本站继续更新 RT，不会写入
-              Sub2API。最多处理前 {MANUAL_TOKEN_IMPORT_LIMIT.toLocaleString()} 条，
-              会按 {MANUAL_RT_IMPORT_BATCH_SIZE} 条一批导入，避免大批量 RT 换取 AT
-              时单次请求超时。
-            </p>
-            <p className="break-words text-sm text-muted-foreground">
-              获取 Auth Session 可打开{" "}
-              <a
-                className="inline-flex items-center gap-1 text-foreground underline underline-offset-4"
-                href={authSessionUrl}
-                rel="noreferrer"
-                target="_blank"
-              >
-                Auth Session 接口
-                <ExternalLink className="h-3 w-3" />
-              </a>{" "}
-              并粘贴页面返回的整段内容。
-            </p>
-            <Textarea
-              className="h-44 min-h-44 max-w-full resize-y overflow-x-hidden whitespace-pre-wrap break-all font-mono text-xs"
-              wrap="soft"
-              placeholder={`rt_...
-或粘贴包含 "refresh_token" / "refreshToken" 的 Auth Session JSON`}
-              value={manualImportForm.refreshTokensText}
-              onChange={(event) =>
-                setManualImportForm((current) => ({
-                  ...current,
-                  refreshTokensText: event.target.value,
-                }))
-              }
-            />
-            {(isImportingManualRefreshTokens ||
-              manualImportProgress.status !== "idle") && (
-              <div className="space-y-2 rounded-md border p-3">
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span>{manualImportProgress.message}</span>
-                  <span className="text-muted-foreground">
-                    {isImportingManualRefreshTokens ? "导入中" : "已结束"}
-                  </span>
-                </div>
-                <Progress
-                  value={
-                    isImportingManualRefreshTokens
-                      ? manualImportProgress.value
-                      : 100
+                <Button
+                  type="button"
+                  onClick={runManualRefreshTokenImport}
+                  disabled={
+                    isImportingManualRefreshTokens ||
+                    !manualImportForm.refreshTokensText.trim()
                   }
-                />
-              </div>
-            )}
-            <div className="flex items-start justify-between gap-3 rounded-md border p-3">
-              <div>
-                <Label>Mobile RT 导入</Label>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  使用 mobile client_id 获取 AT。关闭时强制只导入
-                  Codex/Responses，避免普通 Codex RT 被误用于 Web。
-                </p>
-              </div>
-              <Switch
-                checked={manualImportForm.useMobileRt}
-                onCheckedChange={(checked) =>
-                  setManualImportForm((current) => ({
-                    ...current,
-                    useMobileRt: checked,
-                    syncMode: checked ? current.syncMode : "responses",
-                  }))
-                }
-              />
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Select
-                value={effectiveManualImportSyncMode}
-                onValueChange={(value) =>
-                  setManualImportForm((current) => ({
-                    ...current,
-                    syncMode: value as TokenSyncMode,
-                  }))
-                }
-                disabled={!manualImportForm.useMobileRt}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="responses">
-                    只导入 Codex/Responses
-                  </SelectItem>
-                  <SelectItem value="web">只导入 Web</SelectItem>
-                  <SelectItem value="both">同时导入 Web 和 Codex</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                placeholder="名称前缀"
-                value={manualImportForm.namePrefix}
-                onChange={(event) =>
-                  setManualImportForm((current) => ({
-                    ...current,
-                    namePrefix: event.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Select
-                value={manualImportForm.webGroupId}
-                onValueChange={(value) =>
-                  setManualImportForm((current) => ({
-                    ...current,
-                    webGroupId: value,
-                  }))
-                }
-                disabled={effectiveManualImportSyncMode === "responses"}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Web 账号分组" />
-                </SelectTrigger>
-                <SelectContent>
-                  {groupOptions.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      Web：{group.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={manualImportForm.responsesGroupId}
-                onValueChange={(value) =>
-                  setManualImportForm((current) => ({
-                    ...current,
-                    responsesGroupId: value,
-                  }))
-                }
-                disabled={effectiveManualImportSyncMode === "web"}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Codex/Responses 账号分组" />
-                </SelectTrigger>
-                <SelectContent>
-                  {groupOptions.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      Codex：{group.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label>模型</Label>
-                <Input
-                  placeholder="可选"
-                  value={manualImportForm.model}
-                  onChange={(event) =>
-                    setManualImportForm((current) => ({
-                      ...current,
-                      model: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>优先级</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={manualImportForm.priority}
-                  onChange={(event) =>
-                    setManualImportForm((current) => ({
-                      ...current,
-                      priority: Number(event.target.value),
-                    }))
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  数字越小越先调度。
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                <Label>最大并发数</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={manualImportForm.concurrency}
-                  onChange={(event) =>
-                    setManualImportForm((current) => ({
-                      ...current,
-                      concurrency: Number(event.target.value),
-                    }))
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  作为负载分母，值越大越能分摊请求。
-                </p>
+                >
+                  {isImportingManualRefreshTokens && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  导入并获取 AT
+                </Button>
               </div>
             </div>
-            <div className="flex items-center justify-between rounded-md border p-3">
-              <Label>接入内容安全审核</Label>
-              <Switch
-                checked={manualImportForm.contentSafetyEnabled}
-                onCheckedChange={(checked) =>
-                  setManualImportForm((current) => ({
-                    ...current,
-                    contentSafetyEnabled: checked,
-                  }))
-                }
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsManualImportOpen(false)}
-                disabled={isImportingManualRefreshTokens}
-              >
-                取消
-              </Button>
-              <Button
-                type="button"
-                onClick={runManualRefreshTokenImport}
-                disabled={
-                  isImportingManualRefreshTokens ||
-                  !manualImportForm.refreshTokensText.trim()
-                }
-              >
-                {isImportingManualRefreshTokens && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                导入并获取 AT
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
       )}
 
       {!readOnly && (
-      <Dialog open={isWebAtImportOpen} onOpenChange={setIsWebAtImportOpen}>
-        <DialogContent className="flex max-h-[88vh] w-[calc(100vw-2rem)] max-w-3xl flex-col overflow-hidden p-0">
-          <DialogHeader>
-            <DialogTitle className="px-6 pt-6">批量导入 Web AT</DialogTitle>
-          </DialogHeader>
-          <div className="min-w-0 flex-1 space-y-4 overflow-y-auto px-6 pb-6">
-            <p className="break-words text-sm text-muted-foreground">
-              支持粘贴 Web accessToken、Bearer token，或打开{" "}
-              <a
-                className="inline-flex items-center gap-1 text-foreground underline underline-offset-4"
-                href={authSessionUrl}
-                rel="noreferrer"
-                target="_blank"
-              >
-                Auth Session 接口
-                <ExternalLink className="h-3 w-3" />
-              </a>{" "}
-              后粘贴完整 JSON。Web AT 没有对应
-              RT，过期后需要重新导入；该入口只创建 Web 账号，不会创建
-              Codex/Responses 账号。
-            </p>
-            <Textarea
-              className="h-44 min-h-44 max-w-full resize-y overflow-x-hidden whitespace-pre-wrap break-all font-mono text-xs"
-              wrap="soft"
-              placeholder={`Bearer eyJ...
+        <Dialog open={isWebAtImportOpen} onOpenChange={setIsWebAtImportOpen}>
+          <DialogContent className="flex max-h-[88vh] w-[calc(100vw-2rem)] max-w-3xl flex-col overflow-hidden p-0">
+            <DialogHeader>
+              <DialogTitle className="px-6 pt-6">批量导入 Web AT</DialogTitle>
+            </DialogHeader>
+            <div className="min-w-0 flex-1 space-y-4 overflow-y-auto px-6 pb-6">
+              <p className="break-words text-sm text-muted-foreground">
+                支持粘贴 Web accessToken、Bearer token，或打开{" "}
+                <a
+                  className="inline-flex items-center gap-1 text-foreground underline underline-offset-4"
+                  href={authSessionUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Auth Session 接口
+                  <ExternalLink className="h-3 w-3" />
+                </a>{" "}
+                后粘贴完整 JSON。Web AT 没有对应
+                RT，过期后需要重新导入；该入口只创建 Web 账号，不会创建
+                Codex/Responses 账号。
+              </p>
+              <Textarea
+                className="h-44 min-h-44 max-w-full resize-y overflow-x-hidden whitespace-pre-wrap break-all font-mono text-xs"
+                wrap="soft"
+                placeholder={`Bearer eyJ...
 或粘贴 https://chatgpt.com/api/auth/session 返回的完整 JSON`}
-              value={webAtImportForm.accessTokensText}
-              onChange={(event) =>
-                setWebAtImportForm((current) => ({
-                  ...current,
-                  accessTokensText: event.target.value,
-                }))
-              }
-            />
-            <div className="grid gap-3 md:grid-cols-2">
-              <Select
-                value={webAtImportForm.webGroupId}
-                onValueChange={(value) =>
-                  setWebAtImportForm((current) => ({
-                    ...current,
-                    webGroupId: value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Web 账号分组" />
-                </SelectTrigger>
-                <SelectContent>
-                  {groupOptions.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      Web：{group.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                placeholder="名称前缀"
-                value={webAtImportForm.namePrefix}
+                value={webAtImportForm.accessTokensText}
                 onChange={(event) =>
                   setWebAtImportForm((current) => ({
                     ...current,
-                    namePrefix: event.target.value,
+                    accessTokensText: event.target.value,
                   }))
                 }
               />
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label>模型</Label>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Select
+                  value={webAtImportForm.webGroupId}
+                  onValueChange={(value) =>
+                    setWebAtImportForm((current) => ({
+                      ...current,
+                      webGroupId: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Web 账号分组" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {groupOptions.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        Web：{group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input
-                  placeholder="可选"
-                  value={webAtImportForm.model}
+                  placeholder="名称前缀"
+                  value={webAtImportForm.namePrefix}
                   onChange={(event) =>
                     setWebAtImportForm((current) => ({
                       ...current,
-                      model: event.target.value,
+                      namePrefix: event.target.value,
                     }))
                   }
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label>优先级</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={webAtImportForm.priority}
-                  onChange={(event) =>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label>模型</Label>
+                  <Input
+                    placeholder="可选"
+                    value={webAtImportForm.model}
+                    onChange={(event) =>
+                      setWebAtImportForm((current) => ({
+                        ...current,
+                        model: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>优先级</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={webAtImportForm.priority}
+                    onChange={(event) =>
+                      setWebAtImportForm((current) => ({
+                        ...current,
+                        priority: Number(event.target.value),
+                      }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    数字越小越先调度。
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>最大并发数</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={webAtImportForm.concurrency}
+                    onChange={(event) =>
+                      setWebAtImportForm((current) => ({
+                        ...current,
+                        concurrency: Number(event.target.value),
+                      }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    作为负载分母，值越大越能分摊请求。
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <Label>接入内容安全审核</Label>
+                <Switch
+                  checked={webAtImportForm.contentSafetyEnabled}
+                  onCheckedChange={(checked) =>
                     setWebAtImportForm((current) => ({
                       ...current,
-                      priority: Number(event.target.value),
+                      contentSafetyEnabled: checked,
                     }))
                   }
                 />
-                <p className="text-xs text-muted-foreground">
-                  数字越小越先调度。
-                </p>
               </div>
-              <div className="space-y-1.5">
-                <Label>最大并发数</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={webAtImportForm.concurrency}
-                  onChange={(event) =>
-                    setWebAtImportForm((current) => ({
-                      ...current,
-                      concurrency: Number(event.target.value),
-                    }))
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsWebAtImportOpen(false)}
+                  disabled={isImportingWebAccessTokens}
+                >
+                  取消
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => importWebAccessTokens(webAtImportForm)}
+                  disabled={
+                    isImportingWebAccessTokens ||
+                    !webAtImportForm.accessTokensText.trim()
                   }
-                />
-                <p className="text-xs text-muted-foreground">
-                  作为负载分母，值越大越能分摊请求。
-                </p>
+                >
+                  {isImportingWebAccessTokens && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  导入 Web AT
+                </Button>
               </div>
             </div>
-            <div className="flex items-center justify-between rounded-md border p-3">
-              <Label>接入内容安全审核</Label>
-              <Switch
-                checked={webAtImportForm.contentSafetyEnabled}
-                onCheckedChange={(checked) =>
-                  setWebAtImportForm((current) => ({
-                    ...current,
-                    contentSafetyEnabled: checked,
-                  }))
-                }
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsWebAtImportOpen(false)}
-                disabled={isImportingWebAccessTokens}
-              >
-                取消
-              </Button>
-              <Button
-                type="button"
-                onClick={() => importWebAccessTokens(webAtImportForm)}
-                disabled={
-                  isImportingWebAccessTokens ||
-                  !webAtImportForm.accessTokensText.trim()
-                }
-              >
-                {isImportingWebAccessTokens && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                导入 Web AT
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
       )}
       {!readOnly && (
         <Dialog

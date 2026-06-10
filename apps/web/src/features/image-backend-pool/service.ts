@@ -316,9 +316,7 @@ function isMissingBackendSchedulerMetricTableError(error: unknown) {
       ? String((error as { code?: unknown }).code)
       : "";
   const message = error instanceof Error ? error.message : String(error);
-  return (
-    code === "42P01" || message.includes("image_backend_scheduler_metric")
-  );
+  return code === "42P01" || message.includes("image_backend_scheduler_metric");
 }
 
 function normalizeAccountBackend(
@@ -1978,18 +1976,17 @@ async function selectPoolMember(
   staleRetryCount = 0
 ): Promise<PoolMember | null> {
   const selectionStartedAt = Date.now();
-  const contexts =
-    groupContexts?.length
-      ? groupContexts
-      : groupId
-        ? [
-            {
-              id: groupId,
-              metadata: groupMetadata ?? null,
-              contentSafetyEnabled: groupContentSafetyEnabled ?? null,
-            },
-          ]
-        : [];
+  const contexts = groupContexts?.length
+    ? groupContexts
+    : groupId
+      ? [
+          {
+            id: groupId,
+            metadata: groupMetadata ?? null,
+            contentSafetyEnabled: groupContentSafetyEnabled ?? null,
+          },
+        ]
+      : [];
   const contextMap = new Map(contexts.map((context) => [context.id, context]));
   const groupIds = contexts.map((context) => context.id);
   const effectiveContextPreferences = new Map(
@@ -2251,9 +2248,9 @@ async function selectPoolMember(
               baseUrl: row.baseUrl,
               apiKey: row.apiKey,
               model: row.model,
-          interfaceMode: normalizeImageBackendApiInterfaceMode(
-            row.interfaceMode
-          ),
+              interfaceMode: normalizeImageBackendApiInterfaceMode(
+                row.interfaceMode
+              ),
               chatCompletionsUpstreamMode: normalizeChatCompletionsUpstreamMode(
                 row.chatCompletionsUpstreamMode
               ),
@@ -2268,8 +2265,8 @@ async function selectPoolMember(
               lastAcquiredAt: row.lastAcquiredAt,
               createdAt: row.createdAt,
               metadata: row.metadata,
-        };
-      });
+            };
+          });
 
   const accountMembers: PoolMember[] = accountRows
     .filter((row) => {
@@ -2368,17 +2365,16 @@ async function selectPoolMember(
     ...member,
     schedulerLayer: "preferred" as const,
   }));
-  const ordinaryCandidatePool = availableCandidates
-    .filter(
-      (member) =>
-        !stickyPreviousCandidates.some(
-          (stickyMember) => backendKey(stickyMember) === backendKey(member)
-        ) &&
-        !stickySessionCandidates.some(
-          (stickyMember) => backendKey(stickyMember) === backendKey(member)
-        ) &&
-        !preferredCandidates.includes(member)
-    );
+  const ordinaryCandidatePool = availableCandidates.filter(
+    (member) =>
+      !stickyPreviousCandidates.some(
+        (stickyMember) => backendKey(stickyMember) === backendKey(member)
+      ) &&
+      !stickySessionCandidates.some(
+        (stickyMember) => backendKey(stickyMember) === backendKey(member)
+      ) &&
+      !preferredCandidates.includes(member)
+  );
   const ordinaryCandidateGroups = new Map<string, PoolMember[]>();
   const ordinaryGroupOrder: string[] = [];
   for (const member of ordinaryCandidatePool) {
@@ -2408,7 +2404,9 @@ async function selectPoolMember(
         const lastUsedDiff =
           memberTimestamp(left.lastUsedAt) - memberTimestamp(right.lastUsedAt);
         if (lastUsedDiff !== 0) return lastUsedDiff;
-        return memberTimestamp(left.createdAt) - memberTimestamp(right.createdAt);
+        return (
+          memberTimestamp(left.createdAt) - memberTimestamp(right.createdAt)
+        );
       });
       return sortedGroup;
     })
@@ -6355,7 +6353,7 @@ export async function upsertImageBackendApi(input: UpsertApiInput) {
     alwaysActive: input.alwaysActive,
     failureCooldownEnabled: input.failureCooldownEnabled,
     priority: input.priority,
-    concurrency: Math.max(1, Math.min(100, input.concurrency)),
+    concurrency: Math.max(1, Math.min(10000, input.concurrency)),
     status: input.status || "active",
     updatedAt: new Date(),
   };
@@ -6449,9 +6447,7 @@ export async function setImageBackendApiAlwaysActive(input: {
     .update(imageBackendApi)
     .set({
       alwaysActive: input.alwaysActive,
-      ...(input.alwaysActive
-        ? { status: "active", cooldownUntil: null }
-        : {}),
+      ...(input.alwaysActive ? { status: "active", cooldownUntil: null } : {}),
       updatedAt: new Date(),
     })
     .where(eq(imageBackendApi.id, input.id));
@@ -6474,9 +6470,7 @@ export async function setImageBackendAccountAlwaysActive(input: {
     .update(imageBackendAccount)
     .set({
       alwaysActive: input.alwaysActive,
-      ...(input.alwaysActive
-        ? { status: "active", cooldownUntil: null }
-        : {}),
+      ...(input.alwaysActive ? { status: "active", cooldownUntil: null } : {}),
       updatedAt: new Date(),
     })
     .where(eq(imageBackendAccount.id, input.id));
