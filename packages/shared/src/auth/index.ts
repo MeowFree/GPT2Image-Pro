@@ -178,6 +178,30 @@ export const auth = betterAuth({
       enabled: false,
     },
   },
+
+  /**
+   * 高级配置
+   */
+  advanced: {
+    /**
+     * 关闭 Better Auth 基于 Origin 头的 CSRF 校验(允许跨域提交)。
+     *
+     * WHY:Better Auth 对【带 Cookie 的 POST】会强制校验 Origin 头必须命中
+     * trustedOrigins,否则直接 403——Origin 缺失/为 null 报
+     * MISSING_OR_NULL_ORIGIN、Origin 不在白名单报 INVALID_ORIGIN。实测大量
+     * 密码重置失败正是这里:微信/QQ 内置浏览器(webview)提交时不发 Origin 头
+     * (或发 null),同时带着站点 Cookie → 触发校验 → 403,用户填完新密码一提交
+     * 就失败(GET 打开重置页是顶层导航,不受影响,故"能打开、提交才挂")。
+     * trustedOrigins 救不了 Origin 缺失这一类(检查列表前就因 Origin 空而抛错)。
+     *
+     * 安全权衡:密码重置/邮箱验证走一次性 token,本身具备 CSRF 防护,不依赖
+     * Origin;带 session 的状态变更仍由 Cookie 的 SameSite 属性兜底。这里特意
+     * 用 disableCSRFCheck 而非 disableOriginCheck——后者会连带关闭
+     * callbackURL/redirectTo 的 URL 校验(开放重定向风险),前者只关 Origin/CSRF
+     * 校验、保留 URL 校验。
+     */
+    disableCSRFCheck: true,
+  },
 });
 
 /**
