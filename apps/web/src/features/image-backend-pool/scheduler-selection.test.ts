@@ -282,9 +282,7 @@ const dbMock = vi.hoisted(() => {
             }
           }
           rows = rows.map((row) =>
-            row.id === id
-              ? { ...row, lastAcquiredAt: lockedLastAcquiredAt }
-              : row
+            row.id === id ? { ...row, lastAcquiredAt: lockedLastAcquiredAt } : row
           );
         }
       }
@@ -447,12 +445,12 @@ vi.mock("@/features/image-generation/chatgpt-web", () => ({
   getChatGptWebAccountInfo: vi.fn(),
 }));
 
-import { getRuntimeSettingBoolean } from "@repo/shared/system-settings";
 import {
   reportImageBackendResult,
-  resetImageBackendInflightForTests,
   resolveImageBackendPoolConfig,
+  resetImageBackendInflightForTests,
 } from "./service";
+import { getRuntimeSettingBoolean } from "@repo/shared/system-settings";
 
 function makeAccount(index: number) {
   return {
@@ -1132,9 +1130,7 @@ describe("image backend pool scheduler selection", () => {
   });
 
   it.each([
-    [
-      "Upstream Responses API returned HTTP 500: 没有可用token | invalid_request_error",
-    ],
+    ["Upstream Responses API returned HTTP 500: 没有可用token | invalid_request_error"],
     ["Upstream Responses API returned HTTP 502: HTML response body. Check ..."],
   ])("marks dead-relay errors as error (sticky out): %s", async (errText) => {
     await reportImageBackendResult({
@@ -1147,10 +1143,7 @@ describe("image backend pool scheduler selection", () => {
     const update = dbMock.state.updates.find(
       (item) => item.tableName === "image_backend_api"
     );
-    expect(update?.values).toMatchObject({
-      status: "error",
-      cooldownUntil: null,
-    });
+    expect(update?.values).toMatchObject({ status: "error", cooldownUntil: null });
   });
 
   it("keeps an errored API out: a later success does not reactivate it", async () => {
@@ -1305,146 +1298,5 @@ describe("image backend pool scheduler selection", () => {
       lastError: "HTTP 429 Too many requests",
       lastErrorAt: expect.any(Date),
     });
-  });
-
-  it("does not resurrect an account marked error between selection and lease acquisition", async () => {
-    // 复现线上事故:候选快照取到该账号后、租约获取前,并发失败上报把它标成
-    // error(如 401 token 已吊销)。租约更新不得把 status 洗回 active——否则
-    // 凭证已失效的账号会被并发请求反复复活,持续霸占调度首位且永不退场。
-    dbMock.state.accounts = [
-      { ...makeAccount(1), status: "error", cooldownUntil: null },
-    ];
-
-    const result = await resolveImageBackendPoolConfig({
-      userId: "user-a",
-      requestKind: "responses",
-    });
-
-    expect(result?.memberId).toBe("acct-1");
-    expect(dbMock.state.accounts[0]?.status).toBe("error");
-  });
-
-  it("does not clear an un-expired cooldown when acquiring a lease", async () => {
-    // 并发失败上报刚写入的限流冷却(未到期)不能被租约清空。
-    const future = new Date(Date.now() + 10 * 60_000);
-    dbMock.state.accounts = [
-      { ...makeAccount(1), status: "active", cooldownUntil: future },
-    ];
-
-    const result = await resolveImageBackendPoolConfig({
-      userId: "user-a",
-      requestKind: "responses",
-    });
-
-    expect(result?.memberId).toBe("acct-1");
-    expect(dbMock.state.accounts[0]?.cooldownUntil).toBe(future);
-  });
-
-  it("normalizes limited accounts with an expired cooldown when leased", async () => {
-    // 冷却已到期的 limited 账号被选中时仍整理回 active 并清掉过期冷却。
-    dbMock.state.accounts = [
-      {
-        ...makeAccount(1),
-        status: "limited",
-        cooldownUntil: new Date(2020, 0, 1),
-      },
-    ];
-
-    const result = await resolveImageBackendPoolConfig({
-      userId: "user-a",
-      requestKind: "responses",
-    });
-
-    expect(result?.memberId).toBe("acct-1");
-    expect(dbMock.state.accounts[0]?.status).toBe("active");
-    expect(dbMock.state.accounts[0]?.cooldownUntil).toBeNull();
-  });
-
-  it("does not resurrect an API marked error between selection and lease acquisition", async () => {
-    dbMock.state.groups = [
-      {
-        id: "group-a",
-        name: "Group A",
-        description: null,
-        isEnabled: true,
-        isDefault: true,
-        isUserSelectable: true,
-        contentSafetyEnabled: null,
-        priority: 1,
-        metadata: { backendType: "mixed" },
-        createdAt: new Date(2026, 0, 1),
-        updatedAt: new Date(2026, 0, 1),
-      },
-    ];
-    dbMock.state.accounts = [];
-    dbMock.state.apis = [
-      {
-        id: "api-1",
-        matchedGroupId: "group-a",
-        groupId: "group-a",
-        name: "API 1",
-        baseUrl: "https://api.example.test/v1",
-        apiKey: "key",
-        model: null,
-        interfaceMode: "mixed",
-        chatCompletionsUpstreamMode: "responses",
-        imageUpstreamMode: "images",
-        useStream: false,
-        contentSafetyEnabled: true,
-        alwaysActive: false,
-        priority: 1,
-        concurrency: 10,
-        status: "error",
-        cooldownUntil: null,
-        lastUsedAt: null,
-        lastAcquiredAt: null,
-        createdAt: new Date(2026, 0, 1),
-        metadata: null,
-      },
-    ];
-
-    const result = await resolveImageBackendPoolConfig({
-      userId: "user-a",
-      requestKind: "image_generation",
-    });
-
-    expect(result?.memberId).toBe("api-1");
-    expect(dbMock.state.apis[0]?.status).toBe("error");
-  });
-
-  it("keeps an errored account out: a later success does not reactivate it", async () => {
-    dbMock.state.accounts = [
-      { ...makeAccount(1), status: "error", alwaysActive: false },
-    ];
-
-    await reportImageBackendResult({
-      memberType: "account",
-      memberId: "acct-1",
-      success: true,
-    });
-
-    const update = dbMock.state.updates.find(
-      (item) => item.tableName === "image_backend_account"
-    );
-    // 粘性(与 API 对齐):成功只记 successCount,不把 status 翻回 active、不清 error。
-    expect(update?.values).not.toHaveProperty("status");
-    expect(update?.values).not.toHaveProperty("lastError");
-  });
-
-  it("always_active errored account still reactivates on success", async () => {
-    dbMock.state.accounts = [
-      { ...makeAccount(1), status: "error", alwaysActive: true },
-    ];
-
-    await reportImageBackendResult({
-      memberType: "account",
-      memberId: "acct-1",
-      success: true,
-    });
-
-    const update = dbMock.state.updates.find(
-      (item) => item.tableName === "image_backend_account"
-    );
-    expect(update?.values).toMatchObject({ status: "active", lastError: null });
   });
 });

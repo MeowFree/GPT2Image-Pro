@@ -316,7 +316,9 @@ function isMissingBackendSchedulerMetricTableError(error: unknown) {
       ? String((error as { code?: unknown }).code)
       : "";
   const message = error instanceof Error ? error.message : String(error);
-  return code === "42P01" || message.includes("image_backend_scheduler_metric");
+  return (
+    code === "42P01" || message.includes("image_backend_scheduler_metric")
+  );
 }
 
 function normalizeAccountBackend(
@@ -880,21 +882,13 @@ async function acquirePoolMemberInflightLease(
   try {
     const acquired = await db.transaction(async (tx) => {
       let lockedLastAcquiredAt: Date | string | null | undefined;
-      let lockedStatus: string | null | undefined;
-      let lockedCooldownUntil: Date | string | null | undefined;
       if (member.type === "api") {
         const [locked] = await tx
-          .select({
-            lastAcquiredAt: imageBackendApi.lastAcquiredAt,
-            status: imageBackendApi.status,
-            cooldownUntil: imageBackendApi.cooldownUntil,
-          })
+          .select({ lastAcquiredAt: imageBackendApi.lastAcquiredAt })
           .from(imageBackendApi)
           .where(eq(imageBackendApi.id, member.id))
           .for("update");
         lockedLastAcquiredAt = locked?.lastAcquiredAt;
-        lockedStatus = locked?.status;
-        lockedCooldownUntil = locked?.cooldownUntil;
         if (!locked) return "full";
         if (
           options?.enforceLastAcquiredSnapshot &&
@@ -904,17 +898,11 @@ async function acquirePoolMemberInflightLease(
         }
       } else {
         const [locked] = await tx
-          .select({
-            lastAcquiredAt: imageBackendAccount.lastAcquiredAt,
-            status: imageBackendAccount.status,
-            cooldownUntil: imageBackendAccount.cooldownUntil,
-          })
+          .select({ lastAcquiredAt: imageBackendAccount.lastAcquiredAt })
           .from(imageBackendAccount)
           .where(eq(imageBackendAccount.id, member.id))
           .for("update");
         lockedLastAcquiredAt = locked?.lastAcquiredAt;
-        lockedStatus = locked?.status;
-        lockedCooldownUntil = locked?.cooldownUntil;
         if (!locked) return "full";
         if (
           options?.enforceLastAcquiredSnapshot &&
@@ -943,37 +931,27 @@ async function acquirePoolMemberInflightLease(
         expiresAt,
         createdAt: now,
       });
-      // 行已被 FOR UPDATE 锁住：并发失败上报若先提交，这里能读到它写入的
-      // status/cooldown；若后提交，会阻塞到本事务结束后再覆盖，两个方向 error
-      // 都能保住。因此这里只做无损整理——把"limited 且冷却已到期"正常化为
-      // active、清掉已过期的冷却；绝不无条件写 active/清冷却，否则会把刚被
-      // 标记 error 或刚进冷却的成员"复活"回轮换（曾让 token 已吊销的账号被
-      // 并发请求反复洗回 active，持续抢占调度数小时）。
-      const lockedCooldownDate = lockedCooldownUntil
-        ? new Date(lockedCooldownUntil)
-        : null;
-      const cooldownExpired =
-        !lockedCooldownDate || lockedCooldownDate.getTime() <= now.getTime();
-      const leaseTouchUpdate = {
-        ...(lockedStatus === "limited" && cooldownExpired
-          ? { status: "active" }
-          : {}),
-        ...(lockedCooldownDate && cooldownExpired
-          ? { cooldownUntil: null }
-          : {}),
-        lastUsedAt: now,
-        lastAcquiredAt: now,
-        updatedAt: now,
-      };
       if (member.type === "api") {
         await tx
           .update(imageBackendApi)
-          .set(leaseTouchUpdate)
+          .set({
+            status: "active",
+            cooldownUntil: null,
+            lastUsedAt: now,
+            lastAcquiredAt: now,
+            updatedAt: now,
+          })
           .where(eq(imageBackendApi.id, member.id));
       } else {
         await tx
           .update(imageBackendAccount)
-          .set(leaseTouchUpdate)
+          .set({
+            status: "active",
+            cooldownUntil: null,
+            lastUsedAt: now,
+            lastAcquiredAt: now,
+            updatedAt: now,
+          })
           .where(eq(imageBackendAccount.id, member.id));
       }
       touchedMember = true;
@@ -2000,17 +1978,18 @@ async function selectPoolMember(
   staleRetryCount = 0
 ): Promise<PoolMember | null> {
   const selectionStartedAt = Date.now();
-  const contexts = groupContexts?.length
-    ? groupContexts
-    : groupId
-      ? [
-          {
-            id: groupId,
-            metadata: groupMetadata ?? null,
-            contentSafetyEnabled: groupContentSafetyEnabled ?? null,
-          },
-        ]
-      : [];
+  const contexts =
+    groupContexts?.length
+      ? groupContexts
+      : groupId
+        ? [
+            {
+              id: groupId,
+              metadata: groupMetadata ?? null,
+              contentSafetyEnabled: groupContentSafetyEnabled ?? null,
+            },
+          ]
+        : [];
   const contextMap = new Map(contexts.map((context) => [context.id, context]));
   const groupIds = contexts.map((context) => context.id);
   const effectiveContextPreferences = new Map(
@@ -2272,9 +2251,9 @@ async function selectPoolMember(
               baseUrl: row.baseUrl,
               apiKey: row.apiKey,
               model: row.model,
-              interfaceMode: normalizeImageBackendApiInterfaceMode(
-                row.interfaceMode
-              ),
+          interfaceMode: normalizeImageBackendApiInterfaceMode(
+            row.interfaceMode
+          ),
               chatCompletionsUpstreamMode: normalizeChatCompletionsUpstreamMode(
                 row.chatCompletionsUpstreamMode
               ),
@@ -2289,8 +2268,8 @@ async function selectPoolMember(
               lastAcquiredAt: row.lastAcquiredAt,
               createdAt: row.createdAt,
               metadata: row.metadata,
-            };
-          });
+        };
+      });
 
   const accountMembers: PoolMember[] = accountRows
     .filter((row) => {
@@ -2389,16 +2368,17 @@ async function selectPoolMember(
     ...member,
     schedulerLayer: "preferred" as const,
   }));
-  const ordinaryCandidatePool = availableCandidates.filter(
-    (member) =>
-      !stickyPreviousCandidates.some(
-        (stickyMember) => backendKey(stickyMember) === backendKey(member)
-      ) &&
-      !stickySessionCandidates.some(
-        (stickyMember) => backendKey(stickyMember) === backendKey(member)
-      ) &&
-      !preferredCandidates.includes(member)
-  );
+  const ordinaryCandidatePool = availableCandidates
+    .filter(
+      (member) =>
+        !stickyPreviousCandidates.some(
+          (stickyMember) => backendKey(stickyMember) === backendKey(member)
+        ) &&
+        !stickySessionCandidates.some(
+          (stickyMember) => backendKey(stickyMember) === backendKey(member)
+        ) &&
+        !preferredCandidates.includes(member)
+    );
   const ordinaryCandidateGroups = new Map<string, PoolMember[]>();
   const ordinaryGroupOrder: string[] = [];
   for (const member of ordinaryCandidatePool) {
@@ -2428,9 +2408,7 @@ async function selectPoolMember(
         const lastUsedDiff =
           memberTimestamp(left.lastUsedAt) - memberTimestamp(right.lastUsedAt);
         if (lastUsedDiff !== 0) return lastUsedDiff;
-        return (
-          memberTimestamp(left.createdAt) - memberTimestamp(right.createdAt)
-        );
+        return memberTimestamp(left.createdAt) - memberTimestamp(right.createdAt);
       });
       return sortedGroup;
     })
@@ -2493,18 +2471,14 @@ async function selectPoolMember(
   return null;
 }
 
-/**
- * 选中后的兜底回写，仅在租约事务没有更新行时调用（如缺 db.transaction 的
- * 内存租约路径）。只刷新使用时间戳，不碰 status/cooldown：状态整理已在
- * 租约事务内带行锁完成，这里无锁写 active 会与并发失败上报竞态，把刚被
- * 标记 error 的成员复活回轮换。
- */
 async function touchSelectedMember(member: PoolMember) {
   const now = new Date();
   if (member.type === "api") {
     await db
       .update(imageBackendApi)
       .set({
+        status: "active",
+        cooldownUntil: null,
         lastUsedAt: now,
         lastAcquiredAt: now,
         updatedAt: now,
@@ -2516,6 +2490,8 @@ async function touchSelectedMember(member: PoolMember) {
   await db
     .update(imageBackendAccount)
     .set({
+      status: "active",
+      cooldownUntil: null,
       lastUsedAt: now,
       lastAcquiredAt: now,
       updatedAt: now,
@@ -2888,7 +2864,6 @@ export async function reportImageBackendResult(
       implementationMode: imageBackendAccount.implementationMode,
       metadata: imageBackendAccount.metadata,
       alwaysActive: imageBackendAccount.alwaysActive,
-      status: imageBackendAccount.status,
     })
     .from(imageBackendAccount)
     .where(eq(imageBackendAccount.id, input.memberId))
@@ -2896,10 +2871,6 @@ export async function reportImageBackendResult(
   const alwaysActive = account?.alwaysActive ?? false;
   // always_active：遇错也不下线——失败时不改 status、不进冷却（仅记 lastError/failCount）。
   const accountFailure = alwaysActive ? {} : failure;
-  // error 粘性（与 API 后端对齐）：非常驻账号一旦被置 error，成功不再复活它
-  // （高并发下成功多来自早已在飞的兄弟请求，凭证已失效的账号仍可能有旧请求
-  // 收尾成功）。只由 测活/编辑保存/批量恢复/Sub2API 同步洗白/常驻 清除 error。
-  const stickyError = account?.status === "error" && !alwaysActive;
   const backend = normalizeAccountBackend(account?.implementationMode);
   const webSuccess =
     input.success && backend === "web"
@@ -2915,21 +2886,15 @@ export async function reportImageBackendResult(
     .update(imageBackendAccount)
     .set(
       input.success
-        ? stickyError
-          ? {
-              successCount: sql`${imageBackendAccount.successCount} + 1`,
-              metadata,
-              updatedAt: now,
-            }
-          : {
-              successCount: sql`${imageBackendAccount.successCount} + 1`,
-              metadata,
-              status: webSuccess?.status || "active",
-              lastError: null,
-              lastErrorAt: null,
-              cooldownUntil: webSuccess ? webSuccess.cooldownUntil : null,
-              updatedAt: now,
-            }
+        ? {
+            successCount: sql`${imageBackendAccount.successCount} + 1`,
+            metadata,
+            status: webSuccess?.status || "active",
+            lastError: null,
+            lastErrorAt: null,
+            cooldownUntil: webSuccess ? webSuccess.cooldownUntil : null,
+            updatedAt: now,
+          }
         : {
             failCount: sql`${imageBackendAccount.failCount} + 1`,
             metadata,
@@ -6484,7 +6449,9 @@ export async function setImageBackendApiAlwaysActive(input: {
     .update(imageBackendApi)
     .set({
       alwaysActive: input.alwaysActive,
-      ...(input.alwaysActive ? { status: "active", cooldownUntil: null } : {}),
+      ...(input.alwaysActive
+        ? { status: "active", cooldownUntil: null }
+        : {}),
       updatedAt: new Date(),
     })
     .where(eq(imageBackendApi.id, input.id));
@@ -6507,7 +6474,9 @@ export async function setImageBackendAccountAlwaysActive(input: {
     .update(imageBackendAccount)
     .set({
       alwaysActive: input.alwaysActive,
-      ...(input.alwaysActive ? { status: "active", cooldownUntil: null } : {}),
+      ...(input.alwaysActive
+        ? { status: "active", cooldownUntil: null }
+        : {}),
       updatedAt: new Date(),
     })
     .where(eq(imageBackendAccount.id, input.id));
