@@ -8,7 +8,7 @@ import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { authenticateExternalApiRequest } from "@/features/external-api/auth";
+import { authenticateExternalApiRequest } from "@repo/shared/external-api/auth";
 import {
   fetchPublicImage,
   readResponseBytesWithLimit,
@@ -24,7 +24,7 @@ import {
   toExternalGenerationUsage,
   toLoggedOpenAIErrorPayload,
   wantsImageStreamResponse,
-} from "@/features/external-api/images";
+} from "@repo/image-generation/external-api-images";
 import { runBatchImageGeneration } from "@repo/image-generation/batch-runner";
 import { runImageGenerationForUser } from "@repo/image-generation/operations";
 import {

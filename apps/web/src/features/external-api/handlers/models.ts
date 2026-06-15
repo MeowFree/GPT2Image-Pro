@@ -2,8 +2,8 @@ import { withApiLogging } from "@repo/shared/api-logger";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { canUsePlanCapability } from "@repo/shared/subscription/services/plan-capabilities";
-import { authenticateExternalApiRequest } from "@/features/external-api/auth";
-import { getExternalModelsForUser } from "@/features/external-api/models";
+import { authenticateExternalApiRequest } from "@repo/shared/external-api/auth";
+import { getExternalModelsForUser } from "@repo/image-generation/external-api-models";
 
 function openAIError(message: string, status = 400, code?: string) {
   return NextResponse.json(

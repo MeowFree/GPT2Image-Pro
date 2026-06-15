@@ -8,11 +8,11 @@ import { getRuntimeSettingNumber } from "@repo/shared/system-settings";
 import {
   refreshStaleWebBackendAccounts,
   runAutoSub2ApiAccessTokenSync,
-} from "@repo/image-generation/image-backend/service";
+} from "./image-backend/service";
 import {
   buildCreditsExpireResponse,
   summarizeExpiredPendingGenerations,
-} from "@/server/scheduled-jobs-response";
+} from "@repo/shared/jobs/scheduled-jobs-response";
 
 /**
  * 单次图像维护 cron 扫描的最大处理行数。

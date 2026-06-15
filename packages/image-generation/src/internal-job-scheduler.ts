@@ -11,7 +11,7 @@ import {
   runImageMaintenanceJob,
   runSub2ApiSyncJob,
   runWebAccountsRefreshJob,
-} from "./scheduled-jobs";
+} from "./jobs-scheduled";
 
 type InternalJob = {
   name: string;

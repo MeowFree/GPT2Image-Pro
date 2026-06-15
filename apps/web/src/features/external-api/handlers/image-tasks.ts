@@ -3,9 +3,9 @@ import type { NextRequest } from "next/server";
 import {
   getAsyncImageTask,
   toAsyncImageTaskResponse,
-} from "@/features/external-api/async-image-tasks";
-import { authenticateExternalApiRequest } from "@/features/external-api/auth";
-import { openAIImageError } from "@/features/external-api/images";
+} from "@repo/shared/external-api/async-image-tasks";
+import { authenticateExternalApiRequest } from "@repo/shared/external-api/auth";
+import { openAIImageError } from "@repo/image-generation/external-api-images";
 
 export const getExternalImageTask = withApiLogging(
   async (

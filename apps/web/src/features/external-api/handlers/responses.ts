@@ -11,7 +11,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { authenticateExternalApiRequest } from "@/features/external-api/auth";
+import { authenticateExternalApiRequest } from "@repo/shared/external-api/auth";
 import {
   fetchPublicImage,
   readResponseBytesWithLimit,
@@ -25,8 +25,8 @@ import {
   toOpenAIResponseImageItem,
   toOpenAIResponseTextItem,
   wantsImageStreamResponse,
-} from "@/features/external-api/images";
-import { isExternalResponsesImageModelAllowed } from "@/features/external-api/models";
+} from "@repo/image-generation/external-api-images";
+import { isExternalResponsesImageModelAllowed } from "@repo/image-generation/external-api-models";
 import { runImageGenerationForUser } from "@repo/image-generation/operations";
 import { bindImageBackendStickyMember } from "@repo/image-generation/image-backend/service";
 import {

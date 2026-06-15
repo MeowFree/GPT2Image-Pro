@@ -1,11 +1,10 @@
-import crypto from "node:crypto";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { withApiLogging } from "@repo/shared/api-logger";
-import { logError, logWarn } from "@repo/shared/logger";
-
-import { runCreditsExpireJob } from "@/server/scheduled-jobs";
+import { validateCronSecret } from "@repo/shared/jobs/cron-auth";
+import { runCreditsExpireJob } from "@repo/image-generation/jobs-scheduled";
+import { logError } from "@repo/shared/logger";
 
 /**
  * 积分过期处理 Cron Job API
@@ -16,38 +15,6 @@ import { runCreditsExpireJob } from "@/server/scheduled-jobs";
  * advisory lock）；外部 cron 以携带 Bearer CRON_SECRET 调用 POST 作为回退。
  * 部署为 Docker Compose + Nginx，不使用 Vercel Cron。
  */
-
-/**
- * 验证 Cron Job 请求的 Bearer Token
- */
-function validateCronSecret(authHeader: string | null): boolean {
-  if (!authHeader) return false;
-
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    logWarn("CRON_SECRET environment variable is not set");
-    return false;
-  }
-
-  // 支持 Bearer Token 格式
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : authHeader;
-
-  if (!token) return false;
-
-  const tokenHash = crypto
-    .createHash("sha256")
-    .update(Buffer.from(token))
-    .digest();
-  const secretHash = crypto
-    .createHash("sha256")
-    .update(Buffer.from(cronSecret))
-    .digest();
-  // 长度不一致时 timingSafeEqual 会抛错，先行短路保持与其它 cron 路由一致
-  if (tokenHash.length !== secretHash.length) return false;
-  return crypto.timingSafeEqual(tokenHash, secretHash);
-}
 
 /**
  * POST /api/jobs/credits/expire

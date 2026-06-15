@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   uploadTemporaryImageUrls: vi.fn(),
 }));
 
-vi.mock("@/features/external-api/auth", () => ({
+vi.mock("@repo/shared/external-api/auth", () => ({
   authenticateExternalApiRequest: mocks.authenticateExternalApiRequest,
 }));
 

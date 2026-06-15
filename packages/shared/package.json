@@ -79,7 +79,13 @@
     "./mcp/user-key-actions": "./src/mcp/user-key-actions.ts",
     "./external-api/safe-image-fetch": "./src/external-api/safe-image-fetch.ts",
     "./external-api/quota": "./src/external-api/quota.ts",
-    "./external-api/quota-math": "./src/external-api/quota-math.ts"
+    "./external-api/quota-math": "./src/external-api/quota-math.ts",
+    "./external-api/auth": "./src/external-api/auth.ts",
+    "./external-api/auth-token": "./src/external-api/auth-token.ts",
+    "./external-api/async-image-tasks": "./src/external-api/async-image-tasks.ts",
+    "./jobs/scheduled-jobs-response": "./src/jobs/scheduled-jobs-response.ts",
+
+    "./jobs/cron-auth": "./src/jobs/cron-auth.ts"
   },
   "scripts": {
     "test": "vitest run --config vitest.config.ts",

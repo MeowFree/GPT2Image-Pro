@@ -1,44 +1,15 @@
-import crypto from "node:crypto";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { withApiLogging } from "@repo/shared/api-logger";
 import { IMAGE_GENERATION_PENDING_TIMEOUT_MS } from "@repo/shared/generation-maintenance";
-import { logWarn } from "@repo/shared/logger";
-
-import { runImageMaintenanceJob } from "@/server/scheduled-jobs";
+import { validateCronSecret } from "@repo/shared/jobs/cron-auth";
+import { runImageMaintenanceJob } from "@repo/image-generation/jobs-scheduled";
 
 /** 超时 pending 生成的阈值（分钟），由共享常量推导以避免文案与真实阈值漂移 */
 const PENDING_TIMEOUT_MINUTES = Math.round(
   IMAGE_GENERATION_PENDING_TIMEOUT_MS / 60_000
 );
-
-function validateCronSecret(authHeader: string | null): boolean {
-  if (!authHeader) return false;
-
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    logWarn("CRON_SECRET environment variable is not set");
-    return false;
-  }
-
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : authHeader;
-  if (!token) return false;
-
-  const tokenHash = crypto
-    .createHash("sha256")
-    .update(Buffer.from(token))
-    .digest();
-  const secretHash = crypto
-    .createHash("sha256")
-    .update(Buffer.from(cronSecret))
-    .digest();
-
-  if (tokenHash.length !== secretHash.length) return false;
-  return crypto.timingSafeEqual(tokenHash, secretHash);
-}
 
 export const POST = withApiLogging(async () => {
   const headersList = await headers();

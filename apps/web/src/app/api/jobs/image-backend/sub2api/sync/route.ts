@@ -1,27 +1,9 @@
-import crypto from "node:crypto";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { withApiLogging } from "@repo/shared/api-logger";
-
-import { runSub2ApiSyncJob } from "@/server/scheduled-jobs";
-
-async function validateCronSecret(authHeader: string | null) {
-  if (!authHeader) return false;
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return false;
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : authHeader;
-  if (!token) return false;
-  const tokenHash = crypto.createHash("sha256").update(Buffer.from(token)).digest();
-  const secretHash = crypto
-    .createHash("sha256")
-    .update(Buffer.from(cronSecret))
-    .digest();
-  if (tokenHash.length !== secretHash.length) return false;
-  return crypto.timingSafeEqual(tokenHash, secretHash);
-}
+import { validateCronSecret } from "@repo/shared/jobs/cron-auth";
+import { runSub2ApiSyncJob } from "@repo/image-generation/jobs-scheduled";
 
 export const POST = withApiLogging(async (request: Request) => {
   const headersList = await headers();

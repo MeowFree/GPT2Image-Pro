@@ -41,7 +41,11 @@
     "./image-backend/group-billing": "./src/image-backend/group-billing.ts",
     "./image-backend/import-token-parser": "./src/image-backend/import-token-parser.ts",
     "./image-backend/scheduler-selection": "./src/image-backend/scheduler-selection.ts",
-    "./matte": "./src/matte.ts"
+    "./matte": "./src/matte.ts",
+    "./external-api-images": "./src/external-api-images.ts",
+    "./external-api-models": "./src/external-api-models.ts",
+    "./jobs-scheduled": "./src/jobs-scheduled.ts",
+    "./internal-job-scheduler": "./src/internal-job-scheduler.ts"
   },
   "scripts": {
     "test": "vitest run --config vitest.config.ts",

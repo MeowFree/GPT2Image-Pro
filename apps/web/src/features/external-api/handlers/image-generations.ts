@@ -15,8 +15,8 @@ import {
   postAsyncImageCallback,
   toAsyncImageTaskResponse,
   validateCallbackUrl,
-} from "@/features/external-api/async-image-tasks";
-import { authenticateExternalApiRequest } from "@/features/external-api/auth";
+} from "@repo/shared/external-api/async-image-tasks";
+import { authenticateExternalApiRequest } from "@repo/shared/external-api/auth";
 import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
@@ -30,7 +30,7 @@ import {
   toOpenAIErrorPayload,
   toOpenAIImagesResponse,
   wantsImageStreamResponse,
-} from "@/features/external-api/images";
+} from "@repo/image-generation/external-api-images";
 import { runBatchImageGeneration } from "@repo/image-generation/batch-runner";
 import { runImageGenerationForUser } from "@repo/image-generation/operations";
 import {

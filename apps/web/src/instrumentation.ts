@@ -17,7 +17,7 @@ export async function register() {
     );
     await bootstrapSelfUseSuperAdmin();
     const { startInternalJobScheduler } = await import(
-      "./server/internal-job-scheduler"
+      "@repo/image-generation/internal-job-scheduler"
     );
     await startInternalJobScheduler();
     // Sentry 服务端初始化

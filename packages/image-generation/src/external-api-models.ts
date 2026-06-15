@@ -10,7 +10,7 @@ import {
 } from "@repo/shared/config/subscription-plan";
 import { getPlanCapabilitySnapshot } from "@repo/shared/subscription/services/plan-capabilities";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
-import { DEFAULT_IMAGE_MODEL } from "@repo/image-generation/resolution";
+import { DEFAULT_IMAGE_MODEL } from "./resolution";
 
 const DEFAULT_MODEL_OWNER = "gpt2image";
 

@@ -11,7 +11,7 @@ import { getPlanUploadLimits } from "@repo/shared/subscription/services/upload-l
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import type { NextRequest } from "next/server";
 
-import { authenticateExternalApiRequest } from "@/features/external-api/auth";
+import { authenticateExternalApiRequest } from "@repo/shared/external-api/auth";
 import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
@@ -20,7 +20,7 @@ import {
   openAIImageError,
   toOpenAIErrorPayload,
   wantsImageStreamResponse,
-} from "@/features/external-api/images";
+} from "@repo/image-generation/external-api-images";
 import {
   fetchPublicImage,
   readResponseBytesWithLimit,
