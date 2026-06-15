@@ -34,9 +34,16 @@
 - Dependabot 已忽略 semver-major（npm + actions）；major 升级人工评估
 - **kysely 被 pnpm override 钉在 0.28.17**（根 package.json）：better-auth 1.6 放宽 peer 让 kysely 浮到 0.29，而 0.29 把迁移导出迁到 `kysely/migration` 子路径、随 better-auth 打包的 kysely-adapter 仍从根导入 → next build 编译炸。待上游修复后移除（见 docs/TODO.md）
 
+## 多平台分割（进行中）
+
+- **分支 `feat/multi-app-split`**：4-app 拆分（web/admin/api/platform）
+- **Phase 0 完成**（a2376e5, faf8845）：packages/image-generation 创建（30+核心文件+image-backend-pool服务层），external-api 核心+scheduled-jobs 提升到共享包
+- Phase 1 进行中：apps/platform 脚手架+营销/文档迁移
+- 详见 [计划文件](../docs/plan/) 和 [TODO.md](TODO.md)
+
 ## 关键架构事实
 
-- 5 个 v1 handler 最终汇入 `apps/web/src/features/image-generation/operations.ts` 同一管线（`runImageGenerationForUser`）
+- 5 个 v1 handler 最终汇入 `packages/image-generation/src/operations.ts` 同一管线（`runImageGenerationForUser`）
 - 财务真相在 `credits_transaction`（双重记账），不在 `generation` 行；`generation` 仅历史/画廊展示
 - 扣费幂等键：`consumeCredits(sourceRef)` + `credits_transaction (type, source_ref)` 偏唯一索引（opt-in，不传则行为不变）
 - 发放/退款幂等键：`credits_batch (source_type, source_ref)` 偏唯一索引

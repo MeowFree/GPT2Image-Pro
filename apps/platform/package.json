@@ -1,0 +1,38 @@
+{
+  "name": "@repo/platform",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack --port 3003",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint ."
+  },
+  "dependencies": {
+    "@repo/database": "workspace:*",
+    "@repo/image-generation": "workspace:*",
+    "@repo/shared": "workspace:*",
+    "@repo/ui": "workspace:*",
+    "better-auth": "^1.6.14",
+    "drizzle-orm": "^0.45.2",
+    "framer-motion": "^12.40.0",
+    "fumadocs-core": "^16.9.3",
+    "fumadocs-mdx": "^14.3.2",
+    "fumadocs-ui": "^16.9.3",
+    "lucide-react": "^0.577.0",
+    "next": "16.2.7",
+    "next-intl": "^4.13.0",
+    "next-themes": "^0.4.6",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "sonner": "^2.0.7",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.6",
+    "typescript": "^5.8.3"
+  }
+}
