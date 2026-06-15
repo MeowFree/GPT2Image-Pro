@@ -24,15 +24,15 @@ vi.mock("@repo/shared/subscription/services/user-plan", () => ({
   getUserPlan: mocks.getUserPlan,
 }));
 
-vi.mock("@/features/image-generation/operations", () => ({
+vi.mock("@repo/image-generation/operations", () => ({
   runImageGenerationForUser: mocks.runImageGenerationForUser,
 }));
 
-vi.mock("@/features/image-generation/batch-runner", () => ({
+vi.mock("@repo/image-generation/batch-runner", () => ({
   runBatchImageGeneration: mocks.runBatchImageGeneration,
 }));
 
-vi.mock("@/features/image-generation/request-utils", () => ({
+vi.mock("@repo/image-generation/request-utils", () => ({
   uploadTemporaryImageUrls: mocks.uploadTemporaryImageUrls,
 }));
 
