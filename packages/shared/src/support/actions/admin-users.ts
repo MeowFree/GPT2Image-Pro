@@ -782,10 +782,16 @@ export const adminGrantCreditsAction = withAdminUsersAction("grantCredits")
     // 管理员手动充值的积分长期有效、不设过期(与系统赠送的免费积分区分)。
     const expiresAt = null;
 
+    // 幂等键：确保同一管理员对同一用户的充值操作不会因重复提交而重复入账。
+    // grantCredits 内部通过 credits_batch(source_type, source_ref) 的
+    // onConflictDoNothing 实现幂等；缺少 sourceRef 会绕过该检查。
+    const sourceRef = `admin_grant:${ctx.userId}:${data.userId}:${Date.now()}`;
+
     const result = await grantCredits({
       userId: data.userId,
       amount: data.amount,
       sourceType: "bonus",
+      sourceRef,
       debitAccount: `ADMIN:${ctx.userId}`,
       transactionType: "admin_grant",
       expiresAt,

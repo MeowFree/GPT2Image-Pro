@@ -274,6 +274,13 @@
       "when": 1780400661000,
       "tag": "0038_image_backend_api_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1780400720000,
+      "tag": "0039_add_subscription_user_id_index",
+      "breakpoints": true
     }
   ]
 }

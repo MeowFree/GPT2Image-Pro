@@ -2561,16 +2561,8 @@ async function runQueuedImageGenerationForUser({
       storageError instanceof Error
         ? storageError.message
         : "Unknown storage error";
-    await db
-      .update(generation)
-      .set({
-        status: "failed",
-        error: `Storage error: ${message}`,
-        metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
-          metadataWithPromptRepair({})
-        )}::jsonb`,
-      })
-      .where(isPendingGeneration(generationId));
+    // 先结算积分，再写库。settleChargedCredits 可能修改 chargedCredits，
+    // 必须在 UPDATE 之前完成，这样 creditsConsumed 才能拿到结算后的值。
     try {
       await settleChargedCredits(
         getFailedGenerationTargetCredits({
@@ -2589,9 +2581,21 @@ async function runQueuedImageGenerationForUser({
     } catch {
       /* best effort settlement */
     }
+    // 必须在单次 UPDATE 中同时写入 status、error、metadata 和
+    // creditsConsumed：isPendingGeneration 要求 status='pending'，
+    // 若先把 status 改为 'failed'，后续以同一 WHERE 条件写
+    // creditsConsumed 的 UPDATE 将匹配不到任何行，导致积分消耗
+    // 永远不会落库。
     await db
       .update(generation)
-      .set({ creditsConsumed: chargedCredits })
+      .set({
+        status: "failed",
+        error: `Storage error: ${message}`,
+        metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
+          metadataWithPromptRepair({})
+        )}::jsonb`,
+        creditsConsumed: chargedCredits,
+      })
       .where(isPendingGeneration(generationId));
     return {
       error: "Failed to save image",

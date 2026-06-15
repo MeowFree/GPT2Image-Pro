@@ -185,6 +185,8 @@ export default async function GalleryPage({ searchParams }: GalleryPageProps) {
     draftPrimaryCountResult,
     draftParentRows,
     uploadParentRows,
+    draftCountResult,
+    uploadCountResult,
     timeZone,
   ] = await Promise.all([
     isFinalTab
@@ -204,12 +206,19 @@ export default async function GalleryPage({ searchParams }: GalleryPageProps) {
       .select()
       .from(generation)
       .where(draftCondition)
-      .orderBy(desc(generation.createdAt)),
+      .orderBy(desc(generation.createdAt))
+      .limit(limit),
     db
       .select()
       .from(generation)
       .where(uploadCondition)
-      .orderBy(desc(generation.createdAt)),
+      .orderBy(desc(generation.createdAt))
+      .limit(limit),
+    // 徽章计数：独立 COUNT 查询，避免加载全部行到内存
+    // 注意：draft 的 COUNT 是父行数（近似值），因为每个父行可能通过
+    // extractAgentDraftGenerations 展开为多个子项，但作为徽章计数足够
+    db.select({ count: count() }).from(generation).where(draftCondition),
+    db.select({ count: count() }).from(generation).where(uploadCondition),
     getAppTimeZone(),
   ]);
 
@@ -245,14 +254,14 @@ export default async function GalleryPage({ searchParams }: GalleryPageProps) {
   const finalCount =
     (completedStorageCountResult[0]?.count ?? 0) -
     (draftPrimaryCountResult[0]?.count ?? 0);
+  const draftCount = draftCountResult[0]?.count ?? 0;
+  const uploadCount = uploadCountResult[0]?.count ?? 0;
   const totalCount =
     activeTab === "agent-drafts"
-      ? allDraftItems.length
+      ? draftCount
       : activeTab === "uploads"
-        ? allUploadItems.length
+        ? uploadCount
         : finalCount;
-  const draftCount = allDraftItems.length;
-  const uploadCount = allUploadItems.length;
 
   return (
     <div className="container mx-auto space-y-8 px-4 py-6 md:px-6">

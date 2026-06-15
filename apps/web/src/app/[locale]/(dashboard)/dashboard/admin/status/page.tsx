@@ -1369,7 +1369,8 @@ async function loadStatusData() {
       })
       .from(generation)
       .where(gte(generation.createdAt, last7d))
-      .orderBy(desc(generation.createdAt)),
+      .orderBy(desc(generation.createdAt))
+      .limit(10000),
     db
       .select({
         total: count(),
@@ -1614,6 +1615,8 @@ async function loadStatusData() {
   ]);
 
   const rows = recentGenerationRows satisfies GenerationMetricRow[];
+  // 查询已加 .limit(10000) 防止内存溢出;若行数触顶,统计为近似值
+  const rowsTruncated = rows.length >= 10000;
   const rows24h = rows.filter((row) => row.createdAt >= last24h);
   const stats24h = buildGenerationWindowStats(rows24h);
   const stats7d = buildGenerationWindowStats(rows);
@@ -1624,6 +1627,8 @@ async function loadStatusData() {
     now: now.toISOString(),
     stats24h,
     stats7d,
+    // 当 last7d 行数触达 limit(10000) 时为 true,表示统计为近似值
+    rowsTruncated,
     topErrors24h: topErrors(rows24h),
     generationTotals: generationTotals[0] ?? {
       total: 0,
@@ -1680,8 +1685,9 @@ async function loadStatusData() {
   };
 }
 
-// 全局状态聚合很重(全表 generation 聚合 ~2.6s 含逐行 jsonb 解析 + 拉 last7d 7 万行
-// /~270MB metadata 进 JS),且对所有 admin 相同、不依赖 searchParams、只需准实时。
+// 全局状态聚合较重(全表 generation 聚合含逐行 jsonb 解析);last7d 查询已加
+// .limit(10000) 防止无限内存增长,高峰期统计为近似值(rowsTruncated=true)。
+// 对所有 admin 相同、不依赖 searchParams、只需准实时。
 // 用 unstable_cache 缓存其结果(小聚合对象),120s 内重复打开秒开,后台按需重算。
 // 页面仍 force-dynamic(逐请求渲染),数据缓存与整页缓存相互独立。
 const getCachedStatusData = unstable_cache(

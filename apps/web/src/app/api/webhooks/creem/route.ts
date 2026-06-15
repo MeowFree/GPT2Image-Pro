@@ -229,6 +229,11 @@ async function handleCheckoutCompleted(data: CreemCheckoutCompletedData) {
   } else if (data.subscription) {
     // 订阅支付
     await createOrUpdateSubscription(userId, data.subscription);
+    // 防止 webhook 乱序:若 subscription.active 先于 checkout.completed 到达,
+    // handleSubscriptionActive 因找不到订阅记录而跳过积分发放。
+    // 此处也调用 grantSubscriptionCredits 确保至少一条路径成功发放。
+    // grantCredits 的 sourceRef 幂等机制防止重复发放。
+    await grantSubscriptionCredits(userId, data.subscription, "subscription_create");
   }
 
   logEvent("payment.checkout.completed", {
