@@ -2,69 +2,41 @@
 
 import { Menu, PanelLeft, PanelLeftClose } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useTranslations } from "next-intl";
 
 import { useSidebar } from "@/features/dashboard/context";
 import { cn } from "@repo/ui/utils";
 
 /**
- * 从路径名获取页面标题翻译键
+ * 从路径名获取页面标题
+ *
+ * 管理后台不需要 /admin 前缀
  */
-function getPageTitleKey(pathname: string): string {
+function getPageTitle(pathname: string): string {
   const path = pathname.replace(/^\/[a-z]{2}\//, "/");
-  const keyMap: Record<string, string> = {
-    "/dashboard": "dashboard",
-    "/dashboard/create": "create",
-    "/dashboard/gallery": "gallery",
-    "/dashboard/history": "history",
-    "/dashboard/generate": "generate",
-    "/dashboard/tasks": "tasks",
-    "/dashboard/decks": "myDecks",
-    "/dashboard/credits/buy": "creditsBuy",
-    "/dashboard/support": "support",
-    "/dashboard/support/new": "newTicket",
-    "/dashboard/announcements": "announcements",
-    "/dashboard/backend-help": "backendHelp",
-    "/dashboard/external-api": "externalApi",
-    "/dashboard/billing": "billing",
-    "/dashboard/settings": "settings",
-    "/dashboard/settings/profile": "profile",
-    "/dashboard/settings/security": "security",
-    "/dashboard/settings/notifications": "notifications",
+  const titleMap: Record<string, string> = {
+    "/dashboard": "Global Status",
+    "/dashboard/users": "User Management",
+    "/dashboard/announcements": "Announcement Management",
+    "/dashboard/settings": "System Settings",
   };
 
-  // 精确匹配
-  if (keyMap[path]) {
-    return keyMap[path];
-  }
-
-  // 动态路由匹配 (如 /dashboard/decks/[id], /dashboard/support/[id])
-  if (path.startsWith("/dashboard/decks/")) {
-    return "deckDetails";
-  }
-  if (path.startsWith("/dashboard/support/")) {
-    return "ticketDetails";
-  }
-
-  return "dashboard";
+  return titleMap[path] || "Dashboard";
 }
 
 /**
- * Dashboard 主内容区域包装器
+ * 管理后台主内容区域包装器
  *
- * 根据侧边栏折叠状态动态调整左边距
- * 内容区域为卡片样式，包含 Header 和内容
+ * 根据侧边栏折叠状态动态调整左边距。
+ * 与 apps/web 的区别：简化的页面标题映射，无翻译（管理后台暂用英文标题）。
  */
-export function DashboardMainWrapper({
+export function AdminMainWrapper({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const { isCollapsed, toggleSidebar, toggleMobile } = useSidebar();
   const pathname = usePathname();
-  const t = useTranslations("Dashboard.pages");
-  const pageTitleKey = getPageTitleKey(pathname);
-  const pageTitle = t(pageTitleKey);
+  const pageTitle = getPageTitle(pathname);
 
   return (
     <main
@@ -73,9 +45,9 @@ export function DashboardMainWrapper({
         isCollapsed ? "md:ml-16" : "md:ml-64"
       )}
     >
-      {/* 卡片容器 - Linear style: clean background, subtle border */}
+      {/* 卡片容器 */}
       <div className="min-h-[calc(100vh-20px)] rounded-lg bg-background border border-border flex flex-col">
-        {/* Header - 在卡片内部 */}
+        {/* Header */}
         <header className="flex h-12 items-center gap-3 border-b border-border px-4 shrink-0">
           {/* 移动端汉堡按钮 */}
           <button
@@ -99,7 +71,7 @@ export function DashboardMainWrapper({
             )}
           </button>
 
-          {/* 分割线 - 与文字等高，淡色 */}
+          {/* 分割线 */}
           <div className="h-4 w-px bg-border" />
 
           {/* 页面标题 */}

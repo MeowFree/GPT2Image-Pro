@@ -1229,3 +1229,131 @@ export const mcpApiKey = pgTable(
 
 export type McpApiKey = typeof mcpApiKey.$inferSelect;
 export type NewMcpApiKey = typeof mcpApiKey.$inferInsert;
+
+// ============================================
+// 管理员独立认证表 (Admin Auth)
+// ============================================
+// 与用户认证完全隔离：独立的 admin_user/admin_session/admin_account/admin_verification 表。
+// 管理员通过 admin.gpt2image.pro 独立登录入口访问，Cookie domain 仅限该子域。
+
+/**
+ * 管理员用户表 - 存储管理员基本信息
+ *
+ * 与普通用户表 (user) 完全隔离，使用独立的 Better Auth 实例。
+ *
+ * @field id - 管理员唯一标识符
+ * @field name - 管理员显示名称
+ * @field email - 管理员邮箱 (唯一)
+ * @field emailVerified - 邮箱是否已验证
+ * @field image - 管理员头像 URL
+ * @field role - 管理员角色 (默认 'admin')
+ * @field createdAt - 创建时间
+ * @field updatedAt - 更新时间
+ */
+export const adminUser = pgTable("admin_user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  image: text("image"),
+  role: text("role").notNull().default("admin"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * 管理员会话表 - 存储管理员登录会话
+ *
+ * @field id - 会话唯一标识符
+ * @field userId - 关联的管理员用户 ID
+ * @field token - 会话令牌 (用于验证)
+ * @field expiresAt - 会话过期时间
+ * @field ipAddress - 登录 IP 地址
+ * @field userAgent - 用户代理 (浏览器信息)
+ * @field createdAt - 创建时间
+ * @field updatedAt - 更新时间
+ */
+export const adminSession = pgTable("admin_session", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => adminUser.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * 管理员账户表 - 存储管理员认证提供商关联信息
+ *
+ * 仅支持邮箱/密码登录，不开放社交登录。
+ *
+ * @field id - 账户唯一标识符
+ * @field userId - 关联的管理员用户 ID
+ * @field accountId - 提供商返回的账户 ID
+ * @field providerId - 提供商标识符
+ * @field accessToken - 访问令牌
+ * @field refreshToken - 刷新令牌
+ * @field accessTokenExpiresAt - 访问令牌过期时间
+ * @field refreshTokenExpiresAt - 刷新令牌过期时间
+ * @field scope - 授权范围
+ * @field idToken - ID 令牌
+ * @field password - 密码哈希 (用于邮箱密码登录)
+ * @field createdAt - 创建时间
+ * @field updatedAt - 更新时间
+ */
+export const adminAccount = pgTable("admin_account", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => adminUser.id, { onDelete: "cascade" }),
+  accountId: text("account_id").notNull(),
+  providerId: text("provider_id").notNull(),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at"),
+  refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+  scope: text("scope"),
+  idToken: text("id_token"),
+  password: text("password"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * 管理员验证表 - 存储管理员邮箱验证和密码重置令牌
+ *
+ * @field id - 验证记录唯一标识符
+ * @field identifier - 标识符 (通常是邮箱地址)
+ * @field value - 验证值/令牌
+ * @field expiresAt - 过期时间
+ * @field createdAt - 创建时间
+ * @field updatedAt - 更新时间
+ */
+export const adminVerification = pgTable("admin_verification", {
+  id: text("id").primaryKey(),
+  identifier: text("identifier").notNull(),
+  value: text("value").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 管理员认证类型导出
+// ============================================
+
+export type AdminUser = typeof adminUser.$inferSelect;
+export type NewAdminUser = typeof adminUser.$inferInsert;
+
+export type AdminSession = typeof adminSession.$inferSelect;
+export type NewAdminSession = typeof adminSession.$inferInsert;
+
+export type AdminAccount = typeof adminAccount.$inferSelect;
+export type NewAdminAccount = typeof adminAccount.$inferInsert;
+
+export type AdminVerification = typeof adminVerification.$inferSelect;
+export type NewAdminVerification = typeof adminVerification.$inferInsert;

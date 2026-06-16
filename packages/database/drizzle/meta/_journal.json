@@ -281,6 +281,13 @@
       "when": 1780400720000,
       "tag": "0039_add_subscription_user_id_index",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1750118400000,
+      "tag": "0040_admin_auth_tables",
+      "breakpoints": true
     }
   ]
 }

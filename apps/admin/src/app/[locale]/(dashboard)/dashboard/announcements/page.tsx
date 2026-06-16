@@ -6,7 +6,7 @@ import { getUserRoleById } from "@repo/shared/auth/role-server";
 import { canAccessAdminArea } from "@repo/shared/auth/roles";
 import { getServerSession } from "@repo/shared/auth/server";
 import { getAppTimeZone } from "@repo/shared/time-zone/server";
-import { AdminAnnouncementsManagement } from "@/features/announcements/admin-announcements-management";
+import { AdminAnnouncementsManagement } from "@/features/announcements";
 
 export default async function DashboardAdminAnnouncementsPage() {
   const [session, locale] = await Promise.all([getServerSession(), getLocale()]);

@@ -9,6 +9,8 @@
     "./auth/email-domain": "./src/auth/email-domain.ts",
     "./auth/server": "./src/auth/server.ts",
     "./auth/admin": "./src/auth/admin.ts",
+    "./auth/admin-auth": "./src/auth/admin-auth.ts",
+    "./auth/admin-server": "./src/auth/admin-server.ts",
     "./auth/roles": "./src/auth/roles.ts",
     "./auth/role-server": "./src/auth/role-server.ts",
     "./auth/self-use-mode": "./src/auth/self-use-mode.ts",
