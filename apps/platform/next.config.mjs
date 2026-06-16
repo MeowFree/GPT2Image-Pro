@@ -14,7 +14,8 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 营销/文档站无需 standalone output（开发阶段）
+  // standalone 输出用于 Docker 多 app 部署
+  output: "standalone",
   transpilePackages: [
     "@repo/ui",
     "@repo/database",

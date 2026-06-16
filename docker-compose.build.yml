@@ -5,23 +5,15 @@ services:
     image: gpt2image-pro-migrate:local
     build:
       context: .
-      dockerfile: Dockerfile.web
+      dockerfile: Dockerfile.multi
       target: migrator
-      args:
-        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-GPT2IMAGE}
-        NEXT_PUBLIC_PAYMENT_PROVIDER: ${NEXT_PUBLIC_PAYMENT_PROVIDER:-none}
-        NEXT_PUBLIC_GENERATIONS_BUCKET_NAME: ${NEXT_PUBLIC_GENERATIONS_BUCKET_NAME:-generations}
-        NEXT_PUBLIC_AVATARS_BUCKET_NAME: ${NEXT_PUBLIC_AVATARS_BUCKET_NAME:-avatars}
-        NEXT_PUBLIC_ASSET_PREFIX: ${NEXT_PUBLIC_ASSET_PREFIX:-}
-        NEXT_PUBLIC_GA_ID: ${NEXT_PUBLIC_GA_ID:-}
-        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
 
-  web:
-    image: gpt2image-pro-web:local
+  # 多 app 单容器（PM2 管理 web/admin/api/platform 4 个进程）
+  app:
+    image: gpt2image-pro-app:local
     build:
       context: .
-      dockerfile: Dockerfile.web
+      dockerfile: Dockerfile.multi
       target: runner
       args:
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
@@ -32,6 +24,8 @@ services:
         NEXT_PUBLIC_ASSET_PREFIX: ${NEXT_PUBLIC_ASSET_PREFIX:-}
         NEXT_PUBLIC_GA_ID: ${NEXT_PUBLIC_GA_ID:-}
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3002}
+        NEXT_PUBLIC_PLATFORM_URL: ${NEXT_PUBLIC_PLATFORM_URL:-http://localhost:3003}
 
   chatgpt-web-proxy:
     image: gpt2image-pro-chatgpt-web-proxy:local

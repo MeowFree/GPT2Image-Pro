@@ -31,25 +31,30 @@ services:
         condition: service_healthy
     restart: "no"
 
-  web:
-    image: ghcr.io/meowfree/gpt2image-pro-web:${GPT2IMAGE_IMAGE_TAG:-latest}
+  # 单容器多 app 服务（PM2 管理 4 个 Next.js 进程）
+  app:
+    image: ghcr.io/meowfree/gpt2image-pro-app:${GPT2IMAGE_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
       - ${GPT2IMAGE_ENV_FILE:-.env}
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-gpt2image}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gpt2image}
       # 鉴权必填:未配置会导致所有人(含超管)登录失败,务必先在 env 文件中设置。
-      # BETTER_AUTH_SECRET: 会话/Cookie 签名密钥(随机长字符串,如 `openssl rand -base64 32`)。
-      # BETTER_AUTH_URL: 站点对外访问地址(如 https://your-domain),须与浏览器实际访问的域名一致,
-      #   否则登录回调/Cookie 域不匹配,超管也进不去。
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET 必填:会话签名密钥,未设置将无法登录}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL 必填:须为站点公网访问地址(如 https://your-domain),否则登录失败}
+      ADMIN_AUTH_URL: ${ADMIN_AUTH_URL:-http://localhost:3001}
+      ADMIN_BETTER_AUTH_SECRET: ${ADMIN_BETTER_AUTH_SECRET:-}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3002}
+      NEXT_PUBLIC_PLATFORM_URL: ${NEXT_PUBLIC_PLATFORM_URL:-http://localhost:3003}
       LOCAL_STORAGE_PATH: /app/storage
       CHATGPT_WEB_PROXY_URL: http://chatgpt-web-proxy:3021
       CHATGPT_WEB_PROXY_SECRET: ${CHATGPT_WEB_PROXY_SECRET:-}
       GPT2IMAGE_BOOTSTRAP_CREDENTIALS_PATH: /app/.gpt2image/super-admin-credentials.txt
     ports:
       - "${WEB_PORT:-3000}:3000"
+      - "${ADMIN_PORT:-3001}:3001"
+      - "${API_PORT:-3002}:3002"
+      - "${PLATFORM_PORT:-3003}:3003"
     volumes:
       - app-storage:/app/storage
       - app-bootstrap:/app/.gpt2image

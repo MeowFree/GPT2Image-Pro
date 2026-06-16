@@ -1,0 +1,145 @@
+# 多 app Docker 构建
+#
+# 单镜像包含 4 个 Next.js standalone 产物，PM2 多进程启动。
+# 基础镜像用 glibc(debian slim)而非 alpine(musl)：onnxruntime-node 只有 glibc 预编译，
+# musl 上 ISNet 抠图会加载失败。
+#
+# 构建产物路径说明：
+# Next.js standalone 输出到 apps/<name>/.next/standalone/，其中包含：
+#   - 根级 node_modules（所有 app 共享）
+#   - apps/<name>/server.js（入口）
+#   - apps/<name>/.next/（编译产物）
+# 多 app 的 standalone 合并时，后 COPY 的根 node_modules 会覆盖先前的，
+# 但因为所有 app 共享同一 monorepo 依赖，内容一致，不影响运行。
+
+FROM node:22-slim AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@10.27.0 --activate
+
+# --- 安装全量依赖（不 prune，因为需要构建全部 4 个 app）---
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/web/package.json apps/web/package.json
+COPY apps/admin/package.json apps/admin/package.json
+COPY apps/api/package.json apps/api/package.json
+COPY apps/platform/package.json apps/platform/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/shared/package.json packages/shared/package.json
+COPY packages/ui/package.json packages/ui/package.json
+COPY packages/image-generation/package.json packages/image-generation/package.json
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+
+# --- 数据库迁移（独立 target，可单独构建：docker build --target migrator）---
+FROM deps AS migrator
+WORKDIR /app
+COPY . .
+ENV NODE_ENV=production
+CMD ["pnpm", "--dir", "packages/database", "db:migrate"]
+
+# --- 构建全部 4 个 app ---
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app/apps/admin/node_modules ./apps/admin/node_modules
+COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=deps /app/apps/platform/node_modules ./apps/platform/node_modules
+COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules
+COPY --from=deps /app/packages/image-generation/node_modules ./packages/image-generation/node_modules
+COPY . .
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# 构建期占位环境变量（NEXT_PUBLIC_* 会被内联到客户端 bundle，运行时不可覆盖）
+ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
+ARG NEXT_PUBLIC_APP_NAME=GPT2IMAGE
+ARG NEXT_PUBLIC_PAYMENT_PROVIDER=none
+ARG NEXT_PUBLIC_GENERATIONS_BUCKET_NAME=generations
+ARG NEXT_PUBLIC_AVATARS_BUCKET_NAME=avatars
+ARG NEXT_PUBLIC_ASSET_PREFIX=
+ARG NEXT_PUBLIC_GA_ID=
+ARG NEXT_PUBLIC_SENTRY_DSN=
+ARG NEXT_PUBLIC_API_URL=http://localhost:3002
+ARG NEXT_PUBLIC_PLATFORM_URL=http://localhost:3003
+ARG DATABASE_URL=postgresql://gpt2image:gpt2image@localhost:5432/gpt2image
+ARG BETTER_AUTH_SECRET=build-time-placeholder-secret-not-for-runtime
+ARG BETTER_AUTH_URL=http://localhost:3000
+ARG ADMIN_AUTH_URL=http://localhost:3001
+ARG ADMIN_BETTER_AUTH_SECRET=build-time-placeholder-admin-secret
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
+ENV NEXT_PUBLIC_PAYMENT_PROVIDER=$NEXT_PUBLIC_PAYMENT_PROVIDER
+ENV NEXT_PUBLIC_GENERATIONS_BUCKET_NAME=$NEXT_PUBLIC_GENERATIONS_BUCKET_NAME
+ENV NEXT_PUBLIC_AVATARS_BUCKET_NAME=$NEXT_PUBLIC_AVATARS_BUCKET_NAME
+ENV NEXT_PUBLIC_ASSET_PREFIX=$NEXT_PUBLIC_ASSET_PREFIX
+ENV NEXT_PUBLIC_GA_ID=$NEXT_PUBLIC_GA_ID
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_PLATFORM_URL=$NEXT_PUBLIC_PLATFORM_URL
+ENV DATABASE_URL=$DATABASE_URL
+ENV BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
+ENV BETTER_AUTH_URL=$BETTER_AUTH_URL
+ENV ADMIN_AUTH_URL=$ADMIN_AUTH_URL
+ENV ADMIN_BETTER_AUTH_SECRET=$ADMIN_BETTER_AUTH_SECRET
+
+# 生成 fumadocs .source（web 和 platform 构建依赖）
+RUN pnpm --filter @repo/web exec fumadocs-mdx 2>/dev/null || true
+RUN pnpm --filter @repo/platform exec fumadocs-mdx 2>/dev/null || true
+
+# 构建全部 app（turbo 自动按依赖拓扑排序）
+RUN pnpm turbo build
+
+# --- 运行时 ---
+FROM node:22-slim AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV LOCAL_STORAGE_PATH=/app/storage
+ENV NEXT_PUBLIC_GENERATIONS_BUCKET_NAME=generations
+ENV NEXT_PUBLIC_AVATARS_BUCKET_NAME=avatars
+# ISNet 模型路径（web 和 api 都需要抠图能力）
+ENV ISNET_MODEL_PATH=/app/apps/web/models/isnet.onnx
+
+# 安装 PM2（多进程管理）
+RUN npm install -g pm2
+
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs nextjs
+
+# 复制 web 的 standalone 产物（第一个 COPY，建立根 node_modules）
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /app/apps/web/public ./apps/web/public
+
+# 复制 admin 的 standalone 产物
+COPY --from=builder /app/apps/admin/.next/standalone ./
+COPY --from=builder /app/apps/admin/.next/static ./apps/admin/.next/static
+
+# 复制 api 的 standalone 产物
+COPY --from=builder /app/apps/api/.next/standalone ./
+COPY --from=builder /app/apps/api/.next/static ./apps/api/.next/static
+
+# 复制 platform 的 standalone 产物
+COPY --from=builder /app/apps/platform/.next/standalone ./
+COPY --from=builder /app/apps/platform/.next/static ./apps/platform/.next/static
+COPY --from=builder /app/apps/platform/public ./apps/platform/public
+
+# PM2 生态系统配置
+COPY ecosystem.config.cjs ./
+
+# 创建必要目录并设置权限
+RUN mkdir -p /app/storage /app/.gpt2image /app/apps/web/.next/cache \
+    /app/apps/admin/.next/cache /app/apps/api/.next/cache /app/apps/platform/.next/cache && \
+    chown -R nextjs:nodejs /app/storage /app/.gpt2image \
+    /app/apps/web/.next /app/apps/admin/.next /app/apps/api/.next /app/apps/platform/.next
+
+USER nextjs
+EXPOSE 3000 3001 3002 3003
+ENV HOSTNAME="0.0.0.0"
+ENV GPT2IMAGE_BOOTSTRAP_CREDENTIALS_PATH=/app/.gpt2image/super-admin-credentials.txt
+
+CMD ["pm2-runtime", "ecosystem.config.cjs"]

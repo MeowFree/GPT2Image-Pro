@@ -20,13 +20,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # 多 app 单容器镜像（PM2 管理 web/admin/api/platform）
+          - name: app
+            image: gpt2image-pro-app
+            dockerfile: Dockerfile.multi
+            target: runner
+          # 单 app 镜像（向后兼容，仅 web）
           - name: web
             image: gpt2image-pro-web
             dockerfile: Dockerfile.web
             target: runner
           - name: migrate
             image: gpt2image-pro-migrate
-            dockerfile: Dockerfile.web
+            dockerfile: Dockerfile.multi
             target: migrator
           - name: chatgpt-web-proxy
             image: gpt2image-pro-chatgpt-web-proxy
@@ -67,6 +73,8 @@ jobs:
             NEXT_PUBLIC_PAYMENT_PROVIDER=none
             NEXT_PUBLIC_GENERATIONS_BUCKET_NAME=generations
             NEXT_PUBLIC_AVATARS_BUCKET_NAME=avatars
+            NEXT_PUBLIC_API_URL=http://localhost:3002
+            NEXT_PUBLIC_PLATFORM_URL=http://localhost:3003
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
@@ -79,8 +87,9 @@ jobs:
 
       - name: Prepare compose bundle
         run: |
-          mkdir -p dist
-          cp docker-compose.yml docker-compose.build.yml .env.docker.example README.md dist/
+          mkdir -p dist/nginx
+          cp docker-compose.yml docker-compose.build.yml .env.docker.example README.md ecosystem.config.cjs dist/
+          cp nginx/default.conf dist/nginx/
           tar -czf gpt2image-pro-${GITHUB_REF_NAME}.compose.tar.gz -C dist .
           zip -r gpt2image-pro-${GITHUB_REF_NAME}.compose.zip dist
 

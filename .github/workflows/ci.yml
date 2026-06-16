@@ -105,10 +105,11 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5（钉 SHA 防 tag 重指向；dependabot 维护）
       - uses: ./.github/actions/setup
       # 生成 Fumadocs 的 `.source`（.gitignore 忽略、由 createMDX 在 next build/dev 时产出）。
-      # 独立 `tsc --noEmit` 不会触发该产出，缺失会导致 src/lib/source.ts 找不到 ../../.source/server，
-      # 引发一连串隐式 any 报错。build 任务走 next build 会自生成，故仅 typecheck 需要这一步。
+      # web 和 platform 都依赖 fumadocs-mdx 生成 .source，独立 tsc --noEmit 不触发，须预生成。
       - name: Generate Fumadocs source
-        run: pnpm --filter @repo/web exec fumadocs-mdx
+        run: |
+          pnpm --filter @repo/web exec fumadocs-mdx
+          pnpm --filter @repo/platform exec fumadocs-mdx
       - run: pnpm turbo typecheck
 
   # ───────────────────────────────────────────────────────────────────────────
@@ -123,12 +124,13 @@ jobs:
       - run: pnpm turbo test
 
   # ───────────────────────────────────────────────────────────────────────────
-  # 5) 构建（鲁棒性）：next build（standalone）。Next 在 build 时会做整体类型与编译校验，
-  #    能抓到仅在生产构建下暴露的问题。环境变量为占位值，与 Dockerfile.web 的 build-args 一致。
+  # 5) 构建（鲁棒性）：全部 4 个 app 的 next build（standalone）。
+  #    Next 在 build 时会做整体类型与编译校验，能抓到仅在生产构建下暴露的问题。
+  #    环境变量为占位值，与 Dockerfile.multi 的 build-args 一致。
   #    注意：此处不设 NODE_ENV=production，否则 pnpm 可能跳过 devDependencies 导致构建失败。
   # ───────────────────────────────────────────────────────────────────────────
   build:
-    name: Build web
+    name: Build all apps
     runs-on: ubuntu-latest
     env:
       NEXT_TELEMETRY_DISABLED: "1"
@@ -137,19 +139,29 @@ jobs:
       NEXT_PUBLIC_PAYMENT_PROVIDER: none
       NEXT_PUBLIC_GENERATIONS_BUCKET_NAME: generations
       NEXT_PUBLIC_AVATARS_BUCKET_NAME: avatars
+      NEXT_PUBLIC_API_URL: http://localhost:3002
+      NEXT_PUBLIC_PLATFORM_URL: http://localhost:3003
       # 仅供构建期模块加载使用的占位值（@repo/database 在 import 时会校验 DATABASE_URL）。
       # 绝非运行时机密 —— 真实机密只存在于部署环境（见 CLAUDE.md §0.5）。
       DATABASE_URL: postgresql://gpt2image:gpt2image@localhost:5432/gpt2image
       BETTER_AUTH_SECRET: build-time-placeholder-secret-not-for-runtime
       BETTER_AUTH_URL: http://localhost:3000
+      ADMIN_AUTH_URL: http://localhost:3001
+      ADMIN_BETTER_AUTH_SECRET: build-time-placeholder-admin-secret
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5（钉 SHA 防 tag 重指向；dependabot 维护）
       - uses: ./.github/actions/setup
-      - run: pnpm turbo build --filter=@repo/web
+      # web 和 platform 的 fumadocs-mdx 须预生成（build 时 next build 也会触发，但显式预生成更可靠）
+      - name: Generate Fumadocs source
+        run: |
+          pnpm --filter @repo/web exec fumadocs-mdx
+          pnpm --filter @repo/platform exec fumadocs-mdx
+      - run: pnpm turbo build
 
   # ───────────────────────────────────────────────────────────────────────────
-  # 6) 容器构建校验（仅 PR）：用 Dockerfile.web 实打实构建 web 镜像但**不推送**，
-  #    验证多阶段 Dockerfile（turbo prune → install → build → standalone 打包）未损坏。
+  # 6) 容器构建校验（仅 PR）：用 Dockerfile.multi 构建多 app 镜像但**不推送**，
+  #    验证多阶段 Dockerfile（install → build → standalone 打包 → PM2）未损坏。
+  #    同时也校验 Dockerfile.web（单 app 镜像）的可构建性。
   #    gha 缓存让重复构建保持快速。门禁在前 4 个 job 通过后才跑，避免无谓消耗。
   # ───────────────────────────────────────────────────────────────────────────
   docker-build:
@@ -160,13 +172,30 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5（钉 SHA 防 tag 重指向；dependabot 维护）
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build multi-app image (validation only)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: Dockerfile.multi
+          target: runner
+          push: false
+          build-args: |
+            NEXT_PUBLIC_APP_URL=http://localhost:3000
+            NEXT_PUBLIC_APP_NAME=GPT2IMAGE
+            NEXT_PUBLIC_PAYMENT_PROVIDER=none
+            NEXT_PUBLIC_GENERATIONS_BUCKET_NAME=generations
+            NEXT_PUBLIC_AVATARS_BUCKET_NAME=avatars
+            NEXT_PUBLIC_API_URL=http://localhost:3002
+            NEXT_PUBLIC_PLATFORM_URL=http://localhost:3003
+          cache-from: type=gha,scope=multi-ci
+          cache-to: type=gha,mode=max,scope=multi-ci
       - name: Build web image (validation only)
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: Dockerfile.web
           target: runner
-          push: false # 仅校验可构建性；推送由 tag 触发的 docker-release.yml 负责
+          push: false
           build-args: |
             NEXT_PUBLIC_APP_URL=http://localhost:3000
             NEXT_PUBLIC_APP_NAME=GPT2IMAGE
