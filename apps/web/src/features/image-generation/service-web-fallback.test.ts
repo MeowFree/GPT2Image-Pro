@@ -43,10 +43,6 @@ vi.mock("./chatgpt-web", () => ({
   editImageWithChatGptWeb: vi.fn(async () => ({ error: "terminated" })),
 }));
 
-function sseBlock(event: string, data: Record<string, unknown>) {
-  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-}
-
 describe("image service Web-first fallback", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -58,31 +54,15 @@ describe("image service Web-first fallback", () => {
       process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
     const { generateImage } = await import("./service");
     const imageBase64 = Buffer.from("codex-fallback-image").toString("base64");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return new Response(
-          sseBlock("response.completed", {
-            type: "response.completed",
-            response: {
-              id: "resp_test",
-              output: [
-                {
-                  id: "ig_1",
-                  type: "image_generation_call",
-                  status: "completed",
-                  result: imageBase64,
-                },
-              ],
-            },
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "text/event-stream" },
-          }
-        );
-      })
-    );
+    // codex(responses 账号)的普通生成现在直连 /images/generations(size 走顶层),
+    // 不再走 /responses 工具路径;mock 返回标准 images JSON。
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ data: [{ b64_json: imageBase64 }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     backendPoolMock.resolveImageBackendPoolConfig
       .mockResolvedValueOnce(null)
@@ -144,52 +124,31 @@ describe("image service Web-first fallback", () => {
         accountBackendPreferenceMode: "mixed-only",
       })
     );
+    // 回退到的 codex 账号在普通生成下命中直连 images 端点,而非 /responses。
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/v1/images/generations",
+      expect.anything()
+    );
   });
 
-  it("retries another pool member when Responses returns text but no final image", async () => {
+  it("retries another pool member when an account returns no image", async () => {
     process.env.DATABASE_URL =
       process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
     const { generateImage } = await import("./service");
     const imageBase64 = Buffer.from("second-member-image").toString("base64");
     const fetchMock = vi.fn(async () => {
       if (fetchMock.mock.calls.length === 1) {
-        return new Response(
-          sseBlock("response.completed", {
-            type: "response.completed",
-            response: {
-              id: "resp_text_only",
-              output: [
-                {
-                  type: "message",
-                  content: [{ type: "output_text", text: "已生成图片。" }],
-                },
-              ],
-            },
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "text/event-stream" },
-          }
-        );
+        // 首个 codex 成员的 /images/generations 返回无图,触发切换到下一个成员。
+        return new Response(JSON.stringify({ data: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
       return new Response(
-        sseBlock("response.completed", {
-          type: "response.completed",
-          response: {
-            id: "resp_image",
-            output: [
-              {
-                id: "ig_1",
-                type: "image_generation_call",
-                status: "completed",
-                result: imageBase64,
-              },
-            ],
-          },
-        }),
+        JSON.stringify({ data: [{ b64_json: imageBase64 }] }),
         {
           status: 200,
-          headers: { "Content-Type": "text/event-stream" },
+          headers: { "Content-Type": "application/json" },
         }
       );
     });
@@ -240,7 +199,7 @@ describe("image service Web-first fallback", () => {
       expect.objectContaining({
         memberId: "codex-1",
         success: false,
-        error: expect.stringContaining("Upstream returned no image output"),
+        error: expect.stringContaining("API returned no image data"),
       })
     );
     expect(backendPoolMock.resolveImageBackendPoolConfig).toHaveBeenCalledWith(

@@ -760,6 +760,17 @@ function isResponsesBackend(config: ApiConfig) {
   return isPoolApiResponsesBackend(config);
 }
 
+// codex(pool-account "responses")后端在【普通生成/编辑】下改走直连
+// /images/generations 与 /images/edits,而非 /responses 的 image_generation 工具。
+// WHY: codex 托管 image_generation 工具不暴露/不尊重 size(见 openai/codex #19175;
+// CLIProxyAPI 的 direct image API proxying 同此结论),导致生图不遵循尺寸指令。直连
+// images 端点用【同一账号、同一 OAuth 凭据、同一 baseUrl】,只是改 path,size 走顶层
+// 被确定性尊重。chat/agent/瀑布流依赖工具循环与多轮,仍走 /responses,不在此列。
+// 仅作用于 codex 账号(pool-account responses);pool-api 的 responses 后端不受影响。
+function shouldCodexUseDirectImagesEndpoint(config: ApiConfig) {
+  return isPoolAccountBackend(config, "responses");
+}
+
 function isResponsesImageToolChoiceMismatch(error?: string | null) {
   const normalized = (error || "").toLowerCase();
   return (
@@ -3859,7 +3870,7 @@ export async function generateImage(
       })
     );
   }
-  if (isResponsesBackend(config)) {
+  if (isResponsesBackend(config) && !shouldCodexUseDirectImagesEndpoint(config)) {
     try {
       return requireImageOutput(
         applyPromptOptimizationResultVisibility(
@@ -4008,7 +4019,7 @@ export async function editImage(
       })
     );
   }
-  if (isResponsesBackend(config)) {
+  if (isResponsesBackend(config) && !shouldCodexUseDirectImagesEndpoint(config)) {
     try {
       const gptModel =
         params.gptModel ||
