@@ -760,15 +760,16 @@ function isResponsesBackend(config: ApiConfig) {
   return isPoolApiResponsesBackend(config);
 }
 
-// codex(pool-account "responses")后端在【普通生成】下改走直连 /images/generations,
-// 而非 /responses 的 image_generation 工具。
+// codex(pool-account "responses")后端的普通生成/图生图改走直连 images 端点
+// (generateImage → JSON /images/generations;editImage → JSON /images/edits,照 CPA
+// codex 直连格式:images[].image_url 的 base64 data URL + size 顶层),而非 /responses
+// 的 image_generation 工具。
 // WHY: codex 托管 image_generation 工具不暴露/不尊重 size(见 openai/codex #19175;
 // CLIProxyAPI 的 direct image API proxying 同此结论),导致生图不遵循尺寸指令。直连
-// /images/generations 用【同一账号、同一 OAuth 凭据、同一 baseUrl】,只改 path,size
-// 走顶层被确定性尊重。
-// 注意【仅生成】:图生图(/images/edits)需 multipart/form-data,而 codex 该端点不接受
-// (返回 400 Unsupported content type),故 editImage 不调用本函数、仍走 /responses。
-// chat/agent/瀑布流依赖工具循环与多轮,也走 /responses。仅作用于 codex 账号
+// images 端点用【同一账号、同一 OAuth 凭据、同一 baseUrl】,只改 path/body,size 走顶层
+// 被确定性尊重。codex images 端点用 JSON(不接受 multipart→400 Unsupported content type),
+// 也不认非标准 width/height 与 response_format,故两条直连路径都按 CPA 格式只发标准字段。
+// chat/agent/瀑布流依赖工具循环与多轮,仍走 /responses。仅作用于 codex 账号
 // (pool-account responses);pool-api 的 responses 后端不受影响。
 function shouldCodexUseDirectImagesEndpoint(config: ApiConfig) {
   return isPoolAccountBackend(config, "responses");
@@ -4026,9 +4027,74 @@ export async function editImage(
       })
     );
   }
-  // codex(pool-account responses)的图生图仍走 /responses:其直连 /images/edits 端点
-  // 不接受 multipart/form-data(返回 400 Unsupported content type),故编辑不走直连。
-  // 仅普通生成(generateImage)走 codex 直连 /images/generations 以遵循 size。
+  // codex(pool-account responses)图生图:直连 JSON /images/edits(照 CPA codex 直连格式)。
+  // 输入图/mask 用 images[].image_url / mask.image_url 的 base64 data URL,size 走顶层
+  // → 遵循尺寸。codex /images/edits 不接受 multipart(400 Unsupported content type),也不认
+  // 非标准 width/height 与 response_format(b64_json 为默认返回),故均不发送。
+  if (shouldCodexUseDirectImagesEndpoint(config)) {
+    try {
+      const size = params.size || DEFAULT_IMAGE_SIZE;
+      const background = normalizeImageBackground(params.background);
+      const toImageUrl = (file: { data: Buffer; type: string }) =>
+        `data:${file.type || "image/png"};base64,${Buffer.from(
+          file.data
+        ).toString("base64")}`;
+      const response = await fetch(`${config.baseUrl}/images/edits`, {
+        method: "POST",
+        redirect: "manual",
+        signal: params.signal,
+        headers: getHeaders(config, { "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          model,
+          prompt: effectiveEditPrompt,
+          n: params.n || 1,
+          size,
+          images: params.images.map((image) => ({
+            image_url: toImageUrl(image),
+          })),
+          ...(params.mask
+            ? { mask: { image_url: toImageUrl(params.mask) } }
+            : {}),
+          ...(normalizeQuality(params.quality)
+            ? { quality: normalizeQuality(params.quality) }
+            : {}),
+          ...(normalizeModeration(params.moderation)
+            ? { moderation: normalizeModeration(params.moderation) }
+            : {}),
+          ...(normalizeOutputFormat(params.outputFormat)
+            ? { output_format: normalizeOutputFormat(params.outputFormat) }
+            : {}),
+          ...(normalizeOutputCompression(params.outputCompression) !== undefined
+            ? {
+                output_compression: normalizeOutputCompression(
+                  params.outputCompression
+                ),
+              }
+            : {}),
+          ...(background ? { background } : {}),
+          ...(config.useStream ? { stream: true, partial_images: 2 } : {}),
+        }),
+      });
+      return requireImageOutput(
+        applyPromptOptimizationResultVisibility(
+          await parseImageResponse(response, callbacks)
+        )
+      );
+    } catch (error) {
+      logImageRequestError(error, {
+        operation: "edit",
+        baseUrl: config.baseUrl,
+        path: "/images/edits",
+        model,
+        useStream: config.useStream,
+      });
+      return {
+        error:
+          error instanceof Error ? error.message : "Unknown error occurred",
+      };
+    }
+  }
+  // pool-api 的 responses 后端走 /responses;codex 图生图已在上面走直连 JSON /images/edits。
   if (isResponsesBackend(config)) {
     try {
       const gptModel =

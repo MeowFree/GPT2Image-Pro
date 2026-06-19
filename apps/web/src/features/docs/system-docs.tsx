@@ -99,7 +99,7 @@ const sections = {
         {
           title: "Codex/Responses 账号池",
           description:
-            "chat / agent / responses / 图生图(edit)走 Responses 语义（image_generation 工具循环、多轮）。普通图像生成改走该账号的 /images/generations 直连端点（同一 OAuth 凭据，size 走顶层），以确定性遵循 size 等尺寸参数；Codex 托管的 image_generation 工具不尊重 size，故纯生成不再用它。图生图因 codex 的 /images/edits 不接受 multipart，仍走 /responses。",
+            "chat / agent / responses 走 Responses 语义（image_generation 工具循环、多轮）。普通图像生成与图生图改走该账号的 /images/generations、/images/edits 直连端点（同一 OAuth 凭据，JSON 体、size 走顶层；图生图的输入图/mask 以 base64 data URL 放在 images[].image_url / mask.image_url），以确定性遵循 size 等尺寸参数；Codex 托管的 image_generation 工具不尊重 size，故纯生成/编辑不再用它（codex images 端点要 JSON,不接受 multipart）。",
         },
         {
           title: "外接 API 后端",
