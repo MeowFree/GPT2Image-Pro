@@ -937,6 +937,73 @@ export const imageBackendApiGroup = pgTable(
   ]
 );
 
+// Adobe Firefly（adobe2api）后端：OpenAI 兼容网关，但模型/尺寸/视频形态与通用
+// pool-api 不同（model id 编码宽高比+分辨率+时长、宽高比枚举、entities、视频），故
+// 独立成表。调度字段（status/cooldown/并发/always_active/优先级）语义与 imageBackendApi
+// 一致，复用同一套调度机制（租约/粘性/SLA 指标）。账号-token 池由 adobe2api 侧自管，
+// 本表只持有 baseUrl + apiKey。
+export const imageBackendAdobe = pgTable("image_backend_adobe", {
+  id: text("id").primaryKey(),
+  groupId: text("group_id").references(() => imageBackendGroup.id, {
+    onDelete: "set null",
+  }),
+  name: text("name").notNull(),
+  baseUrl: text("base_url").notNull(),
+  apiKey: text("api_key").notNull(),
+  // 本后端暴露的 Firefly 图像模型家族（如 ["gpt-image","nano-banana-pro"]）；
+  // 为空表示不限制。
+  enabledModels: json("enabled_models").$type<string[]>(),
+  // 站内 WxH 映射不出确定值时的默认宽高比/分辨率。
+  defaultRatio: text("default_ratio").notNull().default("1x1"),
+  defaultResolution: text("default_resolution").notNull().default("2k"),
+  // 是否允许走视频模型（Phase 3）；默认关闭。
+  supportsVideo: boolean("supports_video").notNull().default(false),
+  contentSafetyEnabled: boolean("content_safety_enabled")
+    .notNull()
+    .default(true),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  // 与 imageBackendApi 同义：遇错也始终可用（终态错误除外，见调度器）。
+  alwaysActive: boolean("always_active").notNull().default(false),
+  priority: integer("priority").notNull().default(50),
+  concurrency: integer("concurrency").notNull().default(10),
+  failureCooldownEnabled: boolean("failure_cooldown_enabled")
+    .notNull()
+    .default(false),
+  successCount: integer("success_count").notNull().default(0),
+  failCount: integer("fail_count").notNull().default(0),
+  status: text("status").notNull().default("active"),
+  lastUsedAt: timestamp("last_used_at"),
+  lastAcquiredAt: timestamp("last_acquired_at"),
+  cooldownUntil: timestamp("cooldown_until"),
+  lastError: text("last_error"),
+  lastErrorAt: timestamp("last_error_at"),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Adobe 后端与分组的多对多关系（镜像 imageBackendApiGroup）。
+export const imageBackendAdobeGroup = pgTable(
+  "image_backend_adobe_group",
+  {
+    id: text("id").primaryKey(),
+    adobeId: text("adobe_id")
+      .notNull()
+      .references(() => imageBackendAdobe.id, { onDelete: "cascade" }),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => imageBackendGroup.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("image_backend_adobe_group_adobe_group_unique").on(
+      table.adobeId,
+      table.groupId
+    ),
+    index("image_backend_adobe_group_group_idx").on(table.groupId),
+  ]
+);
+
 export const imageBackendInflightLease = pgTable(
   "image_backend_inflight_lease",
   {
