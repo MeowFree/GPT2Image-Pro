@@ -16,6 +16,7 @@ import { useLocale } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
 import { useEffect, useState } from "react";
 import { exportPsdAction } from "../actions";
+import { generateDownloadFilename } from "@/lib/download-filename";
 
 type Phase = "idle" | "generating" | "ready" | "failed";
 
@@ -23,7 +24,17 @@ type Phase = "idle" | "generating" | "ready" | "failed";
 const POLL_DEADLINE_MS = 12 * 60 * 1000;
 const POLL_INTERVAL_MS = 4000;
 
-export function ExportPsdDialog({ generationId }: { generationId: string }) {
+interface ExportPsdDialogProps {
+  generationId: string;
+  prompt: string;
+  createdAt: string;
+}
+
+export function ExportPsdDialog({
+  generationId,
+  prompt,
+  createdAt,
+}: ExportPsdDialogProps) {
   const locale = useLocale();
   const copy = (en: string, zh: string) => (locale === "zh" ? zh : en);
 
@@ -126,7 +137,7 @@ export function ExportPsdDialog({ generationId }: { generationId: string }) {
               <Button asChild className="w-full justify-center">
                 <a
                   href={downloadUrl}
-                  download={`gpt2image-${generationId}.psd`}
+                  download={generateDownloadFilename(prompt, createdAt, "psd")}
                 >
                   <Download className="mr-2 h-4 w-4" />
                   {copy("Download PSD", "下载 PSD")}

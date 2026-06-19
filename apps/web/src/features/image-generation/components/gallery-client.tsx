@@ -16,6 +16,7 @@ import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ImageCard } from "@/features/image-generation/components/image-card";
 import { batchDeleteGenerationAction } from "@/features/image-generation/actions";
+import { generateDownloadFilename } from "@/lib/download-filename";
 import dynamic from "next/dynamic";
 import type {
   LightboxReferenceImage,
@@ -157,7 +158,7 @@ export function GalleryClient({
       setTimeout(() => {
         const a = document.createElement("a");
         a.href = item.imageUrl as string;
-        a.download = `gpt2image-${item.id}.png`;
+        a.download = generateDownloadFilename(item.prompt, item.createdAt);
         a.style.display = "none";
         document.body.appendChild(a);
         a.click();

@@ -25,6 +25,7 @@ import { deleteGenerationAction } from "@/features/image-generation/actions";
 import type { GenerationCreditDetails } from "@/features/image-generation/credit-calculation-details";
 import { ExportPsdDialog } from "@/features/psd-export/components/export-psd-dialog";
 import { writePendingReferenceHandoff } from "@/features/image-generation/reference-handoff";
+import { generateDownloadFilename } from "@/lib/download-filename";
 
 export interface LightboxReferenceImage {
   id: string;
@@ -611,7 +612,7 @@ export function ImageLightbox({
                   >
                     <a
                       href={previewImageUrl}
-                      download={`gpt2image-${generation.id}.png`}
+                      download={generateDownloadFilename(generation.prompt, generation.createdAt)}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -620,7 +621,11 @@ export function ImageLightbox({
                     </a>
                   </Button>
                   {generation.isLayered && (
-                    <ExportPsdDialog generationId={generation.id} />
+                    <ExportPsdDialog
+                      generationId={generation.id}
+                      prompt={generation.prompt}
+                      createdAt={generation.createdAt}
+                    />
                   )}
                 </>
               )}
