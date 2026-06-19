@@ -142,7 +142,16 @@
 - `1a5a7a2` Firefly 响应解析器（纯函数 + 12 单测）：`firefly-response.ts`（`parseAdobeMediaResult`）。
 - 全绿：typecheck + 26 单测 + lint。
 
-### Phase 1 池接入触点（已扫描，blast radius 已知）
+### 池接入已完成（feat/adobe2api-backend）
+- `ec28fc1` 调度接入：PoolMember adobe 变体、候选收集（与 api 同构 + always_active 终态
+  规则）、toResolvedPoolConfig/reportImageBackendResult adobe 分支、helper 加宽、测试 mock。
+- `7ff4b69` 派发接入：runAdobeImageRequest（Firefly 适配 → /v1/chat/completions → 解析 →
+  取回字节 re-host）、generate/edit 的 pool-adobe 分支、poolBackendMemberType 三态贯通
+  （含 memberType 联合在 sticky/lease/stream/options 全链路加宽）。
+- 全绿：web typecheck + 222 image 测试 + 26 adobe 测试。
+- 剩余：admin 后端表单（CRUD image_backend_adobe）；live 端到端验证（需 adobe2api 实例）。
+
+### Phase 1 池接入触点（已扫描，blast radius 已知，已全部落地）
 把第三种成员类型 `"adobe"` 穿过调度器 + 派发：
 
 1. `image-backend-pool/service.ts`：
