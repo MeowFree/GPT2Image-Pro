@@ -276,7 +276,7 @@ const sections = {
         "外接 API Key 可设置独立积分限额；GET /v1/credits 可查询 Key 限额、已用额度和账户余额。",
         "用户已启用“接入其他站 API”时，普通 /v1/chat/completions、/v1/images/generations、/v1/images/edits 和 /v1/responses 仍优先使用用户自接 API；命中时 credits_consumed 为 0，不扣本站余额，也不增加本站 API Key 已用额度。",
         "/v1/agents/images 和需要 Codex/Responses 能力的页面功能会忽略用户自接 API，按平台后端池或外接后端池结算本站积分。",
-        "image 接口的 web_first / webFirst / force_web / forceWeb 是 Web-first 优先路由，不是硬性只走 Web；它只在进入平台 mixed 后端池后生效，不会覆盖用户自接 API，Web 不可用或失败时会降级 Codex/Responses。",
+        "image 接口的 web_first / webFirst / force_web / forceWeb（chat 对应 mix_web_first）是 Web-first 优先路由，不是硬性只走 Web，且默认开启：不传即优先 Web、失败回退 Codex/Responses。仅当显式传 false 时，才用 Web-first 像素区间（IMAGE_FORCE_WEB_MIN_PIXELS / IMAGE_FORCE_WEB_MAX_PIXELS，默认 0.66MP-2MP）判定——尺寸落在区间内才优先 Web，否则走正常调度。该路由只对 mixed 后端分组生效（纯 Web / 纯 Codex-Responses 分组无此概念），不会覆盖用户自接 API；agent 始终走 Codex/Responses，不受此项影响。",
       ],
       officialRefsTitle: "官方参考",
       officialRefs: [
@@ -588,7 +588,7 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
               requirement: "可选",
               custom: true,
               description:
-                "本站扩展：mixed 分组下，请求尺寸在 Web-first 像素区间内时优先尝试 Web，失败再回退 Codex/Responses。区间由 IMAGE_FORCE_WEB_MIN_PIXELS / IMAGE_FORCE_WEB_MAX_PIXELS 配置，默认 0.66MP-2MP。",
+                "本站扩展（仅 mixed 分组生效）：Web-first 默认开启，不传即优先 Web、失败回退 Codex/Responses。仅当显式传 false 时，才按 Web-first 像素区间判定——尺寸落在区间内才优先 Web，否则走正常调度。区间由 IMAGE_FORCE_WEB_MIN_PIXELS / IMAGE_FORCE_WEB_MAX_PIXELS 配置，默认 0.66MP-2MP。",
             },
             {
               name: "requiresResponsesBackend / requires_responses_backend",

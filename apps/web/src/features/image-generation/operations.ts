@@ -178,30 +178,17 @@ function shouldForceWebBackend(
   const requiresResponsesBackend = Boolean(
     input.requiresResponsesBackend || (input.mode === "chat" && input.agentMode)
   );
-  if (!input.forceWebBackend || requiresResponsesBackend) return false;
+  if (requiresResponsesBackend) return false;
 
+  // Web-first 默认开启:gen/edit 的 web_first/force_web 落到 input.forceWebBackend,
+  // chat 的 mix_web_first 落到 input.mixWebFirst;任一被显式给出则取其值,均未给(默认)
+  // 按 true 处理。这样 chat 的 mix_web_first 仍被纳入决策,不会因默认 web-first 失效。
+  const webFirst = input.forceWebBackend ?? input.mixWebFirst ?? true;
+  // 默认/显式 true → 总是优先 Web(不受 Web-first 像素区间限制)。
+  if (webFirst) return true;
+  // 仅当显式 false 时,才用 Web-first 像素区间决定:尺寸落在区间内才优先 Web,
+  // 否则不优先(走正常调度)。该判定只对 mixed 分组生效(preferenceMode=mixed-only)。
   return isImageSizeWithinPixelRange(size, range.minPixels, range.maxPixels);
-}
-
-function shouldUseMixWebFirstRouting({
-  input,
-  size,
-  range,
-  requiresResponsesBackend,
-  forceWebBackend,
-}: {
-  input: RunImageGenerationInput;
-  size: string;
-  range: ForceWebPixelRange;
-  requiresResponsesBackend: boolean;
-  forceWebBackend: boolean;
-}) {
-  return Boolean(
-    input.mixWebFirst &&
-      isImageSizeWithinPixelRange(size, range.minPixels, range.maxPixels) &&
-      !requiresResponsesBackend &&
-      !forceWebBackend
-  );
 }
 
 const TEXT_MODERATION_ONLY_CREDITS =
@@ -1104,19 +1091,13 @@ export async function runImageGenerationForUser(
     input.requiresResponsesBackend || (input.mode === "chat" && input.agentMode)
   );
   const forceWebPixelRange = await getForceWebPixelRange();
-  const forceWebBackend = shouldForceWebBackend(
-    input,
-    size,
-    forceWebPixelRange
-  );
-  const mixWebFirst = shouldUseMixWebFirstRouting({
-    input,
-    size,
-    range: forceWebPixelRange,
-    requiresResponsesBackend,
-    forceWebBackend,
-  });
-  const preferWebWithFallback = forceWebBackend || mixWebFirst;
+  // 统一的 Web-first 偏好(默认开启,详见 shouldForceWebBackend)。两个变量同值,
+  // 分别供 gen/edit 路径(forceWebBackend)与 chat 路径(mixWebFirst)透传到 service 层;
+  // chat 的 mix_web_first 已并入该决策,不再单独走像素区间判定。
+  const preferWebFirst = shouldForceWebBackend(input, size, forceWebPixelRange);
+  const forceWebBackend = preferWebFirst;
+  const mixWebFirst = preferWebFirst;
+  const preferWebWithFallback = preferWebFirst;
   const inputImages = getInputImages(input);
   const isChatInput = input.mode === "chat";
   const bucket =
