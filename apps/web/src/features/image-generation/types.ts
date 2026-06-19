@@ -274,7 +274,7 @@ export interface ApiConfig {
   contentSafetyEnabled?: boolean;
   headers?: Record<string, string>;
   backend?: {
-    type: "platform" | "pool-api" | "pool-account" | "user-api";
+    type: "platform" | "pool-api" | "pool-account" | "pool-adobe" | "user-api";
     id?: string;
     groupId?: string | null;
     userId?: string;
@@ -285,6 +285,12 @@ export interface ApiConfig {
     chatCompletionsUpstreamMode?: "responses" | "chat_completions";
     imagesUpstreamMode?: "images" | "responses";
     apiForceResponsesEndpoint?: boolean;
+    // adobe（pool-adobe）专属：暴露的 Firefly 模型家族、默认宽高比/分辨率、是否支持
+    // 视频。供 image-generation 派发 adobe 请求时选择 family 与映射缺省值。
+    adobeEnabledModels?: string[] | null;
+    adobeDefaultRatio?: string;
+    adobeDefaultResolution?: string;
+    adobeSupportsVideo?: boolean;
     billingGroupId?: string | null;
     billingMultiplier?: number;
     reportResult?: boolean;
