@@ -94,6 +94,7 @@ import {
   type ImageThinkingLevel,
   IMAGE_1K_BASE_EDGE,
   IMAGE_DIMENSION_STEP,
+  isFireflyModel,
   isImageSizeWithinPixelRange,
   MAX_IMAGE_DIMENSION,
   normalizeImageSize,
@@ -7035,30 +7036,32 @@ export function CreatePageClient({
                 </div>
               )}
 
-              <div className="space-y-1.5">
-                <label
-                  htmlFor={`text-gpt-model-${mode}`}
-                  className="text-xs font-medium text-muted-foreground"
-                >
-                  {labelWithHelp(
-                    copy("GPT model", "GPT 模型"),
-                    gptModelHelpText
-                  )}
-                </label>
-                {renderGptModelSelect({
-                  id: `text-gpt-model-${mode}`,
-                  value: imageGptModel,
-                  onChange: setImageGptModel,
-                  disabled: modeBusy,
-                  allowDefault: true,
-                })}
-                <p className="text-[11px] leading-snug text-muted-foreground">
-                  {copy(
-                    "Used by platform Web/Codex backend pools; external image APIs keep using the image model.",
-                    "仅用于平台 Web/Codex 后端池；默认会沿用后端配置，外接 image API 仍按图片模型请求。"
-                  )}
-                </p>
-              </div>
+              {!isFireflyModel(textModel) && (
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor={`text-gpt-model-${mode}`}
+                    className="text-xs font-medium text-muted-foreground"
+                  >
+                    {labelWithHelp(
+                      copy("GPT model", "GPT 模型"),
+                      gptModelHelpText
+                    )}
+                  </label>
+                  {renderGptModelSelect({
+                    id: `text-gpt-model-${mode}`,
+                    value: imageGptModel,
+                    onChange: setImageGptModel,
+                    disabled: modeBusy,
+                    allowDefault: true,
+                  })}
+                  <p className="text-[11px] leading-snug text-muted-foreground">
+                    {copy(
+                      "Used by platform Web/Codex backend pools; external image APIs keep using the image model.",
+                      "仅用于平台 Web/Codex 后端池；默认会沿用后端配置，外接 image API 仍按图片模型请求。"
+                    )}
+                  </p>
+                </div>
+              )}
 
               {showThinkingControls && (
                 <div className="space-y-1.5">
