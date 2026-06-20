@@ -284,3 +284,76 @@ export function buildFireflyImagePayloadCandidates(params: {
   };
   return [edited];
 }
+
+export type FireflyVideoPayload = Record<string, unknown>;
+
+/**
+ * 构造 Firefly 视频提交体（/v2/3p-videos/generate-async），依据视频协议规格
+ * （docs/plan/2026-06-20-adobe-firefly-video-spec.md）。
+ *
+ * 文生视频只传 prompt；图生视频先在调用方上传输入图拿 id，再按引擎挂参考：
+ * - kling：referenceBlobs[{id, usage:"frame", order}]；
+ * - sora2/veo31：referenceBlobs[{id, usage:"general", promptReference:1}] +
+ *   referenceFrames[首帧, 尾帧|null]。
+ * engine / reference_mode 的精确位置属规格待核点（见 spec §5），先按 best-effort 放顶层。
+ */
+export function buildFireflyVideoPayload(params: {
+  prompt: string;
+  upstreamModel: string;
+  upstreamModelId: string;
+  upstreamModelVersion: string;
+  engine: string;
+  duration: number;
+  size: FireflySize;
+  generateAudio: boolean;
+  referenceMode?: "image";
+  negativePrompt?: string | null;
+  sourceImageIds?: string[] | null;
+}): FireflyVideoPayload {
+  const seed = seedNow();
+  const ids = (params.sourceImageIds ?? []).filter(Boolean);
+  const hasFrames = ids.length > 0;
+
+  const payload: FireflyVideoPayload = {
+    n: 1,
+    seeds: [seed],
+    seed: String(seed),
+    modelId: params.upstreamModelId,
+    model: params.upstreamModel,
+    modelVersion: params.upstreamModelVersion,
+    engine: params.engine,
+    size: { width: params.size.width, height: params.size.height },
+    duration: params.duration,
+    fps: 24,
+    prompt: params.prompt,
+    negativePrompt: params.negativePrompt || "",
+    generateAudio: params.generateAudio,
+    jobMode: "standard",
+    generationMetadata: {
+      module: hasFrames ? "image2video" : "text2video",
+    },
+    ...(params.referenceMode ? { reference_mode: params.referenceMode } : {}),
+  };
+
+  if (hasFrames) {
+    if (params.upstreamModelId === "kling") {
+      payload.referenceBlobs = ids.map((id, index) => ({
+        id,
+        usage: "frame",
+        order: index,
+      }));
+    } else {
+      const first = ids[0];
+      const last = ids[1];
+      payload.referenceBlobs = [
+        { id: first, usage: "general", promptReference: 1 },
+      ];
+      payload.referenceFrames = [
+        { localBlobRef: first },
+        last ? { localBlobRef: last } : null,
+      ];
+    }
+  }
+
+  return payload;
+}

@@ -20,7 +20,9 @@ import {
 } from "./errors";
 import {
   buildFireflyImagePayloadCandidates,
+  buildFireflyVideoPayload,
   type FireflyImagePayload,
+  type FireflyVideoPayload,
 } from "./payloads";
 import { buildArpSessionId, buildSubmitNonce } from "./signing";
 import {
@@ -30,6 +32,8 @@ import {
 } from "./transport";
 
 const SUBMIT_URL = "https://firefly-3p.ff.adobe.io/v2/3p-images/generate-async";
+const VIDEO_SUBMIT_URL =
+  "https://firefly-3p.ff.adobe.io/v2/3p-videos/generate-async";
 const UPLOAD_URL = "https://firefly-3p.ff.adobe.io/v2/storage/image";
 
 const DEFAULT_API_KEY = "clio-playground-web";
@@ -64,6 +68,30 @@ export type GenerateImageInput = {
 };
 
 export type GenerateImageOutput = {
+  bytes: Buffer;
+  raw: Record<string, unknown>;
+};
+
+export type GenerateVideoInput = {
+  token: string;
+  prompt: string;
+  upstreamModel: string;
+  upstreamModelId: string;
+  upstreamModelVersion: string;
+  engine: string;
+  duration: number;
+  size: { width: number; height: number };
+  generateAudio: boolean;
+  referenceMode?: "image";
+  negativePrompt?: string | null;
+  /** 已上传的输入图 id（图生视频首帧/尾帧/参考）。 */
+  sourceImageIds?: string[] | null;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  signal?: AbortSignal;
+};
+
+export type GenerateVideoOutput = {
   bytes: Buffer;
   raw: Record<string, unknown>;
 };
@@ -308,6 +336,137 @@ export class AdobeFireflyClient {
 
       if (Date.now() - start > timeoutMs) {
         throw new AdobeRequestError("generation timed out");
+      }
+      await sleep(pollIntervalMs, input.signal);
+    }
+  }
+
+  /** 文生视频/图生视频：提交→轮询→下载（视频路径，同构图像）。 */
+  async generateVideo(input: GenerateVideoInput): Promise<GenerateVideoOutput> {
+    const payload: FireflyVideoPayload = buildFireflyVideoPayload({
+      prompt: input.prompt,
+      upstreamModel: input.upstreamModel,
+      upstreamModelId: input.upstreamModelId,
+      upstreamModelVersion: input.upstreamModelVersion,
+      engine: input.engine,
+      duration: input.duration,
+      size: input.size,
+      generateAudio: input.generateAudio,
+      ...(input.referenceMode ? { referenceMode: input.referenceMode } : {}),
+      ...(input.negativePrompt != null
+        ? { negativePrompt: input.negativePrompt }
+        : {}),
+      ...(input.sourceImageIds
+        ? { sourceImageIds: input.sourceImageIds }
+        : {}),
+    });
+
+    const submitResp = await this.transport.request({
+      method: "POST",
+      url: VIDEO_SUBMIT_URL,
+      headers: this.submitHeaders(input.token, input.prompt),
+      body: JSON.stringify(payload),
+      signal: input.signal,
+      timeoutMs: 60_000,
+    });
+
+    if (submitResp.status === 401 || submitResp.status === 403) {
+      const accessError = submitResp.headers["x-access-error"];
+      if (accessError === "taste_exhausted") {
+        throw new QuotaExhaustedError("Adobe quota exhausted for this account");
+      }
+      throw new AuthError("Token invalid or expired", {
+        statusCode: submitResp.status,
+      });
+    }
+    if (submitResp.status !== 200) {
+      const body = (await submitResp.text().catch(() => "")).slice(0, 300);
+      if (isRetryableStatus(submitResp.status)) {
+        throw new UpstreamTemporaryError(
+          `video submit failed: ${submitResp.status} ${body}`,
+          { statusCode: submitResp.status, errorType: "status" }
+        );
+      }
+      throw new AdobeRequestError(
+        `video submit failed: ${submitResp.status} ${body}`
+      );
+    }
+
+    const submitData = (await submitResp.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    const pollUrl = extractResultLink(submitResp.headers, submitData);
+    if (!pollUrl) {
+      throw new AdobeRequestError(
+        "video submit succeeded but no poll url returned"
+      );
+    }
+
+    // 视频生成耗时较长，默认 600s 超时、3s 轮询（移植视频规格）。
+    const timeoutMs = input.timeoutMs ?? 600_000;
+    const pollIntervalMs = input.pollIntervalMs ?? 3_000;
+    const start = Date.now();
+
+    for (;;) {
+      const pollResp = await this.transport.request({
+        method: "GET",
+        url: pollUrl,
+        headers: this.pollHeaders(input.token),
+        signal: input.signal,
+        timeoutMs: 60_000,
+      });
+      if (pollResp.status !== 200) {
+        const body = (await pollResp.text().catch(() => "")).slice(0, 300);
+        if (pollResp.status === 401 || pollResp.status === 403) {
+          throw new AuthError("Token invalid or expired", {
+            statusCode: pollResp.status,
+          });
+        }
+        if (isRetryableStatus(pollResp.status)) {
+          throw new UpstreamTemporaryError(
+            `video poll failed: ${pollResp.status} ${body}`,
+            { statusCode: pollResp.status, errorType: "status" }
+          );
+        }
+        throw new AdobeRequestError(
+          `video poll failed: ${pollResp.status} ${body}`
+        );
+      }
+
+      const latest = (await pollResp.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >;
+      const statusHeader = String(
+        pollResp.headers["x-task-status"] || ""
+      ).toUpperCase();
+      const statusVal =
+        String(latest.status || "").toUpperCase() || statusHeader;
+
+      const outputs = (latest.outputs as Array<Record<string, unknown>>) || [];
+      if (outputs.length > 0) {
+        const video = outputs[0]?.video as Record<string, unknown> | undefined;
+        const videoUrl = video?.presignedUrl;
+        if (!videoUrl || typeof videoUrl !== "string") {
+          throw new AdobeRequestError("video job finished without video url");
+        }
+        const bytes = await this.download(videoUrl, input.signal);
+        return { bytes, raw: latest };
+      }
+
+      if (
+        statusVal === "FAILED" ||
+        statusVal === "CANCELLED" ||
+        statusVal === "ERROR"
+      ) {
+        throw new AdobeRequestError(
+          `video job failed: ${JSON.stringify(latest).slice(0, 300)}`
+        );
+      }
+
+      if (Date.now() - start > timeoutMs) {
+        throw new AdobeRequestError("video generation timed out");
       }
       await sleep(pollIntervalMs, input.signal);
     }
