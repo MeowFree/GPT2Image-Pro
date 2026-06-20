@@ -50,7 +50,30 @@ async function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-export function VideoCreatePanel() {
+// 把(本站)历史图 URL 取回并转成 base64 data URL,作为图生视频首帧。
+async function urlToDataUrl(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`读取历史图失败 HTTP ${response.status}`);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("读取历史图失败"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+type VideoHistoryItem = {
+  id: string;
+  imageUrl: string | null;
+  status: string;
+};
+
+export function VideoCreatePanel({
+  recent = [],
+}: {
+  recent?: VideoHistoryItem[];
+}) {
   const families = FIREFLY_VIDEO_FAMILIES;
   const [familyId, setFamilyId] = useState(families[0]?.family ?? "sora2");
   const family = useMemo(
@@ -64,7 +87,13 @@ export function VideoCreatePanel() {
   );
   const [prompt, setPrompt] = useState("");
   const [inputImage, setInputImage] = useState<string | null>(null);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
+    null
+  );
   const [status, setStatus] = useState<VideoStatus>("idle");
+  const historyImages = recent.filter(
+    (item) => item.status === "completed" && item.imageUrl
+  );
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -243,6 +272,39 @@ export function VideoCreatePanel() {
         <Label className="text-xs text-muted-foreground">
           首帧图（可选，图生视频）
         </Label>
+        {historyImages.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {historyImages.slice(0, 12).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                disabled={busy}
+                title="用此历史图作首帧"
+                onClick={async () => {
+                  if (!item.imageUrl) return;
+                  try {
+                    setInputImage(await urlToDataUrl(item.imageUrl));
+                    setSelectedHistoryId(item.id);
+                  } catch {
+                    setSelectedHistoryId(null);
+                  }
+                }}
+                className={`h-14 w-14 overflow-hidden rounded-md border ${
+                  selectedHistoryId === item.id
+                    ? "ring-2 ring-primary"
+                    : "border-border"
+                }`}
+              >
+                {/* 历史缩略图(本站已生成图)。biome-ignore lint/performance/noImgElement: 简单缩略图选择器 */}
+                <img
+                  src={item.imageUrl ?? ""}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        )}
         <input
           type="file"
           accept="image/png,image/jpeg,image/webp"
@@ -251,8 +313,22 @@ export function VideoCreatePanel() {
           onChange={async (event) => {
             const file = event.target.files?.[0];
             setInputImage(file ? await fileToDataUrl(file) : null);
+            setSelectedHistoryId(null);
           }}
         />
+        {inputImage && (
+          <button
+            type="button"
+            className="text-xs text-muted-foreground underline"
+            disabled={busy}
+            onClick={() => {
+              setInputImage(null);
+              setSelectedHistoryId(null);
+            }}
+          >
+            清除首帧图
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-3">

@@ -9320,7 +9320,7 @@ export function CreatePageClient({
         </div>
 
         <div role="tabpanel" hidden={activeMode !== "video"} className="mt-0">
-          <VideoCreatePanel />
+          <VideoCreatePanel recent={recent} />
         </div>
       </Tabs>
 
