@@ -221,6 +221,11 @@ type AdobeAccountRow = {
   lastRefreshAt: Date | string | null;
   lastRefreshError: string | null;
   consecutiveFailures: number;
+  creditsTotal: number | null;
+  creditsUsed: number | null;
+  creditsAvailable: number | null;
+  creditsUpdatedAt: Date | string | null;
+  creditsError: string | null;
 };
 
 type ContentSafetyFormValue = "inherit" | "enabled" | "disabled";
@@ -4303,6 +4308,14 @@ export function ImageBackendPoolAdminPanel({
                                   {account.lastRefreshError
                                     ? ` · ${account.lastRefreshError}`
                                     : ""}
+                                </p>
+                                <p className="truncate text-xs text-muted-foreground">
+                                  {account.creditsError
+                                    ? `余额读取失败: ${account.creditsError}`
+                                    : account.creditsAvailable !== null ||
+                                        account.creditsTotal !== null
+                                      ? `Firefly 余额 ${account.creditsAvailable ?? "?"} / ${account.creditsTotal ?? "?"}`
+                                      : "余额未知（刷新后获取）"}
                                 </p>
                               </div>
                               <div className="flex shrink-0 items-center gap-2">

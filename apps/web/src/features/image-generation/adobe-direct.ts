@@ -26,6 +26,7 @@ import {
   FetchFireflyTransport,
   type FireflyTransport,
   fetchAccountInfo,
+  fetchCreditsBalance,
   isTokenExpired,
   fireflyVideoSize,
   ProxyFireflyTransport,
@@ -160,6 +161,7 @@ async function refreshAccountToken(
       .limit(1);
 
     const expiresAt = tokenExpiresAt(result.accessToken);
+    let tokenId: string;
     if (existing[0]) {
       await db
         .update(adobeToken)
@@ -172,21 +174,30 @@ async function refreshAccountToken(
           updatedAt: now,
         })
         .where(eq(adobeToken.id, existing[0].id));
-      return { id: existing[0].id, value: result.accessToken };
+      tokenId = existing[0].id;
+    } else {
+      tokenId = nanoid();
+      await db.insert(adobeToken).values({
+        id: tokenId,
+        adobeId,
+        accountId: account.id,
+        value: result.accessToken,
+        accountUserId: accountUserId || null,
+        status: "active",
+        source: "auto_refresh",
+        expiresAt,
+      });
     }
-
-    const id = nanoid();
-    await db.insert(adobeToken).values({
-      id,
-      adobeId,
-      accountId: account.id,
-      value: result.accessToken,
-      accountUserId: accountUserId || null,
-      status: "active",
-      source: "auto_refresh",
-      expiresAt,
-    });
-    return { id, value: result.accessToken };
+    // best-effort 拉 Firefly 余额写入 token（失败不影响刷新结果）。
+    await storeTokenCredits(
+      transport,
+      tokenId,
+      result.accessToken,
+      signal
+    ).catch((error) =>
+      logError(error, { source: "adobe-credits-balance", adobeId })
+    );
+    return { id: tokenId, value: result.accessToken };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await db
@@ -200,6 +211,47 @@ async function refreshAccountToken(
       .where(eq(adobeAccount.id, account.id));
     logError(error, { source: "adobe-direct-refresh", adobeId });
     return null;
+  }
+}
+
+// best-effort 拉取 Firefly 余额并写入 adobe_token 的 credits 列；失败只记 creditsError,
+// 不抛出（余额是运营展示用，不应影响刷新/生成主流程）。
+async function storeTokenCredits(
+  transport: FireflyTransport,
+  tokenId: string,
+  accessToken: string,
+  signal?: AbortSignal
+): Promise<void> {
+  const toInt = (value: number | null) =>
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.round(value)
+      : null;
+  try {
+    const balance = await fetchCreditsBalance(transport, accessToken, signal);
+    await db
+      .update(adobeToken)
+      .set({
+        creditsTotal: toInt(balance.total),
+        creditsUsed: toInt(balance.used),
+        creditsAvailable: toInt(balance.available),
+        creditsUpdatedAt: new Date(),
+        creditsError: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(adobeToken.id, tokenId));
+  } catch (error) {
+    await db
+      .update(adobeToken)
+      .set({
+        creditsError: (error instanceof Error
+          ? error.message
+          : String(error)
+        ).slice(0, 300),
+        creditsUpdatedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(adobeToken.id, tokenId))
+      .catch(() => {});
   }
 }
 
@@ -586,8 +638,14 @@ export async function listAdobeAccounts(adobeId: string): Promise<
     lastRefreshAt: Date | null;
     lastRefreshError: string | null;
     consecutiveFailures: number;
+    creditsTotal: number | null;
+    creditsUsed: number | null;
+    creditsAvailable: number | null;
+    creditsUpdatedAt: Date | null;
+    creditsError: string | null;
   }>
 > {
+  // 左连账号的 auto_refresh token，带出最新的 Firefly 余额（运营展示）。
   return db
     .select({
       id: adobeAccount.id,
@@ -599,8 +657,20 @@ export async function listAdobeAccounts(adobeId: string): Promise<
       lastRefreshAt: adobeAccount.lastRefreshAt,
       lastRefreshError: adobeAccount.lastRefreshError,
       consecutiveFailures: adobeAccount.consecutiveFailures,
+      creditsTotal: adobeToken.creditsTotal,
+      creditsUsed: adobeToken.creditsUsed,
+      creditsAvailable: adobeToken.creditsAvailable,
+      creditsUpdatedAt: adobeToken.creditsUpdatedAt,
+      creditsError: adobeToken.creditsError,
     })
     .from(adobeAccount)
+    .leftJoin(
+      adobeToken,
+      and(
+        eq(adobeToken.accountId, adobeAccount.id),
+        eq(adobeToken.source, "auto_refresh")
+      )
+    )
     .where(eq(adobeAccount.adobeId, adobeId))
     .orderBy(asc(adobeAccount.createdAt));
 }
