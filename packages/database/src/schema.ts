@@ -959,6 +959,8 @@ export const imageBackendAdobe = pgTable("image_backend_adobe", {
   // 站内 WxH 映射不出确定值时的默认宽高比/分辨率。
   defaultRatio: text("default_ratio").notNull().default("1x1"),
   defaultResolution: text("default_resolution").notNull().default("2k"),
+  // 用户 GPT Image 质量选 auto/未指定时映射到的质量（low/medium/high）；默认 high。
+  gptImageQuality: text("gpt_image_quality").notNull().default("high"),
   // 是否允许走视频模型（Phase 3）；默认关闭。
   supportsVideo: boolean("supports_video").notNull().default(false),
   contentSafetyEnabled: boolean("content_safety_enabled")

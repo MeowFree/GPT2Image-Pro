@@ -302,6 +302,13 @@
       "when": 1780400900000,
       "tag": "0042_video_generation",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1780400960000,
+      "tag": "0043_adobe_gpt_image_quality",
+      "breakpoints": true
     }
   ]
 }

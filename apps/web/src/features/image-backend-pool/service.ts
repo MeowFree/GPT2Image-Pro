@@ -192,6 +192,7 @@ type PoolMember =
       enabledModels: string[] | null;
       defaultRatio: string;
       defaultResolution: string;
+      gptImageQuality: string;
       supportsVideo: boolean;
       contentSafetyEnabled: boolean;
       priority: number;
@@ -2321,6 +2322,7 @@ async function selectPoolMember(
     enabledModels: imageBackendAdobe.enabledModels,
     defaultRatio: imageBackendAdobe.defaultRatio,
     defaultResolution: imageBackendAdobe.defaultResolution,
+    gptImageQuality: imageBackendAdobe.gptImageQuality,
     supportsVideo: imageBackendAdobe.supportsVideo,
     contentSafetyEnabled: imageBackendAdobe.contentSafetyEnabled,
     priority: imageBackendAdobe.priority,
@@ -2537,6 +2539,7 @@ async function selectPoolMember(
               enabledModels: row.enabledModels ?? null,
               defaultRatio: row.defaultRatio,
               defaultResolution: row.defaultResolution,
+              gptImageQuality: row.gptImageQuality,
               supportsVideo: row.supportsVideo,
               contentSafetyEnabled: row.contentSafetyEnabled,
               priority: row.priority,
@@ -2804,6 +2807,7 @@ function toResolvedPoolConfig(
           adobeEnabledModels: member.enabledModels,
           adobeDefaultRatio: member.defaultRatio,
           adobeDefaultResolution: member.defaultResolution,
+          adobeGptImageQuality: member.gptImageQuality,
           adobeSupportsVideo: member.supportsVideo,
           billingGroupId: fallbackGroupId,
           billingMultiplier,
@@ -6804,6 +6808,7 @@ export type UpsertAdobeInput = {
   enabledModels?: string[] | null;
   defaultRatio: string;
   defaultResolution: string;
+  gptImageQuality: string;
   supportsVideo: boolean;
   contentSafetyEnabled: boolean;
   isEnabled: boolean;
@@ -6840,6 +6845,7 @@ export async function upsertImageBackendAdobe(input: UpsertAdobeInput) {
     enabledModels: input.enabledModels ?? null,
     defaultRatio: input.defaultRatio,
     defaultResolution: input.defaultResolution,
+    gptImageQuality: input.gptImageQuality,
     supportsVideo: input.supportsVideo,
     contentSafetyEnabled: input.contentSafetyEnabled,
     isEnabled: input.isEnabled,
@@ -7287,6 +7293,7 @@ export async function listAdminImageBackendPool() {
       enabledModels: imageBackendAdobe.enabledModels,
       defaultRatio: imageBackendAdobe.defaultRatio,
       defaultResolution: imageBackendAdobe.defaultResolution,
+      gptImageQuality: imageBackendAdobe.gptImageQuality,
       supportsVideo: imageBackendAdobe.supportsVideo,
       contentSafetyEnabled: imageBackendAdobe.contentSafetyEnabled,
       isEnabled: imageBackendAdobe.isEnabled,

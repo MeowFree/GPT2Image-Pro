@@ -195,6 +195,7 @@ type Adobe = {
   enabledModels: string[] | null;
   defaultRatio: string;
   defaultResolution: string;
+  gptImageQuality: string;
   supportsVideo: boolean;
   contentSafetyEnabled: boolean;
   isEnabled: boolean;
@@ -811,6 +812,7 @@ export function ImageBackendPoolAdminPanel({
     enabledModels: "",
     defaultRatio: "1x1",
     defaultResolution: "2k",
+    gptImageQuality: "high" as "low" | "medium" | "high",
     supportsVideo: false,
     contentSafetyEnabled: true,
     isEnabled: true,
@@ -1275,6 +1277,7 @@ export function ImageBackendPoolAdminPanel({
       enabledModels: "",
       defaultRatio: "1x1",
       defaultResolution: "2k",
+      gptImageQuality: "high",
       supportsVideo: false,
       contentSafetyEnabled: true,
       isEnabled: true,
@@ -1311,6 +1314,8 @@ export function ImageBackendPoolAdminPanel({
       enabledModels: (adobe.enabledModels || []).join(","),
       defaultRatio: adobe.defaultRatio || "1x1",
       defaultResolution: adobe.defaultResolution || "2k",
+      gptImageQuality:
+        (adobe.gptImageQuality as "low" | "medium" | "high") || "high",
       supportsVideo: adobe.supportsVideo,
       contentSafetyEnabled: adobe.contentSafetyEnabled,
       isEnabled: adobe.isEnabled,
@@ -4086,6 +4091,32 @@ export function ImageBackendPoolAdminPanel({
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    GPT Image 质量（auto 映射）
+                  </Label>
+                  <Select
+                    value={adobeForm.gptImageQuality}
+                    onValueChange={(value) =>
+                      setAdobeForm((current) => ({
+                        ...current,
+                        gptImageQuality: value as "low" | "medium" | "high",
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">low</SelectItem>
+                      <SelectItem value="medium">medium</SelectItem>
+                      <SelectItem value="high">high</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    用户选 auto 时映射到此质量；显式选 low/medium/high 则按用户的来。
+                  </p>
                 </div>
                 <div className="space-y-2 rounded-md border p-3">
                   <div className="flex items-center justify-between gap-2">
