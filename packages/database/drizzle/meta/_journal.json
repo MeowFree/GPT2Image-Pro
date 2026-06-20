@@ -288,6 +288,13 @@
       "when": 1780400780000,
       "tag": "0040_image_backend_adobe",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1780400840000,
+      "tag": "0041_adobe_account_token",
+      "breakpoints": true
     }
   ]
 }

@@ -948,6 +948,9 @@ export const imageBackendAdobe = pgTable("image_backend_adobe", {
     onDelete: "set null",
   }),
   name: text("name").notNull(),
+  // gateway：调外部 adobe2api（OpenAI 兼容，用 baseUrl+apiKey）。
+  // direct：本仓库直连 Adobe Firefly（用 adobe_account/adobe_token + Go TLS 旁路）。
+  mode: text("mode").notNull().default("gateway"),
   baseUrl: text("base_url").notNull(),
   apiKey: text("api_key").notNull(),
   // 本后端暴露的 Firefly 图像模型家族（如 ["gpt-image","nano-banana-pro"]）；
@@ -1001,6 +1004,77 @@ export const imageBackendAdobeGroup = pgTable(
       table.groupId
     ),
     index("image_backend_adobe_group_group_idx").on(table.groupId),
+  ]
+);
+
+// Adobe 账号（直连模式）：一行 = 一个 Adobe 账号的刷新档案，镜像 adobe2api 的
+// refresh_profile.json。持有 cookie，用于换取短期 IMS access_token（写入 adobe_token）。
+// 归属某个 imageBackendAdobe 后端（其账号池）。直连模式专用；网关模式不需要。
+export const adobeAccount = pgTable(
+  "adobe_account",
+  {
+    id: text("id").primaryKey(),
+    adobeId: text("adobe_id")
+      .notNull()
+      .references(() => imageBackendAdobe.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // Adobe 浏览器 cookie（IMS 刷新凭据）。无加密基建，按明文存（与 apiKey 一致）。
+    cookie: text("cookie").notNull(),
+    // 覆盖默认 IMS scope（为空用默认）。
+    scope: text("scope"),
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    // IMS profile 拉到的账号信息。
+    displayName: text("display_name"),
+    email: text("email"),
+    accountUserId: text("account_user_id"),
+    // active / error / disabled。
+    status: text("status").notNull().default("active"),
+    lastRefreshAt: timestamp("last_refresh_at"),
+    lastRefreshError: text("last_refresh_error"),
+    nextRefreshAt: timestamp("next_refresh_at"),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [index("adobe_account_adobe_idx").on(table.adobeId)]
+);
+
+// Adobe IMS access_token（直连模式）：短期 Bearer，由 adobe_account 的 cookie 刷新得到，
+// 镜像 adobe2api 的 tokens.json。调度命中后端后在其 token 池里按策略轮换选取。
+export const adobeToken = pgTable(
+  "adobe_token",
+  {
+    id: text("id").primaryKey(),
+    adobeId: text("adobe_id")
+      .notNull()
+      .references(() => imageBackendAdobe.id, { onDelete: "cascade" }),
+    // 手动导入的 token 可无关联账号。
+    accountId: text("account_id").references(() => adobeAccount.id, {
+      onDelete: "cascade",
+    }),
+    // IMS access_token（明文，与 apiKey 一致）。
+    value: text("value").notNull(),
+    // 从 JWT 解出的 user_id（per-account 粘性 / entities 同账号约束用）。
+    accountUserId: text("account_user_id"),
+    // active / error / exhausted / invalid。
+    status: text("status").notNull().default("active"),
+    fails: integer("fails").notNull().default(0),
+    source: text("source").notNull().default("auto_refresh"),
+    expiresAt: timestamp("expires_at"),
+    creditsTotal: integer("credits_total"),
+    creditsUsed: integer("credits_used"),
+    creditsAvailable: integer("credits_available"),
+    creditsUpdatedAt: timestamp("credits_updated_at"),
+    creditsError: text("credits_error"),
+    lastUsedAt: timestamp("last_used_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("adobe_token_adobe_idx").on(table.adobeId),
+    index("adobe_token_account_idx").on(table.accountId),
+    index("adobe_token_adobe_status_idx").on(table.adobeId, table.status),
   ]
 );
 

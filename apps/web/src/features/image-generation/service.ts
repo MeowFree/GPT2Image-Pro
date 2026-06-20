@@ -39,6 +39,7 @@ import type {
   ImageBackendPreferenceMode,
   ImageBackendRequestKind,
 } from "@/features/image-backend-pool/types";
+import { runAdobeDirectImageRequest } from "./adobe-direct";
 import {
   AGENT_CONTINUE_INSTRUCTIONS,
   createDefaultAgentAdditionalTools,
@@ -3889,6 +3890,10 @@ async function runAdobeImageRequest(
     signal?: AbortSignal;
   }
 ): Promise<GenerateImageResult> {
+  // direct 模式：用本仓库移植的逆向逻辑直连 Adobe Firefly（经 Go TLS 旁路），不走网关。
+  if (config.backend?.adobeMode === "direct") {
+    return runAdobeDirectImageRequest(config, params);
+  }
   const family = pickAdobeImageFamily(config.backend?.adobeEnabledModels);
   const body = buildAdobeImageRequestBody({
     family,

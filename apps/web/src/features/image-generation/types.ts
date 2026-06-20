@@ -287,6 +287,8 @@ export interface ApiConfig {
     apiForceResponsesEndpoint?: boolean;
     // adobe（pool-adobe）专属：暴露的 Firefly 模型家族、默认宽高比/分辨率、是否支持
     // 视频。供 image-generation 派发 adobe 请求时选择 family 与映射缺省值。
+    // gateway：调外部 adobe2api；direct：本仓库直连 Firefly（adobe_account/token + 旁路）。
+    adobeMode?: "gateway" | "direct";
     adobeEnabledModels?: string[] | null;
     adobeDefaultRatio?: string;
     adobeDefaultResolution?: string;

@@ -182,6 +182,8 @@ type PoolMember =
       groupMetadata: Record<string, unknown> | null;
       groupContentSafetyEnabled: boolean | null;
       name: string;
+      // gateway：外部 adobe2api；direct：本仓库直连 Firefly。
+      mode: string;
       baseUrl: string;
       apiKey: string;
       enabledModels: string[] | null;
@@ -2303,6 +2305,7 @@ async function selectPoolMember(
     id: imageBackendAdobe.id,
     groupId: imageBackendAdobe.groupId,
     name: imageBackendAdobe.name,
+    mode: imageBackendAdobe.mode,
     baseUrl: imageBackendAdobe.baseUrl,
     apiKey: imageBackendAdobe.apiKey,
     enabledModels: imageBackendAdobe.enabledModels,
@@ -2515,6 +2518,7 @@ async function selectPoolMember(
                 groupContentSafetyEnabled ??
                 null,
               name: row.name,
+              mode: row.mode,
               baseUrl: row.baseUrl,
               apiKey: row.apiKey,
               enabledModels: row.enabledModels ?? null,
@@ -2782,6 +2786,7 @@ function toResolvedPoolConfig(
           userId: options.userId,
           apiKeyId: options.apiKeyId,
           requestKind: options.requestKind,
+          adobeMode: member.mode === "direct" ? "direct" : "gateway",
           adobeEnabledModels: member.enabledModels,
           adobeDefaultRatio: member.defaultRatio,
           adobeDefaultResolution: member.defaultResolution,
@@ -6777,6 +6782,7 @@ export type UpsertAdobeInput = {
   groupIds?: string[];
   mergeGroupIds?: boolean;
   name: string;
+  mode?: "gateway" | "direct";
   baseUrl: string;
   apiKey?: string;
   enabledModels?: string[] | null;
@@ -6810,8 +6816,10 @@ export async function upsertImageBackendAdobe(input: UpsertAdobeInput) {
     existingPrimaryGroupId = existing?.groupId ?? null;
   }
 
+  const mode = input.mode === "direct" ? "direct" : "gateway";
   const updateBase = {
     name: input.name,
+    mode,
     baseUrl: stripTrailingSlash(input.baseUrl),
     enabledModels: input.enabledModels ?? null,
     defaultRatio: input.defaultRatio,
@@ -6846,7 +6854,8 @@ export async function upsertImageBackendAdobe(input: UpsertAdobeInput) {
     return input.id;
   }
 
-  if (!input.apiKey) {
+  // direct 模式凭据为 Adobe 账号/cookie（另表），不需要网关 apiKey；gateway 模式必填。
+  if (mode === "gateway" && !input.apiKey) {
     throw new Error("apiKey is required");
   }
   const id = nanoid();
@@ -6854,7 +6863,7 @@ export async function upsertImageBackendAdobe(input: UpsertAdobeInput) {
     id,
     ...updateBase,
     groupId: primaryGroupId,
-    apiKey: input.apiKey,
+    apiKey: input.apiKey ?? "",
   });
   await setImageBackendAdobeGroups({ adobeId: id, groupIds, replace: true });
   return id;
@@ -7257,6 +7266,7 @@ export async function listAdminImageBackendPool() {
       id: imageBackendAdobe.id,
       groupId: imageBackendAdobe.groupId,
       name: imageBackendAdobe.name,
+      mode: imageBackendAdobe.mode,
       baseUrl: imageBackendAdobe.baseUrl,
       enabledModels: imageBackendAdobe.enabledModels,
       defaultRatio: imageBackendAdobe.defaultRatio,
