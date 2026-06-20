@@ -1003,17 +1003,27 @@ const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp";
 const CHAT_FILE_ACCEPT =
   ".txt,.md,.markdown,.csv,.json,.jsonl,.yaml,.yml,.log,.xml,.html,.htm,.css,.js,.jsx,.ts,.tsx,.mjs,.cjs,.py,.java,.go,.rs,.c,.cc,.cpp,.h,.hpp,.sql,.sh,.toml,.ini,.env,.pdf,text/*,application/json,application/xml,application/pdf";
 const CHAT_ATTACHMENT_ACCEPT = `${IMAGE_ACCEPT},${CHAT_FILE_ACCEPT}`;
+// Adobe Firefly 模型族（按前缀自动路由到 adobe 后端；尺寸由后端按宽高比/分辨率映射）。
+// 选中 Firefly 模型时创作页隐藏 gpt 专属选项、改用 Firefly 宽高比预设。
+const FIREFLY_MODEL_OPTIONS = [
+  { value: "firefly-nano-banana-pro", label: "Firefly · Nano Banana Pro" },
+  { value: "firefly-nano-banana", label: "Firefly · Nano Banana" },
+  { value: "firefly-nano-banana2", label: "Firefly · Nano Banana 2" },
+  { value: "firefly-gpt-image", label: "Firefly · GPT Image" },
+] as const;
 const TEXT_MODEL_OPTIONS = [
   { value: "default", label: "Default" },
   { value: "gpt-image-2", label: "GPT Image 2" },
   { value: "gpt-image-1.5", label: "GPT Image 1.5" },
   { value: "gpt-image-1-mini", label: "GPT Image 1 Mini" },
+  ...FIREFLY_MODEL_OPTIONS,
 ] as const;
 const EDIT_MODEL_OPTIONS = [
   { value: "default", label: "Default" },
   { value: "gpt-image-2", label: "GPT Image 2" },
   { value: "gpt-image-1.5", label: "GPT Image 1.5" },
   { value: "gpt-image-1-mini", label: "GPT Image 1 Mini" },
+  ...FIREFLY_MODEL_OPTIONS,
 ] as const;
 
 const QUALITY_OPTIONS: Array<{ value: ImageQuality; label: string }> = [
