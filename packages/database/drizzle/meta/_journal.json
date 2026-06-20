@@ -295,6 +295,13 @@
       "when": 1780400840000,
       "tag": "0041_adobe_account_token",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1780400900000,
+      "tag": "0042_video_generation",
+      "breakpoints": true
     }
   ]
 }
