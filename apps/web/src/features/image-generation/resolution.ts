@@ -1,6 +1,8 @@
 export const DEFAULT_IMAGE_MODEL = "gpt-image-2";
 export const LEGACY_IMAGE_MODEL = "gpt-image-1";
 export const IMAGE_MODEL_PREFIX = "gpt-image-";
+// Adobe Firefly（直连/网关）图像模型统一前缀；按模型前缀自动路由到 adobe 后端。
+export const FIREFLY_MODEL_PREFIX = "firefly-";
 export const IMAGE_PROMPT_MAX_CHARACTERS = 32_000;
 export const IMAGE_PROMPT_TOO_LONG_MESSAGE = `Prompt exceeds the ${IMAGE_PROMPT_MAX_CHARACTERS} character limit.`;
 export const AUTO_IMAGE_SIZE = "auto";
@@ -36,8 +38,19 @@ export function normalizeImageModel(model?: string | null) {
 }
 
 export function isImageModel(model?: string | null) {
-  const normalizedModel = normalizeImageModel(model);
-  return Boolean(normalizedModel?.toLowerCase().startsWith(IMAGE_MODEL_PREFIX));
+  const normalizedModel = normalizeImageModel(model)?.toLowerCase();
+  return Boolean(
+    normalizedModel?.startsWith(IMAGE_MODEL_PREFIX) ||
+      normalizedModel?.startsWith(FIREFLY_MODEL_PREFIX)
+  );
+}
+
+// 是否 Adobe Firefly 模型（按前缀）。用于创作页/接口在 firefly 模型时切换到 adobe 专属
+// 参数（宽高比/分辨率），并隐藏 gpt 专属选项。
+export function isFireflyModel(model?: string | null) {
+  return Boolean(
+    normalizeImageModel(model)?.toLowerCase().startsWith(FIREFLY_MODEL_PREFIX)
+  );
 }
 
 export function getImageModel(model?: string | null, fallback?: string | null) {
