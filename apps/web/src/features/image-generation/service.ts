@@ -857,7 +857,8 @@ async function reportPoolBackendResult(
   if (!config.backend?.reportResult) return false;
   if (
     config.backend.type !== "pool-api" &&
-    config.backend.type !== "pool-account"
+    config.backend.type !== "pool-account" &&
+    config.backend.type !== "pool-adobe"
   ) {
     return false;
   }
