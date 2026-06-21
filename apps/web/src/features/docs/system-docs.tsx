@@ -288,7 +288,7 @@ const sections = {
         "用户已启用“接入其他站 API”时，普通 /v1/chat/completions、/v1/images/generations、/v1/images/edits 和 /v1/responses 仍优先使用用户自接 API；命中时 credits_consumed 为 0，不扣本站余额，也不增加本站 API Key 已用额度。",
         "/v1/agents/images 和需要 Codex/Responses 能力的页面功能会忽略用户自接 API，按平台后端池或外接后端池结算本站积分。",
         "image 接口的 web_first / webFirst / force_web / forceWeb（chat 对应 mix_web_first）是 Web-first 优先路由，不是硬性只走 Web，且默认开启。开启时（不传或显式 true）按 Web-first 像素区间（IMAGE_FORCE_WEB_MIN_PIXELS / IMAGE_FORCE_WEB_MAX_PIXELS，默认 0.66MP-2MP）判定：尺寸落在区间内才优先 Web、失败回退 Codex/Responses，超出区间（如 4K）则走正常调度；auto 或无法解析的尺寸视为可优先 Web。显式传 false 则不优先 Web。该路由只对 mixed 后端分组生效（纯 Web / 纯 Codex-Responses 分组无此概念），不会覆盖用户自接 API；agent 始终走 Codex/Responses，不受此项影响。",
-        "Adobe（Firefly）后端：传入 firefly-* 模型或 force_firefly=true 会显式路由到 Adobe；Adobe 也会按配置优先级作为普通后端池的 fallback 参与调度。图像计费 = 尺寸基础积分 × 模型族倍率 × Adobe 后端倍率 × 分组倍率；视频计费见 /v1/videos/generations。",
+        "Adobe（Firefly）后端：作为特殊成员按 priority 挂入分组同池调度——firefly-* 模型或 force_firefly=true 会把候选收敛到仅 Adobe；普通请求则只有当组内 web/codex/api 限流/耗尽/可切换失败时才兜底到 Adobe（取决于 Adobe 是否在该组及其优先级，priority 越大越靠后）。是否进 Adobe、计费倍率均随 admin「Adobe 后端」tab 配置变化。图像计费 = 尺寸基础积分 × 模型族倍率 × Adobe 后端倍率 × 分组倍率；视频计费见 /v1/videos/generations。路由兜底详见 docs/adobe-firefly-routing.md，兼容转换（站内参数→Adobe 字段、被忽略参数、算例）详见 docs/adobe-firefly-compat.md。",
       ],
       officialRefsTitle: "官方参考",
       officialRefs: [
@@ -827,7 +827,7 @@ curl https://your-domain.example/v1/images/task_... \\
               requirement: "可选",
               custom: true,
               description:
-                "本站扩展：true 时强制把本次请求路由到 Adobe（Firefly）后端，使用标准参数（你的 prompt/size/quality/model）。未传 firefly-* 模型时默认族为 gpt-image-2；size 自动映射到 firefly 的宽高比/分辨率，quality 映射到 gpt_image_quality；不支持的参数（output_format、background、thinking、moderation 等级）会被忽略。",
+                "本站扩展：true 时把候选收敛到仅 Adobe（Firefly）后端，使用标准参数（你的 prompt/size/quality/model）。未传 firefly-* 模型时默认族为 gpt-image-2；size 映射到 firefly 宽高比/分辨率（长边≤1024→1k、≤2048→2k、否则 4k），quality 的 low/medium/high→detailLevel 1/3/5、auto→后端 gpt_image_quality；不支持的参数（output_format、background、thinking、moderation 等级、output_compression）静默忽略。完整映射表与算例见 docs/adobe-firefly-compat.md。",
             },
             {
               name: "n",
@@ -1134,7 +1134,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               requirement: "可选",
               custom: true,
               description:
-                "本站扩展：true 时强制把本次编辑请求路由到 Adobe（Firefly）后端，使用标准参数。未传 firefly-* 模型时默认族为 gpt-image-2；size 自动映射 firefly 宽高比/分辨率，quality 映射 gpt_image_quality；不支持的参数会被忽略。详见 /v1/images/generations 说明。",
+                "本站扩展：true 时把候选收敛到仅 Adobe（Firefly）后端，使用标准参数。未传 firefly-* 模型时默认族为 gpt-image-2；size 映射 firefly 宽高比/分辨率，quality low/medium/high→detailLevel 1/3/5；不支持的参数静默忽略。详见 /v1/images/generations 与 docs/adobe-firefly-compat.md。",
             },
             {
               name: "n",
@@ -2210,7 +2210,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         "If the user has enabled a custom upstream API, ordinary /v1/chat/completions, /v1/images/generations, /v1/images/edits, and /v1/responses still use that custom API first. When it wins, credits_consumed is 0 and GPT2IMAGE does not charge account credits or API key quota.",
         "/v1/agents/images and page features that require Codex/Responses capability ignore user custom API and are billed through the platform or external backend pool.",
         "Image endpoint web_first / webFirst / force_web / forceWeb means Web-first preference, not hard Web-only routing. It only applies after routing enters a platform mixed backend group, does not override user custom API, and falls back to Codex/Responses when Web is unavailable or fails.",
-        "Adobe (Firefly) backend: passing a firefly-* model or force_firefly=true routes explicitly to Adobe; Adobe also participates as a normal backend-pool fallback by configured priority. Image billing = size base credits × model-family multiplier × Adobe backend multiplier × group multiplier; see /v1/videos/generations for video billing.",
+        "Adobe (Firefly) backend: it joins the group as a special pool member ranked by priority. A firefly-* model or force_firefly=true narrows candidates to Adobe only; ordinary requests only fall back to Adobe once the group's web/codex/api members are rate-limited, exhausted, or fail with a switchable error (and only if Adobe is in that group — the larger its priority, the later it is tried). Whether a request reaches Adobe and its billing multiplier follow the admin 'Adobe backend' tab config. Image billing = size base credits × model-family multiplier × Adobe backend multiplier × group multiplier; see /v1/videos/generations for video billing. Routing/fallback: docs/adobe-firefly-routing.md; compatibility conversion (in-app params → Adobe fields, ignored params, worked example): docs/adobe-firefly-compat.md.",
       ],
       officialRefsTitle: "Official References",
       officialRefs: [
@@ -2750,7 +2750,7 @@ curl https://your-domain.example/v1/images/task_... \\
               requirement: "Optional",
               custom: true,
               description:
-                "GPT2IMAGE extension: when true, forces this request to the Adobe (Firefly) backend using standard parameters (your prompt/size/quality/model). When no firefly-* model is given, the default family is gpt-image-2; size auto-maps to the firefly ratio/resolution and quality maps to gpt_image_quality; unsupported parameters (output_format, background, thinking, moderation level) are ignored.",
+                "GPT2IMAGE extension: when true, narrows candidates to the Adobe (Firefly) backend only, using standard parameters (your prompt/size/quality/model). When no firefly-* model is given, the default family is gpt-image-2; size maps to the firefly ratio/resolution (longest edge ≤1024→1k, ≤2048→2k, else 4k); quality low/medium/high → detailLevel 1/3/5, auto → backend gpt_image_quality; unsupported parameters (output_format, background, thinking, moderation level, output_compression) are silently ignored. Full mapping table and worked example: docs/adobe-firefly-compat.md.",
             },
             {
               name: "n",
@@ -3059,7 +3059,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               requirement: "Optional",
               custom: true,
               description:
-                "GPT2IMAGE extension: when true, forces this edit request to the Adobe (Firefly) backend using standard parameters. When no firefly-* model is given, the default family is gpt-image-2; size auto-maps to the firefly ratio/resolution and quality maps to gpt_image_quality; unsupported parameters are ignored. See /v1/images/generations.",
+                "GPT2IMAGE extension: when true, narrows candidates to the Adobe (Firefly) backend only, using standard parameters. When no firefly-* model is given, the default family is gpt-image-2; size maps to the firefly ratio/resolution; quality low/medium/high → detailLevel 1/3/5; unsupported parameters are silently ignored. See /v1/images/generations and docs/adobe-firefly-compat.md.",
             },
             {
               name: "n",
