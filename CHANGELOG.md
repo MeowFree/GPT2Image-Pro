@@ -2,6 +2,42 @@
 
 本文件记录各发布版本的变更。版本格式 `v<MAJOR>.<MINOR>.<PATCH>`。
 
+## v0.6.0 (2026-06-21)
+
+接入 Adobe Firefly 作为独立后端生态:图像(gpt-image / nano-banana 系列)与视频(sora2 / veo31 / kling 等 7 族)直连出图,经 Go TLS 旁路过风控,自管 Adobe 账号/token 池;统一到既有账号池调度、计费、监控与 v1 API 体系。迁移 0040-0044。
+
+### 新增
+
+- **Adobe Firefly 图像直连**:完整移植逆向逻辑直连 Firefly,不依赖外部进程。
+  - 模型 id `firefly-<family>-<resolution>-<ratio>`,family ∈ gpt-image-2 / gpt-image-1.5 / nano-banana / nano-banana2 / nano-banana-pro;resolution 1k/2k/4k;ratio 1x1/16x9/9x16/4x3/3x4。可作 `model` 用于 `/v1/images/generations`、`/v1/images/edits`。
+  - gpt-image **质量用户可控**(low/medium/high → Firefly detailLevel 1/3/5;auto 走后端默认),并区分 gpt-image **2 / 1.5** 版本(版本进 model 名,upstreamModelVersion 由名字定)。
+  - 图生图走 gpt-image,参考媒体用 `referenceBlobs`。
+- **Adobe Firefly 视频生成**:
+  - 7 族(sora2 / sora2-pro / veo31 / veo31-ref / veo31-fast / kling-o3 / kling3),model id `firefly-<family>-<dur>s-<ratio>[-<res>]`;支持图生视频(首帧)。
+  - 创作页新增「视频」tab(可 @ 历史图作首帧)、SSE 长任务路由 `/api/videos/generate`、外部 API `/v1/videos/generations`(OpenAI-images 风格响应)。
+  - 计费 30 积分/秒 × 时长 × 模型族倍率;`video_generation` 表落库 + 幂等扣费/失败退款 + 产物 re-host。
+- **调度接入**:Adobe 伪装成特殊 "firefly" account 成员,挂入分组按优先级参与调度(配低优先级即作兜底层);`force_firefly`(API,下划线/驼峰均收)强制把任意请求路由到 Adobe,标准参数兼容、默认族 gpt-image-2。
+- **计费倍率体系**:整个 Adobe 后端倍率(后端表单)+ 图像/视频**每模型族倍率**(Adobe tab「模型计费倍率」表格);最终积分 = 基础 × 模型族倍率 × Adobe 后端倍率 × 分组倍率。
+- **Adobe 账号管理**:admin「Adobe 后端」tab 支持 cookie 导入并验证、token 轮换、Firefly 余额展示;`gpt_image_quality`(auto 映射目标)后端可配。
+- **全局状态监控接入**:后端健康新增「Adobe Firefly」块;时延/SLA 新增 adobe 桶;独立「视频生成」统计区块(读 `video_generation`,按状态/模型族/积分/时长)。
+- **创作页**:选 Firefly 模型时隐藏 GPT 模型选择器与思考强度、置灰 adobe 不消费的参数;新增 Firefly 图像/视频选项。
+- **基建**:Go TLS 旁路(chatgpt-web-proxy)白名单支持 `.adobe.io/.adobe.com/.adobelogin.com`;API 文档补充 Firefly 模型、`force_firefly`、`/v1/videos/generations`。
+
+### 变更
+
+- **模型计费倍率入口去重**:`IMAGE_MODEL_MULTIPLIERS`/`VIDEO_MODEL_MULTIPLIERS` 从「系统设置 · 积分」面板隐藏,统一在 Adobe tab 的表格编辑(同一份数据)。
+
+### 修复
+
+- **调度租约/touch 漏处理 adobe 成员**:`acquirePoolMemberInflightLease`/`touchSelectedMember` 把 adobe 当 account 查表 → 租约恒 "full" → adobe 永不被选中("无可用 Adobe 视频后端")。补 adobe 分支。
+- **pool-adobe 生图无限递归**:`retryPoolBackendResult` 对 adobe 提前 return 未清 reportResult → 同步无限递归(Maximum call stack size exceeded)。改为带 reportResult 的池后端统一进主循环。
+- **pool-adobe 结果未上报**:`reportPoolBackendResult` 类型守卫漏 pool-adobe → 成功/失败计数恒 0、监控显示"成功0·失败0"。补 pool-adobe。
+- **gpt-image 质量锁死**:派发未传 qualityLevel → 一律落最低 detailLevel 1,medium/high 成死码。现透传质量。
+- **gpt-image 图生图被拒**:Adobe 新 API 对 `referenceImages` 返 422,改用 `referenceBlobs`(usage=general)。
+- **公开视频路由 404**:`/v1/videos/generations` 仅建在 `/api/v1`,补镜像到公开 `/v1` 树。
+- **admin Adobe tab 不响应**:`BackendPoolTab` 类型与 Tabs onValueChange 白名单漏 `"adobe"` → 点 Adobe tab 回落到 groups、内容按钮 onClick 不被接管。两处补 adobe。
+- **结果详情积分显示 0**:文生图结果经 visualResults fallback 解析时 `creditsConsumed` 写死 0(影响所有后端)。ResultState 携带真实积分。
+
 ## v0.5.6 (2026-06-20)
 
 ### 变更
