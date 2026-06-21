@@ -107,6 +107,11 @@ const sections = {
             "chat / agent / responses 走 Responses 语义（image_generation 工具循环、多轮）。普通图像生成与图生图改走该账号的 /images/generations、/images/edits 直连端点（同一 OAuth 凭据，JSON 体、size 走顶层；图生图的输入图/mask 以 base64 data URL 放在 images[].image_url / mask.image_url），以确定性遵循 size 等尺寸参数；Codex 托管的 image_generation 工具不尊重 size，故纯生成/编辑不再用它（codex images 端点要 JSON,不接受 multipart）。",
         },
         {
+          title: "Adobe（Firefly）账号池",
+          description:
+            "作为特殊成员按 priority 挂入分组同池调度，触发于：① 模型名以 firefly- 开头（显式选族）；② 请求带 force_firefly:true（强制）；③ 普通请求兜底——仅当 Adobe 挂在该分组、且组内 web/codex/api 限流、耗尽或可切换失败时，按 Adobe 的 priority（越大越靠后）轮到它。命中后把标准请求兼容转换成 Firefly 格式（默认族 gpt-image-2、size→比例/分辨率、quality→detailLevel、图生图 referenceBlobs），不支持的参数静默忽略。",
+        },
+        {
           title: "外接 API 后端",
           description:
             "管理员配置的 OpenAI 兼容 Base URL/API Key；按当前请求类型调用 images 或 responses 端点。",
@@ -273,7 +278,7 @@ const sections = {
         "以下按 OpenAI 官方接口形态整理本站当前支持范围。粗体字段为本站扩展或兼容增强，不属于标准 OpenAI 字段。",
       commonTitle: "通用规则",
       baseUrlTitle: "Base URL",
-      baseUrl: "https://your-domain.example",
+      baseUrl: "https://gpt2image.superapi.buzz",
       examplesTitle: "请求示例",
       responseExampleTitle: "响应示例",
       common: [
@@ -308,6 +313,14 @@ const sections = {
           label: "Models API",
           href: "https://developers.openai.com/api/reference/resources/models/methods/list",
         },
+        {
+          label: "Adobe 路由与兜底调度",
+          href: "/docs/adobe-firefly-routing",
+        },
+        {
+          label: "Adobe 兼容转换",
+          href: "/docs/adobe-firefly-compat",
+        },
       ],
       fieldHeaders: ["字段", "要求", "说明"],
       responseHeaders: ["返回字段", "说明"],
@@ -323,7 +336,7 @@ const sections = {
           contentType: "无请求体",
           description:
             "兼容 OpenAI List models，用于列出当前 API Key 所属用户可见的图片模型和 Responses 模型。",
-          example: `curl https://your-domain.example/v1/models \\
+          example: `curl https://gpt2image.superapi.buzz/v1/models \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY"`,
           responseExample: `{
   "object": "list",
@@ -370,7 +383,7 @@ const sections = {
           contentType: "无请求体",
           description:
             "查询当前 Bearer API Key 的限额、已用额度、剩余额度，以及所属账户当前积分余额。",
-          example: `curl https://your-domain.example/v1/credits \\
+          example: `curl https://gpt2image.superapi.buzz/v1/credits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY"`,
           responseExample: `{
   "object": "credit_balance",
@@ -423,7 +436,7 @@ const sections = {
           description:
             "兼容 OpenAI Chat Completions 的生图对话入口。它复用页面 Chat 的非 Agent 模式，不启用 Agent 工具循环。",
           example: `# 1. 普通对话生图；默认返回 URL，content 中会追加 Markdown 图片链接
-curl https://your-domain.example/v1/chat/completions \\
+curl https://gpt2image.superapi.buzz/v1/chat/completions \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -439,7 +452,7 @@ curl https://your-domain.example/v1/chat/completions \\
   }'
 
 # 2. 多模态输入，image_url 会作为本轮真实参考图输入
-curl https://your-domain.example/v1/chat/completions \\
+curl https://gpt2image.superapi.buzz/v1/chat/completions \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -459,7 +472,7 @@ curl https://your-domain.example/v1/chat/completions \\
   }'
 
 # 3. 流式返回；文本走 chat.completion.chunk，自定义 partial_image 事件返回流式预览
-curl -N https://your-domain.example/v1/chat/completions \\
+curl -N https://gpt2image.superapi.buzz/v1/chat/completions \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
   -H "Content-Type: application/json" \\
@@ -481,10 +494,10 @@ curl -N https://your-domain.example/v1/chat/completions \\
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "已生成图片。\\n\\n![generated image 1](https://your-domain.example/api/storage/generations/...)",
+        "content": "已生成图片。\\n\\n![generated image 1](https://gpt2image.superapi.buzz/api/storage/generations/...)",
         "images": [
           {
-            "url": "https://your-domain.example/api/storage/generations/...",
+            "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
             "revised_prompt": "...",
             "generation_id": "gen_..."
           }
@@ -495,7 +508,7 @@ curl -N https://your-domain.example/v1/chat/completions \\
   ],
   "images": [
     {
-      "url": "https://your-domain.example/api/storage/generations/...",
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "generation_id": "gen_..."
     }
   ],
@@ -509,7 +522,7 @@ curl -N https://your-domain.example/v1/chat/completions \\
 data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"正在生成..."},"finish_reason":null}]}
 
 event: chat.completion.partial_image
-data: {"type":"chat.completion.partial_image","index":0,"partial_image_index":0,"url":"https://your-domain.example/api/storage/generations/..."}
+data: {"type":"chat.completion.partial_image","index":0,"partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
 
 data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"generation_id":"gen_...","credits_consumed":2.31}
 `,
@@ -656,7 +669,7 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
           description:
             "兼容 OpenAI Images generation。请求会转换成 image_generation 调度类型，进入统一生成链路。",
           example: `# 1. 官方 Images 风格，默认返回 b64_json
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -670,7 +683,7 @@ curl https://your-domain.example/v1/images/generations \\
   }'
 
 # 2. 返回 URL，并关闭本站提示词优化
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -688,7 +701,7 @@ curl https://your-domain.example/v1/images/generations \\
   }'
 
 # 3. Codex/Responses 后端专用参数；普通 Images API 后端可能忽略
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -704,7 +717,7 @@ curl https://your-domain.example/v1/images/generations \\
   }'
 
 # 4. mixed 分组按可配置像素区间优先尝试 Web；失败或耗尽后降级 Codex/Responses
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -716,7 +729,7 @@ curl https://your-domain.example/v1/images/generations \\
   }'
 
 # 5. 流式返回；也可用 Accept: text/event-stream 触发
-curl -N https://your-domain.example/v1/images/generations \\
+curl -N https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
   -H "Content-Type: application/json" \\
@@ -729,7 +742,7 @@ curl -N https://your-domain.example/v1/images/generations \\
   }'
 
 # 6. 异步模式；也可在 URL 后追加 ?async=true。callback_url 可选
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -744,7 +757,7 @@ curl https://your-domain.example/v1/images/generations \\
   }'
 
 # 7. 本站扩展：透明背景 + ISNet 兜底抠图，并关闭审核改写重试
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -761,7 +774,7 @@ curl https://your-domain.example/v1/images/generations \\
   "created": 1713833628,
   "data": [
     {
-      "url": "https://your-domain.example/api/storage/generations/...",
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "revised_prompt": "..."
     }
   ],
@@ -773,10 +786,10 @@ curl https://your-domain.example/v1/images/generations \\
 
 # stream=true 时的 SSE 片段
 event: image_generation.partial_image
-data: {"type":"image_generation.partial_image","index":0,"partial_image_index":0,"url":"https://your-domain.example/api/storage/generations/..."}
+data: {"type":"image_generation.partial_image","index":0,"partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
 
 event: image_generation.completed
-data: {"type":"image_generation.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://your-domain.example/api/storage/generations/...","data":[{"url":"https://your-domain.example/api/storage/generations/...","revised_prompt":"..."}]}
+data: {"type":"image_generation.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","data":[{"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","revised_prompt":"..."}]}
 
 # async=true 的立即响应
 {
@@ -790,7 +803,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
 }
 
 # 查询任务
-curl https://your-domain.example/v1/images/task_... \\
+curl https://gpt2image.superapi.buzz/v1/images/task_... \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY"
 
 # 完成后的任务响应或回调 payload
@@ -803,7 +816,7 @@ curl https://your-domain.example/v1/images/task_... \\
   "created_at": "2026-05-28T00:00:00.000Z",
   "completed": 1713833700,
   "completed_at": "2026-05-28T00:01:12.000Z",
-  "data": [{"url": "https://your-domain.example/api/storage/generations/..."}],
+  "data": [{"url": "https://gpt2image.superapi.buzz/api/storage/generations/..."}],
   "generation_id": "gen_...",
   "generationId": "gen_...",
   "credits_consumed": 1.31,
@@ -985,7 +998,7 @@ curl https://your-domain.example/v1/images/task_... \\
           description:
             "兼容 OpenAI Images edit。multipart 可上传图片；JSON 可使用公网图片 URL。",
           example: `# 1. multipart 上传参考图
-curl https://your-domain.example/v1/images/edits \\
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -F model="gpt-image-2" \\
   -F prompt="把参考图改成电影海报风格" \\
@@ -1000,7 +1013,7 @@ curl https://your-domain.example/v1/images/edits \\
   -F 'image[]=@/path/to/reference.png'
 
 # 2. multipart 多参考图 + mask + Codex/Responses 参数
-curl https://your-domain.example/v1/images/edits \\
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -F model="gpt-image-2" \\
   -F prompt="只重绘 mask 区域，保持人物脸部不变" \\
@@ -1015,7 +1028,7 @@ curl https://your-domain.example/v1/images/edits \\
   -F mask="@/path/to/mask.png"
 
 # 3. JSON 图片 URL；推荐 images，image_url/image_urls 只是兼容快捷字段
-curl https://your-domain.example/v1/images/edits \\
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1043,7 +1056,7 @@ curl https://your-domain.example/v1/images/edits \\
   }'
 
 # 4. mixed 分组按可配置像素区间优先尝试 Web；失败或耗尽后降级 Codex/Responses
-curl https://your-domain.example/v1/images/edits \\
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1056,7 +1069,7 @@ curl https://your-domain.example/v1/images/edits \\
   }'
 
 # 5. 流式图生图
-curl -N https://your-domain.example/v1/images/edits \\
+curl -N https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
   -F model="gpt-image-2" \\
@@ -1067,7 +1080,7 @@ curl -N https://your-domain.example/v1/images/edits \\
   -F 'image=@/path/to/reference.png'
 
 # 6. 异步图生图；也可在 URL 后追加 ?async=true。callback_url 可选
-curl https://your-domain.example/v1/images/edits \\
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -F model="gpt-image-1.5" \\
   -F prompt="去除背景，输出透明 PNG" \\
@@ -1082,7 +1095,7 @@ curl https://your-domain.example/v1/images/edits \\
   "created": 1713833628,
   "data": [
     {
-      "url": "https://your-domain.example/api/storage/generations/...",
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "revised_prompt": "..."
     }
   ],
@@ -1094,10 +1107,10 @@ curl https://your-domain.example/v1/images/edits \\
 
 # stream=true 时的 SSE 片段
 event: image_edit.partial_image
-data: {"type":"image_edit.partial_image","index":0,"partial_image_index":0,"url":"https://your-domain.example/api/storage/generations/..."}
+data: {"type":"image_edit.partial_image","index":0,"partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
 
 event: image_edit.completed
-data: {"type":"image_edit.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://your-domain.example/api/storage/generations/...","data":[{"url":"https://your-domain.example/api/storage/generations/...","revised_prompt":"..."}]}
+data: {"type":"image_edit.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","data":[{"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","revised_prompt":"..."}]}
 
 # async=true 的任务查询和回调响应格式同 /v1/images/generations
 `,
@@ -1289,7 +1302,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
           description:
             "本站扩展：Adobe Firefly 视频生成。固定路由到 Adobe（Firefly）后端，是长任务（保持连接 / keep-alive 撑住连接直到出片），返回 OpenAI Images 风格结构，data[].url 为产物视频 URL。鉴权与其他 v1 接口一致（外部 API Key）。",
           example: `# 1. 文生视频；model 为完整 Firefly 视频 id
-curl https://your-domain.example/v1/videos/generations \\
+curl https://gpt2image.superapi.buzz/v1/videos/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1299,7 +1312,7 @@ curl https://your-domain.example/v1/videos/generations \\
   }'
 
 # 2. 图生视频；image 为 base64 data URL 数组（首帧/参考），最多 3 张
-curl https://your-domain.example/v1/videos/generations \\
+curl https://gpt2image.superapi.buzz/v1/videos/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1311,7 +1324,7 @@ curl https://your-domain.example/v1/videos/generations \\
   "created": 1713833628,
   "model": "firefly-veo31-8s-16x9-1080p",
   "data": [
-    { "url": "https://your-domain.example/api/storage/generations/..." }
+    { "url": "https://gpt2image.superapi.buzz/api/storage/generations/..." }
   ],
   "credits_consumed": 240
 }`,
@@ -1373,7 +1386,7 @@ curl https://your-domain.example/v1/videos/generations \\
           description:
             "本站扩展接口：把页面 Agent 模式开放给外接 API。它固定按 Codex/Responses 能力调度，支持联网、工具循环、自动迭代、附件上下文和流式 Agent 事件。",
           example: `# 1. JSON Agent 生图；默认返回 URL。默认需要 Ultra，可在能力矩阵 externalApi.agent 调整。
-curl https://your-domain.example/v1/agents/images \\
+curl https://gpt2image.superapi.buzz/v1/agents/images \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1389,7 +1402,7 @@ curl https://your-domain.example/v1/agents/images \\
   }'
 
 # 2. 带参考图 URL。images / image_url / image_urls 会合并去重。
-curl https://your-domain.example/v1/agents/images \\
+curl https://gpt2image.superapi.buzz/v1/agents/images \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1402,7 +1415,7 @@ curl https://your-domain.example/v1/agents/images \\
   }'
 
 # 3. multipart 上传参考图和 PDF/文本附件。
-curl https://your-domain.example/v1/agents/images \\
+curl https://gpt2image.superapi.buzz/v1/agents/images \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -F model="gpt-5.4" \\
   -F image_model="gpt-image-2" \\
@@ -1414,7 +1427,7 @@ curl https://your-domain.example/v1/agents/images \\
   -F 'file=@/path/to/company-profile.pdf'
 
 # 4. 流式 Agent。会持续返回 agent.event / agent.partial_image / agent.completed。
-curl -N https://your-domain.example/v1/agents/images \\
+curl -N https://gpt2image.superapi.buzz/v1/agents/images \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
   -H "Content-Type: application/json" \\
@@ -1439,12 +1452,12 @@ curl -N https://your-domain.example/v1/agents/images \\
   "credits_consumed": 8.42,
   "data": [
     {
-      "url": "https://your-domain.example/api/storage/generations/...",
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "revised_prompt": "...",
       "output_role": "agent_draft"
     },
     {
-      "url": "https://your-domain.example/api/storage/generations/...",
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "revised_prompt": "...",
       "output_role": "final"
     }
@@ -1458,10 +1471,10 @@ event: agent.event
 data: {"type":"agent.event","event":{"kind":"web_search","status":"completed","title":"联网搜索完成","detail":"浙江双元科技 官网"}}
 
 event: agent.partial_image
-data: {"type":"agent.partial_image","partial_image_index":0,"url":"https://your-domain.example/api/storage/generations/..."}
+data: {"type":"agent.partial_image","partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
 
 event: agent.completed
-data: {"type":"agent.completed","generation_id":"...","generationId":"...","agent_round_count":2,"credits_consumed":8.42,"data":[{"url":"https://your-domain.example/api/storage/generations/...","output_role":"final"}]}
+data: {"type":"agent.completed","generation_id":"...","generationId":"...","agent_round_count":2,"credits_consumed":8.42,"data":[{"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","output_role":"final"}]}
 `,
           fields: [
             {
@@ -1610,7 +1623,7 @@ data: {"type":"agent.completed","generation_id":"...","generationId":"...","agen
           description:
             "基于 OpenAI Responses API 的生图适配入口。它会按 responses 调度类型选择 Codex/Responses 账号池或外接 /responses API 后端。",
           example: `# 1. 最小 Responses 生图请求；需要 Pro 套餐
-curl https://your-domain.example/v1/responses \\
+curl https://gpt2image.superapi.buzz/v1/responses \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1622,7 +1635,7 @@ curl https://your-domain.example/v1/responses \\
   }'
 
 # 2. 显式 image_generation tool，并指定图片模型
-curl https://your-domain.example/v1/responses \\
+curl https://gpt2image.superapi.buzz/v1/responses \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1636,7 +1649,7 @@ curl https://your-domain.example/v1/responses \\
   }'
 
 # 3. 带参考图的 Responses 输入
-curl https://your-domain.example/v1/responses \\
+curl https://gpt2image.superapi.buzz/v1/responses \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1658,7 +1671,7 @@ curl https://your-domain.example/v1/responses \\
   }'
 
 # 4. 续接上一轮，并使用流式返回
-curl -N https://your-domain.example/v1/responses \\
+curl -N https://gpt2image.superapi.buzz/v1/responses \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -2019,6 +2032,11 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
             "Uses Responses semantics for responses and can convert image generation/edit into responses requests.",
         },
         {
+          title: "Adobe (Firefly) Pool",
+          description:
+            "Joins a group as a special member scheduled by priority. It is reached when: (1) the model name starts with firefly- (explicit family); (2) the request carries force_firefly:true (forced); or (3) as an ordinary-request fallback — only when Adobe is attached to that group and the group's web/codex/api members are rate-limited, exhausted, or fail with a switchable error, so Adobe is reached by its priority (larger = later). On a hit the standard request is compat-converted into Firefly format (default family gpt-image-2, size to ratio/resolution, quality to detailLevel, image-to-image referenceBlobs); unsupported parameters are silently ignored.",
+        },
+        {
           title: "External API Backend",
           description:
             "Admin-configured OpenAI-compatible Base URL/API Key; calls images or responses endpoints by request type.",
@@ -2195,7 +2213,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         "This documents the currently supported OpenAI-compatible surface. Bold fields are GPT2IMAGE extensions or compatibility additions, not standard OpenAI fields.",
       commonTitle: "Common Rules",
       baseUrlTitle: "Base URL",
-      baseUrl: "https://your-domain.example",
+      baseUrl: "https://gpt2image.superapi.buzz",
       examplesTitle: "Request Example",
       responseExampleTitle: "Response Example",
       common: [
@@ -2230,6 +2248,14 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
           label: "Models API",
           href: "https://developers.openai.com/api/reference/resources/models/methods/list",
         },
+        {
+          label: "Adobe routing and fallback scheduling",
+          href: "/docs/adobe-firefly-routing",
+        },
+        {
+          label: "Adobe compatibility conversion",
+          href: "/docs/adobe-firefly-compat",
+        },
       ],
       fieldHeaders: ["Field", "Requirement", "Notes"],
       responseHeaders: ["Response field", "Notes"],
@@ -2245,7 +2271,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
           contentType: "No request body",
           description:
             "Compatible with OpenAI List models. Lists image models and Responses models visible to the current API key's user.",
-          example: `curl https://your-domain.example/v1/models \\
+          example: `curl https://gpt2image.superapi.buzz/v1/models \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY"`,
           responseExample: `{
   "object": "list",
@@ -2292,7 +2318,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
           contentType: "No request body",
           description:
             "Returns the current Bearer API key's credit limit, used credits, remaining credits, and owning account balance.",
-          example: `curl https://your-domain.example/v1/credits \\
+          example: `curl https://gpt2image.superapi.buzz/v1/credits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY"`,
           responseExample: `{
   "object": "credit_balance",
@@ -2346,7 +2372,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
           description:
             "OpenAI-compatible Chat Completions adapter for GPT2IMAGE page Chat non-Agent mode. It does not enable the Agent tool loop.",
           example: `# 1. Chat-to-image. URL is the default to keep response bodies small.
-curl https://your-domain.example/v1/chat/completions \\
+curl https://gpt2image.superapi.buzz/v1/chat/completions \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -2362,7 +2388,7 @@ curl https://your-domain.example/v1/chat/completions \\
   }'
 
 # 2. Multimodal input. image_url becomes a real reference image input for this turn.
-curl https://your-domain.example/v1/chat/completions \\
+curl https://gpt2image.superapi.buzz/v1/chat/completions \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -2382,7 +2408,7 @@ curl https://your-domain.example/v1/chat/completions \\
   }'
 
 # 3. Streaming. Text uses chat.completion.chunk; partial images use a GPT2IMAGE extension event.
-curl -N https://your-domain.example/v1/chat/completions \\
+curl -N https://gpt2image.superapi.buzz/v1/chat/completions \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
   -H "Content-Type: application/json" \\
@@ -2404,10 +2430,10 @@ curl -N https://your-domain.example/v1/chat/completions \\
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "Image generated.\\n\\n![generated image 1](https://your-domain.example/api/storage/generations/...)",
+        "content": "Image generated.\\n\\n![generated image 1](https://gpt2image.superapi.buzz/api/storage/generations/...)",
         "images": [
           {
-            "url": "https://your-domain.example/api/storage/generations/...",
+            "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
             "revised_prompt": "...",
             "generation_id": "gen_..."
           }
@@ -2418,7 +2444,7 @@ curl -N https://your-domain.example/v1/chat/completions \\
   ],
   "images": [
     {
-      "url": "https://your-domain.example/api/storage/generations/...",
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "generation_id": "gen_..."
     }
   ],
@@ -2432,7 +2458,7 @@ curl -N https://your-domain.example/v1/chat/completions \\
 data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Generating..."},"finish_reason":null}]}
 
 event: chat.completion.partial_image
-data: {"type":"chat.completion.partial_image","index":0,"partial_image_index":0,"url":"https://your-domain.example/api/storage/generations/..."}
+data: {"type":"chat.completion.partial_image","index":0,"partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
 
 data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"generation_id":"gen_...","credits_consumed":2.31}
 `,
@@ -2579,7 +2605,7 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
           description:
             "Compatible with OpenAI Images generation. Requests become image_generation jobs in the shared generation path.",
           example: `# 1. Official Images-style request. b64_json is the default.
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -2593,7 +2619,7 @@ curl https://your-domain.example/v1/images/generations \\
   }'
 
 # 2. Return a URL and disable GPT2IMAGE prompt optimization.
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -2611,7 +2637,7 @@ curl https://your-domain.example/v1/images/generations \\
   }'
 
 # 3. Codex/Responses backend-only parameters. Plain Images API backends may ignore them.
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -2627,7 +2653,7 @@ curl https://your-domain.example/v1/images/generations \\
   }'
 
 # 4. Prefer Web account scheduling for mixed groups within the configured pixel range. Failed or exhausted Web routing falls back to Codex/Responses.
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -2639,7 +2665,7 @@ curl https://your-domain.example/v1/images/generations \\
   }'
 
 # 5. Streaming response. Accept: text/event-stream also enables streaming.
-curl -N https://your-domain.example/v1/images/generations \\
+curl -N https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
   -H "Content-Type: application/json" \\
@@ -2652,7 +2678,7 @@ curl -N https://your-domain.example/v1/images/generations \\
   }'
 
 # 6. Async mode. You may also append ?async=true. callback_url is optional.
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -2667,7 +2693,7 @@ curl https://your-domain.example/v1/images/generations \\
   }'
 
 # 7. GPT2IMAGE extensions: transparent background + ISNet matte fallback, with safety prompt-repair retry disabled.
-curl https://your-domain.example/v1/images/generations \\
+curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -2684,7 +2710,7 @@ curl https://your-domain.example/v1/images/generations \\
   "created": 1713833628,
   "data": [
     {
-      "url": "https://your-domain.example/api/storage/generations/...",
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "revised_prompt": "..."
     }
   ],
@@ -2696,10 +2722,10 @@ curl https://your-domain.example/v1/images/generations \\
 
 # SSE when stream=true
 event: image_generation.partial_image
-data: {"type":"image_generation.partial_image","index":0,"partial_image_index":0,"url":"https://your-domain.example/api/storage/generations/..."}
+data: {"type":"image_generation.partial_image","index":0,"partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
 
 event: image_generation.completed
-data: {"type":"image_generation.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://your-domain.example/api/storage/generations/...","data":[{"url":"https://your-domain.example/api/storage/generations/...","revised_prompt":"..."}]}
+data: {"type":"image_generation.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","data":[{"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","revised_prompt":"..."}]}
 
 # Immediate async=true response
 {
@@ -2713,7 +2739,7 @@ data: {"type":"image_generation.completed","index":0,"generation_id":"...","gene
 }
 
 # Poll task
-curl https://your-domain.example/v1/images/task_... \\
+curl https://gpt2image.superapi.buzz/v1/images/task_... \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY"
 
 # Completed task response or callback payload
@@ -2726,7 +2752,7 @@ curl https://your-domain.example/v1/images/task_... \\
   "created_at": "2026-05-28T00:00:00.000Z",
   "completed": 1713833700,
   "completed_at": "2026-05-28T00:01:12.000Z",
-  "data": [{"url": "https://your-domain.example/api/storage/generations/..."}],
+  "data": [{"url": "https://gpt2image.superapi.buzz/api/storage/generations/..."}],
   "generation_id": "gen_...",
   "generationId": "gen_...",
   "credits_consumed": 1.31,
@@ -2909,7 +2935,7 @@ curl https://your-domain.example/v1/images/task_... \\
           description:
             "Compatible with OpenAI Images edit. multipart uploads files; JSON can reference public image URLs.",
           example: `# 1. multipart upload reference image.
-curl https://your-domain.example/v1/images/edits \\
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -F model="gpt-image-2" \\
   -F prompt="Turn the reference image into a cinematic poster" \\
@@ -2924,7 +2950,7 @@ curl https://your-domain.example/v1/images/edits \\
   -F 'image[]=@/path/to/reference.png'
 
 # 2. multipart multiple references + mask + Codex/Responses fields.
-curl https://your-domain.example/v1/images/edits \\
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -F model="gpt-image-2" \\
   -F prompt="Only redraw the masked area and keep the face unchanged" \\
@@ -2939,7 +2965,7 @@ curl https://your-domain.example/v1/images/edits \\
   -F mask="@/path/to/mask.png"
 
 # 3. JSON image URLs. Prefer images; image_url/image_urls are shortcuts.
-curl https://your-domain.example/v1/images/edits \\
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -2967,7 +2993,7 @@ curl https://your-domain.example/v1/images/edits \\
   }'
 
 # 4. Prefer Web account scheduling for mixed groups within the configured pixel range. Failed or exhausted Web routing falls back to Codex/Responses.
-curl https://your-domain.example/v1/images/edits \\
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -2980,7 +3006,7 @@ curl https://your-domain.example/v1/images/edits \\
   }'
 
 # 5. Streaming image edit.
-curl -N https://your-domain.example/v1/images/edits \\
+curl -N https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
   -F model="gpt-image-2" \\
@@ -2991,7 +3017,7 @@ curl -N https://your-domain.example/v1/images/edits \\
   -F 'image=@/path/to/reference.png'
 
 # 6. Async image edit. You may also append ?async=true. callback_url is optional.
-curl https://your-domain.example/v1/images/edits \\
+curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -F model="gpt-image-1.5" \\
   -F prompt="Remove the background and output a transparent PNG" \\
@@ -3006,7 +3032,7 @@ curl https://your-domain.example/v1/images/edits \\
   "created": 1713833628,
   "data": [
     {
-      "url": "https://your-domain.example/api/storage/generations/...",
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "revised_prompt": "..."
     }
   ],
@@ -3018,10 +3044,10 @@ curl https://your-domain.example/v1/images/edits \\
 
 # SSE when stream=true
 event: image_edit.partial_image
-data: {"type":"image_edit.partial_image","index":0,"partial_image_index":0,"url":"https://your-domain.example/api/storage/generations/..."}
+data: {"type":"image_edit.partial_image","index":0,"partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
 
 event: image_edit.completed
-data: {"type":"image_edit.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://your-domain.example/api/storage/generations/...","data":[{"url":"https://your-domain.example/api/storage/generations/...","revised_prompt":"..."}]}
+data: {"type":"image_edit.completed","index":0,"generation_id":"...","generationId":"...","model":"gpt-image-2","size":"1024x1024","credits_consumed":1.31,"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","data":[{"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","revised_prompt":"..."}]}
 
 # async=true task polling and callback shape match /v1/images/generations.
 `,
@@ -3214,7 +3240,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
           description:
             "GPT2IMAGE extension: Adobe Firefly video generation. It always routes to the Adobe (Firefly) backend, is a long-running job (the connection is held with keep-alive until the video is ready), and returns an OpenAI Images-style shape where data[].url is the produced video URL. Auth matches other v1 endpoints (external API key).",
           example: `# 1. Text-to-video. model is a full Firefly video id.
-curl https://your-domain.example/v1/videos/generations \\
+curl https://gpt2image.superapi.buzz/v1/videos/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -3224,7 +3250,7 @@ curl https://your-domain.example/v1/videos/generations \\
   }'
 
 # 2. Image-to-video. image is an array of base64 data URLs (first frame / reference), up to 3.
-curl https://your-domain.example/v1/videos/generations \\
+curl https://gpt2image.superapi.buzz/v1/videos/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -3236,7 +3262,7 @@ curl https://your-domain.example/v1/videos/generations \\
   "created": 1713833628,
   "model": "firefly-veo31-8s-16x9-1080p",
   "data": [
-    { "url": "https://your-domain.example/api/storage/generations/..." }
+    { "url": "https://gpt2image.superapi.buzz/api/storage/generations/..." }
   ],
   "credits_consumed": 240
 }`,
@@ -3298,7 +3324,7 @@ curl https://your-domain.example/v1/videos/generations \\
           description:
             "GPT2IMAGE extension that exposes the page Agent run style to external API clients. It uses Codex/Responses scheduling, web search, tool loop continuation, attachment context, and multi-round image iteration.",
           example: `# 1. JSON Agent image run. Ultra is required by default; admins can change externalApi.agent.
-curl https://your-domain.example/v1/agents/images \\
+curl https://gpt2image.superapi.buzz/v1/agents/images \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -3314,7 +3340,7 @@ curl https://your-domain.example/v1/agents/images \\
   }'
 
 # 2. With reference image URLs. images / image_url / image_urls are merged and deduplicated.
-curl https://your-domain.example/v1/agents/images \\
+curl https://gpt2image.superapi.buzz/v1/agents/images \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -3327,7 +3353,7 @@ curl https://your-domain.example/v1/agents/images \\
   }'
 
 # 3. multipart reference image plus PDF/text attachments.
-curl https://your-domain.example/v1/agents/images \\
+curl https://gpt2image.superapi.buzz/v1/agents/images \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -F model="gpt-5.4" \\
   -F image_model="gpt-image-2" \\
@@ -3339,7 +3365,7 @@ curl https://your-domain.example/v1/agents/images \\
   -F 'file=@/path/to/company-profile.pdf'
 
 # 4. Streaming Agent events.
-curl -N https://your-domain.example/v1/agents/images \\
+curl -N https://gpt2image.superapi.buzz/v1/agents/images \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Accept: text/event-stream" \\
   -H "Content-Type: application/json" \\
@@ -3364,12 +3390,12 @@ curl -N https://your-domain.example/v1/agents/images \\
   "credits_consumed": 8.42,
   "data": [
     {
-      "url": "https://your-domain.example/api/storage/generations/...",
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "revised_prompt": "...",
       "output_role": "agent_draft"
     },
     {
-      "url": "https://your-domain.example/api/storage/generations/...",
+      "url": "https://gpt2image.superapi.buzz/api/storage/generations/...",
       "revised_prompt": "...",
       "output_role": "final"
     }
@@ -3383,10 +3409,10 @@ event: agent.event
 data: {"type":"agent.event","event":{"kind":"web_search","status":"completed","title":"Web search completed","detail":"Zhejiang Shuangyuan Technology official site"}}
 
 event: agent.partial_image
-data: {"type":"agent.partial_image","partial_image_index":0,"url":"https://your-domain.example/api/storage/generations/..."}
+data: {"type":"agent.partial_image","partial_image_index":0,"url":"https://gpt2image.superapi.buzz/api/storage/generations/..."}
 
 event: agent.completed
-data: {"type":"agent.completed","generation_id":"...","generationId":"...","agent_round_count":2,"credits_consumed":8.42,"data":[{"url":"https://your-domain.example/api/storage/generations/...","output_role":"final"}]}
+data: {"type":"agent.completed","generation_id":"...","generationId":"...","agent_round_count":2,"credits_consumed":8.42,"data":[{"url":"https://gpt2image.superapi.buzz/api/storage/generations/...","output_role":"final"}]}
 `,
           fields: [
             {
@@ -3538,7 +3564,7 @@ data: {"type":"agent.completed","generation_id":"...","generationId":"...","agen
           description:
             "A GPT2IMAGE image-generation adapter based on the OpenAI Responses API. It routes as responses and selects Codex/Responses groups or external /responses API backends.",
           example: `# 1. Minimal Responses image request. Requires Pro plan.
-curl https://your-domain.example/v1/responses \\
+curl https://gpt2image.superapi.buzz/v1/responses \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -3550,7 +3576,7 @@ curl https://your-domain.example/v1/responses \\
   }'
 
 # 2. Explicit image_generation tool with image model.
-curl https://your-domain.example/v1/responses \\
+curl https://gpt2image.superapi.buzz/v1/responses \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -3564,7 +3590,7 @@ curl https://your-domain.example/v1/responses \\
   }'
 
 # 3. Responses input with a reference image.
-curl https://your-domain.example/v1/responses \\
+curl https://gpt2image.superapi.buzz/v1/responses \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -3586,7 +3612,7 @@ curl https://your-domain.example/v1/responses \\
   }'
 
 # 4. Continue a previous response and stream the result.
-curl -N https://your-domain.example/v1/responses \\
+curl -N https://gpt2image.superapi.buzz/v1/responses \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -4105,14 +4131,16 @@ function RelationshipTable({
           {relationship.rows.map(
             ([name, endpoints, description]: RelationshipRow) => (
               <div
-                className="grid gap-2 border-b p-3 text-sm last:border-b-0 md:grid-cols-[160px_1.3fr_1.7fr]"
+                className="grid gap-2 border-b p-3 text-sm last:border-b-0 md:grid-cols-[160px_minmax(0,1fr)_minmax(0,1.7fr)]"
                 key={name}
               >
                 <div className="font-medium text-foreground">{name}</div>
-                <div className="font-mono text-xs leading-relaxed text-muted-foreground">
+                <div className="min-w-0 whitespace-normal break-words font-mono text-xs leading-relaxed text-muted-foreground">
                   {endpoints}
                 </div>
-                <div className="text-muted-foreground">{description}</div>
+                <div className="min-w-0 break-words text-muted-foreground">
+                  {description}
+                </div>
               </div>
             )
           )}
