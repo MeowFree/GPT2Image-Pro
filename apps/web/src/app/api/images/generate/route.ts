@@ -1,6 +1,5 @@
 import { withApiLogging } from "@repo/shared/api-logger";
 import { auth } from "@repo/shared/auth";
-import { logWarn } from "@repo/shared/logger";
 import {
   canUsePlanCapability,
   getPlanLimits,
@@ -192,21 +191,6 @@ export const POST = withApiLogging(async (request: NextRequest) => {
                 creditsConsumed: result.creditsConsumed,
               });
               return;
-            }
-            // 临时调试:抓 firefly 的 completed 事件回传内容(积分/图URL/generationId),
-            // 用于定位创作页"积分0+不进最近生成"。定位后移除。
-            if (input.model?.startsWith("firefly-")) {
-              logWarn("[FIREFLY-COMPLETED-DEBUG] completed 回传", {
-                model: input.model,
-                generationId: result.generationId,
-                creditsConsumed: result.creditsConsumed,
-                hasImageUrl: Boolean(result.imageUrl),
-                hasResults: Array.isArray(
-                  (result as { results?: unknown[] }).results
-                ),
-                resultsCount: (result as { results?: unknown[] }).results
-                  ?.length,
-              });
             }
             await emit({ type: "completed", ...result });
           },

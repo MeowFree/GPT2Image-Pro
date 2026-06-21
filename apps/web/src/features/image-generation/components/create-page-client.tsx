@@ -125,6 +125,7 @@ type ResultState = {
   prompt: string;
   model: string;
   size: string;
+  creditsConsumed?: number;
   revisedPrompt?: string;
   promptRepairNotice?: string;
 };
@@ -4319,6 +4320,7 @@ export function CreatePageClient({
         prompt: resultPrompt,
         model,
         size: resultSize,
+        creditsConsumed: data.creditsConsumed,
       };
       if (data.revisedPrompt) nextResult.revisedPrompt = data.revisedPrompt;
       if (data.promptRepairNotice) {
@@ -4513,16 +4515,6 @@ export function CreatePageClient({
     const successfulResults =
       data.results?.filter((item) => item.imageUrl && item.generationId) ||
       (data.imageUrl && data.generationId ? [data] : []);
-
-    // 临时客户端探针:定位"积分0+不进最近生成"。定位后移除。
-    console.log("[CREDITS-DEBUG] addSuccessfulResults", {
-      model: data.model,
-      creditsConsumed: data.creditsConsumed,
-      hasImageUrl: Boolean(data.imageUrl),
-      hasGenerationId: Boolean(data.generationId),
-      hasResultsArray: Array.isArray(data.results),
-      successfulCount: successfulResults.length,
-    });
 
     if (successfulResults.length === 0) return [];
 
@@ -6976,7 +6968,7 @@ export function CreatePageClient({
           revisedPrompt: result.revisedPrompt ?? null,
           model: result.model,
           size: result.size,
-          creditsConsumed: 0,
+          creditsConsumed: result.creditsConsumed ?? 0,
           status: "completed",
           imageUrl: result.imageUrl,
           createdAt: new Date().toISOString(),
