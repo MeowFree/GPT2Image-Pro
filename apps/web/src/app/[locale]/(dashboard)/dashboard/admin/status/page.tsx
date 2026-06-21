@@ -11,6 +11,7 @@ import {
   creditsTransaction,
   generation,
   imageBackendAccount,
+  imageBackendAdobe,
   imageBackendApi,
   imageBackendSchedulerMetric,
   ticket,
@@ -72,7 +73,7 @@ type GenerationMetricRow = {
 };
 
 const RESOLUTION_DURATION_BUCKETS = ["4k", "2k", "1k", "custom"] as const;
-const BACKEND_DURATION_BUCKETS = ["web", "codex", "images"] as const;
+const BACKEND_DURATION_BUCKETS = ["web", "codex", "images", "adobe"] as const;
 
 type ResolutionDurationBucket = (typeof RESOLUTION_DURATION_BUCKETS)[number];
 type BackendDurationBucket = (typeof BACKEND_DURATION_BUCKETS)[number];
@@ -377,6 +378,10 @@ function getBackendDurationBucket(
   row: GenerationMetricRow
 ): BackendDurationBucket | null {
   const backend = asRecord(asRecord(row.metadata)?.backend);
+  // Adobe(pool-adobe / firefly)无 accountBackend,也不走 imagesUpstreamMode/
+  // apiInterfaceMode,必须先按 backend.type 识别,否则会落入下方模式判定并被
+  // 当成 null(在监控里整体隐形)。
+  if (backend?.type === "pool-adobe") return "adobe";
   // 后端"有效模式"来源因后端类型而异:
   // - pool-account(账号池):backend.accountBackend = "web" | "responses"
   // - pool-api(API 池):无 accountBackend,用 imagesUpstreamMode(图像上游模式,优先)
@@ -497,10 +502,10 @@ function summarizeDurations(values: number[]): DurationBucketStats {
 
 function createDurationAccumulator(): DurationAccumulator {
   return {
-    "4k": { web: [], codex: [], images: [] },
-    "2k": { web: [], codex: [], images: [] },
-    "1k": { web: [], codex: [], images: [] },
-    custom: { web: [], codex: [], images: [] },
+    "4k": { web: [], codex: [], images: [], adobe: [] },
+    "2k": { web: [], codex: [], images: [], adobe: [] },
+    "1k": { web: [], codex: [], images: [], adobe: [] },
+    custom: { web: [], codex: [], images: [], adobe: [] },
   };
 }
 
@@ -512,21 +517,25 @@ function buildDurationBreakdown(
       web: summarizeDurations(accumulator["4k"].web),
       codex: summarizeDurations(accumulator["4k"].codex),
       images: summarizeDurations(accumulator["4k"].images),
+      adobe: summarizeDurations(accumulator["4k"].adobe),
     },
     "2k": {
       web: summarizeDurations(accumulator["2k"].web),
       codex: summarizeDurations(accumulator["2k"].codex),
       images: summarizeDurations(accumulator["2k"].images),
+      adobe: summarizeDurations(accumulator["2k"].adobe),
     },
     "1k": {
       web: summarizeDurations(accumulator["1k"].web),
       codex: summarizeDurations(accumulator["1k"].codex),
       images: summarizeDurations(accumulator["1k"].images),
+      adobe: summarizeDurations(accumulator["1k"].adobe),
     },
     custom: {
       web: summarizeDurations(accumulator.custom.web),
       codex: summarizeDurations(accumulator.custom.codex),
       images: summarizeDurations(accumulator.custom.images),
+      adobe: summarizeDurations(accumulator.custom.adobe),
     },
   };
 }
@@ -920,6 +929,7 @@ function resolutionDurationLabel(
 function backendDurationLabel(bucket: BackendDurationBucket) {
   if (bucket === "web") return "Web";
   if (bucket === "images") return "Images";
+  if (bucket === "adobe") return "Adobe";
   return "Codex";
 }
 
@@ -1353,6 +1363,7 @@ async function loadStatusData() {
     ticketRows,
     accountRows,
     apiRows,
+    adobeRows,
     schedulerRows24h,
     schedulerRows7d,
   ] = await Promise.all([
@@ -1544,6 +1555,16 @@ async function loadStatusData() {
       .from(imageBackendApi),
     db
       .select({
+        status: imageBackendAdobe.status,
+        isEnabled: imageBackendAdobe.isEnabled,
+        cooldownUntil: imageBackendAdobe.cooldownUntil,
+        successCount: imageBackendAdobe.successCount,
+        failCount: imageBackendAdobe.failCount,
+        mode: imageBackendAdobe.mode,
+      })
+      .from(imageBackendAdobe),
+    db
+      .select({
         selectedLayer: imageBackendSchedulerMetric.selectedLayer,
         selectCount:
           sql<number>`coalesce(sum(${imageBackendSchedulerMetric.selectCount}), 0)`.mapWith(
@@ -1680,6 +1701,7 @@ async function loadStatusData() {
     },
     accounts: summarizeBackendRows(accountRows),
     apis: summarizeBackendRows(apiRows),
+    adobe: summarizeBackendRows(adobeRows),
     scheduler24h: summarizeSchedulerMetrics(schedulerRows24h),
     scheduler7d: summarizeSchedulerMetrics(schedulerRows7d),
   };
@@ -1721,9 +1743,12 @@ export default async function GlobalStatusPage({
   ]);
   const generationTotals = data.generationTotals;
   const creditBalance = data.credits.balance;
-  const backendTotal = data.accounts.total + data.apis.total;
-  const backendCooling = data.accounts.cooling + data.apis.cooling;
-  const backendErrors = data.accounts.error + data.apis.error;
+  const backendTotal =
+    data.accounts.total + data.apis.total + data.adobe.total;
+  const backendCooling =
+    data.accounts.cooling + data.apis.cooling + data.adobe.cooling;
+  const backendErrors =
+    data.accounts.error + data.apis.error + data.adobe.error;
 
   return (
     <div className="container mx-auto space-y-8 px-4 py-6 md:px-6">
@@ -2039,6 +2064,11 @@ export default async function GlobalStatusPage({
               <BackendHealthBlock
                 title={copy(locale, "External APIs", "外接 API")}
                 stats={data.apis}
+                locale={locale}
+              />
+              <BackendHealthBlock
+                title={copy(locale, "Adobe Firefly", "Adobe Firefly")}
+                stats={data.adobe}
                 locale={locale}
               />
             </div>
