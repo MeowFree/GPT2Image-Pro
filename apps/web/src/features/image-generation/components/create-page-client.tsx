@@ -7074,7 +7074,7 @@ export function CreatePageClient({
                 </div>
               )}
 
-              {showThinkingControls && (
+              {showThinkingControls && !isFireflyModel(textModel) && (
                 <div className="space-y-1.5">
                   <label
                     htmlFor={`text-thinking-${mode}`}
@@ -8023,7 +8023,7 @@ export function CreatePageClient({
                   </div>
                 )}
 
-                {showThinkingControls && (
+                {showThinkingControls && !isFireflyModel(editModel) && (
                   <div className="space-y-2">
                     <label
                       htmlFor="edit-thinking"
