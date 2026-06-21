@@ -3,4 +3,5 @@
  */
 export * from "./firefly-request";
 export * from "./firefly-response";
+export * from "./image-pricing";
 export * from "./video-pricing";

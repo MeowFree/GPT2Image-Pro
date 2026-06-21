@@ -69,6 +69,7 @@ import {
   deleteImageBackendMemberAction,
   deleteSub2ApiAutoSyncTaskAction,
   getAdminImageBackendPoolAction,
+  getAdobeModelMultipliersAction,
   getSub2ApiAutoSyncTasksAction,
   getSub2ApiSourceGroupsAction,
   getSub2ApiSyncProgressAction,
@@ -85,6 +86,7 @@ import {
   saveImageBackendAccountAction,
   saveImageBackendAdobeAction,
   saveImageBackendApiAction,
+  setAdobeModelMultipliersAction,
   saveImageBackendGroupAction,
   setAdobeAccountEnabledAction,
   setImageBackendAccountAlwaysActiveAction,
@@ -286,6 +288,54 @@ type SyncProgressState = {
 
 const MANUAL_TOKEN_IMPORT_LIMIT = 10_000;
 const MANUAL_RT_IMPORT_BATCH_SIZE = 50;
+
+// Adobe per-model 计费倍率：图像/视频两套模型族行（与后端 family 枚举一一对应）。
+const ADOBE_IMAGE_MULTIPLIER_FAMILIES = [
+  "gpt-image-2",
+  "gpt-image-1.5",
+  "nano-banana",
+  "nano-banana2",
+  "nano-banana-pro",
+] as const;
+const ADOBE_VIDEO_MULTIPLIER_FAMILIES = [
+  "sora2",
+  "sora2-pro",
+  "veo31",
+  "veo31-ref",
+  "veo31-fast",
+  "kling-o3",
+  "kling3",
+] as const;
+
+/** 把 family→倍率 的 map 转成"输入框字符串"草稿；缺省/非正显示为空（即默认 1）。 */
+function multipliersToDraft(
+  families: readonly string[],
+  map: Record<string, number>
+): Record<string, string> {
+  const draft: Record<string, string> = {};
+  for (const family of families) {
+    const value = map[family];
+    draft[family] =
+      typeof value === "number" && Number.isFinite(value) && value > 0
+        ? String(value)
+        : "";
+  }
+  return draft;
+}
+
+/** 把"输入框字符串"草稿收窄回 family→正数 的 map；空白/非正/非法项不写入（回退默认 1）。 */
+function draftToMultipliers(
+  draft: Record<string, string>
+): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const [family, raw] of Object.entries(draft)) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric) && numeric > 0) map[family] = numeric;
+  }
+  return map;
+}
 
 type BulkAccountForm = {
   selectionGroupId: string;
@@ -1547,6 +1597,47 @@ export function ImageBackendPoolAdminPanel({
   // ===== Adobe 直连账号（mode=direct）=====
   const [adobeAccounts, setAdobeAccounts] = useState<AdobeAccountRow[]>([]);
   const [adobeCookieInput, setAdobeCookieInput] = useState("");
+
+  // ===== Adobe 模型计费倍率（图像/视频 per-model）=====
+  // 草稿态用字符串保存输入框原始值（含空白），保存时再收窄成 family→正数 的 map。
+  const [imageMultiplierDraft, setImageMultiplierDraft] = useState<
+    Record<string, string>
+  >(() => multipliersToDraft(ADOBE_IMAGE_MULTIPLIER_FAMILIES, {}));
+  const [videoMultiplierDraft, setVideoMultiplierDraft] = useState<
+    Record<string, string>
+  >(() => multipliersToDraft(ADOBE_VIDEO_MULTIPLIER_FAMILIES, {}));
+
+  const { execute: loadModelMultipliers } = useAction(
+    getAdobeModelMultipliersAction,
+    {
+      onSuccess: ({ data }) => {
+        setImageMultiplierDraft(
+          multipliersToDraft(
+            ADOBE_IMAGE_MULTIPLIER_FAMILIES,
+            data?.image ?? {}
+          )
+        );
+        setVideoMultiplierDraft(
+          multipliersToDraft(
+            ADOBE_VIDEO_MULTIPLIER_FAMILIES,
+            data?.video ?? {}
+          )
+        );
+      },
+      onError: ({ error }) =>
+        toast.error(error.serverError || "加载模型计费倍率失败"),
+    }
+  );
+
+  const { execute: saveModelMultipliers, isPending: isSavingMultipliers } =
+    useAction(setAdobeModelMultipliersAction, {
+      onSuccess: () => {
+        toast.success("模型计费倍率已保存");
+        loadModelMultipliers();
+      },
+      onError: ({ error }) =>
+        toast.error(error.serverError || "保存模型计费倍率失败"),
+    });
   const [adobeAccountName, setAdobeAccountName] = useState("");
 
   const { execute: loadAdobeAccounts } = useAction(listAdobeAccountsAction, {
@@ -2138,8 +2229,15 @@ export function ImageBackendPoolAdminPanel({
     if (!readOnly) {
       loadSub2ApiSyncStatus();
       loadSub2ApiSyncTasks();
+      loadModelMultipliers();
     }
-  }, [loadPool, loadSub2ApiSyncStatus, loadSub2ApiSyncTasks, readOnly]);
+  }, [
+    loadPool,
+    loadSub2ApiSyncStatus,
+    loadSub2ApiSyncTasks,
+    loadModelMultipliers,
+    readOnly,
+  ]);
 
   useEffect(() => {
     if (sub2ApiConfigured) {
@@ -4522,6 +4620,93 @@ export function ImageBackendPoolAdminPanel({
                 </CardContent>
               </Card>
             ))}
+
+            {!readOnly && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">模型计费倍率</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-xs text-muted-foreground">
+                    最终积分 = 基础(图像按尺寸/视频按秒) × 模型倍率 × 整个 Adobe
+                    倍率 × 分组倍率。留空表示该模型不加倍率（默认 1）。
+                  </p>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">
+                      图像模型倍率
+                    </Label>
+                    <div className="space-y-2">
+                      {ADOBE_IMAGE_MULTIPLIER_FAMILIES.map((family) => (
+                        <div
+                          key={family}
+                          className="grid grid-cols-[1fr_120px] items-center gap-2"
+                        >
+                          <span className="truncate text-sm">{family}</span>
+                          <Input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="0.01"
+                            placeholder="1"
+                            value={imageMultiplierDraft[family] ?? ""}
+                            onChange={(event) =>
+                              setImageMultiplierDraft((current) => ({
+                                ...current,
+                                [family]: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">
+                      视频模型倍率
+                    </Label>
+                    <div className="space-y-2">
+                      {ADOBE_VIDEO_MULTIPLIER_FAMILIES.map((family) => (
+                        <div
+                          key={family}
+                          className="grid grid-cols-[1fr_120px] items-center gap-2"
+                        >
+                          <span className="truncate text-sm">{family}</span>
+                          <Input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="0.01"
+                            placeholder="1"
+                            value={videoMultiplierDraft[family] ?? ""}
+                            onChange={(event) =>
+                              setVideoMultiplierDraft((current) => ({
+                                ...current,
+                                [family]: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    disabled={isSavingMultipliers}
+                    onClick={() =>
+                      saveModelMultipliers({
+                        image: draftToMultipliers(imageMultiplierDraft),
+                        video: draftToMultipliers(videoMultiplierDraft),
+                      })
+                    }
+                  >
+                    {isSavingMultipliers ? "保存中…" : "保存模型倍率"}
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
 

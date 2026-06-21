@@ -1,5 +1,6 @@
 import { db } from "@repo/database";
 import { generation, user } from "@repo/database/schema";
+import { resolveImageModelMultiplier } from "@repo/shared/adobe";
 import { consumeCredits } from "@repo/shared/credits/core";
 import { GPT55_CHAT_MODEL } from "@repo/shared/config/subscription-plan";
 import {
@@ -23,6 +24,7 @@ import {
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import {
   getRuntimeSettingBoolean,
+  getRuntimeSettingJson,
   getRuntimeSettingNumber,
   getRuntimeSettingString,
 } from "@repo/shared/system-settings";
@@ -224,6 +226,16 @@ function getConfigBillingMultiplier(config: ApiConfig) {
     return 1;
   }
   return normalizeBillingMultiplier(config.backend.billingMultiplier);
+}
+
+/** 把系统设置里的图像模型倍率 JSON 收窄成 family→正数 的 map。 */
+function parseImageModelMultipliers(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object") return {};
+  const out: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw === "number" && Number.isFinite(raw)) out[key] = raw;
+  }
+  return out;
 }
 
 function applyBillingMultiplier(credits: number, multiplier: number) {
@@ -1318,7 +1330,20 @@ export async function runImageGenerationForUser(
 
           const { config, useCredits } = effectiveConfig;
           leasedConfig = config;
-          const billingMultiplier = getConfigBillingMultiplier(config);
+          // 整体计费倍率 = 整个 Adobe(后端)倍率 × 该 firefly 图像模型族倍率。
+          // 模型族倍率只在此处折入一次,得到的 effectiveMultiplier 作为本次请求统一的
+          // billingMultiplier 向下传递,确保扣费/明细/退款/元数据口径一致(退款须按相同
+          // 倍率结算,故元数据上报的 billingMultiplier 即 effectiveMultiplier)。
+          const backendBillingMultiplier = getConfigBillingMultiplier(config);
+          const imageModelMultipliers = parseImageModelMultipliers(
+            await getRuntimeSettingJson("IMAGE_MODEL_MULTIPLIERS")
+          );
+          const modelMultiplier = resolveImageModelMultiplier(
+            input.model,
+            imageModelMultipliers
+          );
+          const billingMultiplier =
+            backendBillingMultiplier * modelMultiplier;
           const moderationEnabled =
             (await isContentModerationEnabled()) &&
             moderationBlockingEnabled &&

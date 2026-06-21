@@ -143,6 +143,7 @@ export type SettingKey =
   | "CREDITS_EXPIRY_DAYS"
   | "IMAGE_BASE_CREDITS_1024"
   | "IMAGE_BASE_CREDITS_4K"
+  | "IMAGE_MODEL_MULTIPLIERS"
   | "VIDEO_BASE_CREDITS_PER_SECOND"
   | "VIDEO_MODEL_MULTIPLIERS"
   | "NEXT_PUBLIC_GA_ID"
@@ -1293,6 +1294,15 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     min: 0.01,
     max: 100_000,
     defaultValue: 10,
+  },
+  {
+    key: "IMAGE_MODEL_MULTIPLIERS",
+    label: "图像模型族倍率",
+    description:
+      '按 firefly 图像模型族设置计费倍率的 JSON（family → 倍率，缺省/非正回退 1）。键为 firefly 图像族：gpt-image-2、gpt-image-1.5、nano-banana、nano-banana2、nano-banana-pro。例：{"gpt-image-2":2,"nano-banana-pro":1.5}。',
+    category: "credits",
+    valueType: "json",
+    exampleValue: '{"gpt-image-2": 1, "nano-banana-pro": 1.5}',
   },
   {
     key: "VIDEO_BASE_CREDITS_PER_SECOND",
