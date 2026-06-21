@@ -4201,12 +4201,22 @@ function ExternalApiDocs({
             </div>
             <h3 className="mt-4 text-sm font-medium">{docs.commonTitle}</h3>
             <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-              {docs.common.map((item) => (
-                <li className="flex gap-2" key={item}>
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                  <span>{item}</span>
-                </li>
-              ))}
+              {docs.common.map((item) => {
+                // Adobe（Firefly）后端那条规则加粗并取消灰字,使其在通用规则里更醒目。
+                const emphasize = item.startsWith("Adobe");
+                return (
+                  <li className="flex gap-2" key={item}>
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                    <span
+                      className={
+                        emphasize ? "font-semibold text-foreground" : undefined
+                      }
+                    >
+                      {item}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
           <div className="rounded-md border p-4">
