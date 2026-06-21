@@ -294,6 +294,7 @@ const sections = {
         "/v1/agents/images 和需要 Codex/Responses 能力的页面功能会忽略用户自接 API，按平台后端池或外接后端池结算本站积分。",
         "image 接口的 web_first / webFirst / force_web / forceWeb（chat 对应 mix_web_first）是 Web-first 优先路由，不是硬性只走 Web，且默认开启。开启时（不传或显式 true）按 Web-first 像素区间（IMAGE_FORCE_WEB_MIN_PIXELS / IMAGE_FORCE_WEB_MAX_PIXELS，默认 0.66MP-2MP）判定：尺寸落在区间内才优先 Web、失败回退 Codex/Responses，超出区间（如 4K）则走正常调度；auto 或无法解析的尺寸视为可优先 Web。显式传 false 则不优先 Web。该路由只对 mixed 后端分组生效（纯 Web / 纯 Codex-Responses 分组无此概念），不会覆盖用户自接 API；agent 始终走 Codex/Responses，不受此项影响。",
         "Adobe（Firefly）后端：作为特殊成员按 priority 挂入分组同池调度——firefly-* 模型或 force_firefly=true 会把候选收敛到仅 Adobe；普通请求则只有当组内 web/codex/api 限流/耗尽/可切换失败时才兜底到 Adobe（取决于 Adobe 是否在该组及其优先级，priority 越大越靠后）。是否进 Adobe、计费倍率均随 admin「Adobe 后端」tab 配置变化。图像计费 = 尺寸基础积分 × 模型族倍率 × Adobe 后端倍率 × 分组倍率；视频计费见 /v1/videos/generations。路由兜底详见 docs/adobe-firefly-routing.md，兼容转换（站内参数→Adobe 字段、被忽略参数、算例）详见 docs/adobe-firefly-compat.md。",
+        "异步任务（async）：body async:true 或 URL ?async=true（等价、不能与 stream 同用）会立即返回 task_... 任务，需用 GET /v1/images/{task_id} 轮询；任务为进程内内存对象，30 分钟后过期，服务重启或多实例切换即无法再查询。callback_url 是可选的完成回调 webhook——任务结束时服务端把任务对象 POST 到该公网地址，已发出的回调不受过期/重启影响。",
       ],
       officialRefsTitle: "官方参考",
       officialRefs: [
@@ -914,14 +915,16 @@ curl https://gpt2image.superapi.buzz/v1/images/task_... \\
             {
               name: "async",
               requirement: "可选",
+              custom: true,
               description:
-                "true 时立即返回 task_...，后台执行生成任务；也可用 URL 参数 ?async=true。不能与 stream 同时使用。",
+                "异步开关。body 传 async:true 或 URL 追加 ?async=true，二选一即可（等价）。开启后立即返回 task_... 任务对象（status:processing），生成在后台执行，需用 GET /v1/images/{task_id} 轮询结果。不能与 stream 同时使用（同传会报错 async cannot be used with stream.）。",
             },
             {
               name: "callback_url",
               requirement: "可选",
+              custom: true,
               description:
-                "异步任务完成或失败后 POST 完整任务结果到该地址，请求头包含 X-Tokens-Callback: true。仅允许公网 http/https 地址。",
+                "完成回调 webhook（不是给你轮询的地址）。仅异步任务可用：任务完成或失败时，服务端会把最终任务对象 POST 到该 URL，请求头含 X-Tokens-Callback: true、Content-Type: application/json。该 URL 须公网可达且为 http/https。即使任务因 30 分钟过期或服务重启而无法再轮询，已发出的回调不受影响。",
             },
             {
               name: "promptOptimization / prompt_optimization",
@@ -1219,14 +1222,16 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             {
               name: "async",
               requirement: "可选",
+              custom: true,
               description:
-                "true 时立即返回 task_...，后台执行编辑任务；也可用 URL 参数 ?async=true。不能与 stream 同时使用。",
+                "异步开关。body 传 async:true 或 URL 追加 ?async=true，二选一即可（等价）。开启后立即返回 task_... 任务对象（status:processing），编辑在后台执行，需用 GET /v1/images/{task_id} 轮询结果。不能与 stream 同时使用（同传会报错 async cannot be used with stream.）。",
             },
             {
               name: "callback_url",
               requirement: "可选",
+              custom: true,
               description:
-                "异步任务完成或失败后 POST 完整任务结果到该地址，请求头包含 X-Tokens-Callback: true。仅允许公网 http/https 地址。",
+                "完成回调 webhook（不是给你轮询的地址）。仅异步任务可用：任务完成或失败时，服务端会把最终任务对象 POST 到该 URL，请求头含 X-Tokens-Callback: true、Content-Type: application/json。该 URL 须公网可达且为 http/https。即使任务因 30 分钟过期或服务重启而无法再轮询，已发出的回调不受影响。",
             },
             {
               name: "image_url / image_urls",
@@ -1304,6 +1309,97 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             "官方 JSON file_id 图片引用当前未实现，请使用公网 image_url 或 multipart 上传。",
             "background=transparent 并非所有模型都支持；OpenAI 官方文档当前列出 gpt-image-1.5、gpt-image-1、gpt-image-1-mini 支持透明背景，且通常还要求 png 或 webp 输出。不支持的上游可能直接返回 HTTP 400，而不是自动降级。",
             "async 任务当前为进程内状态，30 分钟后过期；服务重启或多实例切换会导致未完成任务无法继续查询，callback 已发送的结果不受影响。",
+          ],
+        },
+        {
+          title: "Get async image task",
+          method: "GET",
+          path: "/v1/images/{task_id}",
+          contentType: "无请求体",
+          description:
+            "本站扩展：查询 async=true 创建的异步图片任务。用 /v1/images/generations 或 /v1/images/edits 返回的 task_... 作为 {task_id} 路径参数轮询；任务为进程内内存对象，30 分钟后过期，服务重启或多实例切换会导致无法继续查询。",
+          example: `curl https://gpt2image.superapi.buzz/v1/images/task_... \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY"`,
+          responseExample: `{
+  "id": "task_...",
+  "object": "image",
+  "model": "gpt-image-2",
+  "status": "completed",
+  "created": 1713833628,
+  "created_at": "2026-05-28T00:00:00.000Z",
+  "completed": 1713833700,
+  "completed_at": "2026-05-28T00:01:12.000Z",
+  "data": [{"url": "https://gpt2image.superapi.buzz/api/storage/generations/..."}],
+  "generation_id": "gen_...",
+  "generationId": "gen_...",
+  "credits_consumed": 1.31,
+  "usage": null
+}
+
+# 仍在执行时（status:processing 暂无 data）
+{
+  "id": "task_...",
+  "object": "image.generation",
+  "model": "gpt-image-2",
+  "status": "processing",
+  "created": 1713833628,
+  "created_at": "2026-05-28T00:00:00.000Z",
+  "generation_id": "gen_..."
+}`,
+          fields: [
+            {
+              name: "Authorization",
+              requirement: "必填 header",
+              description: "Bearer <本站 API Key>。",
+            },
+            {
+              name: "task_id",
+              requirement: "必填路径参数",
+              custom: true,
+              description:
+                "异步任务 ID（形如 task_...），由 async=true 的 /v1/images/generations 或 /v1/images/edits 返回。任务按创建它的用户隔离归属。",
+            },
+          ],
+          responses: [
+            {
+              name: "id",
+              description: "任务 ID（task_...），与请求路径中的 {task_id} 一致。",
+            },
+            {
+              name: "object",
+              description:
+                "执行中为 image.generation，完成后为 image。",
+            },
+            {
+              name: "status",
+              description:
+                "任务状态，取值 processing（执行中）、completed（成功）、failed（失败，对象内含 error）。当前实现无 queued 等其他取值。",
+            },
+            {
+              name: "data",
+              description:
+                "status=completed 时返回图片结果数组（与 /v1/images/generations 响应一致，元素含 url 或 b64_json）；执行中尚无该字段。",
+            },
+            {
+              name: "created / created_at / completed / completed_at",
+              description:
+                "任务创建与完成时间（秒级时间戳与 ISO 字符串）；completed* 仅在完成后出现。",
+            },
+            {
+              name: "generation_id / generationId / generation_ids / generationIds",
+              description:
+                "关联的生成记录 ID；单图返回单数字段，批量返回复数数组。",
+            },
+            {
+              name: "credits_consumed",
+              description:
+                "完成后结算的本站积分；命中用户自接 API 时为 0。",
+            },
+          ],
+          notes: [
+            "任务为进程内内存对象，30 分钟后过期；服务重启或多实例切换会导致未完成任务返回 404 无法继续查询，但 callback_url 已发送的回调不受影响。",
+            "只能查询属于当前 API Key 所属用户自己创建的任务。",
+            "返回结构与 callback_url 回调 POST 的任务对象完全一致。",
           ],
         },
         {
@@ -2279,6 +2375,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         "/v1/agents/images and page features that require Codex/Responses capability ignore user custom API and are billed through the platform or external backend pool.",
         "Image endpoint web_first / webFirst / force_web / forceWeb means Web-first preference, not hard Web-only routing. It only applies after routing enters a platform mixed backend group, does not override user custom API, and falls back to Codex/Responses when Web is unavailable or fails.",
         "Adobe (Firefly) backend: it joins the group as a special pool member ranked by priority. A firefly-* model or force_firefly=true narrows candidates to Adobe only; ordinary requests only fall back to Adobe once the group's web/codex/api members are rate-limited, exhausted, or fail with a switchable error (and only if Adobe is in that group — the larger its priority, the later it is tried). Whether a request reaches Adobe and its billing multiplier follow the admin 'Adobe backend' tab config. Image billing = size base credits × model-family multiplier × Adobe backend multiplier × group multiplier; see /v1/videos/generations for video billing. Routing/fallback: docs/adobe-firefly-routing.md; compatibility conversion (in-app params → Adobe fields, ignored params, worked example): docs/adobe-firefly-compat.md.",
+        "Async tasks (async): body async:true or URL ?async=true (equivalent, and cannot be combined with stream) returns a task_... object immediately; poll GET /v1/images/{task_id} for the result. Tasks are in-memory objects that expire after 30 minutes and become unavailable after a restart or multi-instance switch. callback_url is an optional completion webhook — when the task finishes the server POSTs the task object to that public URL, and an already-sent callback is unaffected by expiry or restart.",
       ],
       officialRefsTitle: "Official References",
       officialRefs: [
@@ -2901,14 +2998,16 @@ curl https://gpt2image.superapi.buzz/v1/images/task_... \\
             {
               name: "async",
               requirement: "Optional",
+              custom: true,
               description:
-                "true returns a task_... immediately and runs generation in the background. You may also use ?async=true. Cannot be combined with stream.",
+                "Async switch. Set body async:true OR append ?async=true to the URL (the two are equivalent). When on, the endpoint returns a task_... object immediately (status:processing) and runs generation in the background; poll GET /v1/images/{task_id} for the result. Cannot be combined with stream (sending both returns async cannot be used with stream.).",
             },
             {
               name: "callback_url",
               requirement: "Optional",
+              custom: true,
               description:
-                "Posts the full task result when the async task completes or fails. The callback request includes X-Tokens-Callback: true. Only public http/https URLs are allowed.",
+                "Completion-callback webhook (not a URL you poll). Async only: when the task completes or fails, the server POSTs the final task object to this URL with headers X-Tokens-Callback: true and Content-Type: application/json. The URL must be publicly reachable over http/https. An already-sent callback is unaffected even if the task later expires (30 min) or is lost on restart.",
             },
             {
               name: "promptOptimization / prompt_optimization",
@@ -3208,14 +3307,16 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             {
               name: "async",
               requirement: "Optional",
+              custom: true,
               description:
-                "true returns a task_... immediately and runs the edit in the background. You may also use ?async=true. Cannot be combined with stream.",
+                "Async switch. Set body async:true OR append ?async=true to the URL (the two are equivalent). When on, the endpoint returns a task_... object immediately (status:processing) and runs the edit in the background; poll GET /v1/images/{task_id} for the result. Cannot be combined with stream (sending both returns async cannot be used with stream.).",
             },
             {
               name: "callback_url",
               requirement: "Optional",
+              custom: true,
               description:
-                "Posts the full task result when the async task completes or fails. The callback request includes X-Tokens-Callback: true. Only public http/https URLs are allowed.",
+                "Completion-callback webhook (not a URL you poll). Async only: when the task completes or fails, the server POSTs the final task object to this URL with headers X-Tokens-Callback: true and Content-Type: application/json. The URL must be publicly reachable over http/https. An already-sent callback is unaffected even if the task later expires (30 min) or is lost on restart.",
             },
             {
               name: "image_url / image_urls",
@@ -3293,6 +3394,97 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             "Official JSON file_id image references are not implemented. Use public image_url or multipart uploads.",
             "background=transparent is not universally supported. OpenAI's official docs currently list gpt-image-1.5, gpt-image-1, and gpt-image-1-mini as supporting transparent backgrounds, and png or webp output is usually required. Unsupported upstream models may reject the request with HTTP 400 instead of silently falling back.",
             "async tasks are process-local and expire after 30 minutes. A restart or multi-instance switch can make unfinished tasks unavailable for polling; already-sent callbacks are unaffected.",
+          ],
+        },
+        {
+          title: "Get async image task",
+          method: "GET",
+          path: "/v1/images/{task_id}",
+          contentType: "No request body",
+          description:
+            "Extension: poll an async image task created with async=true. Use the task_... returned by /v1/images/generations or /v1/images/edits as the {task_id} path parameter. Tasks are in-memory objects that expire after 30 minutes; a restart or multi-instance switch makes them unavailable.",
+          example: `curl https://gpt2image.superapi.buzz/v1/images/task_... \\
+  -H "Authorization: Bearer $GPT2IMAGE_API_KEY"`,
+          responseExample: `{
+  "id": "task_...",
+  "object": "image",
+  "model": "gpt-image-2",
+  "status": "completed",
+  "created": 1713833628,
+  "created_at": "2026-05-28T00:00:00.000Z",
+  "completed": 1713833700,
+  "completed_at": "2026-05-28T00:01:12.000Z",
+  "data": [{"url": "https://gpt2image.superapi.buzz/api/storage/generations/..."}],
+  "generation_id": "gen_...",
+  "generationId": "gen_...",
+  "credits_consumed": 1.31,
+  "usage": null
+}
+
+# While still running (status:processing, no data yet)
+{
+  "id": "task_...",
+  "object": "image.generation",
+  "model": "gpt-image-2",
+  "status": "processing",
+  "created": 1713833628,
+  "created_at": "2026-05-28T00:00:00.000Z",
+  "generation_id": "gen_..."
+}`,
+          fields: [
+            {
+              name: "Authorization",
+              requirement: "Required header",
+              description: "Bearer <GPT2Image API Key>.",
+            },
+            {
+              name: "task_id",
+              requirement: "Required path parameter",
+              custom: true,
+              description:
+                "Async task ID (task_...) returned by /v1/images/generations or /v1/images/edits when async=true. Tasks are scoped to the user that created them.",
+            },
+          ],
+          responses: [
+            {
+              name: "id",
+              description: "Task ID (task_...), matching {task_id} in the path.",
+            },
+            {
+              name: "object",
+              description:
+                "image.generation while running, image once finished.",
+            },
+            {
+              name: "status",
+              description:
+                "Task status: processing (running), completed (success), or failed (the object then includes error). No other values such as queued exist in the current implementation.",
+            },
+            {
+              name: "data",
+              description:
+                "When status=completed, the image result array (same shape as /v1/images/generations, elements carry url or b64_json). Absent while still running.",
+            },
+            {
+              name: "created / created_at / completed / completed_at",
+              description:
+                "Task create and completion times (unix seconds and ISO strings); completed* appear only after completion.",
+            },
+            {
+              name: "generation_id / generationId / generation_ids / generationIds",
+              description:
+                "Associated generation record IDs; singular fields for one image, plural arrays for batches.",
+            },
+            {
+              name: "credits_consumed",
+              description:
+                "Credits settled on completion; 0 when a user-supplied API was used.",
+            },
+          ],
+          notes: [
+            "Tasks are in-memory objects that expire after 30 minutes; a restart or multi-instance switch makes unfinished tasks return 404, but a callback_url webhook that already fired is unaffected.",
+            "You can only query tasks created by the user that owns the current API Key.",
+            "The response matches exactly the task object POSTed to callback_url.",
           ],
         },
         {
@@ -4303,8 +4495,13 @@ function ExternalApiDocs({
             <h3 className="mt-4 text-sm font-medium">{docs.commonTitle}</h3>
             <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
               {docs.common.map((item) => {
-                // Adobe（Firefly）后端那条规则加粗并取消灰字,使其在通用规则里更醒目。
-                const emphasize = item.startsWith("Adobe");
+                // Adobe（Firefly）后端与异步任务（async）两条规则加粗并取消灰字,
+                // 使其在通用规则里更醒目。前缀严格匹配,避免误命中无关条目:
+                // "Adobe"(zh/en 共用)、"异步任务（async）"(zh)、"Async tasks (async)"(en)。
+                const emphasize =
+                  item.startsWith("Adobe") ||
+                  item.startsWith("异步任务（async）") ||
+                  item.startsWith("Async tasks (async)");
                 return (
                   <li className="flex gap-2" key={item}>
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
