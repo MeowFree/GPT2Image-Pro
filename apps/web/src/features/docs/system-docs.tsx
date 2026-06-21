@@ -754,7 +754,7 @@ curl -N https://gpt2image.superapi.buzz/v1/images/generations \\
     "stream": true
   }'
 
-# 6. 异步模式；也可在 URL 后追加 ?async=true。callback_url 可选
+# 6. 异步模式；也可在 URL 后追加 ?async=true（与 body async:true 等价）；callback_url 为可选完成回调
 curl https://gpt2image.superapi.buzz/v1/images/generations \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -H "Content-Type: application/json" \\
@@ -1094,7 +1094,7 @@ curl -N https://gpt2image.superapi.buzz/v1/images/edits \\
   -F stream="true" \\
   -F 'image=@/path/to/reference.png'
 
-# 6. 异步图生图；也可在 URL 后追加 ?async=true。callback_url 可选
+# 6. 异步图生图；也可在 URL 后追加 ?async=true（与 body async:true 等价）；callback_url 为可选完成回调
 curl https://gpt2image.superapi.buzz/v1/images/edits \\
   -H "Authorization: Bearer $GPT2IMAGE_API_KEY" \\
   -F model="gpt-image-1.5" \\
