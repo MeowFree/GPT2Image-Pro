@@ -936,6 +936,20 @@ async function acquirePoolMemberInflightLease(
         ) {
           return "stale";
         }
+      } else if (member.type === "adobe") {
+        const [locked] = await tx
+          .select({ lastAcquiredAt: imageBackendAdobe.lastAcquiredAt })
+          .from(imageBackendAdobe)
+          .where(eq(imageBackendAdobe.id, member.id))
+          .for("update");
+        lockedLastAcquiredAt = locked?.lastAcquiredAt;
+        if (!locked) return "full";
+        if (
+          options?.enforceLastAcquiredSnapshot &&
+          !sameMemberTimestamp(lockedLastAcquiredAt, member.lastAcquiredAt)
+        ) {
+          return "stale";
+        }
       } else {
         const [locked] = await tx
           .select({ lastAcquiredAt: imageBackendAccount.lastAcquiredAt })
@@ -982,6 +996,17 @@ async function acquirePoolMemberInflightLease(
             updatedAt: now,
           })
           .where(eq(imageBackendApi.id, member.id));
+      } else if (member.type === "adobe") {
+        await tx
+          .update(imageBackendAdobe)
+          .set({
+            status: "active",
+            cooldownUntil: null,
+            lastUsedAt: now,
+            lastAcquiredAt: now,
+            updatedAt: now,
+          })
+          .where(eq(imageBackendAdobe.id, member.id));
       } else {
         await tx
           .update(imageBackendAccount)
@@ -2734,6 +2759,20 @@ async function touchSelectedMember(member: PoolMember) {
         updatedAt: now,
       })
       .where(eq(imageBackendApi.id, member.id));
+    return;
+  }
+
+  if (member.type === "adobe") {
+    await db
+      .update(imageBackendAdobe)
+      .set({
+        status: "active",
+        cooldownUntil: null,
+        lastUsedAt: now,
+        lastAcquiredAt: now,
+        updatedAt: now,
+      })
+      .where(eq(imageBackendAdobe.id, member.id));
     return;
   }
 
