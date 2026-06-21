@@ -20,6 +20,16 @@ describe("generation SLA error classification", () => {
     ).toBe("user_request");
   });
 
+  it("classifies unsupported transparent background as a user error", () => {
+    // 用户对不支持透明的模型传了 transparent,属用户参数与模型能力不匹配,切后端也救不了;
+    // 不能算平台失败拖低 SLA 成功率。
+    expect(
+      classifyGenerationError(
+        "Transparent background is not supported for this model. | invalid_value | image_generation_user_error"
+      )
+    ).toBe("user_request");
+  });
+
   it("keeps pool quota exhaustion and credential failures as platform errors", () => {
     // 裸 insufficient_quota/unauthorized 来自平台自有池(上游配额耗尽/池账号 401)，
     // 不能归 user_request 从 SLA 成功率分母中剔除。

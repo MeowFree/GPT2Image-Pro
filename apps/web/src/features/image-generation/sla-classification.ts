@@ -29,6 +29,8 @@ const USER_REQUEST_PATTERNS = [
   "invalid thinking",
   "invalid display size",
   "invalid resolution",
+  // 透明背景/输出格式不被命中模型支持：是用户参数与模型能力不匹配,切后端也救不了,算用户错。
+  "transparent background is not supported",
   "use widthxheight",
   "must be between",
   "total pixels",
