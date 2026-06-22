@@ -146,6 +146,17 @@ registerGptImageFamily();
 
 export const FIREFLY_DEFAULT_IMAGE_MODEL_ID = "firefly-nano-banana-pro-2k-16x9";
 
+// 图像模型族 id（family 级）。API 按 firefly-* 前缀路由到 Adobe,分辨率/宽高比可由
+// 请求的 size 参数决定（族级 id + size 即可,无需把 res/ratio 编进 id),故模型列表
+// （/v1/models）暴露族级 id 即可,避免把 5×3×5 全组合都列出来。顺序即展示顺序。
+export const FIREFLY_IMAGE_FAMILY_MODEL_IDS = [
+  "firefly-gpt-image-2",
+  "firefly-gpt-image-1.5",
+  "firefly-nano-banana-pro",
+  "firefly-nano-banana",
+  "firefly-nano-banana2",
+] as const;
+
 /** model id → 配置；未知 id 返回 null（调用方决定回退/报错）。 */
 export function resolveFireflyImageModel(
   modelId?: string | null
