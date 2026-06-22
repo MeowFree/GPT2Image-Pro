@@ -63,7 +63,7 @@ describe("buildFireflyImagePayloadCandidates", () => {
     expect(p.size).toEqual({ width: 2560, height: 1440 });
   });
 
-  it("gpt-image 图生图：单候选,referenceBlobs usage=general(不再用 referenceImages)", () => {
+  it("gpt-image 图生图：单候选,image2image + referenceBlobs usage=subject", () => {
     const candidates = buildFireflyImagePayloadCandidates({
       prompt: "edit",
       aspectRatio: "1:1",
@@ -74,7 +74,9 @@ describe("buildFireflyImagePayloadCandidates", () => {
     });
     expect(candidates).toHaveLength(1);
     const [c0] = candidates as Record<string, unknown>[];
-    expect(c0?.referenceBlobs).toEqual([{ id: "img1", usage: "general" }]);
+    // 实证(scripts/probe-adobe-edit.ts)：gpt-image edit 必须 usage=subject，
+    // 否则 Adobe 400 "Image edit use case requires a reference image"。
+    expect(c0?.referenceBlobs).toEqual([{ id: "img1", usage: "subject" }]);
     // Adobe 新 API 拒收 referenceImages,确保不再出现该字段。
     expect(c0?.referenceImages).toBeUndefined();
     expect((c0?.generationMetadata as Record<string, unknown>).module).toBe(
