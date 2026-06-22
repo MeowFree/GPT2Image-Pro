@@ -1,4 +1,8 @@
 import {
+  FIREFLY_IMAGE_FAMILY_MODEL_IDS,
+  FIREFLY_VIDEO_MODEL_CATALOG,
+} from "@repo/shared/adobe/firefly-direct";
+import {
   GPT52_CHAT_MODEL,
   GPT53_CODEX_CHAT_MODEL,
   GPT53_CODEX_SPARK_CHAT_MODEL,
@@ -74,6 +78,21 @@ export async function isExternalResponsesImageModelAllowed(
   }).includes(model.trim());
 }
 
+/**
+ * Adobe Firefly 模型 id 列表:图像族级 id（分辨率/宽高比走 size 参数）+ 视频全量 id
+ * （参数编码在 id 内）。图像与视频生成均由 externalApi.images.generate 门控,关闭时返回
+ * 空,避免在 /v1/models 列出无法调用的 model。
+ */
+export function getExternalFireflyModels(options?: {
+  imageGenerateAllowed?: boolean;
+}): string[] {
+  if (!options?.imageGenerateAllowed) return [];
+  return [
+    ...FIREFLY_IMAGE_FAMILY_MODEL_IDS,
+    ...Object.keys(FIREFLY_VIDEO_MODEL_CATALOG),
+  ];
+}
+
 function toOpenAIModel(id: string): OpenAIModel {
   return {
     id,
@@ -89,6 +108,9 @@ export async function getExternalModelsForUser(
   const plan = await getUserPlan(userId);
   const capabilities = await getPlanCapabilitySnapshot(plan.plan);
   const imageModels = [DEFAULT_IMAGE_MODEL];
+  const fireflyModels = getExternalFireflyModels({
+    imageGenerateAllowed: capabilities.features["externalApi.images.generate"],
+  });
   const chatModels = getExternalChatCompletionModels(plan.plan, {
     chatCompletionsAllowed:
       capabilities.features["externalApi.chat.completions"],
@@ -99,7 +121,12 @@ export async function getExternalModelsForUser(
     gpt55Allowed: capabilities.features["models.gpt55"],
   });
   const modelIds = Array.from(
-    new Set([...imageModels, ...chatModels, ...responsesModels])
+    new Set([
+      ...imageModels,
+      ...fireflyModels,
+      ...chatModels,
+      ...responsesModels,
+    ])
   );
   return {
     object: "list",
