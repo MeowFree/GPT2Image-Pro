@@ -30,8 +30,9 @@ import {
 } from "@repo/shared/system-settings";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { releaseImageBackendInflightLease } from "@/features/image-backend-pool/service";
 import { runAdobeDirectVideoRequest } from "./adobe-direct";
-import { getEffectiveConfig } from "./service";
+import { getEffectiveConfig, poolBackendMemberType } from "./service";
 
 export type VideoGenerationInput = {
   userId: string;
@@ -213,10 +214,32 @@ export async function runAdobeVideoGenerationForUser(
     );
     return { error: "无可用 Adobe 视频后端", videoGenerationId: videoId };
   }
+
+  // getEffectiveConfig 已为命中成员获取 inflight 租约(进程内计数 + DB 租约)。视频管线
+  // 必须在所有退出路径释放——否则进程内 inflight 只增不减,堆到 concurrency 上限后该后端
+  // 被 hasBackendCapacity 判为满载、彻底踢出候选,后续视频请求一律解析失败为"无可用
+  // Adobe 视频后端"(2026-06-22 定位:视频管线缺租约释放的泄漏,图像管线有
+  // releasePoolBackendConfigLease,视频侧此前完全没有)。幂等:释放后置 inflightLease=false。
+  const releaseInflightLease = async () => {
+    const backend = config.backend;
+    if (backend?.inflightLease) {
+      await releaseImageBackendInflightLease({
+        memberType: poolBackendMemberType(backend.type),
+        memberId: backend.id,
+        leaseId: backend.inflightLeaseId,
+        leasePersisted: backend.inflightLeasePersisted,
+      }).catch((error) =>
+        logError(error, { source: "adobe-video-lease-release", videoId })
+      );
+      backend.inflightLease = false;
+    }
+  };
+
   if (
     config.backend?.type !== "pool-adobe" ||
     config.backend.adobeMode !== "direct"
   ) {
+    await releaseInflightLease();
     await markVideoFailed(videoId, "命中后端非 Adobe 直连");
     return {
       error: "视频生成需要一个 Adobe 直连(direct)后端",
@@ -248,6 +271,7 @@ export async function runAdobeVideoGenerationForUser(
       },
     });
   } catch (error) {
+    await releaseInflightLease();
     await markVideoFailed(videoId, "积分不足");
     return {
       error: error instanceof Error ? error.message : "积分不足",
@@ -262,6 +286,7 @@ export async function runAdobeVideoGenerationForUser(
 
   // 失败统一退款 + 标记。退款幂等（同一 sourceRef 只退一次）。
   const failAndRefund = async (message: string): Promise<VideoGenerationResult> => {
+    await releaseInflightLease();
     await refundGenerationCredits({
       generationId: videoId,
       userId: input.userId,
@@ -326,5 +351,6 @@ export async function runAdobeVideoGenerationForUser(
     })
     .where(eq(videoGeneration.id, videoId));
 
+  await releaseInflightLease();
   return { videoGenerationId: videoId, storageKey, creditsConsumed: billedCost };
 }
