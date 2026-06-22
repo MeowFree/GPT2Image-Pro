@@ -29,6 +29,7 @@ import {
   createJsonKeepAliveResponse,
   IMAGE_JSON_KEEP_ALIVE_INITIAL_WAIT_MS,
   openAIImageError,
+  toOpenAIErrorPayload,
 } from "@/features/external-api/images";
 import {
   IMAGE_PROMPT_MAX_CHARACTERS,
@@ -156,32 +157,26 @@ export const postExternalVideoGenerations = withApiLogging(
             ...runInput,
             videoGenerationId: videoId,
           });
-          const completed =
-            "error" in result
-              ? completeAsyncImageTask(task.id, {
-                  error: { message: result.error },
-                })
-              : completeAsyncImageTask(task.id, {
-                  result: {
-                    object: "video",
-                    model: parsed.data.model,
-                    video_url:
-                      buildSignedStorageImageUrl(
-                        result.storageKey,
-                        await bucketName()
-                      ) ?? "",
-                    data: [
-                      {
-                        url:
-                          buildSignedStorageImageUrl(
-                            result.storageKey,
-                            await bucketName()
-                          ) ?? "",
-                      },
-                    ],
-                    credits_consumed: result.creditsConsumed,
-                  },
-                });
+          let completed: ReturnType<typeof completeAsyncImageTask>;
+          if ("error" in result) {
+            // 传 OpenAI 错误信封,使任务对象得到规范的 error:{message,...}（与图像异步一致）。
+            completed = completeAsyncImageTask(task.id, {
+              error: toOpenAIErrorPayload(result.error),
+            });
+          } else {
+            const videoUrl =
+              buildSignedStorageImageUrl(result.storageKey, await bucketName()) ??
+              "";
+            completed = completeAsyncImageTask(task.id, {
+              result: {
+                object: "video",
+                model: parsed.data.model,
+                video_url: videoUrl,
+                data: [{ url: videoUrl }],
+                credits_consumed: result.creditsConsumed,
+              },
+            });
+          }
           if (callbackUrl && completed) {
             await postAsyncImageCallback(callbackUrl, completed);
           }
@@ -191,10 +186,9 @@ export const postExternalVideoGenerations = withApiLogging(
             taskId: task.id,
           });
           const failed = completeAsyncImageTask(task.id, {
-            error: {
-              message:
-                error instanceof Error ? error.message : "Video generation failed",
-            },
+            error: toOpenAIErrorPayload(
+              error instanceof Error ? error.message : "Video generation failed"
+            ),
           });
           if (callbackUrl && failed) {
             await postAsyncImageCallback(callbackUrl, failed).catch(() => {});
