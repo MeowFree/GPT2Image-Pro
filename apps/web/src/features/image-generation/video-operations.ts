@@ -37,6 +37,11 @@ export type VideoGenerationInput = {
   userId: string;
   apiKeyId?: string | null;
   prompt: string;
+  /**
+   * 预供的 video_generation 行 id（可选）。异步路径预先生成并传入,使任务的
+   * generation_id 与落库行 id 一致,便于后续按 id 持久查询;不传则内部生成。
+   */
+  videoGenerationId?: string;
   /** 完整 Firefly 视频 model id（firefly-<family>-<dur>s-<ratio>[-<res>]）。 */
   model: string;
   negativePrompt?: string | null;
@@ -120,6 +125,19 @@ export async function getVideoPricingForUser(input: {
   return { basePerSecond, multipliers, backendMultiplier };
 }
 
+/**
+ * 按 id 查一条 video_generation（DB 持久,供 /v1/videos/{id} 任务查询）。
+ * 不带归属过滤,调用方须自行校验 userId 防越权。
+ */
+export async function getVideoGenerationById(id: string) {
+  const rows = await db
+    .select()
+    .from(videoGeneration)
+    .where(eq(videoGeneration.id, id))
+    .limit(1);
+  return rows[0] || null;
+}
+
 async function markVideoFailed(id: string, error: string): Promise<void> {
   await db
     .update(videoGeneration)
@@ -153,7 +171,7 @@ export async function runAdobeVideoGenerationForUser(
     modelMultiplier: resolveVideoModelMultiplier(conf.family, multipliers),
   });
 
-  const videoId = nanoid();
+  const videoId = input.videoGenerationId || nanoid();
   // 扣费/退款幂等键：派生自服务端 videoId，全局唯一。
   const sourceRef = `adobe-video:${videoId}`;
   const now = new Date();

@@ -9,12 +9,21 @@
 
 import { withApiLogging } from "@repo/shared/api-logger";
 import { isFireflyVideoModelId } from "@repo/shared/adobe/firefly-direct/video-catalog";
+import { logError } from "@repo/shared/logger";
 import { canUsePlanCapability } from "@repo/shared/subscription/services/plan-capabilities";
 import { buildSignedStorageImageUrl } from "@repo/shared/storage/signed-url";
 import { getRuntimeSettingString } from "@repo/shared/system-settings";
+import { nanoid } from "nanoid";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
+import {
+  completeAsyncImageTask,
+  createAsyncImageTask,
+  postAsyncImageCallback,
+  toAsyncImageTaskResponse,
+  validateCallbackUrl,
+} from "@/features/external-api/async-image-tasks";
 import { authenticateExternalApiRequest } from "@/features/external-api/auth";
 import {
   createJsonKeepAliveResponse,
@@ -44,6 +53,11 @@ const externalVideoSchema = z.object({
   negative_prompt: z.string().max(8000).optional(),
   // 图生视频输入图（base64 data URL，首帧/尾帧/参考），最多 3 张。
   image: z.array(inputImageSchema).max(3).optional(),
+  // 异步开关（视频是长任务，建议异步）：立即返回 task_...，后台生成，凭 task_id 或
+  // generation_id 轮询 GET /v1/videos/{id}；可选 callback_url 完成回调。
+  async: z.boolean().optional(),
+  callback_url: z.string().url().max(2048).optional(),
+  callbackUrl: z.string().url().max(2048).optional(),
 });
 
 function decodeImageDataUrl(value: string): { data: Buffer; type: string } {
@@ -96,25 +110,115 @@ export const postExternalVideoGenerations = withApiLogging(
     const negativePrompt =
       parsed.data.negativePrompt ?? parsed.data.negative_prompt;
 
+    const useAsync =
+      parsed.data.async === true ||
+      request.nextUrl.searchParams.get("async") === "true";
+    let callbackUrl: string | undefined;
+    if (parsed.data.callback_url || parsed.data.callbackUrl) {
+      try {
+        callbackUrl = await validateCallbackUrl(
+          (parsed.data.callback_url || parsed.data.callbackUrl) as string
+        );
+      } catch (error) {
+        return openAIImageError(
+          error instanceof Error ? error.message : "Invalid callback_url."
+        );
+      }
+    }
+
+    const runInput = {
+      userId: auth.userId,
+      apiKeyId: auth.apiKeyId,
+      prompt: parsed.data.prompt,
+      model: parsed.data.model,
+      ...(negativePrompt ? { negativePrompt } : {}),
+      ...(inputImages?.length ? { inputImages } : {}),
+    };
+    const bucketName = async () =>
+      (await getRuntimeSettingString("NEXT_PUBLIC_GENERATIONS_BUCKET_NAME")) ||
+      "generations";
+
+    // 异步：预供 videoId(令任务 generation_id = video_generation 行 id),立即返回
+    // task_...,后台跑生成 → 完成/失败时落任务态 + 可选 callback。凭 task_id 或
+    // generation_id 走 GET /v1/videos/{id} 轮询(后者 DB 持久,跨重启/多实例可查)。
+    if (useAsync) {
+      const videoId = nanoid();
+      const task = createAsyncImageTask({
+        userId: auth.userId,
+        apiKeyId: auth.apiKeyId,
+        model: parsed.data.model,
+        generationIds: [videoId],
+      });
+
+      void (async () => {
+        try {
+          const result = await runAdobeVideoGenerationForUser({
+            ...runInput,
+            videoGenerationId: videoId,
+          });
+          const completed =
+            "error" in result
+              ? completeAsyncImageTask(task.id, {
+                  error: { message: result.error },
+                })
+              : completeAsyncImageTask(task.id, {
+                  result: {
+                    object: "video",
+                    model: parsed.data.model,
+                    video_url:
+                      buildSignedStorageImageUrl(
+                        result.storageKey,
+                        await bucketName()
+                      ) ?? "",
+                    data: [
+                      {
+                        url:
+                          buildSignedStorageImageUrl(
+                            result.storageKey,
+                            await bucketName()
+                          ) ?? "",
+                      },
+                    ],
+                    credits_consumed: result.creditsConsumed,
+                  },
+                });
+          if (callbackUrl && completed) {
+            await postAsyncImageCallback(callbackUrl, completed);
+          }
+        } catch (error) {
+          logError(error, {
+            source: "external-api-async-video",
+            taskId: task.id,
+          });
+          const failed = completeAsyncImageTask(task.id, {
+            error: {
+              message:
+                error instanceof Error ? error.message : "Video generation failed",
+            },
+          });
+          if (callbackUrl && failed) {
+            await postAsyncImageCallback(callbackUrl, failed).catch(() => {});
+          }
+        }
+      })();
+
+      return Response.json(toAsyncImageTaskResponse(task), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+
+    // 同步：keep-alive 撑住长连接,跑完直接返回视频 URL(并带 generation_id 便于后续复查)。
     return createJsonKeepAliveResponse(
       async () => {
         const result = await runAdobeVideoGenerationForUser({
-          userId: auth.userId,
-          apiKeyId: auth.apiKeyId,
-          prompt: parsed.data.prompt,
-          model: parsed.data.model,
-          ...(negativePrompt ? { negativePrompt } : {}),
-          ...(inputImages?.length ? { inputImages } : {}),
+          ...runInput,
           signal: request.signal,
         });
         if ("error" in result) {
           // 由 createJsonKeepAliveResponse 转成带状态的 OpenAI 错误响应。
           throw new Error(result.error);
         }
-        const bucket =
-          (await getRuntimeSettingString(
-            "NEXT_PUBLIC_GENERATIONS_BUCKET_NAME"
-          )) || "generations";
+        const bucket = await bucketName();
         return {
           created: Math.floor(Date.now() / 1000),
           model: parsed.data.model,
@@ -124,6 +228,8 @@ export const postExternalVideoGenerations = withApiLogging(
                 buildSignedStorageImageUrl(result.storageKey, bucket) ?? "",
             },
           ],
+          generation_id: result.videoGenerationId,
+          generationId: result.videoGenerationId,
           credits_consumed: result.creditsConsumed,
         };
       },
