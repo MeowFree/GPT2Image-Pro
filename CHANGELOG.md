@@ -2,6 +2,20 @@
 
 本文件记录各发布版本的变更。版本格式 `v<MAJOR>.<MINOR>.<PATCH>`。
 
+## v0.6.1 (2026-06-22)
+
+修复 Adobe gpt-image 图生图(`/v1/images/edits`)经 Adobe 后端 100% 失败;创作页视频展示预估价格。
+
+### 新增
+
+- **控制台视频价格**:生视频面板新增「预计消耗 N 积分」及其构成(时长 × 每秒基价 × 模型族倍率,再叠加 Adobe 后端倍率),随模型族/时长实时更新。抽出纯函数 `applyVideoBackendMultiplier`,扣费侧与前端预估共用同一口径,确保展示价 = 实扣价。
+
+### 修复
+
+- **Adobe gpt-image 图生图全线失败**:`/v1/images/edits` 路由到 Adobe direct 后端时 Adobe 返 400「Image edit use case requires a reference image」,该路径自 v0.6.0 上线起从未成功(生产日志佐证)。
+  - 根因:gpt-image edit 的 `referenceBlobs.usage` 用了 `general`,Adobe 不把它当作 edit 源图。v0.6.0 误判"与 nano-banana 一致用 general";而早期"subject 无效"的结论实为当时 `module` 仍是 `text2image`(漏改)导致退化成文生图、忽略了参考图。
+  - 经对真实 Adobe API 实证(`scripts/probe-adobe-edit.ts`):gpt-image(2/1.5)edit 必须 `usage=subject`,nano-banana(pro/2)edit 必须 `usage=general`,两族恰好相反。故 gpt-image 分支改 `subject`、nano-banana 保持 `general`(现有实证背书)。完整 edit 链路(submit→轮询→下载)已实测出图。
+
 ## v0.6.0 (2026-06-21)
 
 接入 Adobe Firefly 作为独立后端生态:图像(gpt-image / nano-banana 系列)与视频(sora2 / veo31 / kling 等 7 族)直连出图,经 Go TLS 旁路过风控,自管 Adobe 账号/token 池;统一到既有账号池调度、计费、监控与 v1 API 体系。迁移 0040-0044。
