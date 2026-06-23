@@ -178,6 +178,8 @@ type Api = {
   failureCooldownEnabled: boolean;
   priority: number;
   concurrency: number;
+  adobeSourced: boolean;
+  billingMultiplier: number;
   status: string;
   successCount: number;
   failCount: number;
@@ -851,6 +853,10 @@ export function ImageBackendPoolAdminPanel({
     failureCooldownEnabled: false,
     priority: 50,
     concurrency: 10,
+    // Adobe 来源：上游实为 Adobe 的 gpt 格式 api（计费吃成员倍率 + 进 firefly 候选）。
+    adobeSourced: false,
+    // 成员计费倍率（仅 adobeSourced 时生效），字符串便于输入框编辑。
+    billingMultiplier: "1",
   });
   const [adobeForm, setAdobeForm] = useState({
     id: "",
@@ -1164,6 +1170,8 @@ export function ImageBackendPoolAdminPanel({
       failureCooldownEnabled: false,
       priority: 50,
       concurrency: 10,
+      adobeSourced: false,
+      billingMultiplier: "1",
     });
 
   const resetManualImportForm = () => {
@@ -1315,6 +1323,8 @@ export function ImageBackendPoolAdminPanel({
       failureCooldownEnabled: api.failureCooldownEnabled,
       priority: api.priority,
       concurrency: api.concurrency,
+      adobeSourced: api.adobeSourced ?? false,
+      billingMultiplier: String(api.billingMultiplier ?? "1"),
     });
   };
 
@@ -3877,6 +3887,81 @@ export function ImageBackendPoolAdminPanel({
                     }
                   />
                 </div>
+                <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                  <div>
+                    <Label>Adobe 来源（按 Adobe 计费 + 进 firefly 调度）</Label>
+                    <p className="text-xs text-muted-foreground">
+                      上游实为 Adobe 的 gpt 格式 api。开启后：计费吃下方成员倍率
+                      （命中组倍率 × 成员倍率，与 Adobe 伪账号同口径）；调度上参与
+                      firefly 候选，firefly-* 请求自动反向转换成 gpt 请求后由本后端处理。
+                    </p>
+                  </div>
+                  <Switch
+                    checked={apiForm.adobeSourced}
+                    onCheckedChange={(checked) =>
+                      setApiForm((current) => ({
+                        ...current,
+                        adobeSourced: checked,
+                      }))
+                    }
+                  />
+                </div>
+                {apiForm.adobeSourced && (
+                  <div className="space-y-1.5">
+                    <Label>计费倍率（成员）</Label>
+                    <Input
+                      type="number"
+                      min={0.01}
+                      max={100}
+                      step={0.01}
+                      value={apiForm.billingMultiplier}
+                      onChange={(event) =>
+                        setApiForm((current) => ({
+                          ...current,
+                          billingMultiplier: event.target.value,
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      仅「Adobe 来源」开启时生效。最终扣费 = 基础价 × 命中组倍率 ×
+                      本成员倍率（默认 1 不改变）。
+                    </p>
+                    <div className="rounded-md border bg-muted/30 p-3 text-xs">
+                      <div className="mb-1 font-medium">
+                        倍率算例（基础价以 100 积分示意）
+                      </div>
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-border/60">
+                            <th className="py-1 pr-2 font-medium">场景</th>
+                            <th className="py-1 pr-2 font-medium">组 × 成员</th>
+                            <th className="py-1 font-medium">实扣</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b border-border/30">
+                            <td className="py-1 pr-2">普通 api（默认）</td>
+                            <td className="py-1 pr-2">1 ×（恒 1）</td>
+                            <td className="py-1">100</td>
+                          </tr>
+                          <tr className="border-b border-border/30">
+                            <td className="py-1 pr-2">组 ×1.2 + 成员 ×2</td>
+                            <td className="py-1 pr-2">1.2 × 2 = 2.4</td>
+                            <td className="py-1">240</td>
+                          </tr>
+                          <tr>
+                            <td className="py-1 pr-2">仅成员 ×2（组 1）</td>
+                            <td className="py-1 pr-2">1 × 2 = 2</td>
+                            <td className="py-1">200</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      <p className="mt-1 text-muted-foreground">
+                        关闭「Adobe 来源」则不吃成员倍率，退回只吃组倍率（同普通 api）。
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <Button
                   className="w-full"
                   onClick={() =>

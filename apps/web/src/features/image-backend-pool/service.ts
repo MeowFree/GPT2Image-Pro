@@ -7334,6 +7334,8 @@ export async function listAdminImageBackendPool() {
       failureCooldownEnabled: imageBackendApi.failureCooldownEnabled,
       priority: imageBackendApi.priority,
       concurrency: imageBackendApi.concurrency,
+      adobeSourced: imageBackendApi.adobeSourced,
+      billingMultiplier: imageBackendApi.billingMultiplier,
       status: imageBackendApi.status,
       successCount: imageBackendApi.successCount,
       failCount: imageBackendApi.failCount,
@@ -7427,6 +7429,8 @@ export async function listAdminImageBackendPool() {
     })),
     apis: apis.map((api) => ({
       ...api,
+      // numeric 列回库为字符串，转成数值供前端展示/编辑。
+      billingMultiplier: Number(api.billingMultiplier) || 1,
       groupIds:
         apiGroupIdMap.get(api.id) ||
         normalizeAccountGroupIds(api.groupId ? [api.groupId] : []),
