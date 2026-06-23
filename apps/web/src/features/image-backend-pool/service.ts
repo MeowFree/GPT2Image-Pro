@@ -6737,6 +6737,9 @@ type UpsertApiInput = {
   failureCooldownEnabled: boolean;
   priority: number;
   concurrency: number;
+  // Adobe 来源标记 + 成员计费倍率（仅 adobeSourced 时生效）。
+  adobeSourced?: boolean;
+  billingMultiplier?: number;
   status?: string;
 };
 
@@ -6799,6 +6802,9 @@ export async function upsertImageBackendApi(input: UpsertApiInput) {
     failureCooldownEnabled: input.failureCooldownEnabled,
     priority: input.priority,
     concurrency: Math.max(1, Math.min(10000, input.concurrency)),
+    adobeSourced: input.adobeSourced ?? false,
+    // numeric 列以字符串写入（与 image_backend_adobe.billing_multiplier 一致）。
+    billingMultiplier: String(input.billingMultiplier ?? 1),
     status: input.status || "active",
     updatedAt: new Date(),
   };

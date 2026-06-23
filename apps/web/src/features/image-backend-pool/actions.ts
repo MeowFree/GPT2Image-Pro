@@ -561,6 +561,10 @@ export const saveImageBackendApiAction = withImageBackendPoolAdminAction(
       failureCooldownEnabled: z.boolean().default(false),
       priority: z.coerce.number().int().min(0).max(10000).default(50),
       concurrency: z.coerce.number().int().min(1).max(10000).default(10),
+      // Adobe 来源：上游实为 Adobe 的 gpt 格式 api。开启后吃成员倍率并进 firefly 候选。
+      adobeSourced: z.boolean().default(false),
+      // 成员计费倍率（仅 adobeSourced 时生效），口径同 Adobe 伪账号。
+      billingMultiplier: z.coerce.number().min(0.01).max(100).default(1),
       status: z.string().trim().max(80).optional(),
     })
   )
@@ -583,6 +587,8 @@ export const saveImageBackendApiAction = withImageBackendPoolAdminAction(
       failureCooldownEnabled: parsedInput.failureCooldownEnabled,
       priority: parsedInput.priority,
       concurrency: parsedInput.concurrency,
+      adobeSourced: parsedInput.adobeSourced,
+      billingMultiplier: parsedInput.billingMultiplier,
       status: parsedInput.status || "active",
     });
     return { success: true, id };
