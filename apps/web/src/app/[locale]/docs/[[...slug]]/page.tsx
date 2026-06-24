@@ -1,11 +1,9 @@
 import { DocsBody, DocsPage, DocsTitle } from "fumadocs-ui/page";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
-import {
-  getSystemDocsMetadata,
-  SystemDocsContent,
-} from "@/features/docs/system-docs";
+import { BackendDocs } from "@/features/docs/backend-docs";
+import { getSystemDocsMetadata } from "@/features/docs/system-docs";
 import { docsSource } from "@/lib/source";
 
 function isSystemDocsSlug(slug?: string[]) {
@@ -23,7 +21,9 @@ function isSystemDocsSlug(slug?: string[]) {
  * 生成静态参数
  */
 export function generateStaticParams() {
-  return [...docsSource.generateParams(), { slug: ["system"] }];
+  // system 由 content/docs/system.mdx 自身的 generateParams 覆盖;此处仅补
+  // backend-help(无对应 mdx 文件,但 isSystemDocsSlug 会渲染同一份 BackendDocs)。
+  return [...docsSource.generateParams(), { slug: ["backend-help"] }];
 }
 
 /**
@@ -67,6 +67,12 @@ export default async function Page({
 }) {
   const { locale, slug } = await params;
 
+  // 外部 API 已并入「系统文档」(/docs/system),旧 /docs/external-api 链接重定向过去,
+  // 避免同一份内容两处可达。external-api.mdx 仍保留为内容源,由 BackendDocs 内联渲染。
+  if (slug?.join("/") === "external-api") {
+    redirect(`/${locale ?? "en"}/docs/system`);
+  }
+
   if (isSystemDocsSlug(slug)) {
     return (
       <DocsPage
@@ -77,8 +83,8 @@ export default async function Page({
         toc={[]}
       >
         <DocsBody className="max-w-none">
-          <SystemDocsContent
-            className="mx-auto w-full max-w-[1500px] space-y-6 px-4 py-6 lg:px-8"
+          <BackendDocs
+            className="mx-auto w-full max-w-[1500px] space-y-10 px-4 py-6 lg:px-8"
             locale={locale}
           />
         </DocsBody>

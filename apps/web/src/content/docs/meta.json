@@ -1,7 +1,7 @@
 {
   "pages": [
     "index",
-    "external-api",
+    "system",
     "adobe-firefly-routing",
     "adobe-firefly-compat"
   ]

@@ -15,8 +15,9 @@
 
 ### 文档
 
-- **外部 API 异步视频流程置顶**:`/docs/external-api` 的「视频」小节由「同步默认 + async 选项」改为异步优先——新增「异步流程」三步(提交 `async:true` → 轮询 `GET /v1/videos/{id}` 或 `callback_url` 回调 → 取 `video_url`),补轮询间隔与终态/失败 `error` 形状,把同步降级为仅短片段兜底的 keep-alive 提示(契合站内 UI 默认异步:视频是长任务、同步直连易被中途掐断丢产物)。
-- **文档目录落地页**:`/docs` 此前直接渲染系统架构总览、无文档导航,外部 API / 视频 / Adobe 等页只能从侧栏零散进入(用户反馈「找不到视频文档」)。改为根路径渲染 `index.mdx` 的「文档目录」——列出外部 API(含「视频 · 异步流程」直达锚点)、系统架构与请求路由、Adobe 路由/兼容,并附快速开始;系统架构总览保留在 `/docs/system`、`/docs/backend-help`;新增 `content/docs/meta.json` 固定侧栏顺序。
+- **外部 API 异步视频流程置顶**:外部 API 的「视频」小节由「同步默认 + async 选项」改为异步优先——新增「异步流程」三步(提交 `async:true` → 轮询 `GET /v1/videos/{id}` 或 `callback_url` 回调 → 取 `video_url`),补轮询间隔与终态/失败 `error` 形状,把同步降级为仅短片段兜底的 keep-alive 提示(契合站内 UI 默认异步:视频是长任务、同步直连易被中途掐断丢产物)。
+- **外部 API 并入「系统文档」,文档结构收敛**:外部 API 参考(图像/视频)整体并入「系统文档」——控制台 `/dashboard/backend-help` 与公开 `/docs/system` 同源,均渲染「系统架构与请求路由 + 外部 API 参考」(`BackendDocs`)。因 dashboard 不能引 fumadocs 的 `.prose` CSS(会用 @layer 覆盖布局),外部 API 的 MDX 改用一套自带 Tailwind 样式、语义化 token 的 `docsMdxComponents` 内联渲染(零外部 CSS 依赖、深浅色自适应、保留标题锚点)。旧 `/docs/external-api` 307 重定向到 `/docs/system`。
+- **文档目录落地页 + 侧栏收敛**:`/docs` 根改为渲染 `index.mdx` 的「文档目录」(列出系统文档〔含外部 API,带「视频 · 异步流程」直达锚点〕、Adobe 路由/兼容,附快速开始);`/docs` 侧栏经 `content/docs/meta.json` 收敛为「文档目录 / 系统文档(含外部 API)/ Adobe 路由 / Adobe 兼容」四个平级页。
 
 ## v0.6.3 (2026-06-23)
 
