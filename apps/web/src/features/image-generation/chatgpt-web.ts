@@ -226,6 +226,13 @@ function webErrorPayloadMessage(payload: unknown): string {
     const nested = webErrorPayloadMessage(error);
     if (nested) return nested;
   }
+  // ChatGPT web 流式增量(o/v 操作)会把真实错误文案包在 v 里(如 {"o":"add","v":{...}});
+  // 像 error 一样递归取出,避免上层兜底把原始 o/v 协议分片当错误回显给用户。
+  const value = record.v;
+  if (value && typeof value === "object") {
+    const nested = webErrorPayloadMessage(value);
+    if (nested) return nested;
+  }
   return "";
 }
 
@@ -1480,7 +1487,9 @@ function extractWebStreamError(text: string) {
         `${message} ${code} ${data}`
       )
     ) {
-      return message || code || data.replace(/\s+/g, " ").slice(0, 500);
+      // 抽到可读字段才返回;否则绝不回显原始 o/v 协议分片(那会把
+      // {"o":"add","v":{...}} 整段甩给用户)。落到下方按全文抽取限流/配额关键词短语。
+      if (message || code) return message || code;
     }
   }
   const match = text.match(
@@ -1784,6 +1793,11 @@ async function downloadImageOutputs(
   return outputs;
 }
 
+// 在飞「续接对话」占用集合:同一 ChatGPT 会话同一时刻只允许一个请求续接。并发的同提示
+// 请求(读到同一旧会话状态)只放行第一个续接,其余强制开新对话,避免同时从同一节点分叉、
+// 产出几乎一样的图。进程内即可:线上正常流量全打主副本(3308),备副本仅 failover 启用。
+const inflightWebContinuations = new Set<string>();
+
 async function runWebImage(
   config: ApiConfig,
   params: WebImageParams,
@@ -1791,13 +1805,25 @@ async function runWebImage(
 ): Promise<GenerateImageResult> {
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), 20 * 60 * 1000);
+  // 本次若成功占用某会话续接,记下其 id,在 finally 释放。
+  let claimedWebConversationId: string | null = null;
   try {
     const configWithSignal = { ...config, signal: abortController.signal };
     const requestMessageId = randomUUID();
-    const continuation = lastWebConversationState(
+    let continuation = lastWebConversationState(
       params.history,
       config.backend?.id
     );
+    // 并发互斥:该会话已被在飞请求占用则本次改开新对话(continuation=null);后续逻辑
+    // (含重新附带历史参考图)沿用既有的 null 分支,故新对话仍会带上 @图 参考图。
+    if (continuation?.useNativeContinuation && continuation.conversationId) {
+      if (inflightWebContinuations.has(continuation.conversationId)) {
+        continuation = null;
+      } else {
+        inflightWebContinuations.add(continuation.conversationId);
+        claimedWebConversationId = continuation.conversationId;
+      }
+    }
     const historyReference = continuation?.useNativeContinuation
       ? null
       : getLatestWebHistoryImageReference(params.history);
@@ -1934,6 +1960,9 @@ async function runWebImage(
     };
   } finally {
     clearTimeout(timeout);
+    if (claimedWebConversationId) {
+      inflightWebContinuations.delete(claimedWebConversationId);
+    }
   }
 }
 

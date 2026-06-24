@@ -20,6 +20,27 @@ describe("ChatGPT Web image choices", () => {
     ).toBe("The quota has been exceeded.");
   });
 
+  it("递归取出包在 o/v 流式增量 v 里的错误文案", () => {
+    expect(
+      __testing__.extractWebErrorPayloadMessage(
+        JSON.stringify({ o: "add", v: { detail: "Too many requests" } })
+      )
+    ).toBe("Too many requests");
+  });
+
+  it("命中错误条件但是 o/v 分片时,不回显原始分片,只给可读关键词短语", () => {
+    const sse =
+      'data: {"o":"add","v":{"message":{"id":"911374","content":{"parts":["You have hit your usage limit, try again later"]}}}}\n\n';
+    const result = __testing__.extractWebStreamError(sse);
+    expect(result).not.toContain('{"o"');
+    expect(result.toLowerCase()).toContain("usage limit");
+  });
+
+  it("普通 o/v 消息增量(无错误关键词)不被当作错误", () => {
+    const sse = 'data: {"o":"add","v":{"message":{"id":"abc"}}}\n\n';
+    expect(__testing__.extractWebStreamError(sse)).toBe("");
+  });
+
   it("extracts sibling image candidates after a request message", () => {
     const conversation = {
       current_node: "choice_b",
