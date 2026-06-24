@@ -1,0 +1,8 @@
+{
+  "pages": [
+    "index",
+    "external-api",
+    "adobe-firefly-routing",
+    "adobe-firefly-compat"
+  ]
+}

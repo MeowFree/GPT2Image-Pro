@@ -9,8 +9,10 @@ import {
 import { docsSource } from "@/lib/source";
 
 function isSystemDocsSlug(slug?: string[]) {
+  // 根路径 /docs 改为渲染 index.mdx 的「文档目录」落地页(便于发现各文档)；
+  // 系统架构总览仍保留在 /docs/system 与 /docs/backend-help。
   if (!slug?.length) {
-    return true;
+    return false;
   }
 
   const path = slug.join("/");

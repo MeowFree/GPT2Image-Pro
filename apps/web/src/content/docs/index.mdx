@@ -1,6 +1,20 @@
 ---
-title: 系统文档
-description: GPT2IMAGE 外接 API、后端池、计费与调度说明。
+title: 文档目录
+description: GPT2IMAGE 文档总览：外部 API（图像 / 视频）、系统架构与请求路由、Adobe Firefly 路由与兼容。
 ---
 
-系统文档内容由站内系统文档页面同步渲染，公开访问无需登录。
+GPT2IMAGE 全部文档的入口。按需选择：
+
+## 文档目录
+
+- **[外部 API（OpenAI 兼容）](/docs/external-api)** — 用 API Key 调 `/v1` 端点：鉴权、图像生成 / 编辑、**视频生成（默认异步）**、任务查询、积分与错误码。
+  - 直达：[视频 · 异步流程](/docs/external-api#异步流程推荐) ｜ [图像](/docs/external-api#图像) ｜ [鉴权](/docs/external-api#鉴权) ｜ [错误码速查](/docs/external-api#错误码速查)
+- **[系统架构与请求路由](/docs/system)** — 页面入口与外接入口如何统一进入同一套生成 / 扣费 / 调度 / 存储链路（含请求路由图）。
+- **[Adobe Firefly 路由与兜底调度](/docs/adobe-firefly-routing)** — Adobe 作为特殊成员入池、按优先级兜底、`force_firefly` 强制路由。
+- **[Adobe Firefly 兼容转换](/docs/adobe-firefly-compat)** — gpt / firefly 请求与 Adobe 上游之间的双向格式转换。
+
+## 快速开始
+
+1. 在控制台创建 **API Key**（外部 API 需 Starter 及以上套餐）。
+2. 读 **[外部 API](/docs/external-api)** 的「鉴权」与「通用约定」。
+3. 图像走 `POST /v1/images/generations`；**视频是长任务、默认走异步**，按 [视频 · 异步流程](/docs/external-api#异步流程推荐) 提交后轮询 `GET /v1/videos/{id}` 或用 `callback_url` 回调。
