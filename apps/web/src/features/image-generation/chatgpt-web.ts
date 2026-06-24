@@ -1443,6 +1443,44 @@ function latestConversationMessageIdAfter(
   return latest ? conversationNodeId(latest.node, latest.id) : "";
 }
 
+/**
+ * 从 ChatGPT web 流式增量(o/v 操作)里抽出"系统错误"消息(content_type=system_error)。
+ *
+ * WHY:ChatGPT 无法调用画图工具时不会返回图片,而是塞一条 author.role="tool"、
+ * content.content_type="system_error" 的消息(典型 name=ChatGPTAgentToolRateLimitException,
+ * 即 image_gen.text2im 工具被账号级限流)。若不在此抽出,下游只会看到 "no image output",
+ * 既无法归类为限流(短冷却 + 换号重试),也丢失可读原因与 SLA 可观测性。
+ * 返回 name + text 拼接;name 一定在首个 add 分片里,即使 text 后续才 append 也够归类。
+ */
+function extractWebSystemError(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+  const record = payload as Record<string, unknown>;
+  const content = record.content;
+  if (content && typeof content === "object") {
+    const c = content as Record<string, unknown>;
+    if (c.content_type === "system_error") {
+      const name = typeof c.name === "string" ? c.name : "";
+      const text =
+        typeof c.text === "string"
+          ? c.text
+          : Array.isArray(c.parts)
+            ? c.parts
+                .filter((part): part is string => typeof part === "string")
+                .join(" ")
+            : "";
+      const combined = `${name} ${text}`.replace(/\s+/g, " ").trim();
+      if (combined) return combined.slice(0, 500);
+    }
+  }
+  for (const value of Object.values(record)) {
+    if (value && typeof value === "object") {
+      const nested = extractWebSystemError(value);
+      if (nested) return nested;
+    }
+  }
+  return "";
+}
+
 function extractWebStreamError(text: string) {
   const normalized = text.replace(/\r\n/g, "\n");
   for (const block of normalized.split("\n\n")) {
@@ -1468,6 +1506,10 @@ function extractWebStreamError(text: string) {
     } catch {
       payload = null;
     }
+    // 系统错误(工具限流等)优先抽出:它代表本次确定性失败,且要让下游按限流归类,
+    // 不能落到 "no image output" 兜底。
+    const systemError = payload ? extractWebSystemError(payload) : "";
+    if (systemError) return systemError;
     const message = payload ? webErrorPayloadMessage(payload) : "";
     const code =
       typeof payload?.code === "string"
@@ -2011,6 +2053,7 @@ export async function selectChatGptWebImageCandidate(params: {
 export const __testing__ = {
   extractWebErrorPayloadMessage,
   extractWebStreamError,
+  extractWebSystemError,
   imageCandidatesAfterMessage,
   imageSelectionAfterMessage,
   conversationNodesAfterMessage,

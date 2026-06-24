@@ -256,4 +256,35 @@ describe("image backend error classification", () => {
       svc.isUnclassifiedBackendError("The operation was aborted due to timeout")
     ).toBe(false);
   });
+
+  it("把 ChatGPT 画图工具限流当作可切换错误(换号重试)", async () => {
+    const isImageBackendSwitchableError = await loadClassifier();
+
+    expect(
+      isImageBackendSwitchableError(
+        "ChatGPTAgentToolRateLimitException you were unable to invoke the image_gen.text2im tool right now"
+      )
+    ).toBe(true);
+  });
+
+  it("把 ChatGPT 画图工具限流归类为 limited + 短冷却(默认 3 分钟)", async () => {
+    const svc = await loadService();
+
+    const failure = await svc.classifyFailure(
+      "ChatGPTAgentToolRateLimitException you were unable to invoke the image_gen.text2im tool right now. You've hit the Free plan limit for image generation."
+    );
+    expect(failure.status).toBe("limited");
+    expect(failure.cooldownUntil).toBeInstanceOf(Date);
+    const remainMs = (failure.cooldownUntil as Date).getTime() - Date.now();
+    // 默认 3 分钟工具桶(mock 下 getRuntimeSettingNumber 回退到传入的 keyFallback=3)。
+    expect(remainMs).toBeGreaterThan(2 * 60_000);
+    expect(remainMs).toBeLessThanOrEqual(3 * 60_000 + 5_000);
+  });
+
+  it("工具限流不被误判为用户错或缺图像工具(应当换号而非当场失败)", async () => {
+    const svc = await loadService();
+    const err =
+      "ChatGPTAgentToolRateLimitException you were unable to invoke the image_gen.text2im tool right now";
+    expect(svc.isMissingImageToolBackendError(err)).toBe(false);
+  });
 });

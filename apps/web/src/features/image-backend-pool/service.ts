@@ -296,6 +296,8 @@ const OPENAI_REFRESH_SCOPES = "openid profile email";
 const AUTO_SUB2API_SYNC_STATE_KEY = "SUB2API_AUTO_SYNC_STATE";
 const AUTO_SUB2API_SYNC_TASKS_KEY = "SUB2API_AUTO_SYNC_TASKS";
 const DEFAULT_BACKEND_COOLDOWN_MINUTES = 15;
+// 工具级限流(ChatGPT image_gen.text2im)默认冷却分钟:滚动限流恢复快,比通用兜底更短。
+const DEFAULT_TOOL_RATE_LIMIT_COOLDOWN_MINUTES = 3;
 const MAX_PARSED_RESET_COOLDOWN_DAYS = 14;
 // 冷却地板:上游/源给的重置时间若过短(典型:per-min 429 的 "try again in 15ms"),
 // 直接采纳会让冷却≈0、账号被立刻重选再撞限流。低于地板一律抬到地板。真·用量限制
@@ -1145,6 +1147,7 @@ function isRecoverableBackendError(error?: string | null) {
   return (
     isUnsupportedModelBackendError(error) ||
     isTransientNetworkBackendError(error) ||
+    isToolRateLimitBackendError(error) ||
     normalized.includes("429") ||
     normalized.includes("529") ||
     normalized.includes("rate limit") ||
@@ -1482,10 +1485,30 @@ function isUsageLimitBackendError(error?: string | null) {
   );
 }
 
+/**
+ * 识别 ChatGPT 账号侧"画图工具被限流"——image_gen.text2im 工具级 RateLimitException。
+ *
+ * WHY 单列:ChatGPT 在该账号画图额度用满时不会返回图片,而是回一条
+ * content_type=system_error、name=ChatGPTAgentToolRateLimitException 的消息
+ * (chatgpt-web.ts 的 extractWebSystemError 已把它从 o/v 流里抽成错误文案)。它是
+ * 账号级的滚动限流、恢复快,必须按限流处理(短冷却 + 换号重试),不能被当成
+ * 通用 "no image output" 落进 15 分钟临时桶,也利于 SLA 把它归类为限流而非平台故障。
+ * "ratelimitexception"(小写)即可命中 ChatGPTAgentToolRateLimitException。
+ */
+function isToolRateLimitBackendError(error?: string | null) {
+  const normalized = (error || "").toLowerCase();
+  return (
+    normalized.includes("ratelimitexception") ||
+    (normalized.includes("image_gen.text2im") &&
+      (normalized.includes("right now") || normalized.includes("rate limit")))
+  );
+}
+
 function isResetAwareLimitedBackendError(error?: string | null) {
   const normalized = (error || "").toLowerCase();
   return (
     isUsageLimitBackendError(error) ||
+    isToolRateLimitBackendError(error) ||
     normalized.includes("429") ||
     normalized.includes("rate limit") ||
     normalized.includes("too many requests")
@@ -1668,6 +1691,7 @@ async function getBackendCooldownMinutes(
   key:
     | "IMAGE_BACKEND_DEFAULT_COOLDOWN_MINUTES"
     | "IMAGE_BACKEND_RATE_LIMIT_COOLDOWN_MINUTES"
+    | "IMAGE_BACKEND_TOOL_RATE_LIMIT_COOLDOWN_MINUTES"
     | "IMAGE_BACKEND_OVERLOAD_COOLDOWN_MINUTES"
     | "IMAGE_BACKEND_USAGE_LIMIT_COOLDOWN_MINUTES"
     | "IMAGE_BACKEND_UNSUPPORTED_MODEL_COOLDOWN_MINUTES"
@@ -1681,7 +1705,12 @@ async function getBackendCooldownMinutes(
   if (key === "IMAGE_BACKEND_DEFAULT_COOLDOWN_MINUTES") {
     return defaultMinutes;
   }
-  return await getRuntimeSettingNumber(key, defaultMinutes, { positive: true });
+  // 工具级限流恢复快,未配置时用比通用兜底更短的默认值(3 分钟),而非沿用 15 分钟兜底。
+  const keyFallback =
+    key === "IMAGE_BACKEND_TOOL_RATE_LIMIT_COOLDOWN_MINUTES"
+      ? DEFAULT_TOOL_RATE_LIMIT_COOLDOWN_MINUTES
+      : defaultMinutes;
+  return await getRuntimeSettingNumber(key, keyFallback, { positive: true });
 }
 
 export async function classifyFailure(
@@ -1720,6 +1749,24 @@ export async function classifyFailure(
     isInvalidBackendCredentialError(error)
   ) {
     return { status: "error", cooldownUntil: null };
+  }
+  // ChatGPT 画图工具级限流(image_gen.text2im / ChatGPTAgentToolRateLimitException):
+  // 账号级滚动限流、恢复快,按限流标 limited(管理后台可见)+ 独立短冷却(默认 3 分钟),
+  // 上游若给出 reset 时间则优先。仍属可切换错误(见 isRecoverableBackendError),换号重试。
+  // 放在 usage-limit 之前:即便文案同时带通用 "limit" 字样,也走 3 分钟工具桶而非 15 分钟额度桶。
+  if (isToolRateLimitBackendError(error)) {
+    const minutes = await getBackendCooldownMinutes(
+      "IMAGE_BACKEND_TOOL_RATE_LIMIT_COOLDOWN_MINUTES"
+    );
+    return {
+      status: "limited",
+      cooldownUntil: resolveCooldownDate(
+        error || null,
+        cooldownFromMinutes(minutes),
+        input,
+        { useUpstreamReset: true }
+      ),
+    };
   }
   if (isUsageLimitBackendError(error)) {
     const minutes = await getBackendCooldownMinutes(

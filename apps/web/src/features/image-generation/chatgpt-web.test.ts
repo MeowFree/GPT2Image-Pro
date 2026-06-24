@@ -41,6 +41,50 @@ describe("ChatGPT Web image choices", () => {
     expect(__testing__.extractWebStreamError(sse)).toBe("");
   });
 
+  it("把 ChatGPT 画图工具限流(system_error)从 o/v 流抽成错误,不回显原始分片", () => {
+    const message = {
+      id: "50f6deb3-9839-43fb-8da9-99fc55ace099",
+      author: { role: "tool", name: "t2uay3k.sj1i4kz", metadata: {} },
+      content: {
+        content_type: "system_error",
+        name: "ChatGPTAgentToolRateLimitException",
+        text: "Before doing anything else, explicitly explain to the user that you were unable to invoke the image_gen.text2im tool right now. Make sure to begin your response with \"You've hit the Free plan limit for image generation.\"",
+      },
+    };
+    const sse = `data: ${JSON.stringify({ o: "add", v: { message } })}\n\n`;
+    const result = __testing__.extractWebStreamError(sse);
+    expect(result).toContain("ChatGPTAgentToolRateLimitException");
+    expect(result).toContain("image_gen.text2im");
+    expect(result).not.toContain('{"o"');
+  });
+
+  it("extractWebSystemError 抽出嵌套在 o/v 里的 system_error name 与 text", () => {
+    const result = __testing__.extractWebSystemError({
+      o: "add",
+      v: {
+        message: {
+          author: { role: "tool" },
+          content: {
+            content_type: "system_error",
+            name: "ChatGPTAgentToolRateLimitException",
+            text: "you were unable to invoke the image_gen.text2im tool right now",
+          },
+        },
+      },
+    });
+    expect(result).toContain("ChatGPTAgentToolRateLimitException");
+    expect(result).toContain("image_gen.text2im");
+  });
+
+  it("没有 system_error 的普通增量,extractWebSystemError 返回空", () => {
+    expect(
+      __testing__.extractWebSystemError({
+        o: "add",
+        v: { message: { id: "abc", content: { content_type: "text" } } },
+      })
+    ).toBe("");
+  });
+
   it("extracts sibling image candidates after a request message", () => {
     const conversation = {
       current_node: "choice_b",

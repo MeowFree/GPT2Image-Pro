@@ -111,6 +111,7 @@ export type SettingKey =
   | "CHATGPT_WEB_ACCOUNT_REFRESH_LIMIT"
   | "IMAGE_BACKEND_DEFAULT_COOLDOWN_MINUTES"
   | "IMAGE_BACKEND_RATE_LIMIT_COOLDOWN_MINUTES"
+  | "IMAGE_BACKEND_TOOL_RATE_LIMIT_COOLDOWN_MINUTES"
   | "IMAGE_BACKEND_OVERLOAD_COOLDOWN_MINUTES"
   | "IMAGE_BACKEND_USAGE_LIMIT_COOLDOWN_MINUTES"
   | "IMAGE_BACKEND_UNSUPPORTED_MODEL_COOLDOWN_MINUTES"
@@ -1022,6 +1023,15 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     category: "models",
     valueType: "number",
     defaultValue: 15,
+  },
+  {
+    key: "IMAGE_BACKEND_TOOL_RATE_LIMIT_COOLDOWN_MINUTES",
+    label: "后端画图工具限流恢复分钟",
+    description:
+      "ChatGPT 账号画图工具被限流(image_gen.text2im / ChatGPTAgentToolRateLimitException)时的兜底冷却时间;此类为账号级滚动限流、恢复快,未配置时为 3 分钟;如上游返回 Retry-After 或 reset 时间,会优先按上游时间恢复。",
+    category: "models",
+    valueType: "number",
+    defaultValue: 3,
   },
   {
     key: "IMAGE_BACKEND_OVERLOAD_COOLDOWN_MINUTES",
