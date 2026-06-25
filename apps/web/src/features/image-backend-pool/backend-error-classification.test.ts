@@ -303,15 +303,14 @@ describe("image backend error classification", () => {
     expect(remainMin).toBeLessThan(22 * 60);
   });
 
-  it("上游不可用 502(service temporarily unavailable)按 overload 临时冷却(非粘性 error),仍可换号", async () => {
+  it("上游不可用 502(service temporarily unavailable)标 error 踢出,且仍可换号重试", async () => {
     const svc = await loadService();
     const err =
       "Upstream Images API returned HTTP 502: Upstream service temporarily unavailable";
     const failure = await svc.classifyFailure(err);
-    // 不再粘性踢出:回退后按 overload 处理(active + 冷却、自恢复),避免高频该文案把
-    // 服务 firefly 的 adobe/adobe_sourced 后端全部清空导致 nano-banana 无后端可解析。
-    expect(failure.status).not.toBe("error");
-    expect(failure.cooldownUntil).toBeInstanceOf(Date);
+    // 粘性踢出轮换(error 不被 failureCooldownEnabled 门控)。
+    expect(failure.status).toBe("error");
+    expect(failure.cooldownUntil).toBeNull();
     // 当次请求仍可切换到下一个后端重试。
     expect(svc.isImageBackendSwitchableError(err)).toBe(true);
   });

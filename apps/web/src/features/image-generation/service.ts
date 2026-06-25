@@ -3804,8 +3804,16 @@ export async function getEffectiveConfig(
       return { config: poolConfig.config, useCredits: true };
     }
   }
+  // firefly-* / nano-banana 仅由 Adobe / adobe_sourced 后端出图。若这些后端因限流或上游错误
+  // (502/服务不可用)被标 error 踢空,resolve 返回 null——此处给出指向 Adobe 后端的明确报错,
+  // 避免运维误以为是"模型检索不到/模型不存在"。
+  const isFireflyRequest =
+    options?.forceFirefly === true ||
+    /^firefly-/i.test((options?.requestedModel || "").trim());
   throw new ImageBackendPoolUnavailableError(
-    "没有可用的默认生图后端，请在账号池中配置默认分组和 API/账号"
+    isFireflyRequest
+      ? "没有可用的 Adobe（Firefly）后端：firefly-* / nano-banana 仅由 Adobe / adobe_sourced 后端出图，当前该分组内此类后端均不可用（可能被限流，或因上游 502/服务不可用被标记 error 踢出）。请在账号池检查 Adobe / adobe_sourced 后端状态并测活或重新启用。"
+      : "没有可用的默认生图后端，请在账号池中配置默认分组和 API/账号"
   );
 }
 
