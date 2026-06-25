@@ -78,6 +78,7 @@ import {
   importImageBackendWebAccountsFromAccessTokensAction,
   deleteAdobeAccountAction,
   importAdobeAccountAction,
+  importAdobeAccountsAction,
   listAdobeAccountsAction,
   refreshImageBackendAccountInfoAction,
   refreshImageBackendAccountsInfoAction,
@@ -1681,6 +1682,34 @@ export function ImageBackendPoolAdminPanel({
       onError: ({ error }) =>
         toast.error(error.serverError || "导入 Adobe 账号失败"),
     });
+
+  const [adobeBatchSummary, setAdobeBatchSummary] = useState("");
+  const {
+    execute: importAdobeAccountsExec,
+    isPending: isImportingAdobeAccounts,
+  } = useAction(importAdobeAccountsAction, {
+    onSuccess: ({ data }) => {
+      const result = data?.result;
+      if (!result) return;
+      const summary = `共 ${result.total}：导入 ${result.imported}，跳过 ${result.skipped}，失败 ${result.failed}${
+        result.failed && result.firstError
+          ? `；首个错误：${result.firstError}`
+          : ""
+      }`;
+      setAdobeBatchSummary(summary);
+      // 有失败则保留文本便于修正后重试（已导入项会按身份自动跳过）；全部成功才清空。
+      if (result.failed > 0) {
+        toast.error(summary);
+      } else {
+        toast.success(summary);
+        setAdobeCookieInput("");
+        setAdobeAccountName("");
+      }
+      if (adobeForm.id) loadAdobeAccounts({ adobeId: adobeForm.id });
+    },
+    onError: ({ error }) =>
+      toast.error(error.serverError || "批量导入 Adobe 账号失败"),
+  });
 
   const { execute: deleteAdobeAccountExec } = useAction(
     deleteAdobeAccountAction,
@@ -4514,23 +4543,23 @@ export function ImageBackendPoolAdminPanel({
                       <Label>Adobe 账号（cookie）</Label>
                       <p className="text-xs text-muted-foreground">
                         {adobeForm.id
-                          ? "粘贴 Adobe 浏览器 cookie 或插件导出的 JSON；导入时会刷新一次以验证。可用仓库 tools/adobe-cookie-exporter/ 浏览器扩展导出（含 HttpOnly cookie）。"
+                          ? "粘贴 Adobe 浏览器 cookie 或插件导出的 JSON；导入时会刷新一次以验证。批量导入支持每行一个 cookie 或 JSON 数组，逐条验证、按 Adobe 账号身份去重。可用仓库 tools/adobe-cookie-exporter/ 浏览器扩展导出（含 HttpOnly cookie）。"
                           : "请先保存后端，再导入 Adobe 账号。"}
                       </p>
                     </div>
                     {adobeForm.id && (
                       <>
                         <Input
-                          placeholder="账号备注名（可选）"
+                          placeholder="账号备注名（单条）/ 名称前缀（批量，自动加序号）"
                           value={adobeAccountName}
                           onChange={(event) =>
                             setAdobeAccountName(event.target.value)
                           }
                         />
                         <Textarea
-                          placeholder="粘贴 cookie 字符串或浏览器插件导出的 JSON"
+                          placeholder="单条：粘贴一个 cookie 或 JSON；批量：每行一个 cookie，或粘贴 JSON 数组"
                           value={adobeCookieInput}
-                          rows={3}
+                          rows={4}
                           onChange={(event) =>
                             setAdobeCookieInput(event.target.value)
                           }
@@ -4554,6 +4583,32 @@ export function ImageBackendPoolAdminPanel({
                           )}
                           导入并验证账号
                         </Button>
+                        <Button
+                          variant="secondary"
+                          className="w-full"
+                          disabled={
+                            isImportingAdobeAccounts ||
+                            !adobeCookieInput.trim()
+                          }
+                          onClick={() =>
+                            importAdobeAccountsExec({
+                              adobeId: adobeForm.id,
+                              cookiesText: adobeCookieInput,
+                              namePrefix:
+                                adobeAccountName.trim() || undefined,
+                            })
+                          }
+                        >
+                          {isImportingAdobeAccounts && (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          )}
+                          批量导入（每行一个 cookie / JSON 数组）
+                        </Button>
+                        {adobeBatchSummary && (
+                          <p className="text-xs text-muted-foreground">
+                            {adobeBatchSummary}
+                          </p>
+                        )}
                         <div className="space-y-2">
                           {!adobeAccounts.length && (
                             <p className="text-xs text-muted-foreground">

@@ -20,6 +20,7 @@ import { z } from "zod";
 import {
   deleteAdobeAccount,
   importAdobeAccount,
+  importAdobeAccountsBatch,
   listAdobeAccounts,
   setAdobeAccountEnabled,
 } from "@/features/image-generation/adobe-direct";
@@ -754,6 +755,27 @@ export const importAdobeAccountAction = withImageBackendPoolAdminAction(
       scope: parsedInput.scope ?? null,
     });
     return { success: true, account };
+  });
+
+export const importAdobeAccountsAction = withImageBackendPoolAdminAction(
+  "importAdobeAccounts"
+)
+  .schema(
+    z.object({
+      adobeId: z.string().trim().min(1),
+      cookiesText: z.string().trim().min(1),
+      namePrefix: z.string().trim().max(120).optional(),
+      scope: z.string().trim().max(2000).optional(),
+    })
+  )
+  .action(async ({ parsedInput }) => {
+    const result = await importAdobeAccountsBatch({
+      adobeId: parsedInput.adobeId,
+      cookiesText: parsedInput.cookiesText,
+      namePrefix: parsedInput.namePrefix,
+      scope: parsedInput.scope ?? null,
+    });
+    return { success: true, result };
   });
 
 export const deleteAdobeAccountAction = withImageBackendPoolAdminAction(

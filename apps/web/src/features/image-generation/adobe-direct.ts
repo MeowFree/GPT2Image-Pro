@@ -38,6 +38,8 @@ import {
 import { logError } from "@repo/shared/logger";
 import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { and, asc, eq, sql } from "drizzle-orm";
+
+import { parseAdobeCookieEntries } from "./adobe-cookie-parser";
 import { nanoid } from "nanoid";
 import type { ApiConfig, GenerateImageResult } from "./types";
 
@@ -569,25 +571,39 @@ export async function runAdobeDirectVideoRequest(
  * 供 admin 调用：导入一个 Adobe cookie 账号并立即刷新一次（验证 cookie 有效）。
  * 返回账号信息或抛错。
  */
-export async function importAdobeAccount(input: {
-  adobeId: string;
-  name?: string;
-  cookie: string;
-  scope?: string | null;
-}): Promise<{ id: string; displayName: string; email: string }> {
-  const id = nanoid();
-  const sessionKey = `adobe-${input.adobeId}`;
-  const { apiTransport } = await buildAdobeTransports(sessionKey);
-  const result = await refreshAccessTokenFromCookie(
-    apiTransport,
-    input.cookie,
-    {
-      scope: input.scope ?? undefined,
-      fetchAccount: true,
-    }
-  );
+type AdobeCookieValidation = Awaited<
+  ReturnType<typeof refreshAccessTokenFromCookie>
+>;
+
+// 验证一个 Adobe cookie：刷新一次拿 access_token + 账号信息，并断言为已登录（非 guest）。
+// sessionKey 沿用 `adobe-<adobeId>`（与历史单条导入一致；只影响代理出口会话路由）。
+async function validateAdobeCookie(
+  adobeId: string,
+  cookie: string,
+  scope?: string | null
+): Promise<AdobeCookieValidation> {
+  const { apiTransport } = await buildAdobeTransports(`adobe-${adobeId}`);
+  const result = await refreshAccessTokenFromCookie(apiTransport, cookie, {
+    scope: scope ?? undefined,
+    fetchAccount: true,
+  });
   assertLoggedInAdobeCookie(result.accessToken, result.account);
-  const account = result.account;
+  return result;
+}
+
+// 持久化一个已验证的 Adobe 账号：写 adobeAccount + 初始 auto_refresh adobeToken。
+// 额外回传 accountUserId（IMS 稳定身份），供批量导入去重使用。
+async function persistAdobeAccount(
+  input: { adobeId: string; name?: string; cookie: string; scope?: string | null },
+  validated: AdobeCookieValidation
+): Promise<{
+  id: string;
+  displayName: string;
+  email: string;
+  accountUserId: string | null;
+}> {
+  const id = nanoid();
+  const account = validated.account;
   const now = new Date();
 
   await db.insert(adobeAccount).values({
@@ -608,17 +624,157 @@ export async function importAdobeAccount(input: {
     id: nanoid(),
     adobeId: input.adobeId,
     accountId: id,
-    value: result.accessToken,
+    value: validated.accessToken,
     accountUserId: account?.userId || null,
     status: "active",
     source: "auto_refresh",
-    expiresAt: tokenExpiresAt(result.accessToken),
+    expiresAt: tokenExpiresAt(validated.accessToken),
   });
 
   return {
     id,
     displayName: account?.displayName || "",
     email: account?.email || "",
+    accountUserId: account?.userId || null,
+  };
+}
+
+export async function importAdobeAccount(input: {
+  adobeId: string;
+  name?: string;
+  cookie: string;
+  scope?: string | null;
+}): Promise<{ id: string; displayName: string; email: string }> {
+  const validated = await validateAdobeCookie(
+    input.adobeId,
+    input.cookie,
+    input.scope
+  );
+  const { id, displayName, email } = await persistAdobeAccount(input, validated);
+  return { id, displayName, email };
+}
+
+export type AdobeAccountImportOutcome = {
+  index: number;
+  status: "imported" | "skipped" | "failed";
+  accountId?: string;
+  displayName?: string;
+  email?: string;
+  reason?: string;
+};
+
+export type AdobeAccountBatchImportResult = {
+  total: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  results: AdobeAccountImportOutcome[];
+  firstError?: string;
+};
+
+/**
+ * 供 admin 调用：在某个 Adobe 后端（伪账号）下批量导入真实 Adobe 账号。
+ * - 解析 cookie 文本（每行一个 / JSON 数组，见 adobe-cookie-parser）。
+ * - 逐条刷新验证（best-effort）：单条失败不影响其余，逐条回报原因。
+ * - 去重：同一 Adobe 用户（accountUserId，IMS 稳定身份；cookie 会轮换）或同邮箱已存在则
+ *   跳过——既防重复粘贴，也防同一批内重复。
+ * 串行执行：避免对 Adobe IMS 造成突发压力，并保证去重集一致。每条成功即落库（非单一大
+ * 事务），因此即便整体请求中途超时也不丢已导入数据，重新粘贴会按身份自动跳过已导入项。
+ */
+export async function importAdobeAccountsBatch(input: {
+  adobeId: string;
+  cookiesText: string;
+  namePrefix?: string;
+  scope?: string | null;
+}): Promise<AdobeAccountBatchImportResult> {
+  const entries = parseAdobeCookieEntries(input.cookiesText);
+  if (entries.length === 0) {
+    return { total: 0, imported: 0, skipped: 0, failed: 0, results: [] };
+  }
+
+  // 预取该后端已存在账号的稳定身份，用于跨次/批内去重。
+  const existing = await db
+    .select({
+      accountUserId: adobeAccount.accountUserId,
+      email: adobeAccount.email,
+    })
+    .from(adobeAccount)
+    .where(eq(adobeAccount.adobeId, input.adobeId));
+  const seenUserIds = new Set<string>();
+  const seenEmails = new Set<string>();
+  for (const row of existing) {
+    if (row.accountUserId) seenUserIds.add(row.accountUserId);
+    if (row.email) seenEmails.add(row.email.toLowerCase());
+  }
+
+  const results: AdobeAccountImportOutcome[] = [];
+  let imported = 0;
+  let skipped = 0;
+  let failed = 0;
+  let firstError: string | undefined;
+
+  for (const [index, entry] of entries.entries()) {
+    const scope = entry.scope ?? input.scope ?? null;
+    const fallbackName = input.namePrefix?.trim()
+      ? `${input.namePrefix.trim()}-${index + 1}`
+      : undefined;
+    const name = entry.name?.trim() || fallbackName;
+    try {
+      const validated = await validateAdobeCookie(
+        input.adobeId,
+        entry.cookie,
+        scope
+      );
+      const userId = validated.account?.userId || null;
+      const email = validated.account?.email?.toLowerCase() || null;
+      if (
+        (userId && seenUserIds.has(userId)) ||
+        (email && seenEmails.has(email))
+      ) {
+        skipped++;
+        results.push({
+          index,
+          status: "skipped",
+          reason: "已存在相同 Adobe 账号，已跳过",
+          displayName: validated.account?.displayName || undefined,
+          email: validated.account?.email || undefined,
+        });
+        continue;
+      }
+      const persisted = await persistAdobeAccount(
+        { adobeId: input.adobeId, name, cookie: entry.cookie, scope },
+        validated
+      );
+      if (userId) seenUserIds.add(userId);
+      if (email) seenEmails.add(email);
+      imported++;
+      results.push({
+        index,
+        status: "imported",
+        accountId: persisted.id,
+        displayName: persisted.displayName || undefined,
+        email: persisted.email || undefined,
+      });
+    } catch (error) {
+      failed++;
+      const reason = error instanceof Error ? error.message : "导入失败";
+      if (!firstError) firstError = reason;
+      results.push({ index, status: "failed", reason });
+      logError(error, {
+        source: "adobe-direct-batch-import",
+        adobeId: input.adobeId,
+        index,
+      });
+    }
+  }
+
+  return {
+    total: entries.length,
+    imported,
+    skipped,
+    failed,
+    results,
+    ...(firstError ? { firstError } : {}),
   };
 }
 
