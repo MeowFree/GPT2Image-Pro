@@ -1304,6 +1304,10 @@ export function isMissingImageToolBackendError(error?: string | null) {
  * - "没有可用token"：中转无上游额度/令牌（如 sub2api 中转池空）。
  * - "html response body"：端点返回 HTML（源站宕机/网关错误页/baseUrl 配错），
  *   非 OpenAI 兼容 JSON。
+ * - "service temporarily unavailable"：中转上游 502/服务不可用（典型
+ *   "Upstream service temporarily unavailable"）。按运维要求：这类持续不可用的中转直接
+ *   标 error 踢出轮换（而非临时冷却自恢复），由测活/重新启用复活；当次请求仍会换号重试
+ *   （文案含 502/temporarily unavailable，被 isRecoverableBackendError 判为可切换）。
  * 这类不会自愈，应踢出轮换直到管理员处理（测活/重新启用/常驻）。
  */
 function isDeadRelayBackendError(error?: string | null) {
@@ -1311,7 +1315,8 @@ function isDeadRelayBackendError(error?: string | null) {
   return (
     normalized.includes("没有可用token") ||
     normalized.includes("没有可用 token") ||
-    normalized.includes("html response body")
+    normalized.includes("html response body") ||
+    normalized.includes("service temporarily unavailable")
   );
 }
 

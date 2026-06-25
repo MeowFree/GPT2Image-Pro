@@ -302,4 +302,25 @@ describe("image backend error classification", () => {
     expect(remainMin).toBeGreaterThan(21 * 60);
     expect(remainMin).toBeLessThan(22 * 60);
   });
+
+  it("上游不可用 502(service temporarily unavailable)标 error 踢出,且仍可换号重试", async () => {
+    const svc = await loadService();
+    const err =
+      "Upstream Images API returned HTTP 502: Upstream service temporarily unavailable";
+    const failure = await svc.classifyFailure(err);
+    // 粘性踢出轮换(error 不被 failureCooldownEnabled 门控)。
+    expect(failure.status).toBe("error");
+    expect(failure.cooldownUntil).toBeNull();
+    // 当次请求仍可切换到下一个后端重试。
+    expect(svc.isImageBackendSwitchableError(err)).toBe(true);
+  });
+
+  it("504 HTML response body(baseUrl 指向非 OpenAI 兼容端点)同样标 error", async () => {
+    const svc = await loadService();
+    const err =
+      "Upstream Images API returned HTTP 504: HTML response body. Check that the API base URL points to an OpenAI-compatible endpoint.";
+    const failure = await svc.classifyFailure(err);
+    expect(failure.status).toBe("error");
+    expect(failure.cooldownUntil).toBeNull();
+  });
 });
