@@ -24,7 +24,7 @@ function isSystemDocsSlug(slug?: string[]) {
  */
 export function generateStaticParams() {
   // system 由 content/docs/system.mdx 自身的 generateParams 覆盖;此处仅补
-  // backend-help(无对应 mdx 文件,但 isSystemDocsSlug 会渲染同一份 BackendDocs)。
+  // backend-help(无对应 mdx 文件,但 isSystemDocsSlug 会渲染同一份 SystemDocsContent)。
   return [...docsSource.generateParams(), { slug: ["backend-help"] }];
 }
 
@@ -69,8 +69,8 @@ export default async function Page({
 }) {
   const { locale, slug } = await params;
 
-  // 外部 API 已并入「系统文档」(/docs/system),旧 /docs/external-api 链接重定向过去,
-  // 避免同一份内容两处可达。external-api.mdx 仍保留为内容源,由 BackendDocs 内联渲染。
+  // 外部 API 文档已并入「系统文档」(SystemDocsContent,数据驱动,渲染于 /docs/system 与
+  // 控制台 backend-help);external-api.mdx 已删除。旧 /docs/external-api 链接重定向到 /docs/system。
   if (slug?.join("/") === "external-api") {
     redirect(`/${locale ?? "en"}/docs/system`);
   }
