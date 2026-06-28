@@ -88,6 +88,7 @@ Chat 模式和 Agent 模式分开：Chat 更适合用户主动对话和上下文
 - **挂入分组兜底**：作为“特殊 firefly account 成员”挂入现有分组，按优先级参与调度；配低优先级即作兜底层，在 Web/Codex 限流或耗尽时顶上。
 - **强制路由与兼容转换**：`force_firefly` 标志或 `firefly-*` 模型名可强制走 Adobe；收到后把站内标准请求兼容转换成 Firefly 格式（尺寸→比例/分辨率、质量→detailLevel、默认族 gpt-image-2、图生图 referenceBlobs），不支持的参数静默忽略。
 - **计费与监控**：视频 30 积分/秒 × 时长 × 模型族倍率；图像/视频每模型族倍率均可配；全局状态监控含 Adobe 健康块与独立视频统计。
+- **账号导入与换号重试**：直连模式自管 Adobe cookie 账号池，后台支持单条与批量导入（粘贴多份 cookie，逐条刷新验证、按 Adobe 身份去重）；同一后端（伪账号）内出图遇 429/配额/鉴权会自动轮换账号重试，本后端账号轮完才交外层切其它 Adobe 后端。导出 cookie 用仓库附带的 `tools/adobe-cookie-exporter/`（Chrome/Edge MV3 浏览器扩展，思路参照原 adobe2api 项目）：登录 `firefly.adobe.com` 后一键导出 Adobe/Firefly 登录 cookie（含 HttpOnly 会话 cookie），导出的 JSON 与后台导入框直接兼容。
 
 路由与兜底细节见 `docs/adobe-firefly-routing.md`，兼容转换细节见 `docs/adobe-firefly-compat.md`。
 
