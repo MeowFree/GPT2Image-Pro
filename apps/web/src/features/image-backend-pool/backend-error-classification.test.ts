@@ -349,3 +349,39 @@ describe("always_active failure handling (resolveAlwaysActiveFailure)", () => {
     expect(svc.resolveAlwaysActiveFailure(true, failure)).toEqual({});
   });
 });
+
+describe("adobeMemberAllowedForPhase (adobe 按分组车道兜底)", () => {
+  it("mixed 分组的 adobe 不限车道，任何偏好都参与（谁都可请求）", async () => {
+    const svc = await loadService();
+    expect(svc.adobeMemberAllowedForPhase("mixed", "web", false)).toBe(true);
+    expect(svc.adobeMemberAllowedForPhase("mixed", "responses", false)).toBe(
+      true
+    );
+    expect(svc.adobeMemberAllowedForPhase("mixed", undefined, false)).toBe(true);
+  });
+
+  it("web 分组的 adobe 仅在 web 偏好阶段参与", async () => {
+    const svc = await loadService();
+    expect(svc.adobeMemberAllowedForPhase("web", "web", false)).toBe(true);
+    expect(svc.adobeMemberAllowedForPhase("web", "responses", false)).toBe(
+      false
+    );
+  });
+
+  it("responses(codex)分组的 adobe 仅在 codex 阶段参与，web 偏求不再漏过来", async () => {
+    const svc = await loadService();
+    expect(
+      svc.adobeMemberAllowedForPhase("responses", "responses", false)
+    ).toBe(true);
+    // 复现本次问题：web 偏好请求不应再漏到 codex 车道的 adobe（cFnHu 移到 codex 子组后）。
+    expect(svc.adobeMemberAllowedForPhase("responses", "web", false)).toBe(
+      false
+    );
+  });
+
+  it("firefly 请求或请求无偏好时不受车道限制", async () => {
+    const svc = await loadService();
+    expect(svc.adobeMemberAllowedForPhase("responses", "web", true)).toBe(true);
+    expect(svc.adobeMemberAllowedForPhase("web", undefined, false)).toBe(true);
+  });
+});

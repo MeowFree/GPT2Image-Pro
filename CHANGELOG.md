@@ -12,6 +12,7 @@
 
 ### 后端调度与稳定性
 
+- **Adobe 后端按所在分组「车道」隔离参与候选**:此前 Adobe 后端对所有图像请求始终参与候选、不分 web/codex 偏好,导致 web 偏好请求在 web 账号失败后**漏到 codex 车道的 Adobe 直连后端**,被其单账号 429 接盘、整站图像失败堆在它名下。现按其所在分组的 `backendType` 隔离:`web` 分组的 Adobe 只服务 web 阶段、`responses(codex)` 分组的只服务 codex 阶段、`mixed` 分组不限车道(谁都可请求);`force_firefly`/`firefly-*` 请求不受限(必走 Adobe)。与账号/API 的「web 请求只走 web 分组内」范围隔离对齐。
 - **Adobe 直连「伪账号内换号重试到底」**:Adobe 直连(图像+视频)此前只取一个账号 token 调一次,撞 `submit failed: 429`/配额/鉴权即整次失败;现改为在单个 Adobe 后端内逐账号轮换重试(撞可轮换错误就标记当前 token、换下一个可用账号),本后端账号轮完才上抛,再由外层池切换到其它 Adobe 后端继续轮换——两级都重试到底,本后端下批量导入的多账号不再一撞 429 即失败。
 - **「遇错常驻」(always_active)后端遇 dead-relay 不再被踢**:常驻 API/Adobe 后端遇 502「HTML response body」等 dead-relay 终态错误不再被自动标 error 踢出(此前只豁免临时错误,导致常驻 relay 撞 502 被踢空触发「没有可用的默认生图后端」);账号(web/codex)OAuth 终态错误维持原样。
 - **firefly/nano-banana 请求不再泄漏到非 Adobe 后端**:换号重试保持 `fireflyOnly`、chat/agent 拒绝 firefly,并加不变量兜底。

@@ -430,6 +430,24 @@ function getGroupBackendType(
   return normalizeGroupBackendType(asGroupMetadata(metadata).backendType);
 }
 
+// adobe 后端按其所在分组的 backendType 充当该"车道"的兜底,与账号/API 的"web 请求只走 web
+// 分组内"范围隔离保持一致——避免 web 偏好请求漏到 codex 车道的 adobe 上。
+// - mixed 分组(直接挂在混合分组):不区分车道,任何偏好阶段都参与(谁都可请求);
+// - web 分组:仅当请求当前偏好为 web 时参与;responses(codex)分组:仅 codex 阶段参与;
+// - firefly 请求(fireflyOnly,必走 adobe)或请求无偏好时:不受车道限制。
+export function adobeMemberAllowedForPhase(
+  groupBackendType: ImageBackendGroupBackendType,
+  effectivePreference: ImageBackendAccountBackend | undefined,
+  fireflyOnly: boolean
+): boolean {
+  return (
+    fireflyOnly ||
+    !effectivePreference ||
+    groupBackendType === "mixed" ||
+    groupBackendType === effectivePreference
+  );
+}
+
 function normalizeGroupChildGroupIds(value: unknown) {
   if (!Array.isArray(value)) return [];
   return Array.from(
@@ -2651,7 +2669,14 @@ async function selectPoolMember(
             return (
               (effectiveRequestKind === "image_generation" ||
                 effectiveRequestKind === "image_edit") &&
-              groupBackendAllowsRequest(metadata, effectiveRequestKind)
+              groupBackendAllowsRequest(metadata, effectiveRequestKind) &&
+              // adobe 按所在分组的 backendType 充当该车道兜底:web 偏好请求不再漏到 codex
+              // 等非 web 车道的 adobe(挂在混合分组的不限车道,谁都可请求）。
+              adobeMemberAllowedForPhase(
+                getGroupBackendType(metadata),
+                effectiveAccountBackendPreference,
+                fireflyOnly
+              )
             );
           })
           .map((row) => {
