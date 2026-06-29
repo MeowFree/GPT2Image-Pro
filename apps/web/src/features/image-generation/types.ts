@@ -277,6 +277,9 @@ export interface ApiConfig {
     type: "platform" | "pool-api" | "pool-account" | "pool-adobe" | "user-api";
     id?: string;
     groupId?: string | null;
+    // 解析到的【目标分组】backendType。供换号重试循环判定是否为混合分组——web→codex
+    // 回退仅在 mixed 分组生效(纯 web / 纯 codex 分组各自闭环,不跨车道回退)。
+    groupBackendType?: "web" | "responses" | "mixed";
     userId?: string;
     apiKeyId?: string;
     requestKind?: "image_generation" | "image_edit" | "chat" | "responses";

@@ -141,7 +141,9 @@ describe("image backend error classification", () => {
     const err =
       "Rate limit reached for gpt-image-2-codex (for limit gpt-image) in organization org-X on input-images per min: Limit 4000, Used 4000, Requested 1. Please try again in 15ms. | rate_limit_exceeded | input-images";
     // 上游/中转把 "try again in 15ms" 传成 retryAfterSeconds=0.015;无地板时冷却≈15ms。
-    const failure = await svc.classifyFailure(err, { retryAfterSeconds: 0.015 });
+    const failure = await svc.classifyFailure(err, {
+      retryAfterSeconds: 0.015,
+    });
     expect(failure.cooldownUntil).toBeInstanceOf(Date);
     const remainMs = (failure.cooldownUntil as Date).getTime() - Date.now();
     // 地板 60s,留抖动余量按 ≥55s 断言。
@@ -185,9 +187,13 @@ describe("image backend error classification", () => {
       )
     ).toBe(false);
     expect(
-      isMissingImageToolBackendError("Upstream returned no image output: 已生成图片。")
+      isMissingImageToolBackendError(
+        "Upstream returned no image output: 已生成图片。"
+      )
     ).toBe(false);
-    expect(isMissingImageToolBackendError("I can't help with that.")).toBe(false);
+    expect(isMissingImageToolBackendError("I can't help with that.")).toBe(
+      false
+    );
   });
 
   it("does not switch accounts for user safety rejections", async () => {
@@ -350,38 +356,117 @@ describe("always_active failure handling (resolveAlwaysActiveFailure)", () => {
   });
 });
 
-describe("adobeMemberAllowedForPhase (adobe 按分组车道兜底)", () => {
-  it("mixed 分组的 adobe 不限车道，任何偏好都参与（谁都可请求）", async () => {
+// 注:account 不走 memberAllowedForPhase——其车道由自身 implementationMode 天然决定
+// (见 service.ts 账号过滤注释);此处 memberAllowedForPhase 仅用于 api/adobe(无固有类型)。
+describe("memberAllowedForPhase (api/adobe 按分组车道隔离)", () => {
+  it("mixed 分组不限车道，任何偏好都参与（谁都可请求）", async () => {
     const svc = await loadService();
-    expect(svc.adobeMemberAllowedForPhase("mixed", "web", false)).toBe(true);
-    expect(svc.adobeMemberAllowedForPhase("mixed", "responses", false)).toBe(
-      true
-    );
-    expect(svc.adobeMemberAllowedForPhase("mixed", undefined, false)).toBe(true);
+    expect(svc.memberAllowedForPhase("mixed", "web", false)).toBe(true);
+    expect(svc.memberAllowedForPhase("mixed", "responses", false)).toBe(true);
+    expect(svc.memberAllowedForPhase("mixed", undefined, false)).toBe(true);
   });
 
   it("web 分组的 adobe 仅在 web 偏好阶段参与", async () => {
     const svc = await loadService();
-    expect(svc.adobeMemberAllowedForPhase("web", "web", false)).toBe(true);
-    expect(svc.adobeMemberAllowedForPhase("web", "responses", false)).toBe(
-      false
-    );
+    expect(svc.memberAllowedForPhase("web", "web", false)).toBe(true);
+    expect(svc.memberAllowedForPhase("web", "responses", false)).toBe(false);
   });
 
   it("responses(codex)分组的 adobe 仅在 codex 阶段参与，web 偏求不再漏过来", async () => {
     const svc = await loadService();
-    expect(
-      svc.adobeMemberAllowedForPhase("responses", "responses", false)
-    ).toBe(true);
-    // 复现本次问题：web 偏好请求不应再漏到 codex 车道的 adobe（cFnHu 移到 codex 子组后）。
-    expect(svc.adobeMemberAllowedForPhase("responses", "web", false)).toBe(
-      false
+    expect(svc.memberAllowedForPhase("responses", "responses", false)).toBe(
+      true
     );
+    // 复现本次问题：web 偏好请求不应再漏到 codex 车道的 adobe（cFnHu 移到 codex 子组后）。
+    expect(svc.memberAllowedForPhase("responses", "web", false)).toBe(false);
   });
 
   it("firefly 请求或请求无偏好时不受车道限制", async () => {
     const svc = await loadService();
-    expect(svc.adobeMemberAllowedForPhase("responses", "web", true)).toBe(true);
-    expect(svc.adobeMemberAllowedForPhase("web", undefined, false)).toBe(true);
+    expect(svc.memberAllowedForPhase("responses", "web", true)).toBe(true);
+    expect(svc.memberAllowedForPhase("web", undefined, false)).toBe(true);
+  });
+
+  it("codex 阶段 codex/mixed 分组的 API 参与——阶段只看车道,不再被 responses 端点能力卡掉(回归)", async () => {
+    const svc = await loadService();
+    // 修复前 codex 阶段用 requiresResponsesEndpoint 把 images 端点 API 挡在门外;现在阶段
+    // 参与纯由车道决定(端点能力是 requestKind 维度的独立筛选,见 api-interface-mode.test)。
+    expect(svc.memberAllowedForPhase("responses", "responses", false)).toBe(
+      true
+    );
+    expect(svc.memberAllowedForPhase("mixed", "responses", false)).toBe(true);
+    // web 分组的 API 不漏到 codex 阶段。
+    expect(svc.memberAllowedForPhase("web", "responses", false)).toBe(false);
+  });
+});
+
+describe("isWebCapacityWaitCandidate (满并发短等候选判定)", () => {
+  it("web 偏好下,非常驻 web 账号/API 满并发时值得短等", async () => {
+    const svc = await loadService();
+    expect(
+      svc.isWebCapacityWaitCandidate(
+        { type: "account", alwaysActive: false },
+        "web",
+        true
+      )
+    ).toBe(true);
+    expect(
+      svc.isWebCapacityWaitCandidate(
+        { type: "api", alwaysActive: false },
+        "web",
+        true
+      )
+    ).toBe(true);
+  });
+
+  it("常驻满并发不触发短等(常驻不计入 web 可用候选)", async () => {
+    const svc = await loadService();
+    expect(
+      svc.isWebCapacityWaitCandidate(
+        { type: "account", alwaysActive: true },
+        "web",
+        true
+      )
+    ).toBe(false);
+  });
+
+  it("adobe 不在短等集(短等仅针对 web 账号 / web API)", async () => {
+    const svc = await loadService();
+    expect(
+      svc.isWebCapacityWaitCandidate(
+        { type: "adobe", alwaysActive: false },
+        "web",
+        true
+      )
+    ).toBe(false);
+  });
+
+  it("未满并发(有空)则无需短等", async () => {
+    const svc = await loadService();
+    expect(
+      svc.isWebCapacityWaitCandidate(
+        { type: "account", alwaysActive: false },
+        "web",
+        false
+      )
+    ).toBe(false);
+  });
+
+  it("非 web 阶段(codex / 无偏好)不短等", async () => {
+    const svc = await loadService();
+    expect(
+      svc.isWebCapacityWaitCandidate(
+        { type: "account", alwaysActive: false },
+        "responses",
+        true
+      )
+    ).toBe(false);
+    expect(
+      svc.isWebCapacityWaitCandidate(
+        { type: "account", alwaysActive: false },
+        undefined,
+        true
+      )
+    ).toBe(false);
   });
 });

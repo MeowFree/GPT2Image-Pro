@@ -57,10 +57,13 @@ describe("image service Web-first fallback", () => {
     // codex(responses 账号)的普通生成现在直连 /images/generations(size 走顶层),
     // 不再走 /responses 工具路径;mock 返回标准 images JSON。
     const fetchMock = vi.fn(async () => {
-      return new Response(JSON.stringify({ data: [{ b64_json: imageBase64 }] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ data: [{ b64_json: imageBase64 }] }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -91,6 +94,8 @@ describe("image service Web-first fallback", () => {
           type: "pool-account",
           id: "web-1",
           groupId: "group-1",
+          // 混合分组:web 先行,轮询完才回退 codex(回退仅 mixed 生效)。
+          groupBackendType: "mixed",
           userId: "user-1",
           requestKind: "image_generation",
           accountBackend: "web",
@@ -128,6 +133,52 @@ describe("image service Web-first fallback", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.example.test/v1/images/generations",
       expect.anything()
+    );
+  });
+
+  it("非混合分组:Web 耗尽不回退 Codex(回退仅 mixed 生效)", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateImage } = await import("./service");
+    // 纯 web 分组的 web 成员撞可切换错误 → 换号 re-resolve 返回 null(web 已轮询完)。
+    // 因目标分组非 mixed,不应触发 web→codex 回退,直接返回失败结果。
+    backendPoolMock.resolveImageBackendPoolConfig.mockResolvedValueOnce(null);
+
+    const result = await generateImage(
+      {
+        baseUrl: "https://chatgpt.com",
+        apiKey: "web-key",
+        backend: {
+          type: "pool-account",
+          id: "web-1",
+          groupId: "group-web",
+          // 纯 web 分组:闭环,web 耗尽即止,不跨车道回退 codex。
+          groupBackendType: "web",
+          userId: "user-1",
+          requestKind: "image_generation",
+          accountBackend: "web",
+          reportResult: true,
+        },
+      },
+      {
+        prompt: "make an icon",
+        model: "gpt-image-2",
+        size: "1024x1024",
+        forceWebBackend: true,
+      }
+    );
+
+    // 返回失败结果(未回退到 codex,无图)。
+    expect(result.imageBase64).toBeUndefined();
+    expect(result.error).toContain("terminated");
+    // 只发生一次 web 侧 re-resolve;绝不应再以 responses 偏好回退。
+    expect(backendPoolMock.resolveImageBackendPoolConfig).toHaveBeenCalledTimes(
+      1
+    );
+    expect(
+      backendPoolMock.resolveImageBackendPoolConfig
+    ).not.toHaveBeenCalledWith(
+      expect.objectContaining({ accountBackendPreference: "responses" })
     );
   });
 

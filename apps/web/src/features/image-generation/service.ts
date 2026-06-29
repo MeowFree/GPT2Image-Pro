@@ -895,9 +895,7 @@ function poolBackendMemberKey(config: ApiConfig) {
     return null;
   }
   if (!config.backend.id) return null;
-  return `${poolBackendMemberType(config.backend.type)}:${
-    config.backend.id
-  }`;
+  return `${poolBackendMemberType(config.backend.type)}:${config.backend.id}`;
 }
 
 function getStickyBackendMember(config: ApiConfig) {
@@ -1083,7 +1081,10 @@ async function retryPoolBackendResult(
   let unclassifiedErrorSwitches = 0;
   const shouldFallbackFromWebPreference = () =>
     accountBackendPreference === "web" &&
-    (options?.mixWebFirst || options?.accountBackendPreference === "web");
+    (options?.mixWebFirst || options?.accountBackendPreference === "web") &&
+    // web→codex 回退仅在【混合分组】生效:纯 web / 纯 codex 分组各自闭环,web 耗尽即止于
+    // web,不跨车道回退(目标分组 backendType 在解析时盖在 config.backend 上)。
+    config.backend?.groupBackendType === "mixed";
   const resolveResponsesFallback = async (lastError?: string) => {
     logWarn("混合分组 Web 优先阶段已无可用账号，切换 Codex", {
       attempt,
@@ -4040,7 +4041,10 @@ export async function generateImage(
       )
     );
   }
-  if (isResponsesBackend(config) && !shouldCodexUseDirectImagesEndpoint(config)) {
+  if (
+    isResponsesBackend(config) &&
+    !shouldCodexUseDirectImagesEndpoint(config)
+  ) {
     try {
       return requireImageOutput(
         applyPromptOptimizationResultVisibility(
@@ -4316,7 +4320,9 @@ export async function editImage(
         });
         result = await attempt(true);
       }
-      return requireImageOutput(applyPromptOptimizationResultVisibility(result));
+      return requireImageOutput(
+        applyPromptOptimizationResultVisibility(result)
+      );
     } catch (error) {
       logImageRequestError(error, {
         operation: "edit",
@@ -4489,12 +4495,14 @@ export async function generateChatImage(
           currentBackendMember,
           files: params.files,
         });
-      const { previousState: previousResponsesState, canUsePreviousResponseId } =
-        resolveResponsesNativeState({
-          enabled: responsesPreviousResponseEnabled,
-          currentBackendMember,
-          history: params.history,
-        });
+      const {
+        previousState: previousResponsesState,
+        canUsePreviousResponseId,
+      } = resolveResponsesNativeState({
+        enabled: responsesPreviousResponseEnabled,
+        currentBackendMember,
+        history: params.history,
+      });
       const responseImageRoundIndex = getNextAssistantImageRoundIndex(
         params.history
       );
@@ -4778,7 +4786,9 @@ export async function generateChatImage(
           } catch (error) {
             roundResult = {
               error:
-                error instanceof Error ? error.message : "Unknown error occurred",
+                error instanceof Error
+                  ? error.message
+                  : "Unknown error occurred",
             };
           }
           await roundRequestTracker.finish({ error: roundResult.error });
@@ -4935,7 +4945,8 @@ export async function generateChatImage(
           }
 
           const textOnly = Boolean(
-            roundResult.responseText?.trim() || roundResult.responseAgent?.trim()
+            roundResult.responseText?.trim() ||
+              roundResult.responseAgent?.trim()
           );
           if (!textOnly) {
             result = mergeGenerateImageResults(roundResults);
@@ -5030,10 +5041,13 @@ export async function generateChatImage(
       isImageDownloadUpstreamError(result.error) &&
       hasInputImageBytes(params.images)
     ) {
-      logWarn("上游下载输入图失败，改用 base64 内联重试（responses 聊天/agent）", {
-        baseUrl: config.baseUrl,
-        model,
-      });
+      logWarn(
+        "上游下载输入图失败，改用 base64 内联重试（responses 聊天/agent）",
+        {
+          baseUrl: config.baseUrl,
+          model,
+        }
+      );
       result = await attempt(true);
     }
     return result;
