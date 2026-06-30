@@ -47,6 +47,9 @@ services:
       LOCAL_STORAGE_PATH: /app/storage
       CHATGPT_WEB_PROXY_URL: http://chatgpt-web-proxy:3021
       CHATGPT_WEB_PROXY_SECRET: ${CHATGPT_WEB_PROXY_SECRET:-}
+      # 注册机 sidecar：未设置 URL 时后台「注册机」Tab 不可用（直接报错），不影响其余功能。
+      CHATGPT_REGISTER_URL: ${CHATGPT_REGISTER_URL:-http://chatgpt-register:3023}
+      CHATGPT_REGISTER_SECRET: ${CHATGPT_REGISTER_SECRET:-}
       GPT2IMAGE_BOOTSTRAP_CREDENTIALS_PATH: /app/.gpt2image/super-admin-credentials.txt
     ports:
       - "${WEB_PORT:-3000}:3000"
@@ -60,6 +63,8 @@ services:
         condition: service_completed_successfully
       chatgpt-web-proxy:
         condition: service_started
+      chatgpt-register:
+        condition: service_started
 
   chatgpt-web-proxy:
     image: ghcr.io/meowfree/gpt2image-pro-chatgpt-web-proxy:${GPT2IMAGE_IMAGE_TAG:-latest}
@@ -71,6 +76,16 @@ services:
       CHATGPT_WEB_PROXY_TIMEOUT_SECONDS: ${CHATGPT_WEB_PROXY_TIMEOUT_SECONDS:-300}
       CHATGPT_WEB_PROXY_MAX_BODY_MB: ${CHATGPT_WEB_PROXY_MAX_BODY_MB:-64}
       CHATGPT_WEB_UPSTREAM_PROXY_URL: ${CHATGPT_WEB_UPSTREAM_PROXY_URL:-}
+
+  # 注册机 sidecar：debian + wine 跑 ChatGPTRegister.exe。仅 web 经内网调用，
+  # X-Register-Secret 鉴权；不持有 DB 凭据，token 入库由 web 完成。
+  chatgpt-register:
+    image: ghcr.io/meowfree/gpt2image-pro-chatgpt-register:${GPT2IMAGE_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      CHATGPT_REGISTER_BIND: :3023
+      CHATGPT_REGISTER_SECRET: ${CHATGPT_REGISTER_SECRET:-}
+      CHATGPT_REGISTER_TIMEOUT_SECONDS: ${CHATGPT_REGISTER_TIMEOUT_SECONDS:-1800}
 
 volumes:
   postgres-data:
