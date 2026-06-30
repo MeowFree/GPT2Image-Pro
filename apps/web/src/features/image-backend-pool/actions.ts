@@ -907,6 +907,7 @@ export const getChatgptRegisterConfigAction =
         baseUrl,
         domain,
         proxy,
+        proxyDisabled,
         refreshUrl,
         refreshMinIntervalSeconds,
         refreshMinAttempts,
@@ -920,6 +921,7 @@ export const getChatgptRegisterConfigAction =
         getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_BASE_URL"),
         getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_DOMAIN"),
         getRuntimeSettingString("CHATGPT_REGISTER_PROXY"),
+        getRuntimeSettingBoolean("CHATGPT_REGISTER_PROXY_DISABLED", false),
         getRuntimeSettingString("CHATGPT_REGISTER_REFRESH_URL"),
         getRuntimeSettingNumber(
           "CHATGPT_REGISTER_REFRESH_MIN_INTERVAL_SECONDS",
@@ -946,6 +948,7 @@ export const getChatgptRegisterConfigAction =
         baseUrl,
         domain,
         proxy,
+        proxyDisabled,
         refreshUrl,
         refreshMinIntervalSeconds,
         refreshMinAttempts,
@@ -1017,6 +1020,7 @@ export const saveChatgptRegisterConfigAction =
         baseUrl: z.string().trim().optional(),
         domain: z.string().trim().optional(),
         proxy: z.string().trim().optional(),
+        proxyDisabled: z.boolean().optional(),
         refreshUrl: z.string().trim().optional(),
         refreshMinIntervalSeconds: z.coerce.number().int().min(1).optional(),
         refreshMinAttempts: z.coerce.number().int().min(1).optional(),
@@ -1036,6 +1040,7 @@ export const saveChatgptRegisterConfigAction =
       put("CHATGPT_REGISTER_MOEMAIL_BASE_URL", parsedInput.baseUrl);
       put("CHATGPT_REGISTER_MOEMAIL_DOMAIN", parsedInput.domain);
       put("CHATGPT_REGISTER_PROXY", parsedInput.proxy);
+      put("CHATGPT_REGISTER_PROXY_DISABLED", parsedInput.proxyDisabled);
       put("CHATGPT_REGISTER_REFRESH_URL", parsedInput.refreshUrl);
       put(
         "CHATGPT_REGISTER_REFRESH_MIN_INTERVAL_SECONDS",

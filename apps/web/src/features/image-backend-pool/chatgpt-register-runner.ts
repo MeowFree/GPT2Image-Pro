@@ -14,6 +14,7 @@
  * 安全：moemail/代理凭据仅服务端读取并下发给同内网 sidecar，不返回客户端。
  */
 import {
+  getRuntimeSettingBoolean,
   getRuntimeSettingNumber,
   getRuntimeSettingString,
 } from "@repo/shared/system-settings";
@@ -52,13 +53,19 @@ export async function callRegisterSidecar(
     throw new Error("注册机 sidecar 未配置（CHATGPT_REGISTER_URL）");
   }
 
-  const [apiKey, baseUrl, domain, proxy, refreshUrl] = await Promise.all([
-    getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_API_KEY"),
-    getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_BASE_URL"),
-    getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_DOMAIN"),
-    getRuntimeSettingString("CHATGPT_REGISTER_PROXY"),
-    getRuntimeSettingString("CHATGPT_REGISTER_REFRESH_URL"),
-  ]);
+  const [apiKey, baseUrl, domain, proxy, refreshUrl, proxyDisabled] =
+    await Promise.all([
+      getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_API_KEY"),
+      getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_BASE_URL"),
+      getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_DOMAIN"),
+      getRuntimeSettingString("CHATGPT_REGISTER_PROXY"),
+      getRuntimeSettingString("CHATGPT_REGISTER_REFRESH_URL"),
+      getRuntimeSettingBoolean("CHATGPT_REGISTER_PROXY_DISABLED", false),
+    ]);
+  // 禁用代理开关：直连本机 IP。代理值保留不动（避免 secret 空值无法清空的问题），
+  // 仅由开关决定是否启用；禁用时刷新也跳过（本机 IP 刷新无意义）。
+  const effectiveProxy = proxyDisabled ? "" : (proxy ?? "");
+  const effectiveRefreshUrl = proxyDisabled ? "" : (refreshUrl ?? "");
   // 代理 IP 刷新节流：取「每 N 秒一次」与「每 M 次尝试一次」的慢者，缺省 60s / 100 次。
   const [refreshMinIntervalSeconds, refreshMinAttempts] = await Promise.all([
     getRuntimeSettingNumber(
@@ -89,8 +96,8 @@ export async function callRegisterSidecar(
       moemailBaseUrl: baseUrl ?? "",
       moemailApiKey: apiKey,
       moemailDomain: domain,
-      proxy: proxy ?? "",
-      refreshUrl: refreshUrl ?? "",
+      proxy: effectiveProxy,
+      refreshUrl: effectiveRefreshUrl,
       refreshMinIntervalSeconds,
       refreshMinAttempts,
     }),

@@ -64,6 +64,7 @@ export function ChatgptRegisterTab({ groups }: Props) {
   const [baseUrl, setBaseUrl] = useState("https://mail.52ai.org");
   const [domain, setDomain] = useState("");
   const [proxy, setProxy] = useState("");
+  const [proxyDisabled, setProxyDisabled] = useState(false);
   const [availableDomains, setAvailableDomains] = useState<string[]>([]);
 
   // 代理 IP 刷新配置
@@ -112,6 +113,7 @@ export function ChatgptRegisterTab({ groups }: Props) {
         if (data.baseUrl) setBaseUrl(data.baseUrl);
         if (data.domain) setDomain(data.domain);
         if (data.proxy) setProxy(data.proxy);
+        setProxyDisabled(Boolean(data.proxyDisabled));
         if (data.refreshUrl) setRefreshUrl(data.refreshUrl);
         if (data.refreshMinIntervalSeconds)
           setRefreshMinIntervalSeconds(data.refreshMinIntervalSeconds);
@@ -174,6 +176,7 @@ export function ChatgptRegisterTab({ groups }: Props) {
       baseUrl,
       domain,
       proxy,
+      proxyDisabled,
       refreshUrl,
       refreshMinIntervalSeconds,
       refreshMinAttempts,
@@ -332,14 +335,29 @@ export function ChatgptRegisterTab({ groups }: Props) {
           </div>
 
           <div className="space-y-1.5">
-            <Label>代理地址</Label>
+            <div className="flex items-center justify-between">
+              <Label>代理地址</Label>
+              <span className="flex items-center gap-2 text-sm font-normal">
+                <span className="text-muted-foreground">禁用代理（直连本机 IP）</span>
+                <Switch
+                  checked={proxyDisabled}
+                  onCheckedChange={setProxyDisabled}
+                  disabled={running}
+                />
+              </span>
+            </div>
             <Input
               type="password"
               value={proxy}
               onChange={(e) => setProxy(e.target.value)}
               placeholder="http://user:pass@host:port"
-              disabled={running}
+              disabled={running || proxyDisabled}
             />
+            {proxyDisabled && (
+              <p className="text-xs text-muted-foreground">
+                已禁用代理：注册走本机 IP，IP 刷新一并跳过。代理地址保留不变。
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -349,7 +367,7 @@ export function ChatgptRegisterTab({ groups }: Props) {
               value={refreshUrl}
               onChange={(e) => setRefreshUrl(e.target.value)}
               placeholder="https://refresh.rola.vip/refresh?user=...（留空则不刷新）"
-              disabled={running}
+              disabled={running || proxyDisabled}
             />
             <p className="text-xs text-muted-foreground">
               GET 即换 IP。实际刷新取「最小间隔」与「最小尝试数」的慢者。
@@ -366,7 +384,7 @@ export function ChatgptRegisterTab({ groups }: Props) {
                 onChange={(e) =>
                   setRefreshMinIntervalSeconds(Math.max(1, Number(e.target.value)))
                 }
-                disabled={running}
+                disabled={running || proxyDisabled}
               />
             </div>
             <div className="space-y-1.5">
@@ -378,7 +396,7 @@ export function ChatgptRegisterTab({ groups }: Props) {
                 onChange={(e) =>
                   setRefreshMinAttempts(Math.max(1, Number(e.target.value)))
                 }
-                disabled={running}
+                disabled={running || proxyDisabled}
               />
             </div>
           </div>

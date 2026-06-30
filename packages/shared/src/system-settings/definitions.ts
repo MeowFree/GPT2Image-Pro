@@ -171,6 +171,7 @@ export type SettingKey =
   | "CHATGPT_REGISTER_MOEMAIL_BASE_URL"
   | "CHATGPT_REGISTER_MOEMAIL_DOMAIN"
   | "CHATGPT_REGISTER_PROXY"
+  | "CHATGPT_REGISTER_PROXY_DISABLED"
   | "CHATGPT_REGISTER_REFRESH_URL"
   | "CHATGPT_REGISTER_REFRESH_MIN_INTERVAL_SECONDS"
   | "CHATGPT_REGISTER_REFRESH_MIN_ATTEMPTS"
@@ -1556,6 +1557,15 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     category: "models",
     valueType: "string",
     secret: true,
+  },
+  {
+    key: "CHATGPT_REGISTER_PROXY_DISABLED",
+    label: "注册机禁用代理（直连本机 IP）",
+    description:
+      "开启后注册机不走代理、直连本机 IP（同时跳过 IP 刷新）。代理地址保留不动，仅本开关控制是否启用。",
+    category: "models",
+    valueType: "boolean",
+    defaultValue: false,
   },
   {
     key: "CHATGPT_REGISTER_REFRESH_URL",
