@@ -165,7 +165,11 @@ export type SettingKey =
   | "RATE_LIMIT_AI_REQUESTS_PER_MINUTE"
   | "RATE_LIMIT_PAYMENT_REQUESTS_PER_MINUTE"
   | "RATE_LIMIT_UPLOAD_REQUESTS_PER_MINUTE"
-  | "RATE_LIMIT_STRICT_REQUESTS_PER_MINUTE";
+  | "RATE_LIMIT_STRICT_REQUESTS_PER_MINUTE"
+  | "CHATGPT_REGISTER_MOEMAIL_API_KEY"
+  | "CHATGPT_REGISTER_MOEMAIL_BASE_URL"
+  | "CHATGPT_REGISTER_MOEMAIL_DOMAIN"
+  | "CHATGPT_REGISTER_PROXY";
 
 export interface SettingDefinition {
   key: SettingKey;
@@ -1512,6 +1516,37 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     valueType: "number",
     defaultValue: 3,
     requiresRestart: true,
+  },
+  {
+    key: "CHATGPT_REGISTER_MOEMAIL_API_KEY",
+    label: "注册机 Moemail API Key",
+    description: "ChatGPT 账号注册机使用的 Moemail 临时邮箱服务 API Key。",
+    category: "models",
+    valueType: "string",
+    secret: true,
+  },
+  {
+    key: "CHATGPT_REGISTER_MOEMAIL_BASE_URL",
+    label: "注册机 Moemail 服务地址",
+    description: "Moemail 临时邮箱服务的 API 地址，默认 https://mail.52ai.org。",
+    category: "models",
+    valueType: "string",
+    defaultValue: "https://mail.52ai.org",
+  },
+  {
+    key: "CHATGPT_REGISTER_MOEMAIL_DOMAIN",
+    label: "注册机邮箱域名",
+    description: "注册时使用的临时邮箱域名，例如 pt.sanyela.shop。",
+    category: "models",
+    valueType: "string",
+  },
+  {
+    key: "CHATGPT_REGISTER_PROXY",
+    label: "注册机代理地址",
+    description: "注册机 HTTP 代理，格式 http://user:pass@host:port。",
+    category: "models",
+    valueType: "string",
+    secret: true,
   },
 ] as const satisfies readonly SettingDefinition[];
 

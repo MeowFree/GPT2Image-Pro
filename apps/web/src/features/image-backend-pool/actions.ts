@@ -13,6 +13,7 @@ import {
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import {
   getRuntimeSettingJson,
+  getRuntimeSettingString,
   setSystemSettings,
 } from "@repo/shared/system-settings";
 import { z } from "zod";
@@ -893,3 +894,78 @@ export const getImageBackendGroupOptionsAction = protectedAction
     const groups = await listImageBackendGroupOptions();
     return { groups };
   });
+
+// 读取 ChatGPT 注册机配置
+export const getChatgptRegisterConfigAction =
+  withImageBackendPoolAdminAction("getChatgptRegisterConfig").action(
+    async () => {
+      const [apiKey, baseUrl, domain, proxy] = await Promise.all([
+        getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_API_KEY"),
+        getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_BASE_URL"),
+        getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_DOMAIN"),
+        getRuntimeSettingString("CHATGPT_REGISTER_PROXY"),
+      ]);
+      return { apiKey, baseUrl, domain, proxy };
+    }
+  );
+
+// 从 Moemail 服务端查询可用邮箱域名列表
+export const getMoemailDomainsAction =
+  withImageBackendPoolAdminAction("getMoemailDomains")
+    .schema(
+      z.object({
+        baseUrl: z.string().trim().min(1).optional(),
+        apiKey: z.string().trim().min(1).optional(),
+      })
+    )
+    .action(async ({ parsedInput }) => {
+      const baseUrl =
+        parsedInput.baseUrl?.replace(/\/$/, "") ??
+        (await getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_BASE_URL")) ??
+        "https://mail.52ai.org";
+      const apiKey =
+        parsedInput.apiKey ??
+        (await getRuntimeSettingString("CHATGPT_REGISTER_MOEMAIL_API_KEY"));
+      if (!apiKey) {
+        throw new Error("未配置 Moemail API Key");
+      }
+      const resp = await fetch(`${baseUrl}/api/config`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!resp.ok) {
+        throw new Error(`Moemail 返回 ${resp.status}`);
+      }
+      const data = (await resp.json()) as {
+        domains?: string[];
+        allowCustomDomain?: boolean;
+      };
+      return { domains: data.domains ?? [] };
+    });
+
+// 保存 ChatGPT 注册机配置
+export const saveChatgptRegisterConfigAction =
+  withImageBackendPoolAdminAction("saveChatgptRegisterConfig")
+    .schema(
+      z.object({
+        apiKey: z.string().trim().optional(),
+        baseUrl: z.string().trim().optional(),
+        domain: z.string().trim().optional(),
+        proxy: z.string().trim().optional(),
+      })
+    )
+    .action(async ({ parsedInput, ctx }) => {
+      const entries: Array<{ key: string; value: unknown }> = [];
+      if (parsedInput.apiKey !== undefined)
+        entries.push({ key: "CHATGPT_REGISTER_MOEMAIL_API_KEY", value: parsedInput.apiKey });
+      if (parsedInput.baseUrl !== undefined)
+        entries.push({ key: "CHATGPT_REGISTER_MOEMAIL_BASE_URL", value: parsedInput.baseUrl });
+      if (parsedInput.domain !== undefined)
+        entries.push({ key: "CHATGPT_REGISTER_MOEMAIL_DOMAIN", value: parsedInput.domain });
+      if (parsedInput.proxy !== undefined)
+        entries.push({ key: "CHATGPT_REGISTER_PROXY", value: parsedInput.proxy });
+      if (entries.length > 0) {
+        await setSystemSettings(entries, ctx.userId);
+      }
+      return { success: true };
+    });
