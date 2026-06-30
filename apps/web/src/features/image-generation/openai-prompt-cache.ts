@@ -72,3 +72,37 @@ export function buildOpenAIPromptCacheKey(
 export function buildPromptCacheSalt(): string {
   return randomBytes(16).toString("hex");
 }
+
+// 零宽字符表（渲染时不可见、对出图无可见影响）。每个字符承载 2 bit。
+// 用显式 Unicode 转义而非字面量，避免源码里出现不可见字符难以审阅。
+const ZERO_WIDTH_CHARS = ["\u200b", "\u200c", "\u200d", "\u2060"];
+
+/**
+ * 生成【每请求唯一】的零宽 nonce 字符串（不可见）。
+ *
+ * WHY：OpenAI 标准 /v1/images 端点不接受 prompt_cache_key（那是 Responses/Chat 的
+ * 参数），故无法用随机盐的 prompt_cache_key 中和上游中转的结果缓存。images 直连路径
+ * 对同一参考图+同一提示词会发出逐字节相同的请求体，若上游按请求体内容哈希缓存就会返回
+ * 同一张旧图（客户反馈"同图同词出同图"）。把每请求唯一的零宽 nonce 追加进 prompt，使
+ * 内容哈希每请求不同即可打掉该缓存，且对出图无可见影响。
+ */
+export function buildInvisibleNonce(): string {
+  let out = "";
+  for (const byte of randomBytes(8)) {
+    out += ZERO_WIDTH_CHARS[byte & 0b11];
+    out += ZERO_WIDTH_CHARS[(byte >> 2) & 0b11];
+    out += ZERO_WIDTH_CHARS[(byte >> 4) & 0b11];
+    out += ZERO_WIDTH_CHARS[(byte >> 6) & 0b11];
+  }
+  return out;
+}
+
+/**
+ * 给【发往上游 images 端点】的 prompt 追加每请求唯一的零宽 nonce。
+ *
+ * 用途：仅用于 images 直连上游请求体（生图/改图），打掉上游按内容缓存。
+ * 边界：绝不可用于审核文本或落库的 generation.prompt——只在构造上游请求体的那一刻包一层。
+ */
+export function appendImagesUpstreamNonce(prompt: string): string {
+  return `${prompt}${buildInvisibleNonce()}`;
+}

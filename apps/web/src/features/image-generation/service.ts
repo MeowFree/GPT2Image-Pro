@@ -61,6 +61,7 @@ import {
   isImageDownloadUpstreamError,
 } from "./input-image-url";
 import {
+  appendImagesUpstreamNonce,
   buildOpenAIPromptCacheKey,
   buildPromptCacheSalt,
 } from "./openai-prompt-cache";
@@ -2109,7 +2110,8 @@ function appendImageParams(
   }
 ) {
   formData.append("model", getModel(config, params.model));
-  formData.append("prompt", params.prompt);
+  // multipart 改图同样注入每请求唯一零宽 nonce 破上游内容缓存（仅上游请求体）。
+  formData.append("prompt", appendImagesUpstreamNonce(params.prompt));
   formData.append("n", String(params.n || 1));
   formData.append("response_format", "b64_json");
 
@@ -4108,7 +4110,9 @@ export async function generateImage(
       }),
       body: JSON.stringify({
         model,
-        prompt,
+        // images 端点不吃 prompt_cache_key,改在 prompt 注入每请求唯一零宽 nonce,
+        // 打掉上游中转按请求体内容缓存导致的"同图同词出同图"。仅作用于上游请求体。
+        prompt: appendImagesUpstreamNonce(prompt),
         n: params.n || 1,
         size,
         ...(dimensions && !isCodexDirect
@@ -4252,7 +4256,8 @@ export async function editImage(
         headers: getHeaders(config, { "Content-Type": "application/json" }),
         body: JSON.stringify({
           model,
-          prompt: effectiveEditPrompt,
+          // 同生图：注入每请求唯一零宽 nonce 破上游内容缓存（仅上游请求体）。
+          prompt: appendImagesUpstreamNonce(effectiveEditPrompt),
           n: params.n || 1,
           size,
           images: params.images.map((image) => ({
