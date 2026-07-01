@@ -114,7 +114,7 @@ const sections = {
         {
           title: "Codex/Responses 账号池",
           description:
-            "chat / agent / responses 走 Responses 语义（image_generation 工具循环、多轮）。普通图像生成与图生图改走该账号的 /images/generations、/images/edits 直连端点（同一 OAuth 凭据，JSON 体、size 走顶层；图生图的输入图/mask 以 base64 data URL 放在 images[].image_url / mask.image_url），以确定性遵循 size 等尺寸参数；Codex 托管的 image_generation 工具不尊重 size，故纯生成/编辑不再用它（codex images 端点要 JSON,不接受 multipart）。",
+            "chat / agent / responses 走 Responses 语义（image_generation 工具循环、多轮）。普通图像生成与图生图改走该账号的 /images/generations、/images/edits 直连端点（同一 OAuth 凭据，JSON 体、size 走顶层；图生图的输入图/mask 以 base64 data URL 放在 images[].image_url / mask.image_url），以确定性遵循 size 等尺寸参数；Codex 托管的 image_generation 工具不尊重 size，故纯生成/编辑不再用它（codex images 端点要 JSON,不接受 multipart）。即便上游返回尺寸偏小，最终图也会经自动超分校准补足到目标分辨率（见下「分辨率超分与高清修复」），故 Web/Codex 出图同样支持接近 4K 的目标尺寸。",
         },
         {
           title: "Adobe（Firefly）账号池",
@@ -2263,6 +2263,23 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         ["外接 API", "平台尽量透传，最终行为取决于外接服务。"],
       ],
     },
+    postProcess: {
+      title: "分辨率超分与高清修复",
+      rows: [
+        [
+          "超分（自动）",
+          "Web / Codex 等后端常返回小于请求尺寸的图（Codex 尤其不严格遵循 size）。平台会在最终图较长边不足目标尺寸 2/3 时，用 Real-ESRGAN 自动放大到目标尺寸（不裁剪、保宽高比），因此 Web / Codex 也能稳定输出接近 4K 的目标分辨率——即「支持 4K」。由管理端「出图分辨率超分校准」开关控制，单张约 1-2 秒。",
+        ],
+        [
+          "高清修复（手动）",
+          "与超分相互独立。用户在创作页勾选「高清修复」或 API 传 hd_repair=true 时，对最终图用 SCUNet 做盲复原（去噪 / 去压缩块 / 增强质感，不改分辨率）。CPU 推理较重（512 约 11 秒、1024 约 35 秒）、服务端全局串行排队，出图更慢；由管理端「出图高清修复(SCUNet)」开关控制，需用户手动勾选，默认关。",
+        ],
+        [
+          "组合与顺序",
+          "两者可叠加：先修复（在原分辨率上跑，省算力）再超分（放大到目标）。都不裁剪、不改宽高比；任一步失败自动回退原图，不阻断出图。",
+        ],
+      ],
+    },
     roadmap: {
       title: "后续规划",
       items: [
@@ -2373,7 +2390,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         {
           title: "Codex/Responses Pool",
           description:
-            "chat / agent / responses use Responses semantics (image_generation tool loop, multi-round). Plain image generation and image edits instead route to that account's direct /images/generations and /images/edits endpoints (same OAuth credential, JSON body, size at the top level; image-to-image input/mask passed as base64 data URLs in images[].image_url / mask.image_url) to deterministically honor size — the Codex-hosted image_generation tool ignores size, so plain generation/edit no longer uses it (the codex images endpoints take JSON, not multipart).",
+            "chat / agent / responses use Responses semantics (image_generation tool loop, multi-round). Plain image generation and image edits instead route to that account's direct /images/generations and /images/edits endpoints (same OAuth credential, JSON body, size at the top level; image-to-image input/mask passed as base64 data URLs in images[].image_url / mask.image_url) to deterministically honor size — the Codex-hosted image_generation tool ignores size, so plain generation/edit no longer uses it (the codex images endpoints take JSON, not multipart). Even when the upstream returns a smaller image, the final image is auto-upscaled to the target resolution (see 'Super-Resolution And HD Repair' below), so Web/Codex output likewise supports near-4K target sizes.",
         },
         {
           title: "Adobe (Firefly) Pool",
@@ -4525,6 +4542,23 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         ],
       ],
     },
+    postProcess: {
+      title: "Super-Resolution And HD Repair",
+      rows: [
+        [
+          "Super-resolution (auto)",
+          "Web / Codex backends often return images smaller than requested (Codex in particular does not strictly honor size). When a final image's longer edge falls below 2/3 of the target, the platform auto-upscales it to the target size with Real-ESRGAN (no crop, aspect preserved) — so Web / Codex reliably deliver near-4K target resolution, i.e. 4K is supported. Controlled by the admin 'resolution super-resolution' switch; ~1-2s per image.",
+        ],
+        [
+          "HD repair (manual)",
+          "Independent of super-resolution. When the user checks 'HD repair' or the API sends hd_repair=true, the final image is restored with SCUNet (denoise / de-blocking / detail enhancement, no size change). CPU-heavy (about 11s at 512, 35s at 1024) and serialized server-side, so it takes longer; controlled by the admin 'HD repair (SCUNet)' switch, off by default and opt-in per request.",
+        ],
+        [
+          "Order & composition",
+          "The two can stack: restore first (at native resolution, cheaper), then upscale to target. Neither crops nor changes aspect ratio; on any failure it falls back to the original and never blocks generation.",
+        ],
+      ],
+    },
     roadmap: {
       title: "Roadmap",
       items: [
@@ -5220,6 +5254,27 @@ export function SystemDocsContent({
         <CardContent>
           <div className="overflow-hidden rounded-md border">
             {content.prompt.rows.map(([label, description]) => (
+              <div
+                className="grid gap-2 border-b p-3 text-sm last:border-b-0 md:grid-cols-[180px_1fr]"
+                key={label}
+              >
+                <div className="font-medium text-foreground">{label}</div>
+                <div className="text-muted-foreground">{description}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-lg">
+        <CardHeader>
+          <CardTitle className="text-base">
+            {content.postProcess.title}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-hidden rounded-md border">
+            {content.postProcess.rows.map(([label, description]) => (
               <div
                 className="grid gap-2 border-b p-3 text-sm last:border-b-0 md:grid-cols-[180px_1fr]"
                 key={label}
