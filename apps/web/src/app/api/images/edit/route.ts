@@ -248,6 +248,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     "transparentMatte",
     "transparent_matte"
   );
+  // 高清修复:显式 false 走轻量 general-x4v3;undefined/true 由后端选 SwinIR 超分。
+  const hdRepair = getOptionalBoolean(formData, "hdRepair", "hd_repair");
   let count = 1;
   try {
     count = getCount(formData, "count", planLimits.maxBatchCount);
@@ -365,6 +367,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           outputCompression,
           background,
           transparentMatte,
+          hdRepair,
           n: 1,
           mixWebFirst: requiresResponsesBackend ? false : mixWebFirst,
           requiresResponsesBackend,

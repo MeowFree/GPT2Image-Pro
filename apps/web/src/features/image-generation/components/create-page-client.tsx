@@ -2245,6 +2245,9 @@ export function CreatePageClient({
     "transparentMatte",
     false
   );
+  // 高清修复:默认开启(SwinIR 复原,文字/结构最佳);关闭则用轻量 general-x4v3(快)。
+  // 仅在超分主开关开且上游图偏小触发超分时生效。
+  const [hdRepair, setHdRepair] = useCreateRuntimeState("hdRepair", true);
   const [outputCompression, setOutputCompression] = useCreateRuntimeState(
     "outputCompression",
     100
@@ -3245,6 +3248,31 @@ export function CreatePageClient({
     );
   };
 
+  // 高清修复开关:总是可见。开启用 SwinIR 复原(文字/结构最佳,较慢),关闭用 general-x4v3(快)。
+  // 仅在管理端超分主开关开、且上游图较长边不足目标 2/3 触发超分时才实际生效。
+  const renderHdRepairToggle = (params: { id: string; disabled?: boolean }) => (
+    <label
+      htmlFor={params.id}
+      className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
+        hdRepair
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-primary/40 bg-primary/5 text-foreground"
+      }`}
+      title={copy(
+        "HD repair: when the upstream image is much smaller than requested, upscale with SwinIR for the best text/structure restoration (slower on CPU). When off, use the lightweight general-x4v3 model (faster, softer). Only active when server super-resolution is enabled and triggered.",
+        "高清修复:当上游图明显小于所请求尺寸时,用 SwinIR 超分复原,文字/结构还原最佳(CPU 较慢)。关闭则用轻量 general-x4v3(更快、偏软)。仅在服务端超分开启并触发时生效。"
+      )}
+    >
+      <Checkbox
+        id={params.id}
+        checked={hdRepair}
+        onCheckedChange={(checked) => setHdRepair(checked === true)}
+        disabled={params.disabled}
+      />
+      {copy("HD repair", "高清修复")}
+    </label>
+  );
+
   const renderReferenceMentionMenu = (params: {
     open: boolean;
     options: ImageReferenceMentionOption[];
@@ -3673,6 +3701,8 @@ export function CreatePageClient({
       if (!agentMode && background === "transparent" && transparentMatte) {
         formData.append("transparent_matte", "true");
       }
+      // 高清修复:关闭时显式传 false 走轻量 general-x4v3;默认(true)由后端选 SwinIR。
+      formData.append("hd_repair", String(hdRepair));
       if (outputFormat !== "png") {
         formData.append("output_compression", String(outputCompression));
       }
@@ -5394,6 +5424,10 @@ export function CreatePageClient({
               id: "chat-transparent-matte",
               disabled: isChatGenerating || chatMixWebFirstActive,
             })}
+          {renderHdRepairToggle({
+            id: "chat-hd-repair",
+            disabled: isChatGenerating,
+          })}
           <Button
             type="button"
             variant="outline"
@@ -6320,6 +6354,7 @@ export function CreatePageClient({
         ...(showThinkingControls ? { thinking: imageThinking } : {}),
         ...(promptOptimizationAllowed ? { promptOptimization } : {}),
         ...(textMixWebFirstActive ? { mix_web_first: true } : {}),
+        hd_repair: hdRepair,
       }),
     });
 
@@ -6484,6 +6519,8 @@ export function CreatePageClient({
     if (background === "transparent" && transparentMatte) {
       formData.append("transparent_matte", "true");
     }
+    // 高清修复:关闭时显式传 false 走轻量 general-x4v3;默认(true)由后端选 SwinIR。
+    formData.append("hd_repair", String(hdRepair));
     if (outputFormat !== "png") {
       formData.append("output_compression", String(outputCompression));
     }
@@ -7264,6 +7301,10 @@ export function CreatePageClient({
                   {renderTransparentMatteToggle({
                     id: `image-transparent-matte-${mode}`,
                     disabled: modeBusy || disableResponsesOnlyControls,
+                  })}
+                  {renderHdRepairToggle({
+                    id: `image-hd-repair-${mode}`,
+                    disabled: modeBusy,
                   })}
                 </div>
                 <div className="space-y-1.5">
@@ -8202,6 +8243,10 @@ export function CreatePageClient({
                         id: "edit-transparent-matte",
                         disabled: isEditing || editMixWebFirstActive,
                       })}
+                      {renderHdRepairToggle({
+                        id: "edit-hd-repair",
+                        disabled: isEditing,
+                      })}
                     </div>
 
                     <div
@@ -8969,6 +9014,10 @@ export function CreatePageClient({
                     id: "batch-transparent-matte",
                     disabled: isBatchActive || chatMixWebFirstActive,
                   })}
+                {renderHdRepairToggle({
+                  id: "batch-hd-repair",
+                  disabled: isBatchActive,
+                })}
               </div>
               <div className="flex flex-wrap items-center justify-end gap-3">
                 {promptOptimizationField(

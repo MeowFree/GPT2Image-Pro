@@ -24,6 +24,9 @@ export interface GenerateImageParams {
   transparentMatte?: boolean;
   /** 审核改写重试:显式 false 时本次失败不自动改写提示词重试,直接返回真实错误(issue #24)。 */
   moderationPromptRepair?: boolean;
+  /** 高清修复:上游图偏小需超分时,选用的超分模型。undefined/true=SwinIR(文字/结构复原最佳,
+   *  CPU 慢);false=general-x4v3(轻量快)。仅在超分主开关开且触发超分时生效(见 operations.ts)。 */
+  hdRepair?: boolean;
 }
 
 export interface GenerateImageResult {
@@ -178,6 +181,9 @@ export interface EditImageParams {
   transparentMatte?: boolean;
   /** 审核改写重试:显式 false 时本次失败不自动改写提示词重试,直接返回真实错误(issue #24)。 */
   moderationPromptRepair?: boolean;
+  /** 高清修复:上游图偏小需超分时,选用的超分模型。undefined/true=SwinIR(文字/结构复原最佳,
+   *  CPU 慢);false=general-x4v3(轻量快)。仅在超分主开关开且触发超分时生效(见 operations.ts)。 */
+  hdRepair?: boolean;
 }
 
 export interface ChatImageParams {
@@ -218,6 +224,9 @@ export interface ChatImageParams {
   transparentMatte?: boolean;
   /** 审核改写重试:显式 false 时本次失败不自动改写提示词重试,直接返回真实错误(issue #24)。 */
   moderationPromptRepair?: boolean;
+  /** 高清修复:上游图偏小需超分时,选用的超分模型。undefined/true=SwinIR(文字/结构复原最佳,
+   *  CPU 慢);false=general-x4v3(轻量快)。仅在超分主开关开且触发超分时生效(见 operations.ts)。 */
+  hdRepair?: boolean;
 }
 
 export interface ChatGptWebConversationState {

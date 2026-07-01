@@ -637,6 +637,13 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
                 "默认 false。仅当 background=transparent 且显式设为 true 时生效：命中的后端不支持透明返回 400 时自动改不透明重绘，再在服务端用 ISNet 抠图得到透明 PNG；agent 分层模式下不生效。详见 /v1/images/generations 说明。",
             },
             {
+              name: "hd_repair / hdRepair",
+              requirement: "可选",
+              custom: true,
+              description:
+                "本站扩展：高清修复。默认 true。仅在服务端超分开启且上游图较长边不足目标 2/3 触发超分时生效——true 用 SwinIR 复原（文字/结构最佳，较慢），false 用轻量 general-x4v3（更快、偏软）。与 /v1/images/generations 同义。",
+            },
+            {
               name: "thinking / reasoning.effort",
               requirement: "可选",
               custom: true,
@@ -935,6 +942,13 @@ curl https://gpt2image.superapi.buzz/v1/images/task_... \\
               custom: true,
               description:
                 "默认 false。仅当 background=transparent 且显式设为 true 时生效：若命中的后端不支持透明而返回 400，则自动改为不透明重新生成，再在服务端用 ISNet 抠图得到透明 PNG。关闭时透明请求直接透传，后端不支持即返回真实 400 错误。注意只对单张生成/编辑/对话生效，不含 agent 分层模式。",
+            },
+            {
+              name: "hd_repair / hdRepair",
+              requirement: "可选",
+              custom: true,
+              description:
+                "本站扩展：高清修复。默认 true。仅在服务端超分开启、且上游返回图较长边不足所请求尺寸 2/3（明显偏小）触发超分放大时生效：true 用 SwinIR 复原，文字/结构还原最佳（CPU 较慢）；false 用轻量 general-x4v3 模型，更快但偏软。上游图已足够大或未开启超分时，本参数无副作用。",
             },
             {
               name: "stream",
@@ -1249,6 +1263,13 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               custom: true,
               description:
                 "默认 false。仅当 background=transparent 且显式设为 true 时生效：若命中的后端不支持透明而返回 400，则自动改为不透明重新生成，再在服务端用 ISNet 抠图得到透明 PNG。关闭时透明请求直接透传，后端不支持即返回真实 400 错误。注意只对单张生成/编辑/对话生效，不含 agent 分层模式。",
+            },
+            {
+              name: "hd_repair / hdRepair",
+              requirement: "可选",
+              custom: true,
+              description:
+                "本站扩展：高清修复。默认 true。仅在服务端超分开启、且上游返回图较长边不足所请求尺寸 2/3（明显偏小）触发超分放大时生效：true 用 SwinIR 复原，文字/结构还原最佳（CPU 较慢）；false 用轻量 general-x4v3 模型，更快但偏软。上游图已足够大或未开启超分时，本参数无副作用。",
             },
             {
               name: "stream",

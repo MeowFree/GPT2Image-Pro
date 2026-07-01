@@ -855,6 +855,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     "transparentMatte",
     "transparent_matte"
   );
+  // 高清修复:显式 false 走轻量 general-x4v3;undefined/true 由后端选 SwinIR 超分。
+  const hdRepair = getOptionalBoolean(formData, "hdRepair", "hd_repair");
 
   const thinkingValue = getText(formData, "thinking") || "low";
   if (!VALID_THINKING.has(thinkingValue as ThinkingLevel)) {
@@ -954,6 +956,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           outputCompression,
           background,
           transparentMatte,
+          hdRepair,
           stream: useStreamResponse,
           thinking,
           agentMode,

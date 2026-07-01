@@ -63,6 +63,9 @@ const generateImageSchema = z.object({
   forceFirefly: z.boolean().optional(),
   requiresResponsesBackend: z.boolean().optional(),
   requires_responses_backend: z.boolean().optional(),
+  // 高清修复:上游图偏小需超分时选模型。默认(含省略)=SwinIR;显式 false=general-x4v3(快)。
+  hdRepair: z.boolean().optional(),
+  hd_repair: z.boolean().optional(),
 });
 
 function errorResponse(message: string, status = 400) {
@@ -150,6 +153,7 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       parsed.data.requiresResponsesBackend ??
       parsed.data.requires_responses_backend,
     forceFirefly: parsed.data.forceFirefly ?? parsed.data.force_firefly,
+    hdRepair: parsed.data.hdRepair ?? parsed.data.hd_repair,
   };
   const requestedGenerationIds =
     parsed.data.generationIds || parsed.data.generation_ids;
