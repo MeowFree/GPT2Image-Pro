@@ -969,7 +969,7 @@ curl https://gpt2image.superapi.buzz/v1/images/task_... \\
               requirement: "可选",
               custom: true,
               description:
-                "本站扩展：分块修复每块 img2img 的提示词。仅在 block_repair=true 时生效；留空则用管理端默认（强调只修清晰度与文字、保持构图/内容不变）。",
+                "本站扩展：分块修复每块 img2img 的提示词。仅在 block_repair=true 时生效；留空则用内置默认（强调只修清晰度与文字、保持构图/内容不变，无需在后台配置）。",
             },
             {
               name: "stream",
@@ -1304,7 +1304,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               requirement: "可选",
               custom: true,
               description:
-                "本站扩展：分块修复每块 img2img 的提示词。仅在 block_repair=true 时生效；留空则用管理端默认（强调只修清晰度与文字、保持构图/内容不变）。",
+                "本站扩展：分块修复每块 img2img 的提示词。仅在 block_repair=true 时生效；留空则用内置默认（强调只修清晰度与文字、保持构图/内容不变，无需在后台配置）。",
             },
             {
               name: "stream",
@@ -2311,7 +2311,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         ],
         [
           "分块修复（手动，gpt-image-2）",
-          "与高清修复不同：它用真实生成后端逐块重绘。用户勾选「分块修复」或 API 传 block_repair=true 时，把最终图切成 2×2 个 web 尺寸小块，每块用 gpt-image-2 img2img 重绘（重点修文字/细节，提示词取 repair_prompt 或管理端默认），带重叠羽化拼接，再超分补足到目标尺寸。每块单独调用后端并单独计费（最后加和），比超分/高清修复更慢也更贵；由管理端「出图分块修复」开关控制，需手动勾选，默认关。启用成功时替代自动超分。",
+          "与高清修复不同：它用真实生成后端逐块重绘。用户勾选「分块修复」或 API 传 block_repair=true 时，把最终图切成 2×2 个 web 尺寸小块，每块用 gpt-image-2 img2img 重绘（重点修文字/细节，提示词取 repair_prompt 或内置默认），带重叠羽化拼接，再超分补足到目标尺寸。每块单独调用后端并单独计费（最后加和），比超分/高清修复更慢也更贵；由管理端「出图分块修复」开关控制，需手动勾选，默认关。启用成功时替代自动超分。",
         ],
         [
           "组合与顺序",
@@ -4594,7 +4594,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
         ],
         [
           "Block repair (manual, gpt-image-2)",
-          "Unlike HD repair, this redraws through the real generation backend. When the user checks 'Block repair' or the API sends block_repair=true, the final image is split into 2x2 web-sized tiles, each redrawn with gpt-image-2 img2img (focusing on text/detail, using repair_prompt or the admin default), feather-stitched, then upscaled to the target size. Each tile is a separate backend call billed separately (summed) — slower and costlier than super-resolution / HD repair; controlled by the admin 'Block repair' switch, off by default and opt-in. When active it replaces auto super-resolution.",
+          "Unlike HD repair, this redraws through the real generation backend. When the user checks 'Block repair' or the API sends block_repair=true, the final image is split into 2x2 web-sized tiles, each redrawn with gpt-image-2 img2img (focusing on text/detail, using repair_prompt or a built-in default), feather-stitched, then upscaled to the target size. Each tile is a separate backend call billed separately (summed) — slower and costlier than super-resolution / HD repair; controlled by the admin 'Block repair' switch, off by default and opt-in. When active it replaces auto super-resolution.",
         ],
         [
           "Order & composition",

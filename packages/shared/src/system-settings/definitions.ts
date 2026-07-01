@@ -149,7 +149,6 @@ export type SettingKey =
   | "IMAGE_SUPER_RESOLUTION_ENABLED"
   | "IMAGE_RESTORATION_ENABLED"
   | "IMAGE_BLOCK_REPAIR_ENABLED"
-  | "IMAGE_BLOCK_REPAIR_PROMPT"
   | "VIDEO_BASE_CREDITS_PER_SECOND"
   | "VIDEO_MODEL_MULTIPLIERS"
   | "NEXT_PUBLIC_GA_ID"
@@ -1357,19 +1356,10 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     key: "IMAGE_BLOCK_REPAIR_ENABLED",
     label: "出图分块修复（gpt-image-2 逐块重绘）",
     description:
-      "开启后，用户勾选「分块修复」的最终图会切成 2×2 个 web 尺寸小块，逐块用 gpt-image-2 img2img 重绘（重点修文字/细节），带重叠羽化拼接，再超分补足到目标分辨率。每块单独调用后端并单独计费（最后加和）；替代自动超分。需用户手动勾选、仅对最终图触发；默认关闭。",
+      "开启后，用户勾选「分块修复」的最终图会切成 2×2 个 web 尺寸小块，逐块用 gpt-image-2 img2img 重绘（重点修文字/细节），带重叠羽化拼接，再超分补足到目标分辨率。每块单独调用后端并单独计费（最后加和）；替代自动超分。修复提示词有内置默认，用户/API 可用 repair_prompt 覆盖，无需在此配置。需用户手动勾选、仅对最终图触发；默认关闭。",
     category: "models",
     valueType: "boolean",
     defaultValue: false,
-  },
-  {
-    key: "IMAGE_BLOCK_REPAIR_PROMPT",
-    label: "分块修复默认提示词",
-    description:
-      "分块修复每块 img2img 重绘用的默认提示词（用户/API 未指定 repair_prompt 时用）。应强调「只修复清晰度与文字、保持构图/内容不变」，避免模型改动画面。留空则用内置英文默认提示词。",
-    category: "models",
-    valueType: "string",
-    defaultValue: "",
   },
   {
     key: "IMAGE_MODEL_MULTIPLIERS",

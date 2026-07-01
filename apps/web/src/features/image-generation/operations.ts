@@ -898,10 +898,9 @@ async function storeGeneratedImageOutput(params: {
       const target = parseImageSize(params.requestedSize || DEFAULT_IMAGE_SIZE);
       const targetLongEdge = target ? Math.max(target.width, target.height) : 0;
       if (targetLongEdge > 0) {
+        // 提示词:请求级 repairPrompt 覆盖 > 内置默认(无需管理端配置)。
         const repairPrompt =
-          params.repairPrompt?.trim() ||
-          (await getRuntimeSettingString("IMAGE_BLOCK_REPAIR_PROMPT"))?.trim() ||
-          DEFAULT_BLOCK_REPAIR_PROMPT;
+          params.repairPrompt?.trim() || DEFAULT_BLOCK_REPAIR_PROMPT;
         try {
           const repairedResult = await blockRepairImage(
             imageBuffer,
