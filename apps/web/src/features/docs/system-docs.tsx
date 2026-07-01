@@ -641,7 +641,7 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
               requirement: "可选",
               custom: true,
               description:
-                "本站扩展：高清修复。默认 false。仅在服务端超分开启且上游图较长边不足目标 2/3 触发超分时生效——默认（false）用轻量 general-x4v3（快）；显式 true 才用 SwinIR 复原（文字/结构最佳，但 CPU 极慢、吃满多核，仅供受控测试）。与 /v1/images/generations 同义。",
+                "本站扩展：高清修复。默认 false。设为 true 时最终图用 SCUNet 盲复原（去噪 / 去压缩块 / 增强质感，不改分辨率），与超分放大相互独立、可叠加；需管理端开启修复主开关，CPU 较重、服务端串行排队。与 /v1/images/generations 同义。",
             },
             {
               name: "thinking / reasoning.effort",
@@ -948,7 +948,7 @@ curl https://gpt2image.superapi.buzz/v1/images/task_... \\
               requirement: "可选",
               custom: true,
               description:
-                "本站扩展：高清修复。默认 false。仅在服务端超分开启、且上游返回图较长边不足所请求尺寸 2/3（明显偏小）触发超分放大时生效：默认（false）用轻量 general-x4v3，快且省资源；显式设为 true 才用 SwinIR 复原，文字/结构还原最佳，但 CPU 极慢（单张数十秒、吃满多核），仅供受控测试。上游图已足够大或未开启超分时，本参数无副作用。",
+                "本站扩展：高清修复。默认 false。设为 true 时，最终图会用 SCUNet 盲复原（去噪 / 去压缩块 / 增强质感，不改分辨率），与「超分放大」相互独立、可叠加。需管理端开启「高清修复」主开关方生效；CPU 推理较重（512 约 11 秒、1024 约 35 秒）、服务端串行排队，出图更慢。false 或未开启修复时无副作用。",
             },
             {
               name: "stream",
@@ -1269,7 +1269,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               requirement: "可选",
               custom: true,
               description:
-                "本站扩展：高清修复。默认 false。仅在服务端超分开启、且上游返回图较长边不足所请求尺寸 2/3（明显偏小）触发超分放大时生效：默认（false）用轻量 general-x4v3，快且省资源；显式设为 true 才用 SwinIR 复原，文字/结构还原最佳，但 CPU 极慢（单张数十秒、吃满多核），仅供受控测试。上游图已足够大或未开启超分时，本参数无副作用。",
+                "本站扩展：高清修复。默认 false。设为 true 时，最终图会用 SCUNet 盲复原（去噪 / 去压缩块 / 增强质感，不改分辨率），与「超分放大」相互独立、可叠加。需管理端开启「高清修复」主开关方生效；CPU 推理较重（512 约 11 秒、1024 约 35 秒）、服务端串行排队，出图更慢。false 或未开启修复时无副作用。",
             },
             {
               name: "stream",

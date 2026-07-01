@@ -147,6 +147,7 @@ export type SettingKey =
   | "IMAGE_BASE_CREDITS_4K"
   | "IMAGE_MODEL_MULTIPLIERS"
   | "IMAGE_SUPER_RESOLUTION_ENABLED"
+  | "IMAGE_RESTORATION_ENABLED"
   | "VIDEO_BASE_CREDITS_PER_SECOND"
   | "VIDEO_MODEL_MULTIPLIERS"
   | "NEXT_PUBLIC_GA_ID"
@@ -1337,6 +1338,15 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     label: "出图分辨率超分校准",
     description:
       "开启后，上游返回图的较长边低于请求尺寸 2/3 时，用 Real-ESRGAN 超分放大并缩到目标分辨率（不裁剪、不改宽高比）。CPU 推理，单张约 1-2 秒，仅对最终图触发；默认关闭。",
+    category: "models",
+    valueType: "boolean",
+    defaultValue: false,
+  },
+  {
+    key: "IMAGE_RESTORATION_ENABLED",
+    label: "出图高清修复（SCUNet）",
+    description:
+      "开启后，用户在创作时勾选「高清修复」的最终图会用 SCUNet 盲复原（去噪/去压缩块/增强质感，不改分辨率）。CPU 推理较重（512 约 11 秒、1024 约 35 秒），有全局串行闸防并发打满机器；需用户手动勾选、仅对最终图触发；默认关闭。与「超分校准」独立：修复在原分辨率跑、超分再放大。",
     category: "models",
     valueType: "boolean",
     defaultValue: false,

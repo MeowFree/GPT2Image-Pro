@@ -38,7 +38,7 @@ const nextConfig = {
       "../../node_modules/.pnpm/onnxruntime-node@*/node_modules/onnxruntime-node/bin/napi-v6/linux/x64/**",
       "./models/isnet.onnx",
       "./models/realesr-general-x4v3.onnx",
-      "./models/swinir-realsr-x4.onnx",
+      "./models/scunet-color-real-gan.onnx",
       "../../node_modules/.pnpm/@img+sharp-libvips-linux-x64@*/node_modules/@img/sharp-libvips-linux-x64/**",
       "../../node_modules/.pnpm/@img+sharp-linux-x64@*/node_modules/@img/sharp-linux-x64/**",
     ],

@@ -16,10 +16,7 @@ import sharp, { type Sharp } from "sharp";
 import { logWarn } from "@repo/shared/logger";
 
 import { parseImageSize } from "./resolution";
-import {
-  superResolve,
-  type SuperResolutionModel,
-} from "./super-resolution";
+import { superResolve } from "./super-resolution";
 
 // 触发阈值：实际较长边 < 目标较长边的此比例时才超分。2/3 为暂定标准。
 export const SUPER_RESOLUTION_TRIGGER_RATIO = 2 / 3;
@@ -46,7 +43,6 @@ export function shouldSuperResolve(
  *
  * @param image 上游返回的图片字节
  * @param requestedSize 请求尺寸字符串（如 "1024x1024"，"auto" 等无法解析时不校准）
- * @param model 超分模型：general（默认，快速）或 swinir（高清修复，慢）；对应请求级"高清修复"开关
  * @returns { buffer, applied }：applied=true 表示做了超分；失败/不需要时返回原图 applied=false
  *
  * 边界：仅在 shouldSuperResolve 为真时超分；超分后按比例（fit:inside，不裁剪）缩到目标
@@ -54,8 +50,7 @@ export function shouldSuperResolve(
  */
 export async function calibrateImageResolution(
   image: Buffer,
-  requestedSize: string,
-  model: SuperResolutionModel = "general"
+  requestedSize: string
 ): Promise<{ buffer: Buffer; applied: boolean }> {
   const target = parseImageSize(requestedSize);
   if (!target) return { buffer: image, applied: false };
@@ -68,7 +63,7 @@ export async function calibrateImageResolution(
       return { buffer: image, applied: false };
     }
 
-    const upscaled = await superResolve(image, model);
+    const upscaled = await superResolve(image);
     const upMeta = await sharp(upscaled).metadata();
     const targetEdge = Math.max(target.width, target.height);
     const upEdge = Math.max(upMeta.width ?? 0, upMeta.height ?? 0);

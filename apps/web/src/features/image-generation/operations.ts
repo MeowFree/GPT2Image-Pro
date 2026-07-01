@@ -71,6 +71,7 @@ import {
   roundCreditAmount,
   roundUpCreditAmount,
 } from "./resolution";
+import { restoreImage } from "./image-restoration";
 import { calibrateImageResolution } from "./resolution-calibration";
 import {
   editImage,
@@ -858,22 +859,29 @@ async function storeGeneratedImageOutput(params: {
   hdRepair?: boolean;
 }) {
   let imageBuffer: Buffer = await toImageBuffer(params.output);
-  // 分辨率超分校准（gated）：仅对最终图、且开关开启时，上游图较长边 < 目标 2/3 才超分放大
-  // 并缩到目标边长（见 resolution-calibration.ts）。模型按请求级"高清修复"选择：默认走轻量
-  // general-x4v3（快，安全）；仅当显式 hdRepair===true 时才用 SwinIR（复原最佳但 CPU 极慢、
-  // 会吃满多核，只供受控测试、默认关闭）。失败回退原图、不阻断。
+  // 出图后处理（仅对最终图）：修复与超分两个独立步骤，各自主开关门控、失败回退不阻断。
+  // 顺序=先修复再超分（修复在原分辨率上跑更省算力，超分再放大到目标）。
   const isFinalImage =
     !params.output.outputRole || params.output.outputRole === "final";
-  if (
-    isFinalImage &&
-    (await getRuntimeSettingBoolean("IMAGE_SUPER_RESOLUTION_ENABLED", false))
-  ) {
-    const calibrated = await calibrateImageResolution(
-      imageBuffer,
-      params.requestedSize || DEFAULT_IMAGE_SIZE,
-      params.hdRepair === true ? "swinir" : "general"
-    );
-    imageBuffer = calibrated.buffer;
+  if (isFinalImage) {
+    // 修复（手动勾选 hdRepair + 主开关 IMAGE_RESTORATION_ENABLED）：SCUNet 盲复原、不改尺寸。
+    // 重模型、CPU 慢，故默认关、需用户显式勾选；内部有全局串行闸防并发打满机器。
+    if (
+      params.hdRepair === true &&
+      (await getRuntimeSettingBoolean("IMAGE_RESTORATION_ENABLED", false))
+    ) {
+      const restored = await restoreImage(imageBuffer);
+      imageBuffer = restored.buffer;
+    }
+    // 超分（自动 + 主开关 IMAGE_SUPER_RESOLUTION_ENABLED）：上游图较长边 < 目标 2/3 时用
+    // 轻量 general-x4v3 放大到目标尺寸（快，见 resolution-calibration.ts）。
+    if (await getRuntimeSettingBoolean("IMAGE_SUPER_RESOLUTION_ENABLED", false)) {
+      const calibrated = await calibrateImageResolution(
+        imageBuffer,
+        params.requestedSize || DEFAULT_IMAGE_SIZE
+      );
+      imageBuffer = calibrated.buffer;
+    }
   }
   const storedFormat = resolveStoredImageFormat(
     imageBuffer,

@@ -3259,8 +3259,8 @@ export function CreatePageClient({
           : "border-primary/40 bg-primary/5 text-foreground"
       }`}
       title={copy(
-        "HD repair (SwinIR): off by default. When on, and the upstream image is much smaller than requested, upscale with SwinIR for the best text/structure restoration — but it is very CPU-heavy (tens of seconds, saturates many cores). Leave it off for normal use (fast general-x4v3); enable only for controlled testing. Only active when server super-resolution is enabled and triggered.",
-        "高清修复(SwinIR):默认关闭。勾选后,当上游图明显小于所请求尺寸时用 SwinIR 复原,文字/结构还原最佳,但极耗 CPU(数十秒、吃满多核)。日常请保持关闭(走快速 general-x4v3),仅在受控测试时开启。仅在服务端超分开启并触发时生效。"
+        "HD repair (SCUNet): off by default. When on, the final image is restored with SCUNet (denoise / de-blocking / detail enhancement, no size change) — independent of upscaling. It is CPU-heavy (about 11s at 512, 35s at 1024) and runs one-at-a-time server-side, so results take longer. Enable only when you want a cleaner, restored result. Requires the server-side restoration switch to be on.",
+        "高清修复(SCUNet):默认关闭。勾选后,最终图会用 SCUNet 做盲复原(去噪/去压缩块/增强质感,不改分辨率),与放大(超分)相互独立。CPU 推理较重(512 约 11 秒、1024 约 35 秒)、服务端串行排队,出图会更慢。想要更干净、修复过的结果时再开。需管理端开启「高清修复」主开关。"
       )}
     >
       <Checkbox
