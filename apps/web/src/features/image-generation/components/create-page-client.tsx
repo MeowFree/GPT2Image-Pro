@@ -7184,6 +7184,11 @@ export function CreatePageClient({
                   {copy("Set size", "设置尺寸")}
                 </Button>
               </div>
+              {/* 高清修复放分辨率卡内:与后端类型无关(纯服务端超分后处理),须对 web 后端也可见。 */}
+              {renderHdRepairToggle({
+                id: `image-hd-repair-${mode}`,
+                disabled: modeBusy,
+              })}
             </div>
 
             {!isWebOnlyBackend && (
@@ -7301,10 +7306,6 @@ export function CreatePageClient({
                   {renderTransparentMatteToggle({
                     id: `image-transparent-matte-${mode}`,
                     disabled: modeBusy || disableResponsesOnlyControls,
-                  })}
-                  {renderHdRepairToggle({
-                    id: `image-hd-repair-${mode}`,
-                    disabled: modeBusy,
                   })}
                 </div>
                 <div className="space-y-1.5">
@@ -8243,10 +8244,6 @@ export function CreatePageClient({
                         id: "edit-transparent-matte",
                         disabled: isEditing || editMixWebFirstActive,
                       })}
-                      {renderHdRepairToggle({
-                        id: "edit-hd-repair",
-                        disabled: isEditing,
-                      })}
                     </div>
 
                     <div
@@ -8368,6 +8365,11 @@ export function CreatePageClient({
                       )}
                     </div>
                   )}
+                  {/* 高清修复:超分后处理与后端无关,放尺寸卡内确保 web 后端也可见。 */}
+                  {renderHdRepairToggle({
+                    id: "edit-hd-repair",
+                    disabled: isEditing,
+                  })}
                 </div>
 
                 <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
