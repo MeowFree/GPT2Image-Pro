@@ -74,6 +74,7 @@ import {
   roundUpCreditAmount,
 } from "./resolution";
 import { generativeRepairImage } from "./generative-repair";
+import { maskedOutpaintImage } from "./masked-outpaint";
 import { restoreImage } from "./image-restoration";
 import { calibrateImageResolution } from "./resolution-calibration";
 import { superResolve } from "./super-resolution";
@@ -887,21 +888,60 @@ async function storeGeneratedImageOutput(params: {
       const restored = await restoreImage(imageBuffer);
       imageBuffer = restored.buffer;
     }
-    // 生成式修复（手动 blockRepair + 主开关 IMAGE_BLOCK_REPAIR_ENABLED）：整图缩到 web 甜点
-    // 分辨率,一次 gpt-image-2 img2img 重绘(重点修文字/细节、保持构图内容),再超分补足到目标。
-    // 整图一次重绘=无接缝(早期分块+羽化会在重叠区产生重影,已弃)。计费一次(chargeTile)。因自带
-    // 超分到目标,启用成功时替代下面的独立超分。失败回退不阻断。
+    // 生成式修复（手动 blockRepair）：两种技术二选一，由管理端主开关决定，均自带到目标分辨率
+    // （启用成功时替代下面独立超分）、逐块/次计费(chargeTile)、失败回退不阻断：
+    //  - IMAGE_MASK_OUTPAINT_ENABLED：掩码顺序外绘（1K tile + mask，路由 codex，无缝，见 masked-outpaint.ts）
+    //  - IMAGE_BLOCK_REPAIR_ENABLED ：整图一次重绘 + general 超分（见 generative-repair.ts）
     let blockRepaired = false;
-    if (
-      params.blockRepair === true &&
-      (await getRuntimeSettingBoolean("IMAGE_BLOCK_REPAIR_ENABLED", false))
-    ) {
+    if (params.blockRepair === true) {
       const target = parseImageSize(params.requestedSize || DEFAULT_IMAGE_SIZE);
-      const targetLongEdge = target ? Math.max(target.width, target.height) : 0;
-      if (targetLongEdge > 0) {
-        // 提示词:请求级 repairPrompt 覆盖 > 内置默认(无需管理端配置)。
-        const repairPrompt =
-          params.repairPrompt?.trim() || DEFAULT_BLOCK_REPAIR_PROMPT;
+      // 提示词:请求级 repairPrompt 覆盖 > 内置默认(无需管理端配置)。
+      const repairPrompt =
+        params.repairPrompt?.trim() || DEFAULT_BLOCK_REPAIR_PROMPT;
+      const maskOutpaint = await getRuntimeSettingBoolean(
+        "IMAGE_MASK_OUTPAINT_ENABLED",
+        false
+      );
+      const wholeRepair = await getRuntimeSettingBoolean(
+        "IMAGE_BLOCK_REPAIR_ENABLED",
+        false
+      );
+      if (target && maskOutpaint) {
+        // 掩码顺序外绘:在目标尺寸上切 1K 重叠块,逐块带 mask 编辑(锁住已提交重叠区、只重绘新区)。
+        // 路由 codex(会发 mask、尊重 1K);只写新区、保留区不动 → 无缝。
+        try {
+          const res = await maskedOutpaintImage(
+            imageBuffer,
+            target.width,
+            target.height,
+            async (tileCanvas, mask, w, h, i) => {
+              const edited = await editImage(params.config, {
+                prompt: repairPrompt,
+                images: [
+                  { data: tileCanvas, name: "tile.png", type: "image/png" },
+                ],
+                mask: { data: mask, name: "mask.png", type: "image/png" },
+                size: `${w}x${h}`,
+                model: DEFAULT_IMAGE_MODEL,
+                outputFormat: "png",
+                requiresResponsesBackend: true,
+              });
+              if (edited.error || !edited.imageBase64) {
+                throw new Error(edited.error || "掩码外绘:该块无输出");
+              }
+              await params.chargeTile?.(`${w}x${h}`, i);
+              return Buffer.from(edited.imageBase64, "base64");
+            }
+          );
+          imageBuffer = res.buffer;
+          blockRepaired = res.tilesRepaired > 0;
+        } catch (error) {
+          logWarn("掩码外绘修复失败，回退原图", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      } else if (target && wholeRepair) {
+        const targetLongEdge = Math.max(target.width, target.height);
         try {
           const repairedResult = await generativeRepairImage(
             imageBuffer,
