@@ -25,6 +25,25 @@
 - 提交前该 Task 相关验证通过；整计划收尾 `turbo typecheck && turbo lint && turbo test && turbo build` 全绿。
 - 测试文件与被测模块同目录（`*.test.ts`），vitest DB-free，纯函数才可测——GL/DOM 代码中的可测逻辑必须抽为纯函数模块。
 
+## 实施勘误（2026-07-11，Task 1-4 实施后回填）
+
+1. **透明预乘画布的混合**：向 `premultipliedAlpha: true` 的透明画布做 alpha
+   混合时，alpha 通道用 `SRC_ALPHA` 因子会得到 a*a（半透明强度被平方削弱，
+   Task 3 像素级测量证实）。所有做混合的 pass（post/particles/fluid 合成）
+   一律 `gl.blendFuncSeparate(SRC_ALPHA, ONE_MINUS_SRC_ALPHA, ONE, ONE_MINUS_SRC_ALPHA)`；
+   不混合、直接整块输出的 pass（denoise/dolly，alpha 恒 1）不受影响。
+2. **biome useHookAtTopLevel 误报**：pass 的 `render()` 内调用 `gl.useProgram`
+   会被 biome 当作 React hook 误报，须行内
+   `// biome-ignore lint/correctness/useHookAtTopLevel: WebGL API 非 React hook`。
+3. **验收脚本滚动落点**：页面有 `scroll-behavior: smooth`，`browser_evaluate`
+   执行 scrollTo 后必须轮询 `scrollTop` 稳定再读样式/截图，否则读到中途值。
+4. **行程总长为 1550vh**（七幕之和；设计稿"约 1750vh"含终幕独立 200vh 舞台）。
+   原文两处 1650 为算术笔误，已改。下游一律经 `filmTotalVh()` 派生，勿硬编码。
+5. **SceneLayer 边界**：master=0（页面顶端）时 opening 层 opacity 为 0，
+   序幕组件需自行处理首屏静置态（Task 6 落地时把 opening 窗口起点的可见性
+   放宽为 `master <= window.start 时视为 p=极小正值`或首屏内容不依赖 SceneLayer
+   透明度——以 Task 6 实施走查为准）。
+
 ## 文件结构总览
 
 ```
@@ -39,7 +58,7 @@ apps/web/src/features/marketing/components/cinema/
   gl/passes/fluid.ts        半分辨率 stable-fluids 墨模拟 + 覆盖遮罩
   gl/passes/particles.ts    实例化粒子（墨溅/溶解/布局 morph）
   cinema-gl.tsx             固定画布挂载 + 引擎生命周期 + GLStatus 探测阶梯
-  cinema-stage.tsx          影片主舞台（1650vh 主进度）+ SceneWindow 原语
+  cinema-stage.tsx          影片主舞台（1550vh 主进度）+ SceneWindow 原语
   scene-opening.tsx         序幕+第一幕（墨滴/标题显影/画布登场/prompt 打字）
   scene-generate.tsx        第二幕（去噪奇观/采样 HUD/解说词）
   scene-manifesto.tsx       第三幕（墨底宣言章节）
@@ -83,7 +102,7 @@ describe("cinema-config", () => {
   it("行程总长等于各幕之和", () => {
     const sum = FILM_SCENES.reduce((a, s) => a + s.lengthVh, 0);
     expect(filmTotalVh()).toBe(sum);
-    expect(filmTotalVh()).toBe(1650);
+    expect(filmTotalVh()).toBe(1550);
   });
 
   it("窗口首尾相接且覆盖 [0,1]", () => {
@@ -1576,7 +1595,13 @@ export function createParticlesPass(
         gl.uniform1i(loc.uImage ?? null, 0);
       }
       gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      // 透明预乘画布:alpha 通道必须直通(见文首勘误一)
+      gl.blendFuncSeparate(
+        gl.SRC_ALPHA,
+        gl.ONE_MINUS_SRC_ALPHA,
+        gl.ONE,
+        gl.ONE_MINUS_SRC_ALPHA
+      );
       gl.uniform2f(loc.uSize ?? null, ctx.width, ctx.height);
       gl.uniform1f(loc.uCount ?? null, count);
       gl.uniform1f(loc.uMode ?? null, mode);
