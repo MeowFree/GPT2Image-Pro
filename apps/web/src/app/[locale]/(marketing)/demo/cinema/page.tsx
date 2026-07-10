@@ -23,8 +23,10 @@ import { GenerateScene } from "@/features/marketing/components/cinema/scene-gene
 import { ManifestoScene } from "@/features/marketing/components/cinema/scene-manifesto";
 import { MultiplyScene } from "@/features/marketing/components/cinema/scene-multiply";
 import { OpeningScene } from "@/features/marketing/components/cinema/scene-opening";
+import { WallScene } from "@/features/marketing/components/cinema/scene-wall";
 import {
   MultiplyTransition,
+  PickAndReturnTransition,
   ZoomThroughTransition,
 } from "@/features/marketing/components/cinema/transitions";
 
@@ -159,8 +161,11 @@ export default function CinemaDemoPage() {
           <SceneLayer scene="multiply">
             <MultiplyScene />
           </SceneLayer>
+          {/* 展墙横跨 wall 与 pick 两幕,自管可见性,不套 SceneLayer */}
+          <WallScene />
           <ZoomThroughTransition />
           <MultiplyTransition />
+          <PickAndReturnTransition />
         </CinemaStage>
       </main>
     </CinemaGLProvider>
