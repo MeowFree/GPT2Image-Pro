@@ -268,7 +268,38 @@
   position: relative !important;
 }
 
+/* 营销页动效基建:无限走马灯与背景呼吸光晕 */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+}
+
 @layer utilities {
+  /* 隐藏滚动条(轮播/走马灯容器用,滚动能力保留) */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
   .scrollbar-ui {
     scrollbar-gutter: stable;
     scrollbar-width: auto;

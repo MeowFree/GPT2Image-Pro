@@ -21,9 +21,17 @@ import {
   CardTitle,
 } from "@repo/ui/components/card";
 import { cn } from "@repo/ui/utils";
-import { Check, Coins, ImageIcon, Loader2, ShoppingCart } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Coins,
+  ImageIcon,
+  Loader2,
+  ShoppingCart,
+} from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 import {
   createCheckoutSession,
@@ -626,21 +634,83 @@ export function PricingSection({
     );
   };
 
+  // -- 套餐轮播控制 --
+  const plansScrollRef = useRef<HTMLDivElement>(null);
+
+  /** 桌面端箭头:按一张卡宽度(含 24px 间距)平滑步进 */
+  const scrollPlans = (direction: 1 | -1) => {
+    const container = plansScrollRef.current;
+    if (!container) return;
+    const card = container.querySelector<HTMLElement>("[data-plan-card]");
+    const step = (card?.offsetWidth ?? 330) + 24;
+    container.scrollBy({ left: direction * step, behavior: "smooth" });
+  };
+
+  // 首次挂载把推荐档滚到视口中央(instant,不与入场动画抢戏)。
+  // 无依赖数组 + ref 门闩:isPopular 每渲染变身份,进 deps 会反复触发。
+  const didCenterPopularRef = useRef(false);
+  useEffect(() => {
+    if (didCenterPopularRef.current) return;
+    didCenterPopularRef.current = true;
+    const container = plansScrollRef.current;
+    if (!container) return;
+    const popularId = PLAN_IDS.find((id) => isPopular(id));
+    if (!popularId) return;
+    const el = container.querySelector<HTMLElement>(
+      `[data-plan-card="${popularId}"]`
+    );
+    if (!el) return;
+    const left = el.offsetLeft - (container.clientWidth - el.offsetWidth) / 2;
+    container.scrollTo({ left: Math.max(0, left), behavior: "instant" });
+  });
+
   return (
-    <section id="pricing" className="container py-20 md:py-28">
-      <div className="mx-auto max-w-6xl">
+    <section id="pricing" className="py-20 md:py-28">
+      <div className="container mx-auto max-w-6xl">
         {/* Header */}
         <div className="mb-12 text-center">
-          <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
+          <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-5xl">
             {t("title")}
           </h2>
           <p className="mx-auto max-w-2xl leading-relaxed text-muted-foreground">
             {pricingSubtitle}
           </p>
         </div>
+      </div>
 
-        {/* Cards */}
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
+      {/* 套餐轮播:snap 横向滑动选择(卡片加宽,替代 5 列挤压网格)。
+          - 触屏直接滑,桌面另有左右箭头按 1 卡步进
+          - 两侧渐隐遮罩提示可滑动;首次挂载把推荐档滚到视口中央 */}
+      <div className="relative">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-background to-transparent md:w-24"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-background to-transparent md:w-24"
+        />
+        <button
+          type="button"
+          aria-label={copy("Previous plan", "上一个套餐")}
+          onClick={() => scrollPlans(-1)}
+          className="absolute left-4 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground shadow-menu backdrop-blur transition-[color,border-color,transform] duration-150 hover:border-foreground/40 hover:text-foreground active:scale-95 md:flex"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          aria-label={copy("Next plan", "下一个套餐")}
+          onClick={() => scrollPlans(1)}
+          className="absolute right-4 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground shadow-menu backdrop-blur transition-[color,border-color,transform] duration-150 hover:border-foreground/40 hover:text-foreground active:scale-95 md:flex"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+
+        <div
+          ref={plansScrollRef}
+          className="scrollbar-none flex snap-x snap-mandatory gap-6 overflow-x-auto scroll-smooth px-[max(1.5rem,calc((100vw-72rem)/2))] py-6"
+        >
           {PLAN_IDS.map((planId) => {
             const price = getDisplayPrice(planId);
             const isCurrent = isCurrentPlan(planId);
@@ -653,8 +723,10 @@ export function PricingSection({
             return (
               <Card
                 key={planId}
+                data-plan-card={planId}
                 className={cn(
-                  "relative flex flex-col rounded-xl border-border transition-[border-color,box-shadow] duration-150 hover:border-foreground/30 hover:shadow-whisper",
+                  // 轮播卡:固定宽度 + snap 对齐,悬停轻抬升(transform 合成层)
+                  "relative flex w-[300px] shrink-0 snap-center flex-col rounded-xl border-border transition-[border-color,box-shadow,transform] duration-250 hover:-translate-y-1.5 hover:border-foreground/30 hover:shadow-whisper sm:w-[330px] lg:w-[350px]",
                   // 推荐档:细 ring + 轻阴影,替代粗边框重阴影
                   popular &&
                     !isCurrent &&
@@ -779,7 +851,9 @@ export function PricingSection({
             );
           })}
         </div>
+      </div>
 
+      <div className="container mx-auto max-w-6xl">
         {creditPackages.length > 0 && (
           <div className="mt-10">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
