@@ -16,6 +16,7 @@ import {
 } from "@/features/marketing/components/cinema/cinema-stage";
 import { createDenoisePass } from "@/features/marketing/components/cinema/gl/passes/denoise";
 import { createDollyPass } from "@/features/marketing/components/cinema/gl/passes/dolly";
+import { createFluidPass } from "@/features/marketing/components/cinema/gl/passes/fluid";
 import { createParticlesPass } from "@/features/marketing/components/cinema/gl/passes/particles";
 import { renderTextTexture } from "@/features/marketing/components/cinema/gl/text-texture";
 import { GenerateScene } from "@/features/marketing/components/cinema/scene-generate";
@@ -41,7 +42,12 @@ function DenoisePassMount() {
   return null;
 }
 
-/** 推轨 pass 挂载:样张与深度图双图解码完成后注册(穿越期间画布即全世界) */
+/**
+ * 推轨与流体 pass 挂载:双图解码完成后先注册推轨、再注册流体——
+ * pass 按注册序绘制,墨的涡卷必须合成于推轨画面之上。
+ * createFluidPass 在 EXT_color_buffer_float 缺失时返回 null(跳过),
+ * 反转由 dolly 末端压暗与宣言章 DOM 底色兜底。
+ */
 function DollyPassMount() {
   const { engine } = useCinema();
   useEffect(() => {
@@ -52,7 +58,10 @@ function DollyPassMount() {
     depth.src = "/cinema/artwork-hero-depth.webp";
     let disposed = false;
     Promise.all([img.decode(), depth.decode()]).then(() => {
-      if (!disposed) engine.addPass(createDollyPass(img, depth));
+      if (disposed) return;
+      engine.addPass(createDollyPass(img, depth));
+      const fluid = createFluidPass();
+      if (fluid) engine.addPass(fluid);
     });
     return () => {
       disposed = true;

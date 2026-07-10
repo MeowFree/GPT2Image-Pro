@@ -17,10 +17,20 @@ const easeIn = (t: number) => t * t * t;
  * 转场 A 穿越:dive 幕进度映射 dolly pass 的 uniforms 并管理画布 takeover。
  * 窗口内画布提升 z 盖过正文(dolly 全屏输出即全世界),
  * 窗口外立即归还——正文恢复可交互。全部量为进度纯函数,倒放成立。
+ * 末端并喂墨水流体键:fluidP 在 dive 后 45% 内 0->1(墨吞没视口),
+ * fluidVisible 覆盖 dive 全窗与 manifesto 前 10%——墨层桥接 dolly
+ * 退场与宣言章 DOM 淡入之间的交界缝隙(画布层序恒在正文之上)。
  */
 export function ZoomThroughTransition() {
   const p = useSceneProgress("dive");
+  const chapter = useSceneProgress("manifesto");
   const { engine, setTakeover } = useCinema();
+  // 流体键由 dive 与 manifesto 双进度联合决定,任一变化都重算
+  const feedFluid = (dive: number, manifesto: number) => {
+    engine?.setProgress("fluidP", Math.max(0, (dive - 0.55) / 0.45));
+    const on = dive > 0.001 && (dive < 1 || manifesto < 0.1);
+    engine?.setProgress("fluidVisible", on ? 1 : 0);
+  };
   useMotionValueEvent(p, "change", (v) => {
     const active = v > 0.001 && v < 0.999;
     setTakeover(active);
@@ -30,6 +40,10 @@ export function ZoomThroughTransition() {
     engine?.setProgress("dollySmear", 1 - Math.abs(v * 2 - 1));
     // 末端 30% 压暗到墨色,与宣言章底色 #0e0e0d 咬合
     engine?.setProgress("dollyDark", Math.max(0, (v - 0.7) / 0.3));
+    feedFluid(v, chapter.get());
+  });
+  useMotionValueEvent(chapter, "change", (v) => {
+    feedFluid(p.get(), v);
   });
   return null;
 }

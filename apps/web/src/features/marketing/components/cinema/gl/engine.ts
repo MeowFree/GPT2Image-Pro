@@ -170,9 +170,14 @@ export class CinemaEngine {
   private frame = (t: number) => {
     this.rafId = null;
     if (this.contextLost || !this.active) return;
-    const frameMs = this.lastFrameAt ? t - this.lastFrameAt : 16;
+    const gap = this.lastFrameAt ? t - this.lastFrameAt : 0;
     this.lastFrameAt = t;
-    const tier = this.governor.sample(frameMs);
+    // WHY 跳过空闲间隔采样:按需渲染下两帧间隔可任意长(滚动静止即无帧),
+    // 空闲后首帧的间隔反映"多久没渲染"而非"渲染多慢";把它喂给调控器
+    // 会让健康机器被一路降到 0 档误杀 GL(Task 8 验收实测)。仅连续
+    // 出帧(间隔 <= 250ms)的帧距才是真实耗时信号,其余帧沿用当前档。
+    const tier =
+      gap > 0 && gap <= 250 ? this.governor.sample(gap) : this.governor.tier;
     const { gl } = this;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0);
