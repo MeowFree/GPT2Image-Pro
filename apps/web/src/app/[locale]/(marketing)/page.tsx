@@ -18,6 +18,7 @@ import {
   FeatureGrid,
   HeroSection,
   HowItWorks,
+  ManifestoSection,
   PricingSection,
   SlaStatusSection,
   Testimonials,
@@ -128,6 +129,7 @@ export default async function HomePage({
       {/* Page Sections */}
       <HeroSection />
       <FeatureGrid />
+      <ManifestoSection />
       <HowItWorks />
       <UseCasesSection />
       <Testimonials />
