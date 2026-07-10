@@ -359,7 +359,7 @@ function buildErrorPageHref(
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value))
+  return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
@@ -908,9 +908,9 @@ function MetricCard({
 }) {
   const toneClass =
     tone === "success"
-      ? "text-emerald-600"
+      ? "text-success"
       : tone === "warning"
-        ? "text-amber-600"
+        ? "text-warning"
         : tone === "danger"
           ? "text-destructive"
           : "text-muted-foreground";
@@ -1127,7 +1127,7 @@ function DurationBreakdownTable({
       </div>
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full min-w-[420px] text-left text-xs">
-          <thead className="bg-muted/40 text-muted-foreground">
+          <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
             <tr>
               <th className="w-24 px-3 py-2 font-medium">
                 {copy(locale, "Size", "分辨率")}
@@ -1139,9 +1139,12 @@ function DurationBreakdownTable({
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-border/60">
             {RESOLUTION_DURATION_BUCKETS.map((bucket) => (
-              <tr key={bucket} className="border-t">
+              <tr
+                key={bucket}
+                className="transition-colors duration-150 hover:bg-muted/50"
+              >
                 <td className="px-3 py-2 font-medium">
                   {resolutionDurationLabel(bucket, locale)}
                 </td>
@@ -1267,7 +1270,7 @@ function HistoricalErrorsCard({
     <Card id="historical-errors" className="rounded-lg">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertTriangle className="h-4 w-4 text-warning" />
           {copy(locale, "Historical Error Records", "历史错误记录")}
         </CardTitle>
         <CardDescription>
@@ -1350,7 +1353,7 @@ function HistoricalErrorsCard({
         ) : (
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
+              <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
                 <tr>
                   <th className="w-[210px] px-3 py-2 font-medium">
                     {copy(locale, "Time", "时间")}
@@ -1369,7 +1372,7 @@ function HistoricalErrorsCard({
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-border/60">
                 {errors.items.map((item) => {
                   const userDisplay =
                     item.userEmail || item.userName || item.userId || "-";
@@ -1377,7 +1380,10 @@ function HistoricalErrorsCard({
                   const message = item.error || "Unknown error";
 
                   return (
-                    <tr key={item.id} className="align-top">
+                    <tr
+                      key={item.id}
+                      className="align-top transition-colors duration-150 hover:bg-muted/50"
+                    >
                       <td className="px-3 py-3">
                         <div className="font-medium">
                           {formatDateTime(item.createdAt, locale, timeZone)}
@@ -2239,7 +2245,7 @@ export default async function GlobalStatusPage({
       <Card className="rounded-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTriangle className="h-4 w-4 text-warning" />
             {copy(locale, "Top Failed Reasons: last 24 hours", "24小时高频失败原因")}
           </CardTitle>
           <CardDescription>
@@ -2373,7 +2379,7 @@ function VideoGenerationCard({
             </div>
             <div className="overflow-x-auto rounded-md border">
               <table className="w-full min-w-[360px] text-left text-xs">
-                <thead className="bg-muted/40 text-muted-foreground">
+                <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 font-medium">
                       {copy(locale, "Family", "模型族")}
@@ -2389,9 +2395,12 @@ function VideoGenerationCard({
                     </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border/60">
                   {familyRows.map((item) => (
-                    <tr key={item.family} className="border-t">
+                    <tr
+                      key={item.family}
+                      className="transition-colors duration-150 hover:bg-muted/50"
+                    >
                       <td className="px-3 py-2 font-medium">{item.family}</td>
                       <td className="px-3 py-2">
                         {formatNumber(item.total, locale)}

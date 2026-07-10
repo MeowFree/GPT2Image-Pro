@@ -111,32 +111,28 @@ function formatDateTime(value?: string | null, timeZone?: string) {
   }).format(date);
 }
 
+// 等级配色走语义 token（success/warning/destructive），普通为中性灰；token 自动适配暗色。
 function getSeverityMeta(severity: string) {
   switch (severity) {
     case "success":
       return {
         label: "更新",
-        className:
-          "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+        className: "bg-success/10 text-success",
       };
     case "warning":
       return {
         label: "重要",
-        className:
-          "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+        className: "bg-warning/10 text-warning",
       };
     case "critical":
       return {
         label: "紧急",
-        className:
-          "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+        className: "bg-destructive/10 text-destructive",
       };
-    case "info":
     default:
       return {
         label: "普通",
-        className:
-          "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
+        className: "bg-secondary text-foreground",
       };
   }
 }
@@ -286,7 +282,9 @@ export function AdminAnnouncementsManagement({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">公告管理</h2>
+          <h2 className="font-serif text-2xl font-medium tracking-tight">
+            公告管理
+          </h2>
           <p className="text-muted-foreground">
             发布系统公告、维护通知和活动说明，用户侧会显示未读提醒。
           </p>
@@ -300,26 +298,38 @@ export function AdminAnnouncementsManagement({
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">生效中</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              生效中
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.active}</div>
+            <div className="text-2xl font-semibold tracking-tight">
+              {stats.active}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">草稿/下线</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              草稿/下线
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.drafts}</div>
+            <div className="text-2xl font-semibold tracking-tight">
+              {stats.drafts}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">置顶</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              置顶
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.pinned}</div>
+            <div className="text-2xl font-semibold tracking-tight">
+              {stats.pinned}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -370,7 +380,7 @@ export function AdminAnnouncementsManagement({
                         </span>
                       </div>
                       <div>
-                        <h3 className="text-base font-semibold">
+                        <h3 className="text-base font-medium">
                           {item.title}
                         </h3>
                         <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">
@@ -554,7 +564,10 @@ export function AdminAnnouncementsManagement({
             </div>
 
             <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2">
+              {/* Radix Switch 渲染为 button,biome 识别不了包裹式 label,
+                  须 htmlFor/id 显式关联(button 属 HTML labelable 元素) */}
               <label
+                htmlFor="announcement-published"
                 className={cn(
                   "flex items-center justify-between gap-3 rounded-md border p-3",
                   form.isPublished && "border-primary/50 bg-primary/5"
@@ -567,6 +580,7 @@ export function AdminAnnouncementsManagement({
                   </span>
                 </span>
                 <Switch
+                  id="announcement-published"
                   checked={form.isPublished}
                   onCheckedChange={(checked) =>
                     setForm((current) => ({
@@ -577,6 +591,7 @@ export function AdminAnnouncementsManagement({
                 />
               </label>
               <label
+                htmlFor="announcement-pinned"
                 className={cn(
                   "flex items-center justify-between gap-3 rounded-md border p-3",
                   form.isPinned && "border-primary/50 bg-primary/5"
@@ -589,6 +604,7 @@ export function AdminAnnouncementsManagement({
                   </span>
                 </span>
                 <Switch
+                  id="announcement-pinned"
                   checked={form.isPinned}
                   onCheckedChange={(checked) =>
                     setForm((current) => ({ ...current, isPinned: checked }))

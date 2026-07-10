@@ -921,14 +921,14 @@ function PlanCapabilityMatrixInput({
 
       <section className="space-y-2">
         <div>
-          <h4 className="text-sm font-semibold">功能门槛</h4>
+          <h4 className="text-sm font-medium">功能门槛</h4>
           <p className="text-xs text-muted-foreground">
             选择启用某项能力所需的最低套餐。
           </p>
         </div>
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full min-w-[760px] text-sm">
-            <thead className="bg-muted/60 text-xs text-muted-foreground">
+            <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
                 <th className="w-56 px-3 py-2 text-left font-medium">能力</th>
                 <th className="px-3 py-2 text-left font-medium">说明</th>
@@ -937,7 +937,7 @@ function PlanCapabilityMatrixInput({
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-border/60">
               {FEATURE_ROWS.map((row) => (
                 <tr key={row.key}>
                   <td className="px-3 py-2 font-medium">{row.label}</td>
@@ -963,14 +963,14 @@ function PlanCapabilityMatrixInput({
 
       <section className="space-y-2">
         <div>
-          <h4 className="text-sm font-semibold">对话计费</h4>
+          <h4 className="text-sm font-medium">对话计费</h4>
           <p className="text-xs text-muted-foreground">
             配置页面 Chat/Agent 的每轮基础积分；生成图片时还会按实际成品图尺寸和数量追加图片积分。
           </p>
         </div>
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full min-w-[860px] text-sm">
-            <thead className="bg-muted/60 text-xs text-muted-foreground">
+            <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
                 <th className="w-52 px-3 py-2 text-left font-medium">计费项</th>
                 {PLAN_OPTIONS.map((plan) => (
@@ -983,7 +983,7 @@ function PlanCapabilityMatrixInput({
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-border/60">
               {BILLING_ROWS.map((row) => (
                 <tr key={row.key}>
                   <td className="px-3 py-2">
@@ -1020,14 +1020,14 @@ function PlanCapabilityMatrixInput({
 
       <section className="space-y-2">
         <div>
-          <h4 className="text-sm font-semibold">套餐限制</h4>
+          <h4 className="text-sm font-medium">套餐限制</h4>
           <p className="text-xs text-muted-foreground">
             管理 Ultra 等套餐的并发、上传大小、月积分和请求数量限制。
           </p>
         </div>
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full min-w-[980px] text-sm">
-            <thead className="bg-muted/60 text-xs text-muted-foreground">
+            <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
                 <th className="w-52 px-3 py-2 text-left font-medium">限制项</th>
                 {PLAN_OPTIONS.map((plan) => (
@@ -1040,7 +1040,7 @@ function PlanCapabilityMatrixInput({
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-border/60">
               {LIMIT_ROWS.map((row) => (
                 <tr key={row.key}>
                   <td className="px-3 py-2">
@@ -1091,14 +1091,14 @@ function PlanCapabilityMatrixInput({
 
       <section className="space-y-2">
         <div>
-          <h4 className="text-sm font-semibold">审核策略</h4>
+          <h4 className="text-sm font-medium">审核策略</h4>
           <p className="text-xs text-muted-foreground">
             配置各套餐默认审核拦截等级和用户/API Key 可选择的最高等级。
           </p>
         </div>
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full min-w-[760px] text-sm">
-            <thead className="bg-muted/60 text-xs text-muted-foreground">
+            <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
                 <th className="w-52 px-3 py-2 text-left font-medium">策略</th>
                 {PLAN_OPTIONS.map((plan) => (
@@ -1111,7 +1111,7 @@ function PlanCapabilityMatrixInput({
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-border/60">
               {MODERATION_ROWS.map((row) => (
                 <tr key={row.key}>
                   <td className="px-3 py-2">
@@ -1286,7 +1286,7 @@ function CreditPackageMatrixInput({
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h4 className="text-sm font-semibold">{pkg.name || pkg.id}</h4>
+              <h4 className="text-sm font-medium">{pkg.name || pkg.id}</h4>
               <p className="text-xs text-muted-foreground">
                 ID: {pkg.id || "未填写"}
               </p>
@@ -1391,9 +1391,15 @@ function CreditPackageMatrixInput({
             </div>
             <div className="space-y-2">
               <Label>开关</Label>
+              {/* Radix Switch 渲染为 button,biome 不识别包裹式 label,
+                  用 htmlFor/id 显式关联(按 index 唯一化) */}
               <div className="flex flex-wrap gap-4 rounded-md border px-3 py-2">
-                <label className="flex items-center gap-2 text-sm">
+                <label
+                  htmlFor={`pkg-${index}-visible`}
+                  className="flex items-center gap-2 text-sm"
+                >
                   <Switch
+                    id={`pkg-${index}-visible`}
                     checked={pkg.visible}
                     disabled={disabled}
                     onCheckedChange={(checked) =>
@@ -1402,8 +1408,12 @@ function CreditPackageMatrixInput({
                   />
                   显示
                 </label>
-                <label className="flex items-center gap-2 text-sm">
+                <label
+                  htmlFor={`pkg-${index}-popular`}
+                  className="flex items-center gap-2 text-sm"
+                >
                   <Switch
+                    id={`pkg-${index}-popular`}
                     checked={pkg.popular}
                     disabled={disabled}
                     onCheckedChange={(checked) =>
@@ -1412,8 +1422,12 @@ function CreditPackageMatrixInput({
                   />
                   推荐
                 </label>
-                <label className="flex items-center gap-2 text-sm">
+                <label
+                  htmlFor={`pkg-${index}-allow-quantity`}
+                  className="flex items-center gap-2 text-sm"
+                >
                   <Switch
+                    id={`pkg-${index}-allow-quantity`}
                     checked={pkg.allowQuantity}
                     disabled={disabled}
                     onCheckedChange={(checked) =>
@@ -1444,7 +1458,7 @@ function CreditPackageMatrixInput({
 
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full min-w-[820px] text-sm">
-              <thead className="bg-muted/60 text-xs text-muted-foreground">
+              <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
                 <tr>
                   <th className="w-40 px-3 py-2 text-left font-medium">套餐</th>
                   {PLAN_OPTIONS.map((plan) => (
@@ -1457,7 +1471,7 @@ function CreditPackageMatrixInput({
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-border/60">
                 <tr>
                   <td className="px-3 py-2 font-medium">价格</td>
                   {PLAN_OPTIONS.map((plan) => (
@@ -1668,7 +1682,9 @@ export function SystemSettingsPanel() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">系统设置</h2>
+          <h2 className="font-serif text-2xl font-medium tracking-tight">
+            系统设置
+          </h2>
           <p className="text-sm text-muted-foreground">
             管理审核、登录、支付、套餐、模型、存储和邮件等全局配置。密钥不会在页面回显。
           </p>
@@ -1737,7 +1753,9 @@ export function SystemSettingsPanel() {
               className="mt-6 space-y-4"
             >
               <div>
-                <h3 className="text-lg font-semibold">{category.label}</h3>
+                <h3 className="font-serif text-lg font-medium">
+                  {category.label}
+                </h3>
                 <p className="text-sm text-muted-foreground">
                   {category.description}
                 </p>

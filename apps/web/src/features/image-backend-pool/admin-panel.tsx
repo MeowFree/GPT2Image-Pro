@@ -472,6 +472,8 @@ const ACCOUNT_STATUS_FILTER_OPTIONS: Array<{
   { value: "cooling", label: "冷却中" },
 ];
 
+// 指标卡配色走语义 token：可用=success，限流/冷却=warning（暂时降级），错误=destructive，
+// 停用=muted；总数与额度为中性 foreground，不再使用花色。
 const ACCOUNT_METRIC_CARDS = [
   {
     key: "total",
@@ -482,19 +484,19 @@ const ACCOUNT_METRIC_CARDS = [
   {
     key: "active",
     label: "可用账号",
-    color: "text-emerald-600",
+    color: "text-success",
     icon: CheckCircle2,
   },
   {
     key: "limited",
     label: "限流账号",
-    color: "text-orange-500",
+    color: "text-warning",
     icon: CircleAlert,
   },
   {
     key: "cooling",
     label: "冷却中账号",
-    color: "text-sky-600",
+    color: "text-warning",
     icon: TimerReset,
   },
   {
@@ -512,7 +514,7 @@ const ACCOUNT_METRIC_CARDS = [
   {
     key: "quota",
     label: "Web 剩余额度",
-    color: "text-blue-600",
+    color: "text-foreground",
     icon: RefreshCw,
   },
 ] as const;
@@ -600,6 +602,15 @@ function formatOptionalDate(value: Date | string | null, timeZone?: string) {
 
 function isCoolingDown(value: Date | string | null) {
   return value ? new Date(value).getTime() > Date.now() : false;
+}
+
+// 后端成员状态 Badge 配色（纯展示）：active=success、limited=warning、error=destructive，
+// 其余中性。outline 边框 + 语义色文字，替代花色底块。
+function backendStatusBadgeClass(status: string) {
+  if (status === "active") return "border-success/40 text-success";
+  if (status === "limited") return "border-warning/40 text-warning";
+  if (status === "error") return "border-destructive/40 text-destructive";
+  return "";
 }
 
 function formatCooldown(value: Date | string | null, timeZone?: string) {
@@ -2318,7 +2329,9 @@ export function ImageBackendPoolAdminPanel({
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">生图后端池</h2>
+          <h2 className="font-serif text-2xl font-medium tracking-tight">
+            生图后端池
+          </h2>
           <p className="text-sm text-muted-foreground">
             {readOnly
               ? "只读查看自有账号池和系统后端 API。观察管理员不能新增、编辑、删除、同步或刷新账号。"
@@ -3537,14 +3550,31 @@ export function ImageBackendPoolAdminPanel({
                       <Badge variant="secondary">
                         {accountSourceLabel(account)}
                       </Badge>
-                      <Badge variant="secondary">{account.status}</Badge>
+                      <Badge
+                        variant="outline"
+                        className={backendStatusBadgeClass(account.status)}
+                      >
+                        {account.status}
+                      </Badge>
                       {formatWebStatus(account) && (
-                        <Badge variant="secondary">
+                        <Badge
+                          variant="outline"
+                          className={
+                            getWebAccountInfo(account)?.status === "limited"
+                              ? "border-warning/40 text-warning"
+                              : ""
+                          }
+                        >
                           {formatWebStatus(account)}
                         </Badge>
                       )}
                       {isCoolingDown(account.cooldownUntil) && (
-                        <Badge variant="secondary">冷却中</Badge>
+                        <Badge
+                          variant="outline"
+                          className="border-warning/40 text-warning"
+                        >
+                          冷却中
+                        </Badge>
                       )}
                       {account.alwaysActive && (
                         <Badge variant="outline">遇错常驻</Badge>
@@ -4072,9 +4102,19 @@ export function ImageBackendPoolAdminPanel({
                           ? "Responses"
                           : "原生"}
                       </Badge>
-                      <Badge variant="secondary">{api.status}</Badge>
+                      <Badge
+                        variant="outline"
+                        className={backendStatusBadgeClass(api.status)}
+                      >
+                        {api.status}
+                      </Badge>
                       {isCoolingDown(api.cooldownUntil) && (
-                        <Badge variant="secondary">冷却中</Badge>
+                        <Badge
+                          variant="outline"
+                          className="border-warning/40 text-warning"
+                        >
+                          冷却中
+                        </Badge>
                       )}
                       {!api.isEnabled && (
                         <Badge variant="secondary">停用</Badge>
@@ -4710,11 +4750,11 @@ export function ImageBackendPoolAdminPanel({
                     </div>
                     <span
                       className={cn(
-                        "shrink-0 rounded px-2 py-0.5 text-xs",
+                        "shrink-0 rounded-sm px-2 py-0.5 text-xs",
                         adobe.status === "error"
                           ? "bg-destructive/10 text-destructive"
                           : adobe.isEnabled
-                            ? "bg-emerald-500/10 text-emerald-600"
+                            ? "bg-success/10 text-success"
                             : "bg-muted text-muted-foreground"
                       )}
                     >
@@ -4899,7 +4939,7 @@ export function ImageBackendPoolAdminPanel({
                   的当前 AT 同步为 Web/同时账号，不刷新也不回写 Sub2API 的 RT。
                 </p>
                 {isSub2ApiSyncUnavailable && (
-                  <div className="flex gap-2 rounded-md border border-dashed border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800 dark:border-orange-900/60 dark:bg-orange-950/30 dark:text-orange-200">
+                  <div className="flex gap-2 rounded-md border border-dashed border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
                     <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
                     <span>{sub2ApiUnavailableMessage}</span>
                   </div>

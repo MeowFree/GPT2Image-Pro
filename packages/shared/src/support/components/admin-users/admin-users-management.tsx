@@ -249,17 +249,18 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
+// 套餐用单色明度阶梯区分等级（越高越深），不再使用花色。
 function planBadge(plan: PlanFilter) {
   const label = plan === "all" ? "Unknown" : plan.toUpperCase();
   const className =
     plan === "enterprise"
       ? "bg-foreground text-background"
       : plan === "ultra"
-        ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
+        ? "bg-foreground/80 text-background"
         : plan === "pro"
-          ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+          ? "bg-secondary text-foreground"
           : plan === "starter"
-            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+            ? "bg-muted text-foreground"
             : "bg-muted text-muted-foreground";
   return (
     <Badge variant="secondary" className={className}>
@@ -276,7 +277,7 @@ function subscriptionBadge(status: string | null) {
     status === "active"
       ? "bg-foreground text-background"
       : status === "past_due"
-        ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+        ? "bg-warning/10 text-warning"
         : "bg-muted text-muted-foreground";
   return (
     <Badge variant="secondary" className={className}>
@@ -288,7 +289,7 @@ function subscriptionBadge(status: string | null) {
 function generationStatusBadge(status: string) {
   if (status === "completed") {
     return (
-      <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
+      <Badge variant="secondary" className="bg-success/10 text-success">
         成功
       </Badge>
     );
@@ -305,7 +306,7 @@ function generationStatusBadge(status: string) {
 
 function userRoleBadge(role: AppUserRole) {
   if (role === "super_admin") {
-    return <Badge className="bg-red-100 text-red-700">超管</Badge>;
+    return <Badge className="bg-foreground text-background">超管</Badge>;
   }
   if (role === "admin") {
     return <Badge variant="secondary">管理员</Badge>;
@@ -931,7 +932,7 @@ export function AdminUsersManagement({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="font-serif text-2xl font-bold tracking-tight">
+          <h2 className="font-serif text-2xl font-medium tracking-tight">
             用户管理
           </h2>
           <p className="text-muted-foreground">
@@ -961,38 +962,54 @@ export function AdminUsersManagement({
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">总用户</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              总用户
+            </CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalUsers}</div>
+            <div className="text-2xl font-semibold tracking-tight">
+              {stats.totalUsers}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">管理员</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              管理员
+            </CardTitle>
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.admins}</div>
+            <div className="text-2xl font-semibold tracking-tight">
+              {stats.admins}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">活跃订阅</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              活跃订阅
+            </CardTitle>
             <CreditCard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.activeSubscriptions}</div>
+            <div className="text-2xl font-semibold tracking-tight">
+              {stats.activeSubscriptions}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">已封禁</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              已封禁
+            </CardTitle>
             <Ban className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.banned}</div>
+            <div className="text-2xl font-semibold tracking-tight">
+              {stats.banned}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1126,19 +1143,19 @@ export function AdminUsersManagement({
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1080px] text-left text-sm">
-                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3">用户</th>
-                    <th className="px-4 py-3">状态</th>
-                    <th className="px-4 py-3">套餐</th>
-                    <th className="px-4 py-3">积分</th>
-                    <th className="px-4 py-3">生图</th>
-                    <th className="px-4 py-3">API Key</th>
-                    <th className="px-4 py-3">注册时间</th>
-                    <th className="px-4 py-3 text-right">操作</th>
+                    <th className="px-4 py-3 font-medium">用户</th>
+                    <th className="px-4 py-3 font-medium">状态</th>
+                    <th className="px-4 py-3 font-medium">套餐</th>
+                    <th className="px-4 py-3 font-medium">积分</th>
+                    <th className="px-4 py-3 font-medium">生图</th>
+                    <th className="px-4 py-3 font-medium">API Key</th>
+                    <th className="px-4 py-3 font-medium">注册时间</th>
+                    <th className="px-4 py-3 text-right font-medium">操作</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border/60">
                   {users.map((item) => {
                     const failureRate =
                       item.generationCount > 0
@@ -1149,7 +1166,10 @@ export function AdminUsersManagement({
                           )
                         : 0;
                     return (
-                      <tr key={item.id} className="border-b">
+                      <tr
+                        key={item.id}
+                        className="transition-colors duration-150 hover:bg-muted/50"
+                      >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <Avatar className="h-9 w-9">
@@ -1184,7 +1204,7 @@ export function AdminUsersManagement({
                                 已封禁
                               </Badge>
                             ) : item.emailVerified ? (
-                              <Badge className="w-fit bg-emerald-100 text-emerald-700">
+                              <Badge className="w-fit bg-success/10 text-success">
                                 已验证
                               </Badge>
                             ) : (
@@ -1193,7 +1213,7 @@ export function AdminUsersManagement({
                               </Badge>
                             )}
                             {item.creditsStatus === "frozen" ? (
-                              <Badge className="w-fit bg-amber-100 text-amber-700">
+                              <Badge className="w-fit bg-warning/10 text-warning">
                                 积分冻结
                               </Badge>
                             ) : null}
@@ -1684,7 +1704,7 @@ export function AdminUsersManagement({
                                   variant="secondary"
                                   className={
                                     key.isActive
-                                      ? "bg-emerald-100 text-emerald-700"
+                                      ? "bg-success/10 text-success"
                                       : ""
                                   }
                                 >
@@ -2247,7 +2267,7 @@ function Panel({
 }) {
   return (
     <div className="rounded-lg border bg-background p-4">
-      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
+      <h3 className="mb-3 text-sm font-medium">{title}</h3>
       {children}
     </div>
   );

@@ -8,7 +8,7 @@
  */
 export default function GlobalStatusLoading() {
   return (
-    <div className="container mx-auto space-y-8 px-4 py-6 md:px-6 animate-pulse">
+    <div className="container mx-auto animate-pulse space-y-8 px-4 py-6 motion-reduce:animate-none md:px-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="space-y-2">
           <div className="h-7 w-40 rounded bg-muted" />

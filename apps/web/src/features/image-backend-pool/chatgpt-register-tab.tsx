@@ -341,7 +341,7 @@ export function ChatgptRegisterTab({ groups }: Props) {
                 />
               )}
             </div>
-            <div className="flex items-center justify-between rounded border p-2.5">
+            <div className="flex items-center justify-between rounded-md border p-2.5">
               <span className="text-sm">
                 轮换域名
                 <span className="ml-2 text-xs text-muted-foreground">
@@ -660,12 +660,12 @@ export function ChatgptRegisterTab({ groups }: Props) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-80 overflow-y-auto rounded border bg-muted p-3 font-mono text-xs leading-relaxed">
+            <div className="h-80 overflow-y-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed">
               {logs.map(({ id, line }) => (
                 <div key={id}>{line}</div>
               ))}
               {running && (
-                <div className="animate-pulse text-muted-foreground">
+                <div className="animate-pulse text-muted-foreground motion-reduce:animate-none">
                   运行中...
                 </div>
               )}
