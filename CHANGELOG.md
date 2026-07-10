@@ -2,20 +2,14 @@
 
 本文件记录各发布版本的变更。版本格式 `v<MAJOR>.<MINOR>.<PATCH>`。
 
-## 未发布
+## v0.8.0 (2026-07-11)
+
+UI 全站重构版:全站衬线化(Noto Serif / Noto Serif SC 自托管)对齐 GPT2IMAGE 单色设计体系,首页重构为 WebGL2 影片化滚动「一次生成 + 墨线」,dashboard/图库/创作页/设置/工单/管理后台/认证/内容页完成两轮视觉重构,并修复 create 页 hydration mismatch 与 a11y 问题、清理 278+6 个死文件。计划与逐 Phase 完成情况见 `docs/plan/2026-07-04-ui-overhaul.md`。
 
 ### 新增
 
-- **首页影片化滚动「一次生成 + 墨线」**:首页重构为一部滚动驱动的影片——整页演绎一次真实的生成任务(prompt 打字 → 蓝噪声阈值去噪显影 → 穿越/墨反转 → 粒子增殖成展墙 → 选中回中 → 反向显影 bookend)。手写 WebGL2 摄影棚(扩散显影/GPU 粒子/流体墨/2.5D 深度推轨/胶片后处理五个 pass,零新依赖),七幕 1550vh 主行程 + 终幕独立舞台,墨线全页衔接章节;DOM 承载全部真实内容(SEO/i18n key 不变),GL 层动态挂载不入首屏关键路径;三层回退(完整 GL/中端简化/静态编排)与帧耗时自适应质量调控保证可读性与流畅度。旧首页区块组件(Hero/FeatureGrid/HowItWorks/Manifesto/UseCases/Testimonials/CTA)内容全数迁入各幕后退役。设计稿与完成情况见 `docs/plan/2026-07-10-homepage-cinema-design.md`。
-
-## v0.8.0 (2026-07-10)
-
-UI 全站重构版:全站衬线化(Noto Serif / Noto Serif SC 自托管)对齐 GPT2IMAGE 单色设计体系,营销首页新增滚动驱动动效,dashboard/图库/创作页/设置/工单/管理后台/认证/内容页完成两轮视觉重构,并修复 create 页 hydration mismatch 与 a11y 问题、清理 278+6 个死文件。计划与逐 Phase 完成情况见 `docs/plan/2026-07-04-ui-overhaul.md`。
-
-### 新增
-
+- **首页影片化滚动「一次生成 + 墨线」**:首页重构为一部滚动驱动的影片——整页演绎一次真实的生成任务(prompt 打字 → 蓝噪声阈值去噪显影 → 穿越/墨反转 → 粒子增殖成展墙 → 选中回中 → 反向显影 bookend)。手写 WebGL2 摄影棚(扩散显影/GPU 粒子/流体墨/2.5D 深度推轨/胶片后处理五个 pass,零新依赖),七幕 1550vh 主行程 + 终幕独立舞台,墨线全页衔接章节;DOM 承载全部真实内容(SEO/i18n key 不变),GL 层动态挂载不入首屏关键路径;三层回退(完整 GL/中端简化/静态编排)与帧耗时自适应质量调控保证可读性与流畅度。旧首页区块组件(Hero/FeatureGrid/HowItWorks/Manifesto/UseCases/Testimonials/CTA)内容全数迁入各幕后退役(开发期第一轮 scroll-fx 动效层亦被其吸收)。设计稿与完成情况见 `docs/plan/2026-07-10-homepage-cinema-design.md`。
 - **全站衬线字体**:中英文统一 Noto Serif / Noto Serif SC(可变字体,自托管),等宽仅保留给代码;html lang 按 locale 修复。
-- **营销首页 Scroll-Driven 动效**:滚动驱动的入场/视差动效层,配合营销首页 v2 编辑部级动效与轮播定价。
 - **主题圆形揭幕与 token 补全**:主题切换 clip-path 圆形揭幕动画;whisper/menu/modal 阴影与 success/warning 语义色进入 token 体系。
 
 ### 变更
