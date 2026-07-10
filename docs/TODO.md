@@ -65,6 +65,19 @@
 - [ ] **上帝组件拆分维持 defer**：create-page-client.tsx 等仍按原计划 defer（见 2026-05-31 节），本轮仅做展示层重构与关键单点修复。
 - [ ] **「加载更多」入场重播优化**：图库/历史点击加载更多时，入场动画会连带已渲染卡片一起重播，待将入场动效限定到新增批次。
 
+## 2026-07-11 首页影片化滚动「一次生成 + 墨线」（已落地 main）
+
+> 设计稿 `docs/plan/2026-07-10-homepage-cinema-design.md`（v2 极致渲染版，文末有完成情况与门禁记录），实施计划 `docs/plan/2026-07-10-homepage-cinema-plan.md`（14 Task 全码级拆解 + 实施勘误）。提交 b78fb7f 至 45000ef + docs 收尾。
+
+已完成：首页重构为滚动驱动影片——手写 WebGL2 迷你引擎（denoise/dolly/fluid/particles/post 五 pass + 质量调控 + dom-sync，零新依赖），七幕 1550vh 主行程 + 终幕独立 200vh 舞台，三大转场（穿越/增殖/选中回中）与 bookend 闭环，墨线全页衔接；三层回退（完整 GL / 中端简化 / 静态编排）；既有 i18n key 全部保留，新增 key 收敛 Cinema 命名空间；旧首页区块组件（hero/feature-grid/how-it-works/manifesto/use-cases/testimonials/cta/reveal/scroll-fx）退役；demo 联调路由已删除。
+
+遗留待办（打磨迭代，非本轮范围）：
+- [ ] **速度响应镜头**（设计稿能力 5）：scroll velocity 喂拖影/折射 uniform（useVelocity 与 dolly/denoise 联动调参），全片触觉签名，独立打磨迭代避免联调变量过多。
+- [ ] **真实扩散帧序列资产**：denoise pass 已留帧序列采样模式接口，拿到真实扩散中间步快照即可替换实时消融。
+- [ ] **主样张深度图离线生成**：`apps/web/public/cinema/artwork-hero-depth.webp` 当前为灰度梯度占位，dolly 的 uDepth 接口已留，离线生成真实深度图后直接替换资产。
+- [ ] **展墙玻璃折射高光 GL 版**：当前以 CSS 高光缓扫实现（设计稿允许 DOM 层实现），GL 折射版留作打磨。
+- [ ] **web 测试全量并行 flaky**：service-web-fallback 等 5 文件仅在全量并行运行时互扰失败（隔离复跑全过，与 cinema 无关），待排查 mock 泄漏/并行隔离。
+
 ## 仍存在的代码层问题（待办）
 
 - [x] **成本放大（已修复）**：`quality`/`thinking` 参数已加积分倍率（quality: low=0.5x/high=1.5x; thinking: medium=1.3x/high=1.6x），operations.ts 4 处扣费调用已传入参数。`/v1/chat/completions` 纯文本按固定 1 积分/轮仍为独立定价（不在此修）。
