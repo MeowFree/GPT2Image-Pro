@@ -19,7 +19,7 @@ import { useCinema } from "./cinema-gl";
 import { useSceneProgress } from "./cinema-stage";
 import { trackElement } from "./gl/dom-sync";
 
-// 与 feature-grid.tsx 的 featureConfig 前三项一致,
+// 承接原 feature-grid(已退役)featureConfig 前三项,
 // 对应 messages 的 Features.items.* 命名空间(en/zh 已核对存在)
 const FEATURE_KEYS = ["ai", "multiSource", "outline"] as const;
 

@@ -190,7 +190,7 @@ function FinaleHint({ progress }: { progress: MotionValue<number> }) {
   const t = useTranslations("Cinema");
   const tCta = useTranslations("CTA");
   const tHow = useTranslations("HowItWorks");
-  // 已登录用户点 CTA 直接进创作页(与 cta-section 一致,见 issue #20)
+  // 已登录用户点 CTA 直接进创作页(承接原 cta-section 行为,见 issue #20)
   const { data: session } = useCurrentSession();
   const getStartedHref = session?.user ? "/dashboard/create" : "/sign-up";
   const appear = useTransform(progress, (v) => seg(v, 0.6, 0.75));
@@ -232,7 +232,7 @@ function FinaleHint({ progress }: { progress: MotionValue<number> }) {
 /** static 态终幕:静态 CTA 块(原 CTASection 的 badge/标题/副行/按钮) */
 function StaticFinale() {
   const t = useTranslations("CTA");
-  // 已登录用户点 CTA 直接进创作页(与 cta-section 一致,见 issue #20)
+  // 已登录用户点 CTA 直接进创作页(承接原 cta-section 行为,见 issue #20)
   const { data: session } = useCurrentSession();
   const getStartedHref = session?.user ? "/dashboard/create" : "/sign-up";
   return (

@@ -263,7 +263,8 @@
   },
   "Cinema": {
     "promptSample": "A porcelain teacup on rice paper, ink wash, morning light",
-    "finaleHint": "The next one is yours to generate"
+    "finaleHint": "The next one is yours to generate",
+    "framingLabel": "Framing"
   },
   "DashboardPages": {
     "dashboard": {

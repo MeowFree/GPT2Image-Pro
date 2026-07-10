@@ -106,6 +106,8 @@ export function PricingSection({
   imageBasePricing,
 }: PricingSectionProps) {
   const t = useTranslations("Pricing");
+  // 影片第五幕"装裱"眉标文案(仅语义包装,定价交互与内容不动)
+  const tCinema = useTranslations("Cinema");
   const locale = useLocale();
   const isZh = locale.startsWith("zh");
   const [isPending, startTransition] = useTransition();
@@ -667,8 +669,11 @@ export function PricingSection({
   return (
     <section id="pricing" className="py-20 md:py-28">
       <div className="container mx-auto max-w-6xl">
-        {/* Header */}
+        {/* Header:装裱眉标承接影片第五幕语义(选中作品的装裱规格) */}
         <div className="mb-12 text-center">
+          <p className="mb-3 text-[11px] uppercase tracking-widest text-muted-foreground">
+            {tCinema("framingLabel")}
+          </p>
           <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-5xl">
             {t("title")}
           </h2>

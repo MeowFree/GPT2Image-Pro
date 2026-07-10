@@ -53,7 +53,7 @@ const WALL_CELLS = Array.from({ length: 16 }, (_, i) => ({
 /** 被选中项:横条视觉中段,转场 C 固定选它回中 */
 const PICKED_INDEX = 7;
 
-/** 铭牌标题的 UseCases key 序,与 use-cases-section 的 useCaseConfig 一致 */
+/** 铭牌标题的 UseCases key 序,承接原 use-cases-section(已退役)useCaseConfig */
 const USE_CASE_KEYS = [
   "designers",
   "marketers",

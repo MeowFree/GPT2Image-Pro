@@ -4,7 +4,7 @@
  * 序幕+第一幕:墨滴坠落迸溅 -> 标题墨渗显影 -> Hero 内容退场 ->
  * 画布四边发丝线合拢登场 -> prompt 逐字打出。
  * 标题真实 DOM 常驻(SEO);full 态下 DOM 字透明,GL 在原位显影。
- * i18n 沿用 Hero 命名空间(已核对 hero-section.tsx:
+ * i18n 沿用 Hero 命名空间(已核对原 hero-section,组件已退役:
  * 标题为 title1 + titleHighlight 两行,CTA 为 getStarted/seeDemo)。
  */
 import { Button } from "@repo/ui/components/button";
@@ -35,7 +35,7 @@ export function OpeningScene() {
   const p = useSceneProgress("opening");
   const { engine, status } = useCinema();
   const titleRef = useRef<HTMLHeadingElement | null>(null);
-  // 已登录用户点"开始创作"直接进创作页(与 hero-section 一致,见 issue #20)
+  // 已登录用户点"开始创作"直接进创作页(承接原 hero-section 行为,见 issue #20)
   const { data: session } = useCurrentSession();
   const getStartedHref = session?.user ? "/dashboard/create" : "/sign-up";
 

@@ -36,7 +36,7 @@ const WALL_CELLS = Array.from({ length: 16 }, (_, i) => ({
   filter: FILTERS[i % FILTERS.length] ?? "none",
 }));
 
-/** 卖点键序:与 feature-grid featureConfig 全六项一致(Features.items.*) */
+/** 卖点键序:承接原 feature-grid(已退役)featureConfig 全六项(Features.items.*) */
 const FEATURE_KEYS = [
   "ai",
   "multiSource",
@@ -119,7 +119,7 @@ function SectionHead({
 function StaticOpening() {
   const t = useTranslations("Hero");
   const tCinema = useTranslations("Cinema");
-  // 已登录用户点"开始创作"直接进创作页(与 hero-section 一致,见 issue #20)
+  // 已登录用户点"开始创作"直接进创作页(承接原 hero-section 行为,见 issue #20)
   const { data: session } = useCurrentSession();
   const getStartedHref = session?.user ? "/dashboard/create" : "/sign-up";
   return (

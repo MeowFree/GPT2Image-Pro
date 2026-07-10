@@ -263,7 +263,8 @@
   },
   "Cinema": {
     "promptSample": "宣纸上的白瓷茶盏，水墨风，晨光",
-    "finaleHint": "下一张，由你来生成"
+    "finaleHint": "下一张，由你来生成",
+    "framingLabel": "装裱规格"
   },
   "DashboardPages": {
     "dashboard": {

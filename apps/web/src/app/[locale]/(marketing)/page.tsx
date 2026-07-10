@@ -13,17 +13,17 @@ import {
 } from "@repo/shared/system-settings";
 import { getPlanCapabilityMatrix } from "@repo/shared/subscription/services/plan-capabilities";
 import {
-  CTASection,
   FAQSection,
-  FeatureGrid,
-  HeroSection,
-  HowItWorks,
-  ManifestoSection,
   PricingSection,
   SlaStatusSection,
-  Testimonials,
-  UseCasesSection,
 } from "@/features/marketing/components";
+// CinemaFilm 为 client 组件,静态 import 即可:其内部 GL 引擎按需初始化,
+// SSR 输出 StaticFilm 全量正文(SEO/无 JS 真相),营销页本就含 framer-motion
+import {
+  CinemaFilm,
+  FinaleStage,
+  InkThread,
+} from "@/features/marketing/components/cinema";
 import { getRuntimeImageBaseCreditPricing } from "@/features/image-generation/pricing-settings";
 import { getRecentGenerationSlaStats } from "@/features/image-generation/sla";
 
@@ -126,30 +126,38 @@ export default async function HomePage({
       <SiteJsonLd locale={locale as "en" | "zh"} />
       <SoftwareAppJsonLd locale={locale as "en" | "zh"} />
 
-      {/* Page Sections */}
-      <HeroSection />
-      <FeatureGrid />
-      <ManifestoSection />
-      <HowItWorks />
-      <UseCasesSection />
-      <Testimonials />
-      {(slaEnabled || canToggleSlaStatus) && (
-        <SlaStatusSection
-          locale={locale}
-          stats={slaStats}
-          initiallyEnabled={slaEnabled}
-          canToggleVisibility={canToggleSlaStatus}
+      {/* 影片化首页:七幕影片承接原 Hero..Testimonials 区块;
+          谷段常规流(SLA/Pricing/FAQ)与终幕作 children 传入 CinemaFilm,
+          与影片共享同一 GL 上下文与探测结果(单画布单引擎不变式) */}
+      <CinemaFilm>
+        {/* 静默谷一:SLA 素面排版 + 页边墨线章节刻度 */}
+        {(slaEnabled || canToggleSlaStatus) && (
+          <section className="relative">
+            <InkThread numeral="V" step="export" side="left" />
+            <SlaStatusSection
+              locale={locale}
+              stats={slaStats}
+              initiallyEnabled={slaEnabled}
+              canToggleVisibility={canToggleSlaStatus}
+            />
+          </section>
+        )}
+        {/* 第五幕装裱:定价交互原样保留,仅加装裱眉标 */}
+        <PricingSection
+          payment={runtimePaymentConfig}
+          capabilityMatrix={capabilityMatrix}
+          creditPackages={creditPackages}
+          creditPackageExpiryDays={creditPackageExpiryDays}
+          imageBasePricing={imageBasePricing}
         />
-      )}
-      <PricingSection
-        payment={runtimePaymentConfig}
-        capabilityMatrix={capabilityMatrix}
-        creditPackages={creditPackages}
-        creditPackageExpiryDays={creditPackageExpiryDays}
-        imageBasePricing={imageBasePricing}
-      />
-      <FAQSection />
-      <CTASection />
+        {/* 静默谷二:FAQ 素面排版 + 页边墨线章节刻度 */}
+        <section className="relative">
+          <InkThread numeral="VI" step="completion" side="right" />
+          <FAQSection />
+        </section>
+        {/* 终幕:反向显影 bookend + CTA(承接原 CTASection 内容) */}
+        <FinaleStage />
+      </CinemaFilm>
     </>
   );
 }

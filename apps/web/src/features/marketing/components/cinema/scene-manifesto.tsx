@@ -2,7 +2,7 @@
 
 /**
  * 第三幕:墨底宣言章。白衬线大字逐字点亮(字符窗口 activation),
- * 中央反转呼吸光晕。文案沿用 manifesto-section.tsx 双语内联 copy
+ * 中央反转呼吸光晕。文案承接原 manifesto-section(已退役)双语内联 copy
  * (已核对原文逐字迁移:中文逐字,西文逐词),不新增 messages key。
  */
 import { type MotionValue, motion, useTransform } from "framer-motion";
@@ -22,7 +22,7 @@ export function ManifestoScene() {
   const p = useSceneProgress("manifesto");
   const locale = useLocale();
   const zh = locale.startsWith("zh");
-  // 与 manifesto-section.tsx 现文案逐字一致
+  // 与原 manifesto-section 文案逐字一致(组件已退役,本处即唯一事实)
   const text = zh
     ? "少即是多。一句话，一幅画。让创作回到语言本身。"
     : "Less, but better. One sentence, one image. Creation returns to language itself.";
