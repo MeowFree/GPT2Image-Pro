@@ -58,15 +58,21 @@ export function CinemaStage({ children }: { children: ReactNode }) {
   );
 }
 
-/** 单幕层:窗口外透明且不可交互;transform 由各幕内层自管,本层只管透明度 */
+/**
+ * 单幕层:窗口外透明且不可交互;transform 由各幕内层自管,本层只管透明度。
+ * holdAtStart 供首幕使用:master=0(页面顶端静置)时幕内进度为 0,
+ * 若仍按窗口边缘淡入,首屏会是空白——首幕取消起点淡入,始终可见到幕尾。
+ */
 export function SceneLayer({
   scene,
   children,
   className,
+  holdAtStart = false,
 }: {
   scene: SceneKey;
   children: ReactNode;
   className?: string;
+  holdAtStart?: boolean;
 }) {
   const master = useMaster();
   const { engine } = useCinema();
@@ -76,12 +82,17 @@ export function SceneLayer({
   // 幕内可见:窗口边缘 2% 淡入淡出,避免交界闪切
   const opacity = useTransform(master, (m) => {
     const p = sceneProgress(m, scene);
-    if (p <= 0 || p >= 1) return 0;
     const edge = 0.02;
+    if (holdAtStart) {
+      if (p >= 1) return 0;
+      return Math.min(1, (1 - p) / edge);
+    }
+    if (p <= 0 || p >= 1) return 0;
     return Math.min(1, Math.min(p, 1 - p) / edge);
   });
   const pointerEvents = useTransform(master, (m) => {
     const p = sceneProgress(m, scene);
+    if (holdAtStart) return p < 1 ? "auto" : "none";
     return p > 0 && p < 1 ? "auto" : "none";
   });
   return (

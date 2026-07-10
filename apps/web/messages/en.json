@@ -261,6 +261,10 @@
     "getStarted": "Get Started Free",
     "seeDemo": "See Examples"
   },
+  "Cinema": {
+    "promptSample": "A porcelain teacup on rice paper, ink wash, morning light",
+    "finaleHint": "The next one is yours to generate"
+  },
   "DashboardPages": {
     "dashboard": {
       "title": "Dashboard",

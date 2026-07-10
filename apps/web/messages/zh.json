@@ -261,6 +261,10 @@
     "getStarted": "免费注册",
     "seeDemo": "查看示例"
   },
+  "Cinema": {
+    "promptSample": "宣纸上的白瓷茶盏，水墨风，晨光",
+    "finaleHint": "下一张，由你来生成"
+  },
   "DashboardPages": {
     "dashboard": {
       "title": "控制台",

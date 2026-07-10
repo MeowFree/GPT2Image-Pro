@@ -40,9 +40,18 @@ export function GenerateScene() {
     });
   }, [engine, status]);
 
+  // 可见门初始化:sticky 布局下 figure 矩形全片常驻,若只靠 change 事件,
+  // 停在幕外(首屏)时事件不触发,pass 会按缺省可见画出噪场方块
+  useEffect(() => {
+    if (!engine) return;
+    const v = p.get();
+    engine.setProgress("denoiseVisible", v > 0 && v < 1 ? 1 : 0);
+  }, [engine, p]);
+
   useMotionValueEvent(p, "change", (v) => {
     engine?.setProgress("denoiseP", v);
     engine?.setProgress("denoiseGlow", bell(v) * 0.6);
+    engine?.setProgress("denoiseVisible", v > 0 && v < 1 ? 1 : 0);
     setHudStep(Math.max(1, Math.min(28, Math.floor(1 + v * 27))));
   });
 
