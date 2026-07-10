@@ -110,7 +110,7 @@ export function WaterfallWarningPopup({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <div className="flex items-center gap-2 text-amber-600">
+          <div className="flex items-center gap-2 text-warning">
             <AlertTriangle className="h-5 w-5" />
             <DialogTitle>{title}</DialogTitle>
           </div>

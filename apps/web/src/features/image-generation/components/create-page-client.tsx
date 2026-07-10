@@ -1209,11 +1209,14 @@ function readStoredCreateActiveMode(): ActiveMode {
   if (typeof window === "undefined") return "text";
   try {
     const value = window.localStorage.getItem(CREATE_ACTIVE_MODE_STORAGE_KEY);
+    // 白名单须与 ActiveMode 全量同步,漏项会导致该模式刷新后回落 text
     return value === "text" ||
       value === "image" ||
       value === "chat" ||
+      value === "chat-web" ||
       value === "agent" ||
-      value === "waterfall"
+      value === "waterfall" ||
+      value === "video"
       ? value
       : "text";
   } catch {
@@ -2181,9 +2184,13 @@ export function CreatePageClient({
     uploadLimits.maxFileSizeBytes || DEFAULT_MAX_IMAGE_BYTES;
   const maxEditRequestBytes =
     uploadLimits.maxUploadBytes || DEFAULT_MAX_EDIT_REQUEST_BYTES;
+  // WHY 初始恒为 "text":SSR 读不到 localStorage,若首渲染就用存储值,
+  // 服务端(text)与客户端首帧不一致会触发 hydration mismatch。
+  // 持久化模式的恢复后置到挂载 effect(见 effectiveAgentAllowed 定义后),
+  // 并按套餐能力校正,避免恢复到锁定/不可用模式。
   const [activeMode, setActiveMode] = useCreateRuntimeState<ActiveMode>(
     "activeMode",
-    readStoredCreateActiveMode()
+    "text"
   );
   // 三个高频提示词输入已下沉到 PromptTextareaField(独立订阅,击键只重渲
   // 小组件)。父组件改用非订阅访问器:getXxx() 在事件处理器里读最新值,
@@ -2994,6 +3001,30 @@ export function CreatePageClient({
       )
     : undefined;
   const effectiveAgentAllowed = agentAllowed && !agentBackendUnavailableReason;
+  // 挂载后恢复上次使用的创作模式(hydration 安全,见 activeMode 初始化注释):
+  // - 仅恢复一次;URL 带参考图跳转参数(mode/ref/sendRef)时让位于 handoff 流程
+  // - 按套餐能力与后端可用性校正,绝不恢复到锁定/不可用的模式
+  const didRestoreStoredModeRef = useRef(false);
+  useEffect(() => {
+    if (didRestoreStoredModeRef.current) return;
+    didRestoreStoredModeRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("mode") || params.has("ref") || params.has("sendRef")) {
+      return;
+    }
+    const stored = readStoredCreateActiveMode();
+    const storedModeAllowed =
+      stored === "chat"
+        ? chatAllowed
+        : stored === "agent"
+          ? effectiveAgentAllowed
+          : stored === "waterfall"
+            ? waterfallAllowed
+            : true;
+    if (storedModeAllowed) {
+      setActiveMode(stored);
+    }
+  }, [chatAllowed, effectiveAgentAllowed, waterfallAllowed, setActiveMode]);
   const currentModeMixWebFirstActive =
     activeMode === "image"
       ? editMixWebFirstActive
@@ -5292,7 +5323,7 @@ export function CreatePageClient({
   };
 
   const agentTaskBorderClass = (status?: AgentRunEvent["status"]) => {
-    if (status === "completed") return "border-emerald-500/35";
+    if (status === "completed") return "border-success/35";
     if (status === "failed") return "border-destructive/50";
     if (status === "running") return "border-primary/40";
     return "border-border";
@@ -5300,7 +5331,7 @@ export function CreatePageClient({
 
   const agentTaskStatusClass = (status?: AgentRunEvent["status"]) => {
     if (status === "completed") {
-      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+      return "border-success/30 bg-success/10 text-success";
     }
     if (status === "failed") {
       return "border-destructive/30 bg-destructive/10 text-destructive";
@@ -7862,7 +7893,7 @@ export function CreatePageClient({
                   </p>
                 )}
               {modeResult.promptRepairNotice && (
-                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
                   {copy(
                     "The original prompt was rejected by safety checks, so the system made additional adjustments before generating this result.",
                     "原提示词因审核被拒，系统已进行更多修改后生成本次结果。"
