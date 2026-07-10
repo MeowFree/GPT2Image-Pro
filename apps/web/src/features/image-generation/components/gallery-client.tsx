@@ -235,12 +235,14 @@ export function GalleryClient({
   const galleryHref = (tab: GalleryClientProps["activeTab"], nextPage = 1) =>
     `/${locale}/dashboard/gallery?tab=${tab}&page=${nextPage}`;
   const nextPageHref = galleryHref(activeTab, page + 1);
+  // 激活徽标用 primary 反差点缀:Tabs 激活态已是柔和灰底(bg-secondary),
+  // 旧的 bg-primary-foreground(白底)在灰底上几乎不可见。
   const countBadgeClass = (active: boolean) =>
     [
-      "ml-2 rounded-full px-1.5 py-0 text-[10px] font-normal",
+      "ml-2 rounded-full px-1.5 py-0 text-[10px] font-normal transition-colors duration-150",
       active
-        ? "border-transparent bg-primary-foreground text-primary"
-        : "border-border text-foreground",
+        ? "border-transparent bg-primary text-primary-foreground"
+        : "border-border text-muted-foreground",
     ].join(" ");
 
   const handleDelete = (id: string) => {
