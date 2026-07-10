@@ -1,5 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* 自托管可变衬线字体(unicode-range 切片,按需加载):全站衬线化的字体来源 */
+@import "@fontsource-variable/noto-serif";
+@import "@fontsource-variable/noto-serif-sc";
 
 @source "./components";
 @source "../../shared/src";
@@ -49,15 +52,26 @@
   --radius-2xl: 32px;
   --radius-3xl: 36px;
   --radius-4xl: 40px;
+
+  /* 阴影 token(对齐 GPT2IMAGE 参考实现):
+     whisper=悬浮卡片轻抬升, menu=下拉菜单, modal=模态弹窗 */
+  --shadow-whisper: 0 4px 24px rgb(0 0 0 / 0.05);
+  --shadow-menu: 0 4px 20px rgb(0 0 0 / 0.08);
+  --shadow-modal: 0 8px 40px rgb(0 0 0 / 0.15);
 }
 
 :root {
-  --font-geist-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  /*
+   * 全站衬线化:font-sans 与 font-serif 同指向 Noto Serif 栈,
+   * 存量 font-sans 类无需逐个改写即可渲染为衬线;等宽仅保留给代码。
+   * "Noto Serif Variable"/"Noto Serif SC Variable" 由 @fontsource-variable 自托管提供。
+   */
+  --font-geist-sans: "Noto Serif Variable", "Noto Serif SC Variable",
+    "Noto Serif", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
   --font-geist-mono: "SFMono-Regular", "Cascadia Code", Consolas,
     "Liberation Mono", Menlo, monospace;
-  --font-serif: "Libre Baskerville", "Noto Serif SC", "Source Han Serif SC",
-    Georgia, serif;
+  --font-serif: "Noto Serif Variable", "Noto Serif SC Variable", "Noto Serif",
+    "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
 
   --radius: 12px;
 

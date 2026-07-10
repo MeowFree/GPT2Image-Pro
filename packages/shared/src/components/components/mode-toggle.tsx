@@ -11,6 +11,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@repo/ui/components/dropdown-menu";
+import {
+  applyThemeWithReveal,
+  revealOriginFromEvent,
+} from "@repo/ui/theme-reveal";
 import { cn } from "@repo/ui/utils";
 
 /**
@@ -19,6 +23,7 @@ import { cn } from "@repo/ui/utils";
  * 功能:
  * - 在浅色、深色、系统主题之间切换
  * - 使用 next-themes 管理主题状态
+ * - 切换时从触发点播放圆形揭幕动画(见 @repo/ui/theme-reveal)
  * - 支持两种显示模式: dropdown 和 inline
  */
 
@@ -39,8 +44,26 @@ export function ModeToggle({
   variant = "dropdown",
   className,
 }: ModeToggleProps) {
-  const { theme, setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const t = useTranslations("Toggle");
+
+  /**
+   * 带揭幕动画切换主题。
+   * 仅当视觉外观真的会变化时才播放动画(如 light -> dark);
+   * 选择 system 或点击当前主题时直接切换,避免无意义的全屏遮罩闪烁。
+   */
+  const switchTheme = (
+    event: React.MouseEvent<HTMLElement>,
+    next: "light" | "dark" | "system"
+  ) => {
+    const appearanceChanges = next !== "system" && next !== resolvedTheme;
+    if (!appearanceChanges) {
+      setTheme(next);
+      return;
+    }
+    const { x, y } = revealOriginFromEvent(event);
+    applyThemeWithReveal(x, y, () => setTheme(next));
+  };
 
   // 内联按钮模式
   if (variant === "inline") {
@@ -48,7 +71,7 @@ export function ModeToggle({
       <div className={cn("flex items-center gap-1", className)}>
         <button
           type="button"
-          onClick={() => setTheme("light")}
+          onClick={(e) => switchTheme(e, "light")}
           className={cn(
             "flex h-9 w-9 items-center justify-center rounded-md transition-colors",
             theme === "light"
@@ -62,7 +85,7 @@ export function ModeToggle({
         </button>
         <button
           type="button"
-          onClick={() => setTheme("dark")}
+          onClick={(e) => switchTheme(e, "dark")}
           className={cn(
             "flex h-9 w-9 items-center justify-center rounded-md transition-colors",
             theme === "dark"
@@ -76,7 +99,7 @@ export function ModeToggle({
         </button>
         <button
           type="button"
-          onClick={() => setTheme("system")}
+          onClick={(e) => switchTheme(e, "system")}
           className={cn(
             "flex h-9 w-9 items-center justify-center rounded-md transition-colors",
             theme === "system"
@@ -103,15 +126,15 @@ export function ModeToggle({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setTheme("light")}>
+        <DropdownMenuItem onClick={(e) => switchTheme(e, "light")}>
           <Sun className="mr-2 h-4 w-4" />
           {t("light")}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("dark")}>
+        <DropdownMenuItem onClick={(e) => switchTheme(e, "dark")}>
           <Moon className="mr-2 h-4 w-4" />
           {t("dark")}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("system")}>
+        <DropdownMenuItem onClick={(e) => switchTheme(e, "system")}>
           <Monitor className="mr-2 h-4 w-4" />
           {t("system")}
         </DropdownMenuItem>

@@ -12,6 +12,8 @@ import { CookieConsent } from "@/features/marketing/components/cookie-consent";
 import { Providers } from "@repo/shared/components";
 import { routing } from "@/i18n/routing";
 
+import "@repo/ui/globals.css";
+
 /**
  * 生成静态参数
  * 为每个支持的语言生成静态页面
@@ -21,7 +23,10 @@ export function generateStaticParams() {
 }
 
 /**
- * 生成 hreflang metadata
+ * 生成 metadata(站点级 + hreflang)
+ *
+ * WHY 合并在此:本文件即根布局(app/ 下无独立 layout.tsx),
+ * 站点级 metadata 与按 locale 的 alternates 必须在同一处产出。
  */
 export async function generateMetadata({
   params,
@@ -32,6 +37,39 @@ export async function generateMetadata({
   const baseUrl = siteConfig.url;
 
   return {
+    title: {
+      default: siteConfig.name,
+      template: `%s | ${siteConfig.name}`,
+    },
+    description: siteConfig.description,
+    keywords: [...siteConfig.keywords],
+    authors: [{ name: siteConfig.author.name, url: siteConfig.author.url }],
+    creator: siteConfig.author.name,
+    metadataBase: new URL(siteConfig.url),
+    openGraph: {
+      type: "website",
+      locale: locale === "zh" ? "zh_CN" : "en_US",
+      url: `${baseUrl}/${locale}`,
+      title: siteConfig.name,
+      description: siteConfig.description,
+      siteName: siteConfig.name,
+      images: [
+        {
+          url: siteConfig.ogImage,
+          width: 1200,
+          height: 630,
+          alt: siteConfig.name,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: siteConfig.name,
+      description: siteConfig.description,
+      images: [siteConfig.ogImage],
+      creator: "@gpt2image",
+    },
+    manifest: "/site.webmanifest",
     alternates: {
       canonical: `${baseUrl}/${locale}`,
       languages: {
@@ -44,10 +82,16 @@ export async function generateMetadata({
 }
 
 /**
- * Locale 布局
+ * 根布局(兼 locale 布局)
+ *
+ * WHY html 在此渲染:lang 属性必须跟随路由 locale(此前根布局硬编码
+ * lang="en",中文页面语言标签错误,影响 SEO 与读屏)。app/ 下不再有
+ * layout.tsx,本文件是最顶层布局,html/body 由此输出。
  *
  * 功能:
  * - 验证语言参数有效性
+ * - html lang 按 locale 输出;suppressHydrationWarning 供 next-themes 换肤
+ * - body 全站衬线字体(font-serif,见 @repo/ui/globals.css 字体栈)
  * - 提供国际化上下文 (NextIntlClientProvider)
  * - 包装 Providers (主题等)
  * - 全局组件 (CookieConsent, Toaster)
@@ -71,13 +115,17 @@ export default async function LocaleLayout({
   const messages = await getMessages();
 
   return (
-    <NextIntlClientProvider messages={messages}>
-      <Providers>
-        {children}
-        <CookieConsent />
-        <Toaster richColors position="top-right" />
-        <Analytics />
-      </Providers>
-    </NextIntlClientProvider>
+    <html lang={locale} suppressHydrationWarning>
+      <body className="font-serif antialiased">
+        <NextIntlClientProvider messages={messages}>
+          <Providers>
+            {children}
+            <CookieConsent />
+            <Toaster richColors position="top-right" />
+            <Analytics />
+          </Providers>
+        </NextIntlClientProvider>
+      </body>
+    </html>
   );
 }
