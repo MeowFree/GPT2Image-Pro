@@ -3,10 +3,12 @@
 /**
  * 三大转场的进度编排(GL uniform 驱动,自身无可见 DOM)。
  * ZoomThrough:镜头扎进画面,深度推轨+径向拖影+压暗,末端交给墨章。
+ * Multiply:图像粒子云从画布主角矩形散开,重凝为 16 格网格。
  * takeover 仅在转场窗口内开启(窗口内无可交互内容)。
- * B 增殖 / C 选中回中随 Task 9/10 补入本文件。
+ * C 选中回中随 Task 10 补入本文件。
  */
 import { useMotionValueEvent } from "framer-motion";
+import { centerSquareRect } from "./cinema-geometry";
 import { useCinema } from "./cinema-gl";
 import { useSceneProgress } from "./cinema-stage";
 
@@ -44,6 +46,27 @@ export function ZoomThroughTransition() {
   });
   useMotionValueEvent(chapter, "change", (v) => {
     feedFluid(p.get(), v);
+  });
+  return null;
+}
+
+/**
+ * 转场 B 增殖:multiply 幕进度映射粒子 morph 键(splashMode=1)。
+ * 源矩形为画布主角规格(centerSquareRect 单一构图事实,与序幕画布
+ * 同位同尺寸);每次进度变化重算矩形,顺带覆盖视口尺寸变化。
+ * 全部量为进度纯函数,倒放成立;窗口外 morphP 钳制 0/1,粒子停绘。
+ */
+export function MultiplyTransition() {
+  const p = useSceneProgress("multiply");
+  const { engine } = useCinema();
+  useMotionValueEvent(p, "change", (v) => {
+    engine?.setProgress("splashMode", 1);
+    engine?.setProgress("morphP", v);
+    const r = centerSquareRect(window.innerWidth, window.innerHeight);
+    engine?.setProgress("morphRectA.x", r.x);
+    engine?.setProgress("morphRectA.y", r.y);
+    engine?.setProgress("morphRectA.w", r.w);
+    engine?.setProgress("morphRectA.h", r.h);
   });
   return null;
 }
