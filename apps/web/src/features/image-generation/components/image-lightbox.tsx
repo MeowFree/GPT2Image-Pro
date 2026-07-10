@@ -342,7 +342,7 @@ export function ImageLightbox({
     >
       <DialogContent
         aria-describedby={undefined}
-        className="max-h-[92vh] max-w-6xl gap-0 overflow-y-auto border-border bg-background p-0 md:overflow-hidden"
+        className="max-h-[92vh] max-w-6xl gap-0 overflow-y-auto border-border bg-background p-0 duration-250 md:overflow-hidden"
       >
         <DialogTitle className="sr-only">
           {copy("Image details", "图片详情")}
@@ -383,7 +383,7 @@ export function ImageLightbox({
             onPointerCancel={handleResizeEnd}
             style={{ touchAction: "none" }}
           >
-            <span className="flex h-12 w-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border transition-colors group-hover:text-foreground">
+            <span className="flex h-12 w-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground ring-1 ring-border transition-colors duration-150 group-hover:text-foreground">
               <GripVertical className="h-4 w-4" />
             </span>
           </button>
@@ -415,12 +415,14 @@ export function ImageLightbox({
                     </div>
                   )}
 
+                {/* warning 语义 token(--color-warning 已入 @theme,随明暗切换),
+                    替代硬编码 amber 色阶 */}
                 {generation.promptRepairNotice && (
-                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
-                    <p className="text-[11px] font-medium uppercase tracking-widest text-amber-700 dark:text-amber-300">
+                  <div className="rounded-md border border-warning/30 bg-warning/10 p-3">
+                    <p className="text-[11px] font-medium uppercase tracking-widest text-warning">
                       {copy("Prompt Notice", "提示词说明")}
                     </p>
-                    <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                    <p className="mt-1 text-sm leading-relaxed text-warning">
                       {copy(
                         "The original prompt was rejected by safety checks, so the system made additional adjustments before generating this result.",
                         "原提示词因审核被拒，系统已进行更多修改后生成本次结果。"
@@ -430,11 +432,11 @@ export function ImageLightbox({
                 )}
 
                 {generation.status === "failed" && generation.error && (
-                  <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                  <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
                     <p className="text-[11px] font-medium uppercase tracking-widest text-destructive">
                       {copy("Error", "错误")}
                     </p>
-                    <p className="mt-1 text-sm text-destructive">
+                    <p className="mt-1 text-sm leading-relaxed text-destructive">
                       {generation.error}
                     </p>
                   </div>
@@ -475,7 +477,9 @@ export function ImageLightbox({
                       )}
                       {visibleReferenceImages.map((item, index) => (
                         <button
-                          key={`${item.id}-${index}`}
+                          // id 存在回退到元数据 index 的路径,不保证全局唯一;
+                          // 组合 imageUrl 兜底唯一性,避免用数组下标做 key
+                          key={`${item.id}-${item.imageUrl}`}
                           type="button"
                           onClick={() => setActivePreviewId(item.id)}
                           className={[
@@ -513,7 +517,7 @@ export function ImageLightbox({
 
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                   <div>
-                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <dt className="text-[11px] uppercase tracking-widest text-muted-foreground">
                       {copy("Model", "模型")}
                     </dt>
                     <dd className="mt-0.5 font-mono text-xs text-foreground">
@@ -521,7 +525,7 @@ export function ImageLightbox({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <dt className="text-[11px] uppercase tracking-widest text-muted-foreground">
                       {copy("Size", "尺寸")}
                     </dt>
                     <dd className="mt-0.5 font-mono text-xs text-foreground">
@@ -529,7 +533,7 @@ export function ImageLightbox({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <dt className="text-[11px] uppercase tracking-widest text-muted-foreground">
                       {copy("Credits", "积分")}
                     </dt>
                     <dd className="mt-0.5 text-xs text-foreground">
@@ -537,7 +541,7 @@ export function ImageLightbox({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <dt className="text-[11px] uppercase tracking-widest text-muted-foreground">
                       {copy("Status", "状态")}
                     </dt>
                     <dd className="mt-0.5">
@@ -550,7 +554,7 @@ export function ImageLightbox({
                     </dd>
                   </div>
                   <div className="col-span-2">
-                    <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <dt className="text-[11px] uppercase tracking-widest text-muted-foreground">
                       {copy("Created", "创建时间")}
                     </dt>
                     <dd className="mt-0.5 text-xs text-foreground">

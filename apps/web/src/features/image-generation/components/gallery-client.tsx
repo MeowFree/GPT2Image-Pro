@@ -340,11 +340,13 @@ export function GalleryClient({
       <div className="space-y-5">
         {tabs}
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background px-6 py-24 text-center">
-          <ImagePlus
-            className="h-10 w-10 text-muted-foreground"
-            strokeWidth={1.2}
-          />
-          <h3 className="mt-4 font-serif text-lg font-medium text-foreground">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+            <ImagePlus
+              className="h-7 w-7 text-muted-foreground"
+              strokeWidth={1.2}
+            />
+          </div>
+          <h3 className="mt-5 font-serif text-lg font-medium text-foreground">
             {activeTab === "agent-drafts"
               ? copy("No Agent drafts yet", "还没有 Agent 中间图")
               : activeTab === "uploads"
@@ -353,7 +355,7 @@ export function GalleryClient({
                   ? copy("No videos yet", "还没有视频")
                   : copy("No images yet", "还没有图片")}
           </h3>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+          <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
             {activeTab === "agent-drafts"
               ? copy(
                   "Intermediate images from Agent iterations will appear here.",
@@ -374,7 +376,7 @@ export function GalleryClient({
                       "你生成的图片会显示在这里。先创建第一张图片吧。"
                     )}
           </p>
-          <Button asChild variant="outline" className="mt-6">
+          <Button asChild variant="outline" className="mt-8">
             <Link href={createHref}>{copy("Create an image", "创建图片")}</Link>
           </Button>
         </div>
@@ -389,31 +391,39 @@ export function GalleryClient({
         {items.map((item) =>
           item.outputRole === "video" ? (
             // 视频项:直接内联 <video>(preload=metadata 显示首帧,点 controls 播放),
-            // 不参与多选/批量下载(那套是图片专用)。
+            // 不参与多选/批量下载(那套是图片专用)。卡片手感与 ImageCard 统一;
+            // 尺寸徽标常显于左上(hover 遮罩会挡住 video controls,故不做遮罩)。
             <div
               key={item.id}
-              className="overflow-hidden rounded-lg border border-border bg-card"
+              className="group overflow-hidden rounded-lg border border-border bg-background transition-[transform,box-shadow] duration-250 hover:-translate-y-0.5 hover:shadow-whisper"
             >
-              {item.videoUrl ? (
-                <video
-                  src={item.videoUrl}
-                  controls
-                  preload="metadata"
-                  className="aspect-square w-full bg-black object-contain"
-                >
-                  <track kind="captions" />
-                </video>
-              ) : (
-                <div className="flex aspect-square items-center justify-center bg-muted text-xs text-muted-foreground">
-                  {copy("Video unavailable", "视频不可用")}
-                </div>
-              )}
-              <div className="space-y-1 p-2">
-                <p className="line-clamp-2 text-xs text-muted-foreground">
+              <div className="relative">
+                {item.videoUrl ? (
+                  <video
+                    src={item.videoUrl}
+                    controls
+                    preload="metadata"
+                    className="aspect-square w-full bg-black object-contain"
+                  >
+                    <track kind="captions" />
+                  </video>
+                ) : (
+                  <div className="flex aspect-square items-center justify-center bg-muted text-xs text-muted-foreground">
+                    {copy("Video unavailable", "视频不可用")}
+                  </div>
+                )}
+                {item.videoUrl && (
+                  <span className="pointer-events-none absolute left-2.5 top-2.5 rounded-[5px] bg-black/55 px-2 py-0.5 text-xs text-white/70 backdrop-blur-sm">
+                    {item.size}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-2 p-3">
+                <p className="line-clamp-2 text-sm leading-snug text-foreground">
                   {item.prompt}
                 </p>
-                <p className="text-[10px] text-muted-foreground">
-                  {item.model} · {item.size}
+                <p className="text-[11px] text-muted-foreground">
+                  {item.model}
                 </p>
               </div>
             </div>
@@ -458,10 +468,10 @@ export function GalleryClient({
         </div>
       )}
 
-      {/* 多选模式下的浮动批量操作栏 */}
+      {/* 多选模式下的浮动批量操作栏:从底部滑入淡入,模态级投影 */}
       {selectMode && selectedIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-4 py-2.5 shadow-lg">
+          <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-2.5 shadow-modal animate-in fade-in slide-in-from-bottom-4 duration-250 motion-reduce:animate-none">
             <span className="text-sm text-muted-foreground">
               {copy(
                 `Selected ${selectedIds.size} items`,

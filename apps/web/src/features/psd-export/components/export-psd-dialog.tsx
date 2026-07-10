@@ -117,7 +117,7 @@ export function ExportPsdDialog({
           <DialogTitle>{copy("Export layered PSD", "导出分层 PSD")}</DialogTitle>
 
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm leading-relaxed text-muted-foreground">
               {copy(
                 "Decompose this image into editable layers and export a .psd (no new images generated, no credits charged). Runs in the background, ~1-2 min.",
                 "把这张图分解成可编辑图层并导出 .psd(不生成新图、不扣积分)。后台运行,约 1-2 分钟。"
@@ -125,12 +125,14 @@ export function ExportPsdDialog({
             </p>
 
             {failed && (
-              <p className="text-sm text-destructive">
-                {copy(
-                  "Export failed or took too long, please try again.",
-                  "导出失败或耗时过长,请重试。"
-                )}
-              </p>
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
+                <p className="text-sm leading-relaxed text-destructive">
+                  {copy(
+                    "Export failed or took too long, please try again.",
+                    "导出失败或耗时过长,请重试。"
+                  )}
+                </p>
+              </div>
             )}
 
             {phase === "ready" && downloadUrl ? (

@@ -181,20 +181,22 @@ export function HistoryClient({
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background px-6 py-24 text-center">
-        <ImagePlus
-          className="h-10 w-10 text-muted-foreground"
-          strokeWidth={1.2}
-        />
-        <h3 className="mt-4 font-serif text-lg font-medium text-foreground">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+          <ImagePlus
+            className="h-7 w-7 text-muted-foreground"
+            strokeWidth={1.2}
+          />
+        </div>
+        <h3 className="mt-5 font-serif text-lg font-medium text-foreground">
           {copy("No history yet", "还没有历史记录")}
         </h3>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+        <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
           {copy(
             "Your generation history will appear here once you create images.",
             "创建图片后，生成历史会显示在这里。"
           )}
         </p>
-        <Button asChild variant="outline" className="mt-6">
+        <Button asChild variant="outline" className="mt-8">
           <Link href={createHref}>{copy("Create an image", "创建图片")}</Link>
         </Button>
       </div>
@@ -204,7 +206,7 @@ export function HistoryClient({
   return (
     <>
       <div className="overflow-hidden rounded-lg border border-border bg-background">
-        <div className="hidden grid-cols-[64px_minmax(0,1fr)_150px_90px_118px_92px_128px] items-center gap-3 border-b border-border bg-muted/30 px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground md:grid">
+        <div className="hidden grid-cols-[64px_minmax(0,1fr)_150px_90px_118px_92px_128px] items-center gap-3 border-b border-border bg-muted/30 px-4 py-3 text-[11px] font-medium uppercase tracking-widest text-muted-foreground md:grid">
           <div>{copy("Image", "图片")}</div>
           <div>{copy("Prompt", "提示词")}</div>
           <div>{copy("Model", "模型")}</div>
@@ -222,9 +224,9 @@ export function HistoryClient({
                 <button
                   type="button"
                   onClick={() => setSelectedId(item.id)}
-                  className="grid w-full grid-cols-[56px_minmax(0,1fr)] items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 md:grid-cols-[64px_minmax(0,1fr)_150px_90px_118px_92px_128px] md:items-center md:gap-3"
+                  className="grid w-full grid-cols-[56px_minmax(0,1fr)] items-start gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-muted md:grid-cols-[64px_minmax(0,1fr)_150px_90px_118px_92px_128px] md:items-center md:gap-3"
                 >
-                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded border border-border bg-muted md:h-14 md:w-14">
+                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-sm border border-border bg-muted md:h-14 md:w-14">
                     {item.imageUrl && item.status === "completed" ? (
                       <Image
                         // 列表缩略图(56–64px):请求 w=128 的小图,避免下整图(平均 2.4MB)。
@@ -357,7 +359,7 @@ export function HistoryClient({
                 "Page number",
                 "页码"
               )}
-              className="h-8 w-16 rounded border border-border bg-background text-center text-sm text-foreground"
+              className="h-8 w-16 rounded-sm border border-border bg-background text-center text-sm text-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
             <span className="text-xs text-muted-foreground">
               / {totalPages}
