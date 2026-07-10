@@ -10,9 +10,10 @@ export default function DashboardLoading() {
   return (
     <div className="container mx-auto animate-pulse px-4 py-6 md:px-6 motion-reduce:animate-none">
       <div className="space-y-8">
-        {/* 页面标题骨架 */}
+        {/* 页面标题骨架:眉题 + 大号衬线标题 + 副行 */}
         <div className="space-y-2">
-          <div className="h-8 w-40 rounded-md bg-muted" />
+          <div className="h-3 w-14 rounded-md bg-muted" />
+          <div className="h-9 w-44 rounded-md bg-muted" />
           <div className="h-4 w-56 rounded-md bg-muted" />
         </div>
 
@@ -26,11 +27,11 @@ export default function DashboardLoading() {
               className="space-y-4 rounded-lg border border-border p-6"
             >
               <div className="flex items-center justify-between">
-                <div className="h-4 w-24 rounded-md bg-muted" />
+                <div className="h-3 w-24 rounded-md bg-muted" />
                 <div className="h-4 w-4 rounded-full bg-muted" />
               </div>
               <div className="space-y-2">
-                <div className="h-8 w-20 rounded-md bg-muted" />
+                <div className="h-9 w-24 rounded-md bg-muted" />
                 <div className="h-3 w-3/4 rounded-md bg-muted" />
               </div>
             </div>

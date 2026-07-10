@@ -80,8 +80,11 @@ export function DashboardMainWrapper({
     >
       {/* 卡片容器 - Linear style: clean background, subtle border */}
       <div className="min-h-[calc(100vh-20px)] rounded-lg bg-background border border-border flex flex-col">
-        {/* Header - 在卡片内部 */}
-        <header className="flex h-12 items-center gap-3 border-b border-border px-4 shrink-0">
+        {/* 悬浮玻璃顶栏:sticky 停驻在卡片原顶位(main 上内边距 10px 处),
+            半透明底 + backdrop-blur 让内容滚过其后仍可读;rounded-t-lg 与卡片圆角贴合。
+            before 伪元素以页面底色(bg-muted)填补停驻后顶栏上方 10px 的缝隙,
+            高度取 9px 而非 10px,是为了未滚动时不遮住卡片自身 1px 的顶边框 */}
+        <header className="sticky top-2.5 z-30 flex h-12 shrink-0 items-center gap-3 rounded-t-lg border-b border-border/60 bg-background/80 px-4 backdrop-blur before:absolute before:-inset-x-px before:-top-2.5 before:h-[9px] before:bg-muted">
           {/* 移动端汉堡按钮 */}
           <button
             type="button"
@@ -108,7 +111,7 @@ export function DashboardMainWrapper({
           <div className="h-4 w-px bg-border" />
 
           {/* 页面标题 */}
-          <span className="text-sm font-medium text-foreground">
+          <span className="font-serif text-sm font-medium tracking-tight text-foreground">
             {pageTitle}
           </span>
         </header>

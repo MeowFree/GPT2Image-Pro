@@ -185,12 +185,13 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
 
     return (
       <>
-        {/* Logo */}
-        <div className="flex h-14 items-center px-4">
+        {/* 品牌区:px-5 与导航图标列(nav p-3 + item px-2.5)近似对齐,
+            折叠态(w-16)下图标中心恰落在 20 + 12 = 32px,即侧栏水平中点 */}
+        <div className="flex h-14 items-center px-5">
           <Link
             href={`/${locale}`}
             prefetch={false}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2.5"
             onClick={(e) => {
               if (mobile) {
                 setMobileOpen(false);
@@ -224,7 +225,7 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
             <div key={group.title}>
               {/* Group Label - 折叠时隐藏 */}
               {!collapsed && (
-                <p className="mb-1.5 px-2 text-[11px] uppercase tracking-widest text-muted-foreground">
+                <p className="mb-2 px-2.5 text-[11px] font-medium uppercase tracking-widest text-muted-foreground/70">
                   {getNavTitle(group.title)}
                 </p>
               )}
@@ -297,13 +298,23 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                       className={cn(
                         // 激活/hover 均取 sidebar 专属 token:侧栏底色与 secondary/muted
                         // 同值,通用灰阶在此不可见,sidebar-accent 才能在明暗两态浮出
-                        "flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium transition-colors duration-150",
+                        "relative flex items-center gap-3 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors duration-150",
                         isActive
                           ? "bg-sidebar-accent text-sidebar-accent-foreground"
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                         collapsed && "justify-center px-0"
                       )}
                     >
+                      {/* 激活指示竖线:淡入 + 纵向展开;非激活时保留元素,靠 opacity/scale 过渡 */}
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-foreground transition-[opacity,scale] duration-200",
+                          isActive
+                            ? "scale-y-100 opacity-100"
+                            : "scale-y-50 opacity-0"
+                        )}
+                      />
                       {Icon && (
                         <span className="relative inline-flex shrink-0">
                           <Icon className="h-4 w-4" />
@@ -341,8 +352,11 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                 <button
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-md px-2 py-1.5 hover:bg-sidebar-accent/50 transition-colors duration-150",
-                    collapsed && "justify-center px-0"
+                    // 卡片化用户区:细边框 + 轻底色,hover 同步提亮边框与底色;
+                    // 折叠态空间不足,退化为无边框纯图标
+                    "flex w-full items-center gap-3 rounded-md border border-sidebar-border/60 bg-sidebar-accent/20 px-2.5 py-2 transition-colors duration-200 hover:border-sidebar-border hover:bg-sidebar-accent/50",
+                    collapsed &&
+                      "justify-center border-transparent bg-transparent px-0 hover:border-transparent"
                   )}
                 >
                   <Avatar className="h-8 w-8 shrink-0">
@@ -445,8 +459,8 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
             // 加载状态
             <div
               className={cn(
-                "flex items-center gap-3 rounded-md px-2 py-1.5",
-                collapsed && "justify-center px-0"
+                "flex items-center gap-3 rounded-md border border-sidebar-border/60 px-2.5 py-2",
+                collapsed && "justify-center border-transparent px-0"
               )}
             >
               <div className="h-8 w-8 animate-pulse rounded-full bg-sidebar-accent shrink-0" />

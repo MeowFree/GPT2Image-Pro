@@ -235,10 +235,12 @@ export function ImagePricingChartCard({
     data[data.length - 1],
   ].filter(Boolean) as PricingPoint[];
 
+  // hover 语言与首页统计卡一致:轻抬升 + whisper 阴影 + 边框提亮;
+  // Tailwind v4 的 -translate-y-* 走原生 translate 属性,过渡列表须写 translate 而非 transform
   return (
-    <Card className="transition-shadow duration-150 hover:shadow-whisper">
+    <Card className="transition-[border-color,box-shadow,translate] duration-250 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-whisper motion-reduce:transition-none">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-base font-medium">
+        <CardTitle className="font-serif text-lg font-medium tracking-tight">
           {copy("Image Pricing Curve", "生图计价曲线")}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
@@ -268,25 +270,54 @@ export function ImagePricingChartCard({
               margin={{ bottom: 8, left: 6, right: 18, top: 10 }}
               width={chartWidth}
             >
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              {/* 网格与轴降噪:网格线取 border 40% 透明度,隐藏轴线,刻度字取 muted token */}
+              <CartesianGrid
+                stroke="var(--border)"
+                strokeDasharray="3 3"
+                strokeOpacity={0.4}
+                vertical={false}
+              />
               <XAxis
+                axisLine={false}
                 dataKey="megapixels"
                 domain={[
                   Number((MIN_IMAGE_PIXELS / 1_000_000).toFixed(2)),
                   Number((MAX_IMAGE_PIXELS / 1_000_000).toFixed(2)),
                 ]}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
                 tickFormatter={(value) => formatMegapixels(Number(value))}
                 ticks={chartXTicks}
                 tickLine={false}
                 type="number"
               />
               <YAxis
+                axisLine={false}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
                 tickFormatter={(value) => formatPrice(Number(value))}
                 tickLine={false}
                 width={42}
               />
+              {/* Tooltip 样式 token 化:浮层取 popover/border/menu 阴影,随主题明暗 */}
               <Tooltip
-                cursor={{ stroke: "var(--muted-foreground)" }}
+                contentStyle={{
+                  backgroundColor: "var(--popover)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm, 8px)",
+                  boxShadow: "var(--shadow-menu)",
+                  fontSize: 12,
+                  padding: "8px 12px",
+                }}
+                cursor={{
+                  stroke: "var(--muted-foreground)",
+                  strokeDasharray: "3 3",
+                  strokeOpacity: 0.4,
+                }}
+                itemStyle={{ color: "var(--muted-foreground)", padding: 0 }}
+                labelStyle={{
+                  color: "var(--popover-foreground)",
+                  fontWeight: 500,
+                  marginBottom: 4,
+                }}
                 formatter={(value) => [
                   `${formatPrice(Number(value))} ${copy("credits", "积分")}`,
                   copy("Base credits", "基础积分"),
@@ -301,13 +332,14 @@ export function ImagePricingChartCard({
                   )}`;
                 }}
               />
+              {/* 数据点空心化(fill 取 background)以适配暗色;线宽 2px 更克制 */}
               <Line
                 activeDot={{ r: 5 }}
                 dataKey="baseCredits"
-                dot={{ r: 3 }}
+                dot={{ fill: "var(--background)", r: 3, strokeWidth: 1.5 }}
                 isAnimationActive={false}
                 stroke="var(--primary)"
-                strokeWidth={3}
+                strokeWidth={2}
                 type="linear"
               />
             </LineChart>
@@ -321,8 +353,10 @@ export function ImagePricingChartCard({
               className="rounded-md border bg-muted/30 p-3"
               key={item.label}
             >
-              <div className="text-xs text-muted-foreground">{item.label}</div>
-              <div className="mt-1 text-sm font-medium">{item.value}</div>
+              <div className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                {item.label}
+              </div>
+              <div className="mt-1.5 text-sm font-medium">{item.value}</div>
             </div>
           ))}
         </div>
