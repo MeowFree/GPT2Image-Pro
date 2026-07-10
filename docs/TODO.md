@@ -35,7 +35,7 @@
 - [x] **#16 数量/并发改数字输入+滚轮**：根因=文本/编辑'数量'下拉用写死的 `[1,2,4,6,8,10]` 且挂错字段（maxBatchCount 默认恒 10）。改为 `ConcurrencyNumberInput`（数字输入+非被动 wheel 监听），上限=套餐 `imageGenerationConcurrency`；服务端 count 校验 4 处（generate/edit/chat 路由 + operations 管线）同步改挂 imageGenerationConcurrency；归一化硬顶 1000→10000、Zod count.max 100→10000。
   - [ ] **语义变化需知会运维**：单次最大张数(count)上限由 maxBatchCount(默认10)改为按套餐 `imageGenerationConcurrency`。默认 free=2/starter=5 等低于 10 的套餐**单次张数会下降**，需管理员在后台'生图并发'按需调高。`maxBatchCount` 字段保留但**不再约束 count**（vestigial）。
   - [ ] **UI/端到端实测**：#1 建号→登录验证哈希链路、改邮箱查重、重设密码；#15 瀑布流 tier/质量/尺寸/3 警告全流程；#16 数字输入+滚轮在 free/pro 账号下上限正确、count>10 能提交且服务端不再 400。
-- [ ] **既有 lint 债（PR 门禁风险）**：`create-page-client.tsx` 有 5 个**既有** error（非本次引入）：`noLabelWithoutControl`×4(ImageSizeDialog)、`noUselessFragments`×2、`useHookAtTopLevel`×1。CI lint 门禁仅 PR、对改动文件全量 lint，故**未来任何 PR 触碰此文件都会被这些既有 error 卡住**。push 到 dev 不跑 lint 故不阻塞当前提交。需择机清理或在门禁中豁免。
+- [x] **既有 lint 债（已清零，原记录过时）**：原记录 `create-page-client.tsx` 存在 7 个既有 error（`noLabelWithoutControl`×4(ImageSizeDialog)、`noUselessFragments`×2、`useHookAtTopLevel`×1）。2026-07-10 UI 全站重构后实测该文件为 **0 error / 70 warning**（告警级，不阻断 lint 门禁），PR 触碰此文件不再被既有 error 卡住。
 
 ## 2026-05-31 审计修复 workflow（已落地 dev，未修/defer backlog）
 
@@ -46,7 +46,24 @@
   - `image-backend-pool/service.ts` 5310 行（按 7+ 职责拆为 scheduler/error-classification/cooldown/oauth/import/sub2api-sync/crud）。
   - `image-backend-pool/admin-panel.tsx` 4350 行、`system-settings/components/system-settings-panel.tsx` 1825 行。
 - [ ] **跨文件重构/DB 迁移类未修 23 条**：C-H2 门闩抽纯函数、S-M11 Creem 金额校验、S-L1/S-L7 财务/存储归属深防御、M-M7/M-M10/M-M15/M-M17 DRY 合并等，逐条理由见计划文档 backlog 节。
-- [ ] **（复测新发现·既有 latent bug）create 页 hydration 不匹配**：硬加载创作页时客户端从 localStorage `gpt2image_create_active_mode_v1` 恢复激活模式（可能为锁定 tab），与服务端默认冲突触发 React hydration mismatch（低危，自愈）。修法：持久化模式恢复后置到 useEffect 或按当前套餐能力校正，避免恢复锁定/不可用模式。属 defer 的 create-page-client.tsx，随其重构一并修。
+- [x] **（已修复 2026-07-10，commit d6a1951）create 页 hydration 不匹配**：硬加载创作页时客户端从 localStorage `gpt2image_create_active_mode_v1` 恢复激活模式（可能为锁定 tab），与服务端默认冲突触发 React hydration mismatch。落地修法：持久化模式恢复移到**挂载后（useEffect）按当前套餐能力校验再应用**，避免恢复锁定/不可用模式；同时补全模式白名单缺失的 `chat-web`/`video`（此前二者无法从持久化恢复）。未等待 create-page-client 整体重构即单点修复。
+
+## 2026-07-10 UI 全站重构（已落地 main）
+
+> 计划与逐 Phase 完成情况详见 `docs/plan/2026-07-04-ui-overhaul.md`。主体提交 1be8ea1 至 cb11e99（main，另含其后的第二轮精修与收尾提交）。版本随本轮升至 v0.8.0。
+
+已完成：
+- **全站衬线化**：中英文统一 Noto Serif / Noto Serif SC（@fontsource 可变字体自托管），等宽仅保留给代码；html lang 按 locale 修复；主题切换 clip-path 圆形揭幕动效；whisper/menu/modal 阴影与 success/warning 语义色进 token 体系。
+- **营销页 Scroll-Driven 动效**：首页滚动驱动动效层（6dd3d10，函数式 + 分层绑定规避 framer-motion 混绑订阅失效坑）+ 营销首页视觉重构 v2（编辑部级动效与轮播定价）。
+- **两轮视觉重构**：第一轮分区单元 A-E + 原语层（dashboard 壳/认证、图库/历史/灯箱、设置/工单/账单/积分/公告、管理后台、营销/博客/pSEO/文档、packages/ui 基础组件）；第二轮 v2 精修（dashboard 壳层悬浮玻璃顶栏、图库/历史高端画廊气质、创作页展示层分段控件与统一气泡语言、营销首页）。覆盖 dashboard/图库/创作页/设置/工单/管理后台/认证/内容页。
+- **死文件清理**：仓库根游离旧单体应用残留 278 个文件（3de58e5）+ 分区重构中另清理 6 个死文件/死组件（ProfileForm、死 token 等）。
+- **hydration 与 lint**：create 页 hydration mismatch 修复、create-page-client lint 清至 0 error（见上方两条已勾选项）。
+
+遗留待办：
+- [ ] **copy(en,zh) 双语迁移 next-intl**：全站约 475 处 `copy(en, zh)` 式内联双语待迁移为 next-intl 词条（规模大，建议按 feature 分批 + 子 Agent 并行）。
+- [ ] **ConfirmDialog / Spinner 统一封装**：二次确认对话框与加载指示器仍存在多处重复实现，待抽为 packages/ui 统一组件后替换。
+- [ ] **上帝组件拆分维持 defer**：create-page-client.tsx 等仍按原计划 defer（见 2026-05-31 节），本轮仅做展示层重构与关键单点修复。
+- [ ] **「加载更多」入场重播优化**：图库/历史点击加载更多时，入场动画会连带已渲染卡片一起重播，待将入场动效限定到新增批次。
 
 ## 仍存在的代码层问题（待办）
 

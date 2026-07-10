@@ -100,3 +100,21 @@
 - 明暗双主题下视觉一致、无硬编码色破坏 token 体系。
 - 主题切换、页面入场、卡片 hover、菜单展开均有统一动效。
 - typecheck/lint/test/build 全绿；无新增 hydration 告警。
+
+## 完成情况（2026-07-10）
+
+全部 Phase 已落地 main，主体提交范围 1be8ea1 至 cb11e99（其后另有设置/工单/管理后台/认证/内容页第二轮精修与文档/版本收尾提交）；版本随本轮升至 v0.8.0（CHANGELOG 有条目）。
+
+- **Phase 1 字体与 token**（1be8ea1 / d62c0ae / d6a1951）：Noto Serif / Noto Serif SC 自托管与 font-sans/font-serif 双映射、html lang 按 locale、主题圆形揭幕、whisper/menu/modal 阴影 token、success/warning 语义 token 进 @theme、packages/ui 基础原语全部对齐衬线单色体系。
+- **Phase 2 两轮分区重构**：
+  - 第一轮（并行子 Agent，单元 A-E + 共享层）：90793ce（A：dashboard 壳/认证）、299ea6d + 4af1249（B：图库/历史/灯箱/图片卡 + tab 计数徽标适配）、d42af74（C：设置/工单/账单/积分/公告）、f88e162（D：管理后台 + a11y 修复）、6534c34（E：营销/博客/pSEO/文档）、3ee65e9（共享包硬编码色 token 化 + OG 图单色化）、cface9c（F：视频创作面板微交互）。
+  - 第二轮 v2 精修：6a2285d（营销首页编辑部级动效与轮播定价）、7b4480a（图库/历史高端画廊气质）、db27a19（创作页展示层分段控件与统一气泡语言）、0c1383f（dashboard 壳层悬浮玻璃顶栏/激活竖线/编辑部化页头）、0d64c37（hover 位移/缩放过渡失效与示例卡分层修复）；设置/工单/管理后台/认证/博客/pSEO/文档的第二轮精修随其后的收尾提交落地。
+- **营销页滚动动效**（6dd3d10）：首页 Scroll-Driven Animation 滚动驱动动效层，函数式 + 分层绑定写法规避 framer-motion 混绑 transform+opacity 订阅失效坑（详见 memory/framer-motion-scroll-gotchas.md）。
+- **Phase 3 hydration 与 a11y 修复**（d6a1951 / f88e162 等）：create 页 hydration mismatch 修复——持久化激活模式改为挂载后按套餐能力校验再恢复，并补全模式白名单缺失的 chat-web/video；管理后台等 a11y（label 关联）修复；create-page-client lint 由 7 error 清至 0 error（余 70 条告警级 warning）。
+- **Phase 4 死代码清理**（3de58e5 / 4afd22d 等）：仓库根游离旧单体应用残留 278 个文件删除（零引用验证后）；分区重构中另清理 6 个死文件/死组件（ProfileForm、死 token 等）。
+
+剩余项（转入 `docs/TODO.md`「2026-07-10 UI 全站重构」节跟踪）：
+- copy(en,zh) 约 475 处内联双语迁移 next-intl（按 feature 分批）。
+- ConfirmDialog / Spinner 统一封装进 packages/ui 并替换重复实现。
+- 上帝组件（create-page-client.tsx 等）结构性拆分维持 defer。
+- 图库/历史「加载更多」入场动画重播优化（动效限定到新增批次）。
