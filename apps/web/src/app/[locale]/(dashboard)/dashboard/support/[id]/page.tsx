@@ -272,12 +272,18 @@ export default async function TicketDetailPage({
           </h3>
         </div>
         <div className="space-y-4">
-          {messages.map((msg) => (
+          {messages.map((msg, index) => (
+            // 消息入场错峰：按索引 50ms 递增，封顶 8 档避免长对话等待过久；
+            // fill-mode 用 backwards 保证延迟期间停留在透明首帧。
             <div
               key={msg.id}
-              className={`flex gap-3 ${
+              className={`flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none ${
                 msg.isAdminResponse ? "" : "flex-row-reverse"
               }`}
+              style={{
+                animationDelay: `${Math.min(index, 8) * 50}ms`,
+                animationFillMode: "backwards",
+              }}
             >
               <Avatar className="h-8 w-8 shrink-0">
                 <AvatarImage

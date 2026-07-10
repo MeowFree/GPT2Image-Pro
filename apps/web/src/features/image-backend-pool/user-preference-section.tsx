@@ -114,7 +114,8 @@ export function ImageBackendPreferenceSection() {
         </Button>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+      {/* 表单行 hover 微提亮：负外边距抵消内边距，背景外扩而内容不位移 */}
+      <div className="-mx-2 grid gap-2 rounded-md px-2 py-2 transition-colors duration-150 hover:bg-muted/30 sm:grid-cols-[1fr_auto]">
         <div className="space-y-2">
           <Label
             htmlFor="image-backend-group"

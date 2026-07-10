@@ -170,9 +170,25 @@ export default async function SupportPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {tickets.map((tkt) => (
-            <Link key={tkt.id} href={`/${locale}/dashboard/support/${tkt.id}`}>
-              <Card className="cursor-pointer transition-colors duration-150 hover:border-foreground/20 hover:bg-muted/50">
+          {tickets.map((tkt, index) => (
+            <Link
+              key={tkt.id}
+              href={`/${locale}/dashboard/support/${tkt.id}`}
+              className="block"
+            >
+              {/*
+                工单行入场错峰：按索引 50ms 递增（12 个一轮回），fill-mode 用
+                backwards 保证延迟期间停留在动画首帧（透明）；入场时长走内联
+                属性（400ms），不影响 hover 抬升过渡的 duration-250。
+              */}
+              <Card
+                className="cursor-pointer animate-in fade-in slide-in-from-bottom-2 transition-[border-color,box-shadow,translate] duration-250 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-whisper motion-reduce:animate-none motion-reduce:transition-none"
+                style={{
+                  animationDelay: `${(index % 12) * 50}ms`,
+                  animationDuration: "400ms",
+                  animationFillMode: "backwards",
+                }}
+              >
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">

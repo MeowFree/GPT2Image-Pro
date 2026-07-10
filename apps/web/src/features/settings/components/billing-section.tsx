@@ -267,7 +267,8 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
           </p>
         </div>
 
-        <div className="rounded-lg border border-border p-6">
+        {/* 当前计划概览卡：与仪表盘统计卡一致的 hover 抬升手感 */}
+        <div className="rounded-lg border border-border p-6 transition-[border-color,box-shadow,translate] duration-250 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-whisper motion-reduce:transition-none">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
               <PlanBadge plan={userPlan} size="lg" showLabel={false} />

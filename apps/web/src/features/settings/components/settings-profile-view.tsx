@@ -90,6 +90,13 @@ const sectionTitleClass =
 /** 表单字段标签：uppercase 小字距；不带颜色以保留 FormLabel 错误态变红 */
 const fieldLabelClass = "text-xs uppercase tracking-[0.6px]";
 
+/**
+ * 设置行 hover 微提亮：负外边距抵消内边距，hover 背景外扩而内容不位移。
+ * 仅作视觉反馈，不改变行内交互。
+ */
+const settingRowClass =
+  "-mx-3 rounded-md px-3 py-2 transition-colors duration-150 hover:bg-muted/30";
+
 export function SettingsProfileView({ user }: SettingsProfileViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -558,7 +565,9 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
             <div className="border-b border-border/60 pb-2">
               <h2 className={sectionTitleClass}>{t("language.title")}</h2>
             </div>
-            <div className="flex items-center justify-between gap-4">
+            <div
+              className={`flex items-center justify-between gap-4 ${settingRowClass}`}
+            >
               <p className="text-sm text-muted-foreground">
                 {t("language.description")}
               </p>
@@ -585,7 +594,9 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
                 {t("deleteAccount.title")}
               </h2>
             </div>
-            <div className="flex items-center justify-between gap-4">
+            <div
+              className={`flex items-center justify-between gap-4 ${settingRowClass}`}
+            >
               <p className="text-sm text-muted-foreground">
                 {t("deleteAccount.description")}
               </p>

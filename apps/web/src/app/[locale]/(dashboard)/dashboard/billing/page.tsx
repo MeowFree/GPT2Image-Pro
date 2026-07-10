@@ -12,6 +12,14 @@ export const metadata = {
   description: "Manage subscriptions, billing history, and credit usage",
 };
 
+/** Tab 触发器统一样式：与设置页一致的单色边框激活态 + 150ms 颜色过渡 */
+const tabTriggerClass =
+  "rounded-md border border-transparent px-4 py-2 transition-colors duration-150 data-[state=active]:border-foreground/20 data-[state=active]:bg-foreground/5 data-[state=active]:text-foreground data-[state=active]:shadow-none";
+
+/** Tab 内容区入场：切换 tab 时淡入，尊重系统减少动态偏好 */
+const tabContentClass =
+  "mt-6 animate-in fade-in duration-300 motion-reduce:animate-none";
+
 export default async function BillingPage() {
   const session = await getServerSession();
   const locale = await getLocale();
@@ -28,25 +36,27 @@ export default async function BillingPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
-        <h1 className="font-serif text-2xl font-medium">
+        <h1 className="font-serif text-2xl font-medium tracking-tight">
           {t("pageTitle")}
         </h1>
         <p className="text-sm text-muted-foreground">{t("description")}</p>
       </div>
 
       <Tabs defaultValue="billing" className="w-full">
-        <TabsList className="mb-6 h-auto gap-1 bg-muted/60 p-1">
-          <TabsTrigger value="billing" className="px-4 py-2">
-            {tTabs("billing")}
-          </TabsTrigger>
-          <TabsTrigger value="usage" className="px-4 py-2">
-            {tTabs("usage")}
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="billing" className="mt-0">
+        <div className="border-b border-border/60 pb-2">
+          <TabsList className="h-auto gap-1 bg-transparent p-0">
+            <TabsTrigger value="billing" className={tabTriggerClass}>
+              {tTabs("billing")}
+            </TabsTrigger>
+            <TabsTrigger value="usage" className={tabTriggerClass}>
+              {tTabs("usage")}
+            </TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="billing" className={tabContentClass}>
           <BillingSection timeZone={timeZone} />
         </TabsContent>
-        <TabsContent value="usage" className="mt-0">
+        <TabsContent value="usage" className={tabContentClass}>
           <CreditUsageSection timeZone={timeZone} />
         </TabsContent>
       </Tabs>

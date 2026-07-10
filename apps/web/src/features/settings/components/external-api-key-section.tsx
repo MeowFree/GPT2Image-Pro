@@ -492,7 +492,7 @@ export function ExternalApiKeySection({ timeZone }: { timeZone?: string }) {
         </Button>
       </div>
       {relayAllowed && (
-        <div className="flex items-start gap-3 rounded-md border border-border bg-muted/30 p-3">
+        <div className="flex items-start gap-3 rounded-md border border-border bg-muted/30 p-3 transition-colors duration-150 hover:bg-muted/50">
           <Switch
             id="new-external-api-key-relay"
             checked={newKeyRelayOnly}
@@ -536,7 +536,9 @@ export function ExternalApiKeySection({ timeZone }: { timeZone?: string }) {
             return (
               <div
                 key={key.id}
-                className="flex flex-col gap-3 rounded-md border border-border px-3 py-3 transition-colors duration-150 hover:border-foreground/20 sm:flex-row sm:items-center sm:justify-between"
+                // API Key 行卡片 hover 抬升：轻位移 + whisper 阴影 + 边框提亮。
+                // Tailwind v4 的 -translate-y-* 产出原生 translate 属性，过渡列表须写 translate。
+                className="flex flex-col gap-3 rounded-md border border-border px-3 py-3 transition-[border-color,box-shadow,translate] duration-250 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-whisper motion-reduce:transition-none sm:flex-row sm:items-center sm:justify-between"
               >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">

@@ -25,7 +25,9 @@ export default async function ExternalApiPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
-        <h1 className="font-serif text-2xl font-medium">{t("title")}</h1>
+        <h1 className="font-serif text-2xl font-medium tracking-tight">
+          {t("title")}
+        </h1>
         <p className="text-sm text-muted-foreground">{t("description")}</p>
       </div>
       <ExternalApiKeySection timeZone={timeZone} />

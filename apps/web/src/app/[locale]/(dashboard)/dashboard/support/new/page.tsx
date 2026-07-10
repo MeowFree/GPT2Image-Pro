@@ -90,8 +90,8 @@ export default function NewTicketPage() {
         </div>
       </div>
 
-      {/* 工单表单 */}
-      <Card>
+      {/* 工单表单：轻上移淡入入场 */}
+      <Card className="animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none">
         <CardHeader className="border-b border-border/60">
           <CardTitle className="text-xs font-medium uppercase tracking-[1.2px] text-muted-foreground">
             工单信息

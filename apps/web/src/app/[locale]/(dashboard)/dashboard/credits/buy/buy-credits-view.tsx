@@ -208,7 +208,7 @@ export function BuyCreditPackagesView() {
             : "sm:grid-cols-2 lg:grid-cols-3"
         )}
       >
-        {packages.map((pkg) => {
+        {packages.map((pkg, index) => {
           const isPopular = pkg.popular;
           const allowQuantity = Boolean(pkg.allowQuantity);
           const quantity = normalizedQuantities[pkg.id] ?? 1;
@@ -217,14 +217,21 @@ export function BuyCreditPackagesView() {
           const perCredit = (pkg.price / pkg.credits).toFixed(4);
 
           return (
+            // 套餐卡：hover 统一抬升（-translate-y-0.5 + whisper 阴影），入场按索引
+            // 50ms 错峰；入场时长走内联属性（400ms），不影响 hover 过渡 duration-250。
             <Card
               key={pkg.id}
               className={cn(
-                "relative flex flex-col rounded-lg border transition-[border-color,box-shadow] duration-150 animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none",
+                "relative flex flex-col rounded-lg border transition-[border-color,box-shadow,translate] duration-250 hover:-translate-y-0.5 hover:shadow-whisper motion-reduce:transition-none animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none",
                 isPopular
                   ? "border-foreground shadow-whisper"
-                  : "border-border hover:border-foreground/30 hover:shadow-whisper"
+                  : "border-border hover:border-foreground/30"
               )}
+              style={{
+                animationDelay: `${(index % 12) * 50}ms`,
+                animationDuration: "400ms",
+                animationFillMode: "backwards",
+              }}
             >
               {/* 热门标签 */}
               {isPopular && (

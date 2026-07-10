@@ -126,18 +126,24 @@ export default async function DashboardAnnouncementsPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {announcements.map((item) => {
+          {announcements.map((item, index) => {
             const meta = getSeverityMeta(item.severity);
             const wasUnread = unreadIds.includes(item.id);
 
             return (
+              // 公告卡入场错峰：按索引 50ms 递增（12 个一轮回），fill-mode 用
+              // backwards 保证延迟期间停留在动画首帧（透明），避免闪现跳变。
               <Card
                 key={item.id}
                 className={cn(
-                  "border-l-4 animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none",
+                  "border-l-4 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none",
                   meta.borderClassName,
                   wasUnread && "bg-muted/30"
                 )}
+                style={{
+                  animationDelay: `${(index % 12) * 50}ms`,
+                  animationFillMode: "backwards",
+                }}
               >
                 <CardHeader className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2">

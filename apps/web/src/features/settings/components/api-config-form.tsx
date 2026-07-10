@@ -245,9 +245,9 @@ export function ApiConfigForm() {
 
       {expanded && (
         <div className="space-y-4 rounded-lg border border-border p-4 animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
-          {/* Active toggle (only if config exists) */}
+          {/* Active toggle (only if config exists)：行 hover 微提亮 */}
           {hasConfig && (
-            <div className="flex items-center justify-between">
+            <div className="-mx-2 flex items-center justify-between rounded-md px-2 py-1.5 transition-colors duration-150 hover:bg-muted/30">
               <div>
                 <Label className="text-sm">
                   {t("apiConfig.enabled")}
@@ -321,8 +321,8 @@ export function ApiConfigForm() {
             </p>
           </div>
 
-          {/* Streaming toggle */}
-          <div className="flex items-center justify-between gap-4 rounded-md border border-border px-3 py-3">
+          {/* Streaming toggle：行 hover 微提亮 */}
+          <div className="flex items-center justify-between gap-4 rounded-md border border-border px-3 py-3 transition-colors duration-150 hover:bg-muted/30">
             <div>
               <Label htmlFor="api-use-stream" className="text-sm">
                 {t("apiConfig.useStream")}
@@ -339,7 +339,7 @@ export function ApiConfigForm() {
             />
           </div>
 
-          <div className="space-y-2 rounded-md border border-border px-3 py-3">
+          <div className="space-y-2 rounded-md border border-border px-3 py-3 transition-colors duration-150 hover:bg-muted/30">
             <Label
               htmlFor="api-chat-upstream"
               className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
