@@ -291,18 +291,18 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
   // 邮箱验证提示
   if (emailSent) {
     return (
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full space-y-6">
         <div className="flex flex-col items-center space-y-4 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted text-foreground">
+          <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted text-foreground">
             <Mail className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="font-serif text-2xl font-medium tracking-tight">
             {t("verifyEmail.title")}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm leading-relaxed text-muted-foreground">
             {t("verifyEmail.description", { email })}
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             {t("verifyEmail.hint")}
           </p>
         </div>
@@ -320,7 +320,7 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
           </Button>
           <Link
             href={`/${locale}/sign-in`}
-            className="text-sm text-muted-foreground hover:text-foreground underline"
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground transition-colors duration-150"
           >
             {t("verifyEmail.backToSignIn")}
           </Link>
@@ -330,12 +330,16 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
   }
 
   return (
-    <div className="w-full max-w-md space-y-6">
+    <div className="w-full space-y-6">
       {/* Logo 和标题 */}
       <div className="flex flex-col items-center space-y-2 text-center">
         <AuthLogo />
-        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+        <h1 className="font-serif text-2xl font-medium tracking-tight">
+          {t("title")}
+        </h1>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {t("subtitle")}
+        </p>
       </div>
 
       {/* 错误提示 */}
@@ -361,8 +365,9 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
             <div className="absolute inset-0 flex items-center">
               <Separator className="w-full" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-muted/30 px-2 text-muted-foreground">
+            <div className="relative flex justify-center text-xs uppercase tracking-widest">
+              {/* 遮线背景取卡片色:表单位于 bg-card 容器内 */}
+              <span className="bg-card px-2 text-muted-foreground">
                 {tCommon("or")}
               </span>
             </div>
@@ -463,7 +468,7 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors duration-150"
               tabIndex={-1}
             >
               {showPassword ? (
@@ -500,7 +505,7 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
         {t("haveAccount")}{" "}
         <Link
           href={`/${locale}/sign-in`}
-          className="font-medium text-foreground hover:underline"
+          className="font-medium text-foreground underline-offset-4 hover:underline"
         >
           {t("signInLink")}
         </Link>

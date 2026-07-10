@@ -73,7 +73,8 @@ export function DashboardMainWrapper({
   return (
     <main
       className={cn(
-        "p-2.5 min-h-screen transition-all duration-300",
+        // 仅过渡左边距,与侧栏宽度动画同步且不波及其它属性
+        "p-2.5 min-h-screen transition-[margin] duration-300",
         isCollapsed ? "md:ml-16" : "md:ml-64"
       )}
     >
@@ -85,7 +86,7 @@ export function DashboardMainWrapper({
           <button
             type="button"
             onClick={toggleMobile}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer md:hidden"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150 cursor-pointer md:hidden"
           >
             <Menu className="h-4 w-4 pointer-events-none" />
           </button>
@@ -94,7 +95,7 @@ export function DashboardMainWrapper({
           <button
             type="button"
             onClick={toggleSidebar}
-            className="hidden h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer md:flex"
+            className="hidden h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150 cursor-pointer md:flex"
           >
             {isCollapsed ? (
               <PanelLeft className="h-4 w-4 pointer-events-none" />

@@ -104,16 +104,16 @@ export function ForgotPasswordForm() {
   // 成功状态显示
   if (isSuccess) {
     return (
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full space-y-6">
         {/* 图标 */}
         <div className="flex flex-col items-center space-y-4 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 text-green-600">
+          <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted text-foreground">
             <Mail className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="font-serif text-2xl font-medium tracking-tight">
             {copy("Check your email", "请查看邮箱")}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm leading-relaxed text-muted-foreground">
             {copy("We've sent a password reset link to", "密码重置链接已发送至")}{" "}
             <span className="font-medium text-foreground">{email}</span>
           </p>
@@ -144,11 +144,9 @@ export function ForgotPasswordForm() {
           </Button>
           <Link
             href={`/${locale}/sign-in`}
-            className="text-sm text-muted-foreground hover:text-foreground"
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground transition-colors duration-150"
           >
-            <span className="underline">
-              {copy("Back to Login", "返回登录")}
-            </span>
+            {copy("Back to Login", "返回登录")}
           </Link>
         </div>
       </div>
@@ -156,17 +154,17 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <div className="w-full max-w-md space-y-6">
+    <div className="w-full space-y-6">
       {/* Logo 和标题 */}
       <div className="flex flex-col items-center space-y-4 text-center">
         {/* Logo 图标 */}
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 text-white">
+        <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted text-foreground">
           <KeyRound className="h-6 w-6" />
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="font-serif text-2xl font-medium tracking-tight">
           {copy("Forgot your password?", "忘记密码？")}
         </h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm leading-relaxed text-muted-foreground">
           {copy(
             "Enter your email below and we'll send you a link to reset it.",
             "输入邮箱后，我们会向你发送密码重置链接。"
@@ -212,7 +210,7 @@ export function ForgotPasswordForm() {
         {copy("Remember your password?", "想起密码了？")}{" "}
         <Link
           href={`/${locale}/sign-in`}
-          className="font-medium text-foreground hover:underline"
+          className="font-medium text-foreground underline-offset-4 hover:underline"
         >
           {copy("Back to Login", "返回登录")}
         </Link>

@@ -104,11 +104,11 @@ export default async function DashboardPage() {
     <div className="container mx-auto px-4 py-6 md:px-6">
       <div className="space-y-8">
         {/* Page header */}
-        <div>
-          <h1 className="font-serif text-2xl font-medium">
+        <div className="space-y-1">
+          <h1 className="font-serif text-2xl font-medium tracking-tight">
             {copy("Dashboard", "控制台")}
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             {copy(`Welcome back, ${user.name}`, `欢迎回来，${user.name}`)}
           </p>
         </div>
@@ -116,7 +116,7 @@ export default async function DashboardPage() {
         {/* Stats row */}
         <div className="grid gap-4 md:grid-cols-3">
           {/* Credits Balance Card */}
-          <Card>
+          <Card className="transition-shadow duration-150 hover:shadow-whisper">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
                 {copy("Credits Balance", "积分余额")}
@@ -124,7 +124,9 @@ export default async function DashboardPage() {
               <Coins className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{balance}</div>
+              <div className="font-serif text-2xl font-medium tracking-tight">
+                {balance}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {copy(
                   `Base price: ${formatCredits(
@@ -143,7 +145,7 @@ export default async function DashboardPage() {
           </Card>
 
           {/* Images Generated Card */}
-          <Card>
+          <Card className="transition-shadow duration-150 hover:shadow-whisper">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
                 {copy("Images Generated", "已生成图片")}
@@ -151,7 +153,9 @@ export default async function DashboardPage() {
               <ImageIcon className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalGenerations}</div>
+              <div className="font-serif text-2xl font-medium tracking-tight">
+                {totalGenerations}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {copy("total images created", "累计创建图片")}
               </p>
@@ -159,7 +163,7 @@ export default async function DashboardPage() {
           </Card>
 
           {/* Quick Create Card */}
-          <Card className="border-dashed">
+          <Card className="border-dashed transition-shadow duration-150 hover:shadow-whisper">
             <CardContent className="flex h-full flex-col items-center justify-center gap-3 p-6">
               <ImagePlus className="h-8 w-8 text-muted-foreground" />
               <Button asChild>
@@ -190,7 +194,7 @@ export default async function DashboardPage() {
         {generationsWithUrls.length > 0 && (
           <div>
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-serif text-lg font-medium">
+              <h2 className="font-serif text-lg font-medium tracking-tight">
                 {copy("Recent Creations", "最近创作")}
               </h2>
               <Button variant="ghost" size="sm" asChild>

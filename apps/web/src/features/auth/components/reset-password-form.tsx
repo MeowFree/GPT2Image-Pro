@@ -64,15 +64,15 @@ export function ResetPasswordForm() {
 
   if (isSuccess) {
     return (
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full space-y-6">
         <div className="flex flex-col items-center space-y-4 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 text-green-600">
+          <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted text-foreground">
             <KeyRound className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="font-serif text-2xl font-medium tracking-tight">
             {copy("Password updated", "密码已更新")}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm leading-relaxed text-muted-foreground">
             {copy(
               "You can now sign in with your new password.",
               "现在可以使用新密码登录。"
@@ -90,15 +90,15 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <div className="w-full max-w-md space-y-6">
+    <div className="w-full space-y-6">
       <div className="flex flex-col items-center space-y-4 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 text-white">
+        <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted text-foreground">
           <KeyRound className="h-6 w-6" />
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="font-serif text-2xl font-medium tracking-tight">
           {copy("Reset your password", "重置密码")}
         </h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm leading-relaxed text-muted-foreground">
           {copy(
             "Enter a new password for your account.",
             "请输入账号的新密码。"
@@ -124,7 +124,7 @@ export function ResetPasswordForm() {
             <button
               type="button"
               onClick={() => setShowPassword((current) => !current)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors duration-150 hover:text-foreground"
               tabIndex={-1}
             >
               {showPassword ? (
@@ -165,7 +165,7 @@ export function ResetPasswordForm() {
       <p className="text-center text-sm text-muted-foreground">
         <Link
           href={`/${locale}/forgot-password`}
-          className="font-medium text-foreground hover:underline"
+          className="font-medium text-foreground underline-offset-4 hover:underline"
         >
           {copy("Request a new reset link", "重新获取重置链接")}
         </Link>

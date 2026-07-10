@@ -209,7 +209,7 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
             />
             <span
               className={cn(
-                "font-serif text-lg font-medium tracking-tight transition-opacity",
+                "font-serif text-lg font-medium tracking-tight transition-opacity duration-150",
                 collapsed && "opacity-0"
               )}
             >
@@ -224,7 +224,7 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
             <div key={group.title}>
               {/* Group Label - 折叠时隐藏 */}
               {!collapsed && (
-                <p className="mb-1.5 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <p className="mb-1.5 px-2 text-[11px] uppercase tracking-widest text-muted-foreground">
                   {getNavTitle(group.title)}
                 </p>
               )}
@@ -295,9 +295,11 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                       title={collapsed ? translatedTitle : undefined}
                       onClick={() => mobile && setMobileOpen(false)}
                       className={cn(
-                        "flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+                        // 激活/hover 均取 sidebar 专属 token:侧栏底色与 secondary/muted
+                        // 同值,通用灰阶在此不可见,sidebar-accent 才能在明暗两态浮出
+                        "flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium transition-colors duration-150",
                         isActive
-                          ? "bg-accent text-foreground"
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                         collapsed && "justify-center px-0"
                       )}
@@ -306,7 +308,7 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                         <span className="relative inline-flex shrink-0">
                           <Icon className="h-4 w-4" />
                           {showUnread && (
-                            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-sidebar" />
+                            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-destructive ring-2 ring-sidebar" />
                           )}
                         </span>
                       )}
@@ -314,7 +316,7 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                         <>
                           <span className="flex-1">{translatedTitle}</span>
                           {showUnread && (
-                            <span className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
+                            <span className="min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-medium leading-none text-white">
                               {unreadCount > 99 ? "99+" : unreadCount}
                             </span>
                           )}
@@ -339,7 +341,7 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                 <button
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-md px-2 py-1.5 hover:bg-sidebar-accent/50 transition-colors",
+                    "flex w-full items-center gap-3 rounded-md px-2 py-1.5 hover:bg-sidebar-accent/50 transition-colors duration-150",
                     collapsed && "justify-center px-0"
                   )}
                 >
@@ -355,16 +357,21 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                   </Avatar>
                   {!collapsed && (
                     <>
-                      <div className="flex-1 truncate text-left">
+                      <div className="min-w-0 flex-1 text-left">
+                        {/* 名字可截断,积分徽章 shrink-0 防止长用户名将其挤出可视区 */}
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium">{user.name}</p>
-                          <CreditBalanceBadge key={user.id} />
+                          <p className="truncate text-sm font-medium">
+                            {user.name}
+                          </p>
+                          <span className="shrink-0">
+                            <CreditBalanceBadge key={user.id} />
+                          </span>
                         </div>
                         <p className="truncate text-xs text-muted-foreground">
                           {user.email}
                         </p>
                       </div>
-                      <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                      <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
                     </>
                   )}
                 </button>
@@ -388,10 +395,12 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                       {getInitials(user.name)}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="flex-1 truncate">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="font-medium">{user.name}</p>
-                      <PlanBadge plan={userPlan} size="xs" />
+                      <p className="truncate font-medium">{user.name}</p>
+                      <span className="shrink-0">
+                        <PlanBadge plan={userPlan} size="xs" />
+                      </span>
                     </div>
                     <p className="truncate text-sm text-muted-foreground">
                       {user.email}
@@ -414,7 +423,7 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                   <button
                     type="button"
                     onClick={handleSettingsClick}
-                    className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors"
+                    className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors duration-150"
                   >
                     <Settings className="h-4 w-4" />
                     {t("sidebar.settings")}
@@ -424,7 +433,7 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                   <button
                     type="button"
                     onClick={handleSignOut}
-                    className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors"
+                    className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors duration-150"
                   >
                     <LogOut className="h-4 w-4" />
                     {t("sidebar.logout")}
@@ -459,7 +468,8 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
       {/* 桌面端侧边栏 */}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 hidden h-screen flex-col bg-sidebar border-r border-sidebar-border transition-all duration-300 md:flex",
+          // 仅过渡宽度,避免 transition-all 连带过渡颜色等无关属性
+          "fixed left-0 top-0 z-40 hidden h-screen flex-col bg-sidebar border-r border-sidebar-border transition-[width] duration-300 md:flex",
           isCollapsed ? "w-16" : "w-64"
         )}
       >

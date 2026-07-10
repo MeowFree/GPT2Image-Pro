@@ -120,12 +120,16 @@ export function SignInForm({ googleAuthEnabled = false }: SignInFormProps) {
   };
 
   return (
-    <div className="w-full max-w-md space-y-6">
+    <div className="w-full space-y-6">
       {/* Logo 和标题 */}
       <div className="flex flex-col items-center space-y-2 text-center">
         <AuthLogo />
-        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+        <h1 className="font-serif text-2xl font-medium tracking-tight">
+          {t("title")}
+        </h1>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {t("subtitle")}
+        </p>
       </div>
 
       {/* 错误提示 */}
@@ -165,8 +169,9 @@ export function SignInForm({ googleAuthEnabled = false }: SignInFormProps) {
             <div className="absolute inset-0 flex items-center">
               <Separator className="w-full" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">
+            <div className="relative flex justify-center text-xs uppercase tracking-widest">
+              {/* 遮线背景取卡片色:表单位于 bg-card 容器内 */}
+              <span className="bg-card px-2 text-muted-foreground">
                 {tCommon("or")}
               </span>
             </div>
@@ -206,7 +211,7 @@ export function SignInForm({ googleAuthEnabled = false }: SignInFormProps) {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors duration-150"
               tabIndex={-1}
             >
               {showPassword ? (
@@ -222,7 +227,7 @@ export function SignInForm({ googleAuthEnabled = false }: SignInFormProps) {
         <div className="text-left">
           <Link
             href="/forgot-password"
-            className="text-sm text-muted-foreground underline hover:text-foreground transition-colors"
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground transition-colors duration-150"
           >
             {t("forgotPassword")}
           </Link>
@@ -239,7 +244,7 @@ export function SignInForm({ googleAuthEnabled = false }: SignInFormProps) {
         {t("noAccount")}{" "}
         <Link
           href={`/${locale}/sign-up`}
-          className="font-medium text-foreground hover:underline"
+          className="font-medium text-foreground underline-offset-4 hover:underline"
         >
           {t("signUpLink")}
         </Link>

@@ -236,7 +236,7 @@ export function ImagePricingChartCard({
   ].filter(Boolean) as PricingPoint[];
 
   return (
-    <Card>
+    <Card className="transition-shadow duration-150 hover:shadow-whisper">
       <CardHeader className="space-y-1">
         <CardTitle className="text-base font-medium">
           {copy("Image Pricing Curve", "生图计价曲线")}
@@ -318,7 +318,7 @@ export function ImagePricingChartCard({
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {pricingItems.map((item) => (
             <div
-              className="rounded-lg border bg-muted/30 p-3"
+              className="rounded-md border bg-muted/30 p-3"
               key={item.label}
             >
               <div className="text-xs text-muted-foreground">{item.label}</div>
@@ -327,7 +327,7 @@ export function ImagePricingChartCard({
           ))}
         </div>
         <div className="grid gap-3 lg:grid-cols-[1fr_1.2fr]">
-          <div className="rounded-lg border bg-muted/20 p-3 text-xs">
+          <div className="rounded-md border bg-muted/20 p-3 text-xs">
             <div className="font-medium text-foreground">
               {copy("Base formula", "基础公式")}
             </div>
@@ -379,7 +379,7 @@ export function ImagePricingChartCard({
               </p>
             </div>
           </div>
-          <div className="rounded-lg border bg-muted/20 p-3 text-xs">
+          <div className="rounded-md border bg-muted/20 p-3 text-xs">
             <div className="font-medium text-foreground">
               {copy("Examples", "计算示例")}
             </div>

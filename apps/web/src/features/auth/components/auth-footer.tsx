@@ -26,20 +26,20 @@ export function AuthFooter() {
         <nav className="flex gap-6">
           <Link
             href="/legal/privacy"
-            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            className="text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
             {t("privacy")}
           </Link>
           <Link
             href="/legal/terms"
-            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            className="text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
             {t("terms")}
           </Link>
           <CookieSettingsDialog>
             <button
               type="button"
-              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              className="text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
             >
               {t("cookies")}
             </button>

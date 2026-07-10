@@ -19,7 +19,8 @@ export function AuthErrorAlert({ message, className }: AuthErrorAlertProps) {
   return (
     <div
       className={
-        className || "rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+        className ||
+        "rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm leading-relaxed text-destructive animate-in fade-in slide-in-from-top-1 duration-150 motion-reduce:animate-none"
       }
     >
       {message}
