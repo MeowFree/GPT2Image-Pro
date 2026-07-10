@@ -1,7 +1,7 @@
+import { siteConfig } from "@repo/shared/config";
+import { Separator } from "@repo/ui/components/separator";
 import type { Metadata } from "next";
 import { BreadcrumbJsonLd } from "@/components/seo/json-ld";
-import { Separator } from "@repo/ui/components/separator";
-import { siteConfig } from "@repo/shared/config";
 import { getBlogPosts } from "@/lib/source";
 
 import { BlogPostCard } from "./blog-post-card";
@@ -76,7 +76,7 @@ export default async function BlogPage({
       />
 
       {/* Header - 衬线标题 + 编辑部式入场 */}
-      <div className="mb-16 text-center animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
+      <div className="mb-16 text-center animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none">
         <h1 className="font-serif text-4xl font-medium tracking-tight md:text-5xl">
           {locale === "zh" ? "博客文章" : "Blog Posts"}
         </h1>
@@ -97,7 +97,16 @@ export default async function BlogPage({
             const slug = fileName.replace(/\.mdx$/, "");
 
             return (
-              <div key={post.info.path}>
+              // 列表项入场错峰:按索引 70ms 递增(封顶 6 档),fill-mode 用
+              // backwards 保证延迟期间停留在动画首帧(透明),避免闪现跳变。
+              <div
+                key={post.info.path}
+                className="animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none"
+                style={{
+                  animationDelay: `${Math.min(index, 6) * 70}ms`,
+                  animationFillMode: "backwards",
+                }}
+              >
                 <BlogPostCard
                   slug={slug}
                   title={post.title}
@@ -118,7 +127,7 @@ export default async function BlogPage({
           })}
         </div>
       ) : (
-        <div className="text-center text-muted-foreground">
+        <div className="rounded-lg border border-dashed border-border py-24 text-center text-muted-foreground">
           {locale === "zh" ? "暂无博客文章" : "No blog posts yet"}
         </div>
       )}

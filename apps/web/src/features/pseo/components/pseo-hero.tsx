@@ -1,8 +1,7 @@
-import { ArrowRight } from "lucide-react";
-
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import { Card, CardContent } from "@repo/ui/components/card";
+import { ArrowRight } from "lucide-react";
 import { Link } from "@/i18n/routing";
 
 import type { PseoPage } from "../lib/pseo-data";
@@ -16,11 +15,11 @@ export function PseoHero({ page }: { page: PseoPage }) {
       <div className="absolute -top-20 right-0 h-56 w-56 rounded-full bg-foreground/5 blur-3xl" />
       <div className="absolute -bottom-24 left-0 h-56 w-56 rounded-full bg-foreground/5 blur-3xl" />
 
-      <div className="mx-auto grid max-w-6xl items-center gap-12 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="mx-auto grid max-w-6xl items-center gap-12 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none lg:grid-cols-[1.1fr_0.9fr]">
         <div>
           <Badge
             variant="outline"
-            className="mb-6 rounded-full border-border px-4 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground"
+            className="mb-6 rounded-full border-border px-4 py-1.5 text-[11px] font-medium uppercase tracking-widest text-muted-foreground"
           >
             {hero.badge}
           </Badge>
@@ -35,10 +34,10 @@ export function PseoHero({ page }: { page: PseoPage }) {
           </p>
 
           <div className="mb-10 flex flex-col gap-3 sm:flex-row">
-            <Button size="lg" className="gap-2 px-8" asChild>
+            <Button size="lg" className="group gap-2 px-8" asChild>
               <Link href={hero.primaryCta.href}>
                 {hero.primaryCta.label}
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-4 w-4 transition-transform duration-150 group-hover:translate-x-0.5" />
               </Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
@@ -49,12 +48,21 @@ export function PseoHero({ page }: { page: PseoPage }) {
           </div>
 
           <div className="grid gap-6 sm:grid-cols-3">
-            {stats.map((stat) => (
-              <div key={stat.label} className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {stats.map((stat, index) => (
+              // 统计项入场错峰:在整块淡入之上按索引 70ms 递增,
+              // fill-mode backwards 避免延迟期间闪现。
+              <div
+                key={stat.label}
+                className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none"
+                style={{
+                  animationDelay: `${200 + index * 70}ms`,
+                  animationFillMode: "backwards",
+                }}
+              >
+                <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
                   {stat.label}
                 </p>
-                <p className="font-serif text-2xl font-medium text-foreground">
+                <p className="font-serif text-2xl font-medium tracking-tight text-foreground">
                   {stat.value}
                 </p>
                 <p className="text-sm text-muted-foreground">{stat.detail}</p>
@@ -67,7 +75,7 @@ export function PseoHero({ page }: { page: PseoPage }) {
           <div className="absolute -inset-4 rounded-3xl bg-foreground/5 blur-2xl" />
           <Card className="relative overflow-hidden border-border bg-background/80 shadow-whisper">
             <CardContent className="p-6">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
                 {hero.summaryTitle}
               </p>
               <ul className="mt-4 space-y-3 text-sm">

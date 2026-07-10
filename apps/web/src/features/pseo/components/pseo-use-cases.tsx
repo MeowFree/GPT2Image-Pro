@@ -6,9 +6,10 @@ export function PseoUseCases({ page }: { page: PseoPage }) {
   const { sections, useCases } = page.data;
 
   return (
-    <section className="container py-24" id="use-cases">
+    // 白底节:与前后浅底节形成明暗交替,节奏对齐营销页 py-20/28
+    <section className="container py-20 md:py-28" id="use-cases">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-12 text-center">
+        <div className="mb-16 text-center">
           <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
             {sections.useCases.title}
           </h2>
@@ -21,7 +22,7 @@ export function PseoUseCases({ page }: { page: PseoPage }) {
           {useCases.map((useCase) => (
             <Card
               key={useCase.title}
-              className="border-border bg-background shadow-none transition-[border-color,box-shadow] duration-150 hover:border-foreground/30 hover:shadow-whisper"
+              className="border-border bg-background shadow-none transition-[border-color,box-shadow,transform] duration-250 hover:-translate-y-0.5 hover:border-foreground/30 hover:shadow-whisper"
             >
               <CardContent className="flex h-full flex-col p-6">
                 <h3 className="text-lg font-medium text-foreground">
@@ -32,7 +33,7 @@ export function PseoUseCases({ page }: { page: PseoPage }) {
                 </p>
                 <div className="mt-auto pt-6">
                   <div className="flex items-baseline gap-2">
-                    <span className="font-serif text-3xl font-medium text-foreground">
+                    <span className="font-serif text-3xl font-medium tracking-tight text-foreground">
                       {useCase.metric}
                     </span>
                     <span className="text-sm text-muted-foreground">

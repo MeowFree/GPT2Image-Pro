@@ -71,7 +71,7 @@ export default async function LegalPage({
         });
 
   return (
-    <article className="container mx-auto max-w-3xl py-12">
+    <article className="container mx-auto max-w-3xl py-20">
       {/* 返回链接 */}
       <Link
         href="/"
@@ -81,34 +81,46 @@ export default async function LegalPage({
       </Link>
 
       {/* 文档头部 */}
-      <header className="mb-8 border-b border-border pb-8">
+      <header className="mb-10 border-b border-border/60 pb-8 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none">
         {/* 标题 */}
         <h1 className="mb-4 font-serif text-3xl font-medium tracking-tight md:text-4xl">
           {doc.title}
         </h1>
 
-        {/* 最后更新日期 */}
-        <p className="text-sm text-muted-foreground">
+        {/* 最后更新日期 - v2 小标签规范;dateTime 用原始日期值保证机器可读 */}
+        <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
           {locale === "zh" ? "最后更新：" : "Last Updated: "}
-          <time dateTime={formattedDate}>{formattedDate}</time>
+          <time
+            dateTime={
+              typeof doc.date === "string" ? doc.date : doc.date.toISOString()
+            }
+          >
+            {formattedDate}
+          </time>
         </p>
       </header>
 
-      {/* 文档内容 - 使用 Tailwind Typography 样式 */}
-      <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:font-serif prose-headings:font-medium prose-h2:text-xl prose-h2:mt-8 prose-h3:text-lg prose-a:text-foreground prose-a:no-underline hover:prose-a:underline prose-table:text-sm prose-th:bg-muted prose-th:p-2 prose-td:p-2 prose-td:border">
+      {/* 文档内容 - fumadocs 只提供基础 .prose(项目未装 typography 插件,
+          prose-h2: 等修饰变体不会生效),故用 [&_x]: 任意变体做 token 化精修:
+          标题衬线 font-medium 并收紧字号层级、链接悬停划线、表格描边。
+          正文首个 h1 与上方页头标题重复,视觉上隐藏但保留给读屏与 SEO。 */}
+      <div
+        className="prose max-w-none animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none [&>h1:first-child]:sr-only [&_h1]:font-serif [&_h1]:font-medium [&_h1]:tracking-tight [&_h2]:font-serif [&_h2]:font-medium [&_h2]:tracking-tight [&_h2]:text-xl [&_h3]:font-serif [&_h3]:font-medium [&_h3]:text-lg [&_p]:leading-[1.85] [&_li]:leading-[1.85] [&_a]:font-medium [&_a]:text-foreground [&_a]:no-underline [&_a]:underline-offset-4 [&_a]:transition-colors [&_a]:duration-150 [&_a:hover]:underline [&_blockquote]:border-s-2 [&_blockquote]:border-border [&_blockquote]:ps-5 [&_blockquote]:font-serif [&_blockquote]:font-normal [&_blockquote]:text-muted-foreground [&_table]:text-sm [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:p-2 [&_th]:text-left [&_th]:font-medium [&_td]:border [&_td]:border-border [&_td]:p-2 [&_hr]:border-border/60"
+        style={{ animationDelay: "100ms", animationFillMode: "backwards" }}
+      >
         <MDXContent />
       </div>
 
-      {/* 底部导航 */}
-      <footer className="mt-12 border-t border-border pt-8">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <span className="text-muted-foreground">
+      {/* 底部导航 - 静默灰起步,悬停回到前景色,交互色过渡 150ms */}
+      <footer className="mt-12 border-t border-border/60 pt-8">
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2 text-sm">
+          <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
             {locale === "zh" ? "其他法律文档：" : "Other Legal Documents:"}
           </span>
           {slug !== "terms" && (
             <Link
               href="/legal/terms"
-              className="text-foreground hover:underline"
+              className="text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline"
             >
               {locale === "zh" ? "服务条款" : "Terms of Service"}
             </Link>
@@ -116,7 +128,7 @@ export default async function LegalPage({
           {slug !== "privacy" && (
             <Link
               href="/legal/privacy"
-              className="text-foreground hover:underline"
+              className="text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline"
             >
               {locale === "zh" ? "隐私政策" : "Privacy Policy"}
             </Link>
@@ -124,7 +136,7 @@ export default async function LegalPage({
           {slug !== "cookie-policy" && (
             <Link
               href="/legal/cookie-policy"
-              className="text-foreground hover:underline"
+              className="text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline"
             >
               {locale === "zh" ? "Cookie 政策" : "Cookie Policy"}
             </Link>

@@ -1,7 +1,6 @@
-import { ArrowUpRight, Database, LayoutTemplate, Route } from "lucide-react";
-
 import { Badge } from "@repo/ui/components/badge";
 import { Card, CardContent } from "@repo/ui/components/card";
+import { ArrowUpRight, Database, LayoutTemplate, Route } from "lucide-react";
 import { getPseoPages } from "@/features/pseo/lib/pseo-data";
 import { Link } from "@/i18n/routing";
 
@@ -54,11 +53,11 @@ export default async function PseoIndexPage({
       ];
 
   return (
-    <section className="container py-20">
-      <div className="mx-auto mb-16 flex max-w-4xl flex-col items-center text-center animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
+    <section className="container py-20 md:py-28">
+      <div className="mx-auto mb-16 flex max-w-4xl flex-col items-center text-center animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none">
         <Badge
           variant="outline"
-          className="mb-4 rounded-full border-border px-4 py-1 text-muted-foreground"
+          className="mb-4 rounded-full border-border px-4 py-1.5 text-[11px] font-medium uppercase tracking-widest text-muted-foreground"
         >
           PSEO Framework
         </Badge>
@@ -73,12 +72,17 @@ export default async function PseoIndexPage({
       </div>
 
       <div className="mx-auto mb-16 grid max-w-5xl gap-6 md:grid-cols-3">
-        {overviewCards.map((card) => {
+        {overviewCards.map((card, index) => {
           const Icon = card.icon;
           return (
+            // 概览卡入场错峰:按索引 80ms 递增,fill-mode backwards 防闪现
             <Card
               key={card.title}
-              className="border-border bg-background shadow-none"
+              className="border-border bg-background shadow-none animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none"
+              style={{
+                animationDelay: `${120 + index * 80}ms`,
+                animationFillMode: "backwards",
+              }}
             >
               <CardContent className="p-6">
                 <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-foreground/5 text-foreground">
@@ -112,7 +116,7 @@ export default async function PseoIndexPage({
           {pages.map((page) => (
             <Card
               key={page.slug}
-              className="group border-border bg-background shadow-none transition-[border-color,box-shadow] duration-150 hover:border-foreground/30 hover:shadow-whisper"
+              className="group border-border bg-background shadow-none transition-[border-color,box-shadow,transform] duration-250 hover:-translate-y-0.5 hover:border-foreground/30 hover:shadow-whisper"
             >
               <CardContent className="flex h-full flex-col p-6">
                 <div className="mb-4 flex items-center justify-between">

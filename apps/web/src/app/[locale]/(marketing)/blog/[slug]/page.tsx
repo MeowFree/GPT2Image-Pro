@@ -1,10 +1,10 @@
 // fumadocs CSS 仅文章正文的 .prose 排版需要,就近在本页引入(不要放进营销布局,
 // 否则它会污染首页等所有营销页、压垮 Header 响应式导航)。
 import "fumadocs-ui/style.css";
+import { siteConfig } from "@repo/shared/config";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArticleJsonLd, BreadcrumbJsonLd } from "@/components/seo/json-ld";
-import { siteConfig } from "@repo/shared/config";
 import { Link } from "@/i18n/routing";
 import { getAllBlogSlugs, getBlogPost } from "@/lib/source";
 
@@ -136,15 +136,15 @@ export default async function BlogPostPage({
         ← {locale === "zh" ? "返回博客" : "Back to Blog"}
       </Link>
 
-      {/* 文章头部 */}
-      <header className="mb-12">
-        {/* 标签 */}
+      {/* 文章头部 - 底部细分隔线收束,与正文形成呼吸 */}
+      <header className="mb-10 border-b border-border/60 pb-8 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none">
+        {/* 标签 - v2 小标签规范:11px 大写宽字距 */}
         {post.tags && post.tags.length > 0 && (
-          <div className="mb-4 flex flex-wrap gap-2">
+          <div className="mb-4 flex flex-wrap gap-x-3 gap-y-1">
             {post.tags.map((tag) => (
               <span
                 key={tag}
-                className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground"
               >
                 {tag}
               </span>
@@ -164,16 +164,23 @@ export default async function BlogPostPage({
           </p>
         )}
 
-        {/* 元数据 */}
+        {/* 元数据 - dateTime 用 ISO 值保证机器可读,展示仍用本地化格式 */}
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           {post.author && <span>{post.author}</span>}
           <span>•</span>
-          <time dateTime={formattedDate}>{formattedDate}</time>
+          <time dateTime={isoDate}>{formattedDate}</time>
         </div>
       </header>
 
-      {/* 文章内容 - 标题沿用衬线 font-medium 的全站层级 */}
-      <div className="prose prose-lg dark:prose-invert max-w-none prose-headings:font-serif prose-headings:font-medium prose-a:text-foreground prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-pre:bg-muted">
+      {/* 文章内容 - fumadocs 只提供基础 .prose(项目未装 typography 插件,
+          prose-headings: 等修饰变体不会生效),故用 Tailwind 原生 [&_x]: 任意
+          变体做 token 化排版精修:标题衬线 font-medium、正文行距放宽、链接
+          下划线用 border 色、引用块细左线 + muted 前景、代码块描边圆角。
+          正文首个 h1 与上方页头标题重复,视觉上隐藏但保留给读屏与 SEO。 */}
+      <div
+        className="prose max-w-none animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none [&>h1:first-child]:sr-only [&_h1]:font-serif [&_h1]:font-medium [&_h1]:tracking-tight [&_h2]:font-serif [&_h2]:font-medium [&_h2]:tracking-tight [&_h3]:font-serif [&_h3]:font-medium [&_h3]:tracking-tight [&_h4]:font-serif [&_h4]:font-medium [&_p]:leading-[1.85] [&_li]:leading-[1.85] [&_a]:font-medium [&_a]:text-foreground [&_a]:underline [&_a]:decoration-border [&_a]:underline-offset-4 [&_a]:transition-colors [&_a]:duration-150 [&_a:hover]:decoration-foreground [&_blockquote]:border-s-2 [&_blockquote]:border-border [&_blockquote]:ps-5 [&_blockquote]:font-serif [&_blockquote]:font-normal [&_blockquote]:text-muted-foreground [&_blockquote_p:first-of-type]:before:content-none [&_blockquote_p:last-of-type]:after:content-none [&_pre]:my-6 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:border [&_pre]:border-border [&_pre]:p-4 [&_pre]:text-sm [&_pre]:leading-relaxed [&_hr]:border-border/60"
+        style={{ animationDelay: "100ms", animationFillMode: "backwards" }}
+      >
         <MDXContent />
       </div>
     </article>

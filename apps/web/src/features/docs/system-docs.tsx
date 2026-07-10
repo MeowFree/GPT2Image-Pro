@@ -1576,12 +1576,12 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
           responses: [
             {
               name: "id",
-              description: "任务 ID（task_...），与请求路径中的 {task_id} 一致。",
+              description:
+                "任务 ID（task_...），与请求路径中的 {task_id} 一致。",
             },
             {
               name: "object",
-              description:
-                "执行中为 image.generation，完成后为 image。",
+              description: "执行中为 image.generation，完成后为 image。",
             },
             {
               name: "status",
@@ -1605,8 +1605,7 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
             },
             {
               name: "credits_consumed",
-              description:
-                "完成后结算的本站积分；命中用户自接 API 时为 0。",
+              description: "完成后结算的本站积分；命中用户自接 API 时为 0。",
             },
           ],
           notes: [
@@ -1809,7 +1808,8 @@ curl https://gpt2image.superapi.buzz/v1/videos/task_... \\
             },
             {
               name: "generation_id / generationId",
-              description: "关联的视频生成记录 ID，可作本端点路径参数持久查询。",
+              description:
+                "关联的视频生成记录 ID，可作本端点路径参数持久查询。",
             },
             {
               name: "credits_consumed",
@@ -3845,7 +3845,8 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
           responses: [
             {
               name: "id",
-              description: "Task ID (task_...), matching {task_id} in the path.",
+              description:
+                "Task ID (task_...), matching {task_id} in the path.",
             },
             {
               name: "object",
@@ -4049,7 +4050,8 @@ curl https://gpt2image.superapi.buzz/v1/videos/task_... \\
           responses: [
             {
               name: "id",
-              description: "Task ID (task_...), matching {id} in the request path.",
+              description:
+                "Task ID (task_...), matching {id} in the request path.",
             },
             {
               name: "object",
@@ -4063,7 +4065,8 @@ curl https://gpt2image.superapi.buzz/v1/videos/task_... \\
             },
             {
               name: "duration_seconds",
-              description: "Video duration in seconds, taken from <dur> in the model id.",
+              description:
+                "Video duration in seconds, taken from <dur> in the model id.",
               custom: true,
             },
             {
@@ -4078,7 +4081,8 @@ curl https://gpt2image.superapi.buzz/v1/videos/task_... \\
             },
             {
               name: "generation_id / generationId",
-              description: "The associated video generation record ID, usable as this endpoint's path parameter for persistent lookups.",
+              description:
+                "The associated video generation record ID, usable as this endpoint's path parameter for persistent lookups.",
             },
             {
               name: "credits_consumed",
@@ -4088,7 +4092,7 @@ curl https://gpt2image.superapi.buzz/v1/videos/task_... \\
           ],
           notes: [
             "This endpoint is a GPT2IMAGE extension, not an official OpenAI endpoint; /api/v1/videos/{id} is an alias.",
-            "In-memory tasks expire after 30 minutes; a restart or multi-instance switch makes an unfinished task return 404 \"Video task not found or expired.\", but an already-sent callback_url callback is unaffected. Use the generation_id for persistent lookups.",
+            'In-memory tasks expire after 30 minutes; a restart or multi-instance switch makes an unfinished task return 404 "Video task not found or expired.", but an already-sent callback_url callback is unaffected. Use the generation_id for persistent lookups.',
             "Only tasks created by the user that owns the current API key are queryable; the response is Cache-Control: no-store.",
             "The shape is identical to the task object POSTed to callback_url.",
           ],
@@ -4757,8 +4761,7 @@ function ListBlock({
 }) {
   const Icon = type === "valid" ? Check : X;
   // 单色体系:支持项用前景色勾,不支持项用 muted 叉,靠图标形状区分语义
-  const color =
-    type === "valid" ? "text-foreground" : "text-muted-foreground";
+  const color = type === "valid" ? "text-foreground" : "text-muted-foreground";
   return (
     <ul className="space-y-2 text-sm text-muted-foreground">
       {items.map((item) => (
@@ -4798,7 +4801,9 @@ function RouteDiagram({
   return (
     <Card className="rounded-lg">
       <CardHeader>
-        <CardTitle className="text-base">{flow.title}</CardTitle>
+        <CardTitle className="font-serif text-lg tracking-tight">
+          {flow.title}
+        </CardTitle>
         <p className="text-sm leading-relaxed text-muted-foreground">
           {flow.note}
         </p>
@@ -4873,7 +4878,8 @@ function RouteColumn({
 }) {
   return (
     <div className="rounded-lg border bg-muted/30 p-3">
-      <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      {/* 列标签 - v2 小标签规范:11px 大写宽字距,font-medium 代替粗体 */}
+      <div className="mb-3 text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
         {title}
       </div>
       {children}
@@ -4960,7 +4966,9 @@ function RelationshipTable({
   return (
     <Card className="rounded-lg">
       <CardHeader>
-        <CardTitle className="text-base">{relationship.title}</CardTitle>
+        <CardTitle className="font-serif text-lg tracking-tight">
+          {relationship.title}
+        </CardTitle>
         <p className="text-sm leading-relaxed text-muted-foreground">
           {relationship.note}
         </p>
@@ -4997,7 +5005,9 @@ function AgentDocs({
   return (
     <Card className="rounded-lg">
       <CardHeader>
-        <CardTitle className="text-base">{agent.title}</CardTitle>
+        <CardTitle className="font-serif text-lg tracking-tight">
+          {agent.title}
+        </CardTitle>
         <p className="text-sm leading-relaxed text-muted-foreground">
           {agent.description}
         </p>
@@ -5022,7 +5032,9 @@ function ExternalApiDocs({
   return (
     <Card className="rounded-lg">
       <CardHeader>
-        <CardTitle className="text-base">{docs.title}</CardTitle>
+        <CardTitle className="font-serif text-lg tracking-tight">
+          {docs.title}
+        </CardTitle>
         <p className="text-sm leading-relaxed text-muted-foreground">
           {docs.subtitle}
         </p>
@@ -5068,7 +5080,7 @@ function ExternalApiDocs({
             <div className="mt-3 space-y-2">
               {docs.officialRefs.map((ref) => (
                 <a
-                  className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                  className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-muted"
                   href={ref.href}
                   key={ref.href}
                   rel="noreferrer"
@@ -5318,27 +5330,70 @@ export function SystemDocsContent({
 }) {
   const content = locale === "zh" ? sections.zh : sections.en;
 
+  // 章节锚点目录:文案全部沿用各章节卡片既有标题,不新增文案。
+  // 「后端落点」复用路由图列标题指代下方四张后端能力卡。
+  const tocItems = [
+    { id: "flow", label: content.flow.title },
+    { id: "relationship", label: content.relationship.title },
+    { id: "moderation-repair", label: content.moderationRepair.title },
+    { id: "agent", label: content.agent.title },
+    { id: "external-api", label: content.externalDocs.title },
+    { id: "route-tables", label: content.routeTables.title },
+    { id: "backends", label: content.flow.backendTitle },
+    { id: "prompt", label: content.prompt.title },
+    { id: "post-process", label: content.postProcess.title },
+    { id: "roadmap", label: content.roadmap.title },
+  ];
+
   return (
     <div className={className}>
-      <div className="space-y-2">
+      <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none">
         <div className="flex items-center gap-2">
           <CircleHelp className="h-5 w-5 text-muted-foreground" />
-          <h1 className="font-serif text-2xl font-medium tracking-tight">
+          <h1 className="font-serif text-2xl font-medium tracking-tight md:text-3xl">
             {content.title}
           </h1>
         </div>
-        <p className="max-w-3xl text-sm text-muted-foreground">
+        <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
           {content.subtitle}
         </p>
       </div>
 
-      <RouteDiagram flow={content.flow} />
+      {/* 粘性锚点目录:停驻在顶栏下方(top-16),半透明底 + backdrop-blur;
+          序号用等宽字建立次序层次,窄屏横向滚动。控制台入口的祖先容器
+          带 overflow,粘性在该处自动退化为静态目录,不影响锚点跳转。 */}
+      <nav
+        aria-label={content.title}
+        className="sticky top-16 z-20 rounded-lg border border-border/60 bg-background/95 shadow-whisper backdrop-blur supports-[backdrop-filter]:bg-background/80"
+      >
+        <div className="flex items-center gap-1 overflow-x-auto px-2 py-2">
+          {tocItems.map((item, index) => (
+            <a
+              className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+              href={`#${item.id}`}
+              key={item.id}
+            >
+              <span className="font-mono text-[10px] text-muted-foreground/60">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              {item.label}
+            </a>
+          ))}
+        </div>
+      </nav>
 
-      <RelationshipTable relationship={content.relationship} />
+      {/* 各章节包一层锚点容器:scroll-mt 预留顶栏 + 粘性目录的停驻高度 */}
+      <div className="scroll-mt-32" id="flow">
+        <RouteDiagram flow={content.flow} />
+      </div>
 
-      <Card className="rounded-lg">
+      <div className="scroll-mt-32" id="relationship">
+        <RelationshipTable relationship={content.relationship} />
+      </div>
+
+      <Card className="scroll-mt-32 rounded-lg" id="moderation-repair">
         <CardHeader>
-          <CardTitle className="text-base">
+          <CardTitle className="font-serif text-lg tracking-tight">
             {content.moderationRepair.title}
           </CardTitle>
           <p className="text-sm leading-relaxed text-muted-foreground">
@@ -5358,13 +5413,17 @@ export function SystemDocsContent({
         </CardContent>
       </Card>
 
-      <AgentDocs agent={content.agent} />
+      <div className="scroll-mt-32" id="agent">
+        <AgentDocs agent={content.agent} />
+      </div>
 
-      <ExternalApiDocs docs={content.externalDocs} />
+      <div className="scroll-mt-32" id="external-api">
+        <ExternalApiDocs docs={content.externalDocs} />
+      </div>
 
-      <Card className="rounded-lg">
+      <Card className="scroll-mt-32 rounded-lg" id="route-tables">
         <CardHeader>
-          <CardTitle className="text-base">
+          <CardTitle className="font-serif text-lg tracking-tight">
             {content.routeTables.title}
           </CardTitle>
         </CardHeader>
@@ -5382,12 +5441,14 @@ export function SystemDocsContent({
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="scroll-mt-32 grid gap-4 lg:grid-cols-3" id="backends">
         {[content.web, content.codex, content.adobe, content.api].map(
           (section) => (
             <Card className="rounded-lg" key={section.title}>
               <CardHeader>
-                <CardTitle className="text-base">{section.title}</CardTitle>
+                <CardTitle className="font-serif text-lg tracking-tight">
+                  {section.title}
+                </CardTitle>
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   {section.description}
                 </p>
@@ -5401,9 +5462,11 @@ export function SystemDocsContent({
         )}
       </div>
 
-      <Card className="rounded-lg">
+      <Card className="scroll-mt-32 rounded-lg" id="prompt">
         <CardHeader>
-          <CardTitle className="text-base">{content.prompt.title}</CardTitle>
+          <CardTitle className="font-serif text-lg tracking-tight">
+            {content.prompt.title}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-hidden rounded-md border">
@@ -5420,9 +5483,9 @@ export function SystemDocsContent({
         </CardContent>
       </Card>
 
-      <Card className="rounded-lg">
+      <Card className="scroll-mt-32 rounded-lg" id="post-process">
         <CardHeader>
-          <CardTitle className="text-base">
+          <CardTitle className="font-serif text-lg tracking-tight">
             {content.postProcess.title}
           </CardTitle>
         </CardHeader>
@@ -5441,9 +5504,11 @@ export function SystemDocsContent({
         </CardContent>
       </Card>
 
-      <Card className="rounded-lg">
+      <Card className="scroll-mt-32 rounded-lg" id="roadmap">
         <CardHeader>
-          <CardTitle className="text-base">{content.roadmap.title}</CardTitle>
+          <CardTitle className="font-serif text-lg tracking-tight">
+            {content.roadmap.title}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="space-y-2 text-sm text-muted-foreground">
