@@ -341,7 +341,7 @@ export function GalleryClient({
     return (
       <div className="space-y-5">
         {tabs}
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background px-6 py-24 text-center">
+        <div className="flex animate-in fade-in flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background px-6 py-24 text-center duration-400 motion-reduce:animate-none">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
             <ImagePlus
               className="h-7 w-7 text-muted-foreground"
@@ -390,14 +390,22 @@ export function GalleryClient({
     <>
       <div className="mb-5">{tabs}</div>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-        {items.map((item) =>
+        {items.map((item, index) =>
           item.outputRole === "video" ? (
             // 视频项:直接内联 <video>(preload=metadata 显示首帧,点 controls 播放),
             // 不参与多选/批量下载(那套是图片专用)。卡片手感与 ImageCard 统一;
             // 尺寸徽标常显于左上(hover 遮罩会挡住 video controls,故不做遮罩)。
             <div
               key={item.id}
-              className="group overflow-hidden rounded-lg border border-border bg-background transition-[transform,box-shadow] duration-250 hover:-translate-y-0.5 hover:shadow-whisper"
+              className="group animate-in fade-in slide-in-from-bottom-2 overflow-hidden rounded-lg border border-border bg-background transition-[transform,box-shadow] duration-250 hover:-translate-y-1 hover:shadow-whisper motion-reduce:animate-none motion-reduce:transition-none"
+              // 入场错峰:按网格索引 50ms 递增(12 个一轮回),fill-mode 用 backwards
+              // 保证延迟期间停留在动画首帧(透明),避免"先显示再闪回透明"的跳变。
+              // 入场时长走内联长属性(400ms),不影响 hover 过渡的 duration-250。
+              style={{
+                animationDelay: `${(index % 12) * 50}ms`,
+                animationDuration: "400ms",
+                animationFillMode: "backwards",
+              }}
             >
               <div className="relative">
                 {item.videoUrl ? (
@@ -430,7 +438,16 @@ export function GalleryClient({
               </div>
             </div>
           ) : (
-            <div key={item.id}>
+            // 入场错峰:与视频卡同一节奏。fill-mode backwards 保证延迟期间
+            // 停留在首帧(透明);key 随 tab/page 变化整体重挂载即自动重播。
+            <div
+              key={item.id}
+              className="animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none"
+              style={{
+                animationDelay: `${(index % 12) * 50}ms`,
+                animationFillMode: "backwards",
+              }}
+            >
               <ImageCard
                 id={item.id}
                 prompt={item.prompt}

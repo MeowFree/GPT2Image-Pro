@@ -313,7 +313,7 @@ export default async function GalleryPage({ searchParams }: GalleryPageProps) {
         <h1 className="font-serif text-2xl font-medium tracking-tight">
           {copy("Gallery", "图库")}
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
           {copy("Your generated images", "你生成的图片")}
         </p>
       </div>

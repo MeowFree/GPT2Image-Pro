@@ -47,20 +47,30 @@ export function RecentCreationsClient({
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {items.map((item) => (
-          <ImageCard
+        {items.map((item, index) => (
+          // 入场错峰:与图库网格同一节奏(索引 50ms 递增,12 个一轮回)。
+          // fill-mode backwards 保证延迟期间停留在首帧(透明),避免闪现跳变。
+          <div
             key={item.id}
-            id={item.id}
-            prompt={item.prompt}
-            imageUrl={item.imageUrl}
-            model={item.model}
-            size={item.size}
-            creditsConsumed={item.creditsConsumed}
-            createdAt={item.createdAt}
-            status={item.status}
-            timeZone={timeZone}
-            onClick={() => setSelectedId(item.id)}
-          />
+            className="animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none"
+            style={{
+              animationDelay: `${(index % 12) * 50}ms`,
+              animationFillMode: "backwards",
+            }}
+          >
+            <ImageCard
+              id={item.id}
+              prompt={item.prompt}
+              imageUrl={item.imageUrl}
+              model={item.model}
+              size={item.size}
+              creditsConsumed={item.creditsConsumed}
+              createdAt={item.createdAt}
+              status={item.status}
+              timeZone={timeZone}
+              onClick={() => setSelectedId(item.id)}
+            />
+          </div>
         ))}
       </div>
 

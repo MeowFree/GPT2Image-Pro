@@ -180,7 +180,7 @@ export function HistoryClient({
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background px-6 py-24 text-center">
+      <div className="flex animate-in fade-in flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background px-6 py-24 text-center duration-400 motion-reduce:animate-none">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
           <ImagePlus
             className="h-7 w-7 text-muted-foreground"
@@ -224,7 +224,7 @@ export function HistoryClient({
                 <button
                   type="button"
                   onClick={() => setSelectedId(item.id)}
-                  className="grid w-full grid-cols-[56px_minmax(0,1fr)] items-start gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-muted md:grid-cols-[64px_minmax(0,1fr)_150px_90px_118px_92px_128px] md:items-center md:gap-3"
+                  className="grid w-full grid-cols-[56px_minmax(0,1fr)] items-start gap-3 px-4 py-3.5 text-left transition-colors duration-150 hover:bg-muted/70 md:grid-cols-[64px_minmax(0,1fr)_150px_90px_118px_92px_128px] md:items-center md:gap-3"
                 >
                   <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-sm border border-border bg-muted md:h-14 md:w-14">
                     {item.imageUrl && item.status === "completed" ? (

@@ -74,7 +74,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         <h1 className="font-serif text-2xl font-medium tracking-tight">
           {copy("History", "历史记录")}
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
           {copy(
             "All generations, including failed and pending",
             "所有生成记录，包括失败和处理中的任务"

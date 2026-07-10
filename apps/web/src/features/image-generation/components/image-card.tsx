@@ -87,9 +87,9 @@ export function ImageCard({
   return (
     <Card
       onClick={handleCardClick}
-      className={`group gap-0 overflow-hidden rounded-lg border border-border bg-background p-0 shadow-none transition-[transform,box-shadow] duration-250 ${
+      className={`group gap-0 overflow-hidden rounded-lg border border-border bg-background p-0 shadow-none transition-[transform,box-shadow] duration-250 motion-reduce:transition-none ${
         clickable
-          ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-whisper"
+          ? "cursor-pointer hover:-translate-y-1 hover:shadow-whisper"
           : ""
       } ${selected ? "ring-2 ring-primary" : ""}`}
     >
@@ -100,7 +100,7 @@ export function ImageCard({
             alt={prompt}
             fill
             sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className="object-contain transition-transform duration-250 group-hover:scale-[1.02]"
+            className="object-contain transition-transform duration-400 group-hover:scale-[1.03] motion-reduce:transition-none"
             unoptimized
             // 低优先级:与导航 RSC 共用同一条 HTTP/2 连接时,让浏览器优先把带宽给
             // 用户点击触发的导航请求,避免一屏缩略图把切页/切 Tab 拖住。

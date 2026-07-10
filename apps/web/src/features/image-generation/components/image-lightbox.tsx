@@ -393,7 +393,7 @@ export function ImageLightbox({
             style={{ flexBasis: `calc(${detailsWidth}% - 6px)` }}
           >
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
                   <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
                     {copy("Prompt", "提示词")}
@@ -461,12 +461,19 @@ export function ImageLightbox({
                           title={currentImageLabel}
                         >
                           <span className="relative block aspect-square">
+                            {/* 非激活缩略图轻微降透明,hover/激活提亮到 100%,
+                                与边框高亮共同标示当前预览项 */}
                             <Image
                               src={imageUrl}
                               alt={currentImageLabel}
                               fill
                               sizes="96px"
-                              className="object-cover"
+                              className={[
+                                "object-cover transition-opacity duration-200",
+                                activePreviewId === "output"
+                                  ? "opacity-100"
+                                  : "opacity-85 group-hover:opacity-100",
+                              ].join(" ")}
                               unoptimized
                             />
                           </span>
@@ -499,7 +506,12 @@ export function ImageLightbox({
                               }
                               fill
                               sizes="96px"
-                              className="object-cover"
+                              className={[
+                                "object-cover transition-opacity duration-200",
+                                activePreviewId === item.id
+                                  ? "opacity-100"
+                                  : "opacity-85 group-hover:opacity-100",
+                              ].join(" ")}
                               unoptimized
                             />
                           </span>
@@ -517,7 +529,7 @@ export function ImageLightbox({
 
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                   <div>
-                    <dt className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                    <dt className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
                       {copy("Model", "模型")}
                     </dt>
                     <dd className="mt-0.5 font-mono text-xs text-foreground">
@@ -525,7 +537,7 @@ export function ImageLightbox({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                    <dt className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
                       {copy("Size", "尺寸")}
                     </dt>
                     <dd className="mt-0.5 font-mono text-xs text-foreground">
@@ -533,7 +545,7 @@ export function ImageLightbox({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                    <dt className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
                       {copy("Credits", "积分")}
                     </dt>
                     <dd className="mt-0.5 text-xs text-foreground">
@@ -541,7 +553,7 @@ export function ImageLightbox({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                    <dt className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
                       {copy("Status", "状态")}
                     </dt>
                     <dd className="mt-0.5">
@@ -554,7 +566,7 @@ export function ImageLightbox({
                     </dd>
                   </div>
                   <div className="col-span-2">
-                    <dt className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                    <dt className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
                       {copy("Created", "创建时间")}
                     </dt>
                     <dd className="mt-0.5 text-xs text-foreground">
