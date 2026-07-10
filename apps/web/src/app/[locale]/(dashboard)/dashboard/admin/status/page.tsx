@@ -899,12 +899,15 @@ function MetricCard({
   description,
   icon: Icon,
   tone = "default",
+  delay = 0,
 }: {
   title: string;
   value: string;
   description: string;
   icon: typeof Activity;
   tone?: "default" | "success" | "warning" | "danger";
+  // 入场错峰延迟(毫秒),纯展示;配合 animationFillMode backwards 避免闪现。
+  delay?: number;
 }) {
   const toneClass =
     tone === "success"
@@ -914,19 +917,28 @@ function MetricCard({
         : tone === "danger"
           ? "text-destructive"
           : "text-muted-foreground";
+  // 入场动画放外层、hover 过渡放卡片:两者的 duration 工具类共享同一
+  // CSS 变量,同元素叠加会互相覆盖(入场 400ms 与交互 250ms 需求不同)。
   return (
-    <Card className="gap-3 rounded-lg py-5">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
-        <Icon className={`h-4 w-4 ${toneClass}`} />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-semibold tracking-tight">{value}</div>
-        <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-      </CardContent>
-    </Card>
+    <div
+      className="animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none"
+      style={{ animationDelay: `${delay}ms`, animationFillMode: "backwards" }}
+    >
+      <Card className="h-full gap-3 rounded-lg py-5 transition-all duration-250 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-whisper">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0">
+          <CardTitle className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+            {title}
+          </CardTitle>
+          <Icon className={`h-4 w-4 ${toneClass}`} />
+        </CardHeader>
+        <CardContent>
+          <div className="font-serif text-3xl font-medium tracking-tight">
+            {value}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -1125,7 +1137,7 @@ function DurationBreakdownTable({
           )}
         </span>
       </div>
-      <div className="overflow-x-auto rounded-md border">
+      <div className="overflow-x-auto rounded-lg border">
         <table className="w-full min-w-[420px] text-left text-xs">
           <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
             <tr>
@@ -1168,9 +1180,13 @@ function DurationBreakdownTable({
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border bg-muted/20 p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-lg font-semibold">{value}</div>
+    <div className="rounded-md border bg-muted/20 p-3 transition-colors duration-150 hover:border-foreground/20">
+      <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-1 font-serif text-lg font-medium tracking-tight">
+        {value}
+      </div>
     </div>
   );
 }
@@ -1284,13 +1300,13 @@ function HistoricalErrorsCard({
       <CardContent className="space-y-4">
         <form className="grid gap-3 rounded-md border bg-muted/20 p-3 md:grid-cols-[160px_180px_180px_auto] md:items-end">
           <label className="grid gap-1 text-sm">
-            <span className="text-xs font-medium text-muted-foreground">
+            <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
               {copy(locale, "Range", "时间范围")}
             </span>
             <select
               name="errorRange"
               defaultValue={filters.range}
-              className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+              className="h-9 rounded-md border bg-background px-3 text-sm outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
             >
               <option value="24h">{copy(locale, "Last 24 hours", "最近24小时")}</option>
               <option value="7d">{copy(locale, "Last 7 days", "最近7天")}</option>
@@ -1301,25 +1317,25 @@ function HistoricalErrorsCard({
             </select>
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-xs font-medium text-muted-foreground">
+            <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
               {copy(locale, "From", "开始日期")}
             </span>
             <input
               type="date"
               name="errorFrom"
               defaultValue={filters.fromInput}
-              className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+              className="h-9 rounded-md border bg-background px-3 text-sm outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
             />
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-xs font-medium text-muted-foreground">
+            <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
               {copy(locale, "To", "结束日期")}
             </span>
             <input
               type="date"
               name="errorTo"
               defaultValue={filters.toInput}
-              className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+              className="h-9 rounded-md border bg-background px-3 text-sm outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
             />
           </label>
           <Button type="submit" className="md:w-fit">
@@ -1347,11 +1363,11 @@ function HistoricalErrorsCard({
         </div>
 
         {errors.items.length === 0 ? (
-          <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
             {copy(locale, "No failed records in this range.", "该时间范围内没有失败记录。")}
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-md border">
+          <div className="overflow-x-auto rounded-lg border">
             <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
                 <tr>
@@ -1916,7 +1932,7 @@ export default async function GlobalStatusPage({
 
   return (
     <div className="container mx-auto space-y-8 px-4 py-6 md:px-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="font-serif text-2xl font-medium tracking-tight">
             {copy(locale, "Global Status", "全局状态")}
@@ -1953,6 +1969,7 @@ export default async function GlobalStatusPage({
           )}
           icon={Activity}
           tone={data.stats24h.platformSla >= 0.95 ? "success" : "warning"}
+          delay={0}
         />
         <MetricCard
           title={copy(locale, "24h Images", "24小时产出图片")}
@@ -1964,6 +1981,7 @@ export default async function GlobalStatusPage({
           )}`}
           icon={ImageIcon}
           tone="success"
+          delay={60}
         />
         <MetricCard
           title={copy(locale, "Credit Consumption 24h", "24小时积分消耗")}
@@ -1974,6 +1992,7 @@ export default async function GlobalStatusPage({
             data.credits.ledger24h.expiration
           )}`}
           icon={Coins}
+          delay={120}
         />
         <MetricCard
           title={copy(locale, "Backend Health", "后端池健康")}
@@ -1993,6 +2012,7 @@ export default async function GlobalStatusPage({
           )}`}
           icon={Server}
           tone={backendErrors > 0 || backendCooling > 0 ? "warning" : "success"}
+          delay={180}
         />
       </div>
 
@@ -2254,11 +2274,11 @@ export default async function GlobalStatusPage({
         </CardHeader>
         <CardContent>
           {data.topErrors24h.length === 0 ? (
-            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
               {copy(locale, "No failures in the last 24 hours.", "24小时内没有失败记录。")}
             </div>
           ) : (
-            <div className="divide-y rounded-md border">
+            <div className="divide-y overflow-hidden rounded-lg border">
               {data.topErrors24h.map((item) => (
                 <div
                   key={item.message}
@@ -2329,7 +2349,7 @@ function VideoGenerationCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {stats.total === 0 ? (
-          <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
             {copy(locale, "No video generation samples.", "暂无视频生成样本")}
           </div>
         ) : (
@@ -2377,7 +2397,7 @@ function VideoGenerationCard({
                 value={formatDuration(stats.avgLatencySeconds, locale)}
               />
             </div>
-            <div className="overflow-x-auto rounded-md border">
+            <div className="overflow-x-auto rounded-lg border">
               <table className="w-full min-w-[360px] text-left text-xs">
                 <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
                   <tr>

@@ -921,12 +921,12 @@ function PlanCapabilityMatrixInput({
 
       <section className="space-y-2">
         <div>
-          <h4 className="text-sm font-medium">功能门槛</h4>
+          <h4 className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">功能门槛</h4>
           <p className="text-xs text-muted-foreground">
             选择启用某项能力所需的最低套餐。
           </p>
         </div>
-        <div className="overflow-x-auto rounded-md border">
+        <div className="overflow-x-auto rounded-lg border">
           <table className="w-full min-w-[760px] text-sm">
             <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
@@ -963,12 +963,12 @@ function PlanCapabilityMatrixInput({
 
       <section className="space-y-2">
         <div>
-          <h4 className="text-sm font-medium">对话计费</h4>
+          <h4 className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">对话计费</h4>
           <p className="text-xs text-muted-foreground">
             配置页面 Chat/Agent 的每轮基础积分；生成图片时还会按实际成品图尺寸和数量追加图片积分。
           </p>
         </div>
-        <div className="overflow-x-auto rounded-md border">
+        <div className="overflow-x-auto rounded-lg border">
           <table className="w-full min-w-[860px] text-sm">
             <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
@@ -1020,12 +1020,12 @@ function PlanCapabilityMatrixInput({
 
       <section className="space-y-2">
         <div>
-          <h4 className="text-sm font-medium">套餐限制</h4>
+          <h4 className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">套餐限制</h4>
           <p className="text-xs text-muted-foreground">
             管理 Ultra 等套餐的并发、上传大小、月积分和请求数量限制。
           </p>
         </div>
-        <div className="overflow-x-auto rounded-md border">
+        <div className="overflow-x-auto rounded-lg border">
           <table className="w-full min-w-[980px] text-sm">
             <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
@@ -1091,12 +1091,12 @@ function PlanCapabilityMatrixInput({
 
       <section className="space-y-2">
         <div>
-          <h4 className="text-sm font-medium">审核策略</h4>
+          <h4 className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">审核策略</h4>
           <p className="text-xs text-muted-foreground">
             配置各套餐默认审核拦截等级和用户/API Key 可选择的最高等级。
           </p>
         </div>
-        <div className="overflow-x-auto rounded-md border">
+        <div className="overflow-x-auto rounded-lg border">
           <table className="w-full min-w-[760px] text-sm">
             <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
               <tr>
@@ -1305,7 +1305,7 @@ function CreditPackageMatrixInput({
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-1.5">
-              <Label>包 ID</Label>
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">包 ID</Label>
               <Input
                 value={pkg.id}
                 disabled={disabled}
@@ -1315,7 +1315,7 @@ function CreditPackageMatrixInput({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>显示名称</Label>
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">显示名称</Label>
               <Input
                 value={pkg.name}
                 disabled={disabled}
@@ -1325,7 +1325,7 @@ function CreditPackageMatrixInput({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>积分数</Label>
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">积分数</Label>
               <Input
                 type="number"
                 min="1"
@@ -1338,7 +1338,7 @@ function CreditPackageMatrixInput({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>兜底价格</Label>
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">兜底价格</Label>
               <Input
                 type="number"
                 min="0.01"
@@ -1351,7 +1351,7 @@ function CreditPackageMatrixInput({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>最低可购买套餐</Label>
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">最低可购买套餐</Label>
               <MatrixSelect
                 value={pkg.requiresPlan}
                 options={PLAN_REQUIREMENT_OPTIONS}
@@ -1364,7 +1364,7 @@ function CreditPackageMatrixInput({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>最大购买数量</Label>
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">最大购买数量</Label>
               <Input
                 type="number"
                 min="1"
@@ -1379,7 +1379,7 @@ function CreditPackageMatrixInput({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Creem 兜底产品 ID</Label>
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">Creem 兜底产品 ID</Label>
               <Input
                 value={pkg.creemProductId}
                 disabled={disabled}
@@ -1390,7 +1390,7 @@ function CreditPackageMatrixInput({
               />
             </div>
             <div className="space-y-2">
-              <Label>开关</Label>
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">开关</Label>
               {/* Radix Switch 渲染为 button,biome 不识别包裹式 label,
                   用 htmlFor/id 显式关联(按 index 唯一化) */}
               <div className="flex flex-wrap gap-4 rounded-md border px-3 py-2">
@@ -1444,7 +1444,7 @@ function CreditPackageMatrixInput({
           </div>
 
           <div className="space-y-1.5">
-            <Label>说明</Label>
+            <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">说明</Label>
             <Textarea
               value={pkg.description}
               rows={2}
@@ -1456,7 +1456,7 @@ function CreditPackageMatrixInput({
             />
           </div>
 
-          <div className="overflow-x-auto rounded-md border">
+          <div className="overflow-x-auto rounded-lg border">
             <table className="w-full min-w-[820px] text-sm">
               <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
                 <tr>
@@ -1680,7 +1680,7 @@ export function SystemSettingsPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none">
         <div>
           <h2 className="font-serif text-2xl font-medium tracking-tight">
             系统设置
@@ -1802,7 +1802,10 @@ export function SystemSettingsPanel() {
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="space-y-2">
-                        <Label htmlFor={`setting-${setting.key}`}>
+                        <Label
+                          htmlFor={`setting-${setting.key}`}
+                          className="text-[11px] uppercase tracking-widest text-muted-foreground"
+                        >
                           {setting.key}
                         </Label>
                         <div className="flex items-center gap-2">

@@ -280,7 +280,7 @@ export function AdminAnnouncementsManagement({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-serif text-2xl font-medium tracking-tight">
             公告管理
@@ -295,43 +295,36 @@ export function AdminAnnouncementsManagement({
         </Button>
       </div>
 
+      {/* 统计卡:入场错峰放外层包裹,hover 过渡放卡片(duration 工具类共享
+          同一 CSS 变量,同元素叠加会互相覆盖)。 */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              生效中
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tracking-tight">
-              {stats.active}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              草稿/下线
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tracking-tight">
-              {stats.drafts}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              置顶
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tracking-tight">
-              {stats.pinned}
-            </div>
-          </CardContent>
-        </Card>
+        {[
+          { label: "生效中", value: stats.active },
+          { label: "草稿/下线", value: stats.drafts },
+          { label: "置顶", value: stats.pinned },
+        ].map((item, index) => (
+          <div
+            key={item.label}
+            className="animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none"
+            style={{
+              animationDelay: `${index * 60}ms`,
+              animationFillMode: "backwards",
+            }}
+          >
+            <Card className="h-full transition-all duration-250 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-whisper">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                  {item.label}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="font-serif text-3xl font-medium tracking-tight">
+                  {item.value}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        ))}
       </div>
 
       <div className="space-y-3">
@@ -354,7 +347,10 @@ export function AdminAnnouncementsManagement({
             const busy = mutatingId === item.id;
 
             return (
-              <Card key={item.id}>
+              <Card
+                key={item.id}
+                className="transition-all duration-250 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-whisper"
+              >
                 <CardContent className="p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 flex-1 space-y-3">
@@ -453,7 +449,12 @@ export function AdminAnnouncementsManagement({
           </DialogHeader>
           <form onSubmit={submit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="announcement-title">标题</Label>
+              <Label
+                htmlFor="announcement-title"
+                className="text-[11px] uppercase tracking-widest text-muted-foreground"
+              >
+                标题
+              </Label>
               <Input
                 id="announcement-title"
                 value={form.title}
@@ -470,7 +471,12 @@ export function AdminAnnouncementsManagement({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="announcement-content">内容</Label>
+              <Label
+                htmlFor="announcement-content"
+                className="text-[11px] uppercase tracking-widest text-muted-foreground"
+              >
+                内容
+              </Label>
               <Textarea
                 id="announcement-content"
                 value={form.content}
@@ -492,7 +498,12 @@ export function AdminAnnouncementsManagement({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="announcement-severity">等级</Label>
+                <Label
+                  htmlFor="announcement-severity"
+                  className="text-[11px] uppercase tracking-widest text-muted-foreground"
+                >
+                  等级
+                </Label>
                 <Select
                   value={form.severity}
                   onValueChange={(value) =>
@@ -515,7 +526,12 @@ export function AdminAnnouncementsManagement({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="announcement-priority">优先级</Label>
+                <Label
+                  htmlFor="announcement-priority"
+                  className="text-[11px] uppercase tracking-widest text-muted-foreground"
+                >
+                  优先级
+                </Label>
                 <Input
                   id="announcement-priority"
                   type="number"
@@ -534,7 +550,12 @@ export function AdminAnnouncementsManagement({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="announcement-published-at">发布时间</Label>
+                <Label
+                  htmlFor="announcement-published-at"
+                  className="text-[11px] uppercase tracking-widest text-muted-foreground"
+                >
+                  发布时间
+                </Label>
                 <Input
                   id="announcement-published-at"
                   type="datetime-local"
@@ -548,7 +569,12 @@ export function AdminAnnouncementsManagement({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="announcement-expires-at">过期时间</Label>
+                <Label
+                  htmlFor="announcement-expires-at"
+                  className="text-[11px] uppercase tracking-widest text-muted-foreground"
+                >
+                  过期时间
+                </Label>
                 <Input
                   id="announcement-expires-at"
                   type="datetime-local"

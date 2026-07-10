@@ -930,7 +930,7 @@ export function AdminUsersManagement({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 className="font-serif text-2xl font-medium tracking-tight">
             用户管理
@@ -959,59 +959,45 @@ export function AdminUsersManagement({
         </div>
       </div>
 
+      {/* 统计卡:入场错峰放外层包裹,hover 过渡放卡片(duration 工具类共享
+          同一 CSS 变量,同元素叠加会互相覆盖)。 */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              总用户
-            </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tracking-tight">
-              {stats.totalUsers}
+        {[
+          { label: "总用户", value: stats.totalUsers, icon: Users },
+          { label: "管理员", value: stats.admins, icon: Shield },
+          {
+            label: "活跃订阅",
+            value: stats.activeSubscriptions,
+            icon: CreditCard,
+          },
+          { label: "已封禁", value: stats.banned, icon: Ban },
+        ].map((item, index) => {
+          const Icon = item.icon;
+          return (
+            <div
+              key={item.label}
+              className="animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none"
+              style={{
+                animationDelay: `${index * 60}ms`,
+                animationFillMode: "backwards",
+              }}
+            >
+              <Card className="h-full transition-all duration-250 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-whisper">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                    {item.label}
+                  </CardTitle>
+                  <Icon className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="font-serif text-3xl font-medium tracking-tight">
+                    {item.value}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              管理员
-            </CardTitle>
-            <Shield className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tracking-tight">
-              {stats.admins}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              活跃订阅
-            </CardTitle>
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tracking-tight">
-              {stats.activeSubscriptions}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              已封禁
-            </CardTitle>
-            <Ban className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tracking-tight">
-              {stats.banned}
-            </div>
-          </CardContent>
-        </Card>
+          );
+        })}
       </div>
 
       <Card>
@@ -1141,7 +1127,7 @@ export function AdminUsersManagement({
               没有找到匹配的用户
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-lg border">
               <table className="w-full min-w-[1080px] text-left text-sm">
                 <thead className="border-b border-border/60 text-[11px] uppercase tracking-widest text-muted-foreground">
                   <tr>
@@ -1413,30 +1399,38 @@ export function AdminUsersManagement({
                 <div className="grid gap-3 md:grid-cols-4">
                   <Card>
                     <CardContent className="p-4">
-                      <div className="text-xs text-muted-foreground">套餐</div>
+                      <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                        套餐
+                      </div>
                       <div className="mt-2">{planBadge(detail.plan)}</div>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="p-4">
-                      <div className="text-xs text-muted-foreground">余额</div>
-                      <div className="mt-1 text-lg font-semibold">
+                      <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                        余额
+                      </div>
+                      <div className="mt-1 font-serif text-lg font-medium tracking-tight">
                         {formatCredits(detailBalance?.balance ?? 0)}
                       </div>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="p-4">
-                      <div className="text-xs text-muted-foreground">生成成功率</div>
-                      <div className="mt-1 text-lg font-semibold">
+                      <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                        生成成功率
+                      </div>
+                      <div className="mt-1 font-serif text-lg font-medium tracking-tight">
                         {detailGenerationRate}
                       </div>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="p-4">
-                      <div className="text-xs text-muted-foreground">API Key</div>
-                      <div className="mt-1 text-lg font-semibold">
+                      <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                        API Key
+                      </div>
+                      <div className="mt-1 font-serif text-lg font-medium tracking-tight">
                         {detail.apiKeys.filter((item) => item.isActive).length}/
                         {detail.apiKeys.length}
                       </div>
@@ -1783,7 +1777,9 @@ export function AdminUsersManagement({
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="grantAmount">积分数量</Label>
+              <Label htmlFor="grantAmount" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                积分数量
+              </Label>
               <Input
                 id="grantAmount"
                 type="number"
@@ -1795,7 +1791,9 @@ export function AdminUsersManagement({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="grantReason">充值原因</Label>
+              <Label htmlFor="grantReason" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                充值原因
+              </Label>
               <Textarea
                 id="grantReason"
                 value={grantReason}
@@ -1832,7 +1830,9 @@ export function AdminUsersManagement({
               如需额外赠送积分，请使用加积分。
             </div>
             <div className="space-y-2">
-              <Label htmlFor="creditAdjustAmount">扣减数量</Label>
+              <Label htmlFor="creditAdjustAmount" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                扣减数量
+              </Label>
               <Input
                 id="creditAdjustAmount"
                 type="number"
@@ -1844,7 +1844,9 @@ export function AdminUsersManagement({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="creditAdjustReason">操作原因</Label>
+              <Label htmlFor="creditAdjustReason" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                操作原因
+              </Label>
               <Textarea
                 id="creditAdjustReason"
                 value={creditAdjustReason}
@@ -1878,7 +1880,7 @@ export function AdminUsersManagement({
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>目标套餐</Label>
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">目标套餐</Label>
               <Select
                 value={targetPlan}
                 onValueChange={(value) =>
@@ -1902,7 +1904,9 @@ export function AdminUsersManagement({
               会立即结束当前订阅权益。该操作不会创建积分批次，也不会触发套餐月度积分。
             </div>
             <div className="space-y-2">
-              <Label htmlFor="planReason">操作原因</Label>
+              <Label htmlFor="planReason" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                操作原因
+              </Label>
               <Textarea
                 id="planReason"
                 value={planReason}
@@ -1938,7 +1942,9 @@ export function AdminUsersManagement({
           </DialogHeader>
           {!selectedUser?.banned ? (
             <div className="space-y-2">
-              <Label htmlFor="banReason">封禁原因</Label>
+              <Label htmlFor="banReason" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                封禁原因
+              </Label>
               <Textarea
                 id="banReason"
                 value={banReason}
@@ -1971,7 +1977,9 @@ export function AdminUsersManagement({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="creditsReason">操作原因</Label>
+            <Label htmlFor="creditsReason" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                操作原因
+              </Label>
             <Textarea
               id="creditsReason"
               value={creditsReason}
@@ -2006,7 +2014,9 @@ export function AdminUsersManagement({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="keyReason">操作原因</Label>
+            <Label htmlFor="keyReason" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                操作原因
+              </Label>
             <Textarea
               id="keyReason"
               value={keyReason}
@@ -2038,7 +2048,7 @@ export function AdminUsersManagement({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label>目标角色</Label>
+            <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">目标角色</Label>
             <Select
               value={targetRole}
               onValueChange={(value) => setTargetRole(value as AppUserRole)}
@@ -2056,7 +2066,9 @@ export function AdminUsersManagement({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="roleReason">操作原因</Label>
+            <Label htmlFor="roleReason" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                操作原因
+              </Label>
             <Textarea
               id="roleReason"
               value={roleReason}
@@ -2089,7 +2101,9 @@ export function AdminUsersManagement({
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="createName">用户名</Label>
+              <Label htmlFor="createName" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                用户名
+              </Label>
               <Input
                 id="createName"
                 value={createName}
@@ -2098,7 +2112,9 @@ export function AdminUsersManagement({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="createEmail">绑定邮箱</Label>
+              <Label htmlFor="createEmail" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                绑定邮箱
+              </Label>
               <Input
                 id="createEmail"
                 type="email"
@@ -2107,7 +2123,9 @@ export function AdminUsersManagement({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="createPassword">初始密码</Label>
+              <Label htmlFor="createPassword" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                初始密码
+              </Label>
               <Input
                 id="createPassword"
                 type="password"
@@ -2117,7 +2135,9 @@ export function AdminUsersManagement({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="createRole">角色</Label>
+              <Label htmlFor="createRole" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                角色
+              </Label>
               <Select
                 value={createRole}
                 onValueChange={(value) => setCreateRole(value as AppUserRole)}
@@ -2135,7 +2155,9 @@ export function AdminUsersManagement({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="createReason">操作原因</Label>
+              <Label htmlFor="createReason" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                操作原因
+              </Label>
               <Textarea
                 id="createReason"
                 value={createReason}
@@ -2169,7 +2191,9 @@ export function AdminUsersManagement({
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="profileName">用户名</Label>
+              <Label htmlFor="profileName" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                用户名
+              </Label>
               <Input
                 id="profileName"
                 value={profileName}
@@ -2178,7 +2202,9 @@ export function AdminUsersManagement({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="profileEmail">绑定邮箱</Label>
+              <Label htmlFor="profileEmail" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                绑定邮箱
+              </Label>
               <Input
                 id="profileEmail"
                 type="email"
@@ -2187,7 +2213,9 @@ export function AdminUsersManagement({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="profileReason">操作原因</Label>
+              <Label htmlFor="profileReason" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                操作原因
+              </Label>
               <Textarea
                 id="profileReason"
                 value={profileReason}
@@ -2221,7 +2249,9 @@ export function AdminUsersManagement({
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="newPassword">新密码</Label>
+              <Label htmlFor="newPassword" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                新密码
+              </Label>
               <Input
                 id="newPassword"
                 type="password"
@@ -2231,7 +2261,9 @@ export function AdminUsersManagement({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="passwordReason">操作原因</Label>
+              <Label htmlFor="passwordReason" className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                操作原因
+              </Label>
               <Textarea
                 id="passwordReason"
                 value={passwordReason}
@@ -2267,7 +2299,9 @@ function Panel({
 }) {
   return (
     <div className="rounded-lg border bg-background p-4">
-      <h3 className="mb-3 text-sm font-medium">{title}</h3>
+      <h3 className="mb-3 text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+        {title}
+      </h3>
       {children}
     </div>
   );
@@ -2297,8 +2331,12 @@ function InfoBlock({
 function Metric({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-lg border bg-background p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-lg font-semibold">{value}</div>
+      <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-1 font-serif text-lg font-medium tracking-tight">
+        {value}
+      </div>
     </div>
   );
 }

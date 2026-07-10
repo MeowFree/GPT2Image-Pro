@@ -2327,7 +2327,7 @@ export function ImageBackendPoolAdminPanel({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none">
         <div>
           <h2 className="font-serif text-2xl font-medium tracking-tight">
             生图后端池
@@ -2972,28 +2972,39 @@ export function ImageBackendPoolAdminPanel({
 
           <div className="grid gap-3">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
-              {ACCOUNT_METRIC_CARDS.map((item) => {
+              {ACCOUNT_METRIC_CARDS.map((item, index) => {
                 const Icon = item.icon;
                 const value = accountSummary[item.key];
                 return (
-                  <Card key={item.key}>
-                    <CardContent className="p-4">
-                      <div className="mb-3 flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {item.label}
-                        </span>
-                        <Icon className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div
-                        className={cn(
-                          "text-2xl font-semibold tracking-tight",
-                          item.color
-                        )}
-                      >
-                        {value}
-                      </div>
-                    </CardContent>
-                  </Card>
+                  // 入场错峰放外层包裹,hover 过渡放卡片:两者 duration 工具类
+                  // 共享同一 CSS 变量,同元素叠加会互相覆盖。
+                  <div
+                    key={item.key}
+                    className="animate-in fade-in slide-in-from-bottom-2 duration-400 motion-reduce:animate-none"
+                    style={{
+                      animationDelay: `${index * 50}ms`,
+                      animationFillMode: "backwards",
+                    }}
+                  >
+                    <Card className="h-full transition-all duration-250 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-whisper">
+                      <CardContent className="p-4">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                            {item.label}
+                          </span>
+                          <Icon className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div
+                          className={cn(
+                            "font-serif text-2xl font-medium tracking-tight",
+                            item.color
+                          )}
+                        >
+                          {value}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
                 );
               })}
             </div>
@@ -3554,6 +3565,13 @@ export function ImageBackendPoolAdminPanel({
                         variant="outline"
                         className={backendStatusBadgeClass(account.status)}
                       >
+                        {account.status === "active" && (
+                          // 在线状态点:CSS 呼吸,尊重减动效偏好。
+                          <span
+                            aria-hidden="true"
+                            className="h-1.5 w-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none"
+                          />
+                        )}
                         {account.status}
                       </Badge>
                       {formatWebStatus(account) && (
@@ -3573,6 +3591,11 @@ export function ImageBackendPoolAdminPanel({
                           variant="outline"
                           className="border-warning/40 text-warning"
                         >
+                          {/* 冷却状态点:CSS 呼吸,尊重减动效偏好。 */}
+                          <span
+                            aria-hidden="true"
+                            className="h-1.5 w-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none"
+                          />
                           冷却中
                         </Badge>
                       )}
@@ -4106,6 +4129,13 @@ export function ImageBackendPoolAdminPanel({
                         variant="outline"
                         className={backendStatusBadgeClass(api.status)}
                       >
+                        {api.status === "active" && (
+                          // 在线状态点:CSS 呼吸,尊重减动效偏好。
+                          <span
+                            aria-hidden="true"
+                            className="h-1.5 w-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none"
+                          />
+                        )}
                         {api.status}
                       </Badge>
                       {isCoolingDown(api.cooldownUntil) && (
@@ -4113,6 +4143,11 @@ export function ImageBackendPoolAdminPanel({
                           variant="outline"
                           className="border-warning/40 text-warning"
                         >
+                          {/* 冷却状态点:CSS 呼吸,尊重减动效偏好。 */}
+                          <span
+                            aria-hidden="true"
+                            className="h-1.5 w-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none"
+                          />
                           冷却中
                         </Badge>
                       )}
@@ -4750,7 +4785,7 @@ export function ImageBackendPoolAdminPanel({
                     </div>
                     <span
                       className={cn(
-                        "shrink-0 rounded-sm px-2 py-0.5 text-xs",
+                        "flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-0.5 text-xs",
                         adobe.status === "error"
                           ? "bg-destructive/10 text-destructive"
                           : adobe.isEnabled
@@ -4758,6 +4793,13 @@ export function ImageBackendPoolAdminPanel({
                             : "bg-muted text-muted-foreground"
                       )}
                     >
+                      {adobe.isEnabled && adobe.status !== "error" && (
+                        // 在线状态点:CSS 呼吸,尊重减动效偏好。
+                        <span
+                          aria-hidden="true"
+                          className="h-1.5 w-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none"
+                        />
+                      )}
                       {adobe.isEnabled ? adobe.status : "已停用"}
                     </span>
                   </div>
@@ -5572,7 +5614,9 @@ export function ImageBackendPoolAdminPanel({
               </div>
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-1.5">
-                  <Label>模型</Label>
+                  <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                    模型
+                  </Label>
                   <Input
                     placeholder="可选"
                     value={manualImportForm.model}
@@ -5585,7 +5629,9 @@ export function ImageBackendPoolAdminPanel({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>优先级</Label>
+                  <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                    优先级
+                  </Label>
                   <Input
                     type="number"
                     min={0}
@@ -5602,7 +5648,9 @@ export function ImageBackendPoolAdminPanel({
                   </p>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>最大并发数</Label>
+                  <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                    最大并发数
+                  </Label>
                   <Input
                     type="number"
                     min={1}
@@ -5729,7 +5777,9 @@ export function ImageBackendPoolAdminPanel({
               </div>
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-1.5">
-                  <Label>模型</Label>
+                  <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                    模型
+                  </Label>
                   <Input
                     placeholder="可选"
                     value={webAtImportForm.model}
@@ -5742,7 +5792,9 @@ export function ImageBackendPoolAdminPanel({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>优先级</Label>
+                  <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                    优先级
+                  </Label>
                   <Input
                     type="number"
                     min={0}
@@ -5759,7 +5811,9 @@ export function ImageBackendPoolAdminPanel({
                   </p>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>最大并发数</Label>
+                  <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                    最大并发数
+                  </Label>
                   <Input
                     type="number"
                     min={1}
@@ -5906,7 +5960,9 @@ export function ImageBackendPoolAdminPanel({
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>自动同步间隔（分钟）</Label>
+                <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                  自动同步间隔（分钟）
+                </Label>
                 <Input
                   type="number"
                   min={1}
