@@ -72,15 +72,10 @@ export function SecuritySection() {
     <div className="space-y-8">
       {/* 修改密码 */}
       <section className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">
-              {t("changePassword.title")}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {t("changePassword.description")}
-            </p>
-          </div>
+        <div className="flex items-center justify-between gap-4 border-b border-border/60 pb-2">
+          <h2 className="text-xs font-medium uppercase tracking-[1.2px] text-muted-foreground">
+            {t("changePassword.title")}
+          </h2>
           <Button
             size="sm"
             disabled={
@@ -93,12 +88,18 @@ export function SecuritySection() {
               : t("changePassword.submit")}
           </Button>
         </div>
+        <p className="text-sm text-muted-foreground">
+          {t("changePassword.description")}
+        </p>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="max-w-md space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="current-password">
+            <Label
+              htmlFor="current-password"
+              className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+            >
               {t("changePassword.currentPassword")}
             </Label>
             <div className="relative">
@@ -126,7 +127,10 @@ export function SecuritySection() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="new-password">
+            <Label
+              htmlFor="new-password"
+              className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+            >
               {t("changePassword.newPassword")}
             </Label>
             <Input
@@ -139,7 +143,10 @@ export function SecuritySection() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="confirm-password">
+            <Label
+              htmlFor="confirm-password"
+              className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+            >
               {t("changePassword.confirmPassword")}
             </Label>
             <Input

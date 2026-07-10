@@ -116,7 +116,12 @@ export function ImageBackendPreferenceSection() {
 
       <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
         <div className="space-y-2">
-          <Label htmlFor="image-backend-group">分组</Label>
+          <Label
+            htmlFor="image-backend-group"
+            className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+          >
+            分组
+          </Label>
           <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
             <SelectTrigger id="image-backend-group">
               <SelectValue placeholder="网页端默认分组" />

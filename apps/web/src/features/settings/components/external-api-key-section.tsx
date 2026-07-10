@@ -392,8 +392,11 @@ export function ExternalApiKeySection({ timeZone }: { timeZone?: string }) {
       </div>
 
       {newKey && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
-          <Label htmlFor="new-external-api-key" className="text-xs">
+        <div className="rounded-md border border-warning/40 bg-warning/10 p-3 animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
+          <Label
+            htmlFor="new-external-api-key"
+            className="text-xs uppercase tracking-[0.6px]"
+          >
             {t("newKeyLabel")}
           </Label>
           <div className="mt-2 flex gap-2">
@@ -533,14 +536,18 @@ export function ExternalApiKeySection({ timeZone }: { timeZone?: string }) {
             return (
               <div
                 key={key.id}
-                className="flex flex-col gap-3 rounded-md border border-border px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-3 rounded-md border border-border px-3 py-3 transition-colors duration-150 hover:border-foreground/20 sm:flex-row sm:items-center sm:justify-between"
               >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium">
                     {key.name}
                   </span>
-                  <span className="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                  <span
+                    className={`rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground ${
+                      key.isActive ? "" : "opacity-60"
+                    }`}
+                  >
                     {key.isActive ? t("active") : t("revoked")}
                   </span>
                   {key.relayOnly && (
@@ -569,7 +576,10 @@ export function ExternalApiKeySection({ timeZone }: { timeZone?: string }) {
                   </p>
                 )}
                 <div className="mt-3 max-w-xs">
-                  <Label htmlFor={`external-key-moderation-${key.id}`}>
+                  <Label
+                    htmlFor={`external-key-moderation-${key.id}`}
+                    className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+                  >
                     {t("moderation.label")}
                   </Label>
                   <Select
@@ -610,7 +620,10 @@ export function ExternalApiKeySection({ timeZone }: { timeZone?: string }) {
                   </p>
                 </div>
                 <div className="mt-3 max-w-xs">
-                  <Label htmlFor={`external-key-group-${key.id}`}>
+                  <Label
+                    htmlFor={`external-key-group-${key.id}`}
+                    className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+                  >
                     {t("backendGroup.label")}
                   </Label>
                   <Select
@@ -647,7 +660,10 @@ export function ExternalApiKeySection({ timeZone }: { timeZone?: string }) {
                 </div>
                 <div className="mt-3 flex max-w-xs items-end gap-2">
                   <div className="flex-1">
-                    <Label htmlFor={`external-key-quota-${key.id}`}>
+                    <Label
+                      htmlFor={`external-key-quota-${key.id}`}
+                      className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+                    >
                       {t("quota.label")}
                     </Label>
                     <Input

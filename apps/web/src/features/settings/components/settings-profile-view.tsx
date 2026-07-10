@@ -40,7 +40,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@repo/ui/components/select";
-import { Separator } from "@repo/ui/components/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui/components/tabs";
 import {
   getAllowedModerationBlockRiskLevels,
@@ -79,6 +78,17 @@ interface SettingsProfileViewProps {
 }
 
 type FormValues = z.infer<typeof updateProfileSchema>;
+
+/** Tab 触发器统一样式：单色边框激活态 + 150ms 颜色过渡 */
+const tabTriggerClass =
+  "rounded-md border border-transparent px-4 py-2 transition-colors duration-150 data-[state=active]:border-foreground/20 data-[state=active]:bg-foreground/5 data-[state=active]:text-foreground data-[state=active]:shadow-none";
+
+/** 设置分区节标题：uppercase 小标签 + 下边框分隔（对齐参考项目排版语言） */
+const sectionTitleClass =
+  "text-xs font-medium uppercase tracking-[1.2px] text-muted-foreground";
+
+/** 表单字段标签：uppercase 小字距；不带颜色以保留 FormLabel 错误态变红 */
+const fieldLabelClass = "text-xs uppercase tracking-[0.6px]";
 
 export function SettingsProfileView({ user }: SettingsProfileViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -337,44 +347,30 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
         onValueChange={(value) => setActiveTab(normalizeTab(value))}
         className="w-full"
       >
-        <div className="border-b border-border pb-2">
+        <div className="border-b border-border/60 pb-2">
           <TabsList className="h-auto gap-1 bg-transparent p-0">
-            <TabsTrigger
-              value="account"
-              className="rounded-md border border-transparent px-4 py-2 data-[state=active]:border-foreground/20 data-[state=active]:bg-foreground/5 data-[state=active]:text-foreground data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="account" className={tabTriggerClass}>
               {tTabs("account")}
             </TabsTrigger>
-            <TabsTrigger
-              value="security"
-              className="rounded-md border border-transparent px-4 py-2 data-[state=active]:border-foreground/20 data-[state=active]:bg-foreground/5 data-[state=active]:text-foreground data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="security" className={tabTriggerClass}>
               {tTabs("security")}
             </TabsTrigger>
-            <TabsTrigger
-              value="backend"
-              className="rounded-md border border-transparent px-4 py-2 data-[state=active]:border-foreground/20 data-[state=active]:bg-foreground/5 data-[state=active]:text-foreground data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="backend" className={tabTriggerClass}>
               {tTabs("backend")}
             </TabsTrigger>
-            <TabsTrigger
-              value="advanced"
-              className="rounded-md border border-transparent px-4 py-2 text-muted-foreground data-[state=active]:border-foreground/20 data-[state=active]:bg-foreground/5 data-[state=active]:text-foreground data-[state=active]:shadow-none"
-            >
+            <TabsTrigger value="advanced" className={tabTriggerClass}>
               {tTabs("advanced")}
             </TabsTrigger>
           </TabsList>
         </div>
 
-        <TabsContent value="account" className="mt-8 space-y-10 pl-4">
+        <TabsContent
+          value="account"
+          className="mt-8 space-y-8 animate-in fade-in duration-300 motion-reduce:animate-none"
+        >
           <section className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold">{t("general.title")}</h2>
-                <p className="text-sm text-muted-foreground">
-                  {t("general.description")}
-                </p>
-              </div>
+            <div className="flex items-center justify-between gap-4 border-b border-border/60 pb-2">
+              <h2 className={sectionTitleClass}>{t("general.title")}</h2>
               <Button
                 type="submit"
                 form="profile-form"
@@ -385,6 +381,9 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
                 {t("general.save")}
               </Button>
             </div>
+            <p className="text-sm text-muted-foreground">
+              {t("general.description")}
+            </p>
 
             <Form {...form}>
               <form
@@ -397,7 +396,9 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t("general.name")}</FormLabel>
+                      <FormLabel className={fieldLabelClass}>
+                        {t("general.name")}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           placeholder={t("general.namePlaceholder")}
@@ -417,7 +418,7 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
                 <div className="space-y-2">
                   <label
                     htmlFor="settings-email"
-                    className="text-sm font-medium leading-none"
+                    className="block text-xs font-medium uppercase leading-none tracking-[0.6px] text-muted-foreground"
                   >
                     {t("general.email")}
                   </label>
@@ -438,7 +439,9 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
                   name="moderationBlockRiskLevel"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t("moderation.title")}</FormLabel>
+                      <FormLabel className={fieldLabelClass}>
+                        {t("moderation.title")}
+                      </FormLabel>
                       <FormControl>
                         <RadioGroup
                           value={field.value}
@@ -461,7 +464,7 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
                               <Label
                                 key={level}
                                 htmlFor={`moderation-risk-${level}`}
-                                className={`rounded-md border border-border p-3 text-sm ${
+                                className={`rounded-md border border-border p-3 text-sm transition-colors duration-150 has-[[data-state=checked]]:border-foreground/40 has-[[data-state=checked]]:bg-muted/40 ${
                                   optionAllowed
                                     ? "cursor-pointer hover:bg-muted/50"
                                     : "cursor-not-allowed opacity-50"
@@ -502,15 +505,13 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
             </Form>
           </section>
 
-          <Separator />
-
           <section className="space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold">{t("avatar.title")}</h2>
-              <p className="text-sm text-muted-foreground">
-                {t("avatar.description")}
-              </p>
+            <div className="border-b border-border/60 pb-2">
+              <h2 className={sectionTitleClass}>{t("avatar.title")}</h2>
             </div>
+            <p className="text-sm text-muted-foreground">
+              {t("avatar.description")}
+            </p>
 
             <div className="flex flex-col items-center space-y-4">
               <input
@@ -553,16 +554,14 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
             </div>
           </section>
 
-          <Separator />
-
           <section className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold">{t("language.title")}</h2>
-                <p className="text-sm text-muted-foreground">
-                  {t("language.description")}
-                </p>
-              </div>
+            <div className="border-b border-border/60 pb-2">
+              <h2 className={sectionTitleClass}>{t("language.title")}</h2>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">
+                {t("language.description")}
+              </p>
 
               <Select
                 value={locale}
@@ -580,18 +579,16 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
             </div>
           </section>
 
-          <Separator />
-
           <section className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-destructive">
-                  {t("deleteAccount.title")}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {t("deleteAccount.description")}
-                </p>
-              </div>
+            <div className="border-b border-border/60 pb-2">
+              <h2 className="text-xs font-medium uppercase tracking-[1.2px] text-destructive">
+                {t("deleteAccount.title")}
+              </h2>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">
+                {t("deleteAccount.description")}
+              </p>
 
               <AlertDialog
                 open={isDeleteDialogOpen}
@@ -644,15 +641,21 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
           </section>
         </TabsContent>
 
-        <TabsContent value="security" className="mt-8 pl-4">
+        <TabsContent
+          value="security"
+          className="mt-8 animate-in fade-in duration-300 motion-reduce:animate-none"
+        >
           <SecuritySection />
         </TabsContent>
 
-        <TabsContent value="backend" className="mt-8 space-y-6 pl-4">
-          <div>
-            <h3 className="font-serif text-lg font-medium">
-              {t("backend.title")}
-            </h3>
+        <TabsContent
+          value="backend"
+          className="mt-8 space-y-6 animate-in fade-in duration-300 motion-reduce:animate-none"
+        >
+          <div className="space-y-2">
+            <div className="border-b border-border/60 pb-2">
+              <h3 className={sectionTitleClass}>{t("backend.title")}</h3>
+            </div>
             <p className="text-sm text-muted-foreground">
               {t("backend.description")}
             </p>
@@ -660,11 +663,14 @@ export function SettingsProfileView({ user }: SettingsProfileViewProps) {
           <ImageBackendPreferenceSection />
         </TabsContent>
 
-        <TabsContent value="advanced" className="mt-8 space-y-6 pl-4">
-          <div>
-            <h3 className="font-serif text-lg font-medium">
-              {t("advanced.title")}
-            </h3>
+        <TabsContent
+          value="advanced"
+          className="mt-8 space-y-6 animate-in fade-in duration-300 motion-reduce:animate-none"
+        >
+          <div className="space-y-2">
+            <div className="border-b border-border/60 pb-2">
+              <h3 className={sectionTitleClass}>{t("advanced.title")}</h3>
+            </div>
             <p className="text-sm text-muted-foreground">
               {t("advanced.description")}
             </p>

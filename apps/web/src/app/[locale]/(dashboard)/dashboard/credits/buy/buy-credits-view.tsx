@@ -220,21 +220,21 @@ export function BuyCreditPackagesView() {
             <Card
               key={pkg.id}
               className={cn(
-                "relative flex flex-col rounded-xl border transition-shadow",
+                "relative flex flex-col rounded-lg border transition-[border-color,box-shadow] duration-150 animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none",
                 isPopular
-                  ? "border-foreground shadow-md"
-                  : "border-border hover:shadow-sm"
+                  ? "border-foreground shadow-whisper"
+                  : "border-border hover:border-foreground/30 hover:shadow-whisper"
               )}
             >
               {/* 热门标签 */}
               {isPopular && (
-                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-foreground text-background text-xs">
+                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-foreground text-background text-[10px] uppercase tracking-wider">
                   {copy("Best Value", "最划算")}
                 </Badge>
               )}
 
               <CardHeader className="pb-3 pt-6 text-center">
-                <p className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
+                <p className="text-xs font-medium uppercase tracking-[1.2px] text-muted-foreground">
                   {isZh ? (PACKAGE_NAMES_ZH[pkg.id] ?? pkg.name) : pkg.name}
                 </p>
               </CardHeader>
@@ -242,7 +242,7 @@ export function BuyCreditPackagesView() {
               <CardContent className="flex flex-1 flex-col items-center space-y-4 px-6">
                 {/* 积分数量 */}
                 <div className="text-center">
-                  <span className="font-serif text-5xl font-bold tracking-tight">
+                  <span className="font-serif text-5xl font-medium tracking-tight">
                     {totalCredits.toLocaleString()}
                   </span>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -259,7 +259,9 @@ export function BuyCreditPackagesView() {
 
                 {/* 价格 */}
                 <div className="text-center">
-                  <span className="text-3xl font-semibold">¥{totalPrice}</span>
+                  <span className="font-serif text-3xl font-medium">
+                    ¥{totalPrice}
+                  </span>
                   <span className="ml-1 text-sm text-muted-foreground">
                     {copy("CNY", "元")}
                   </span>
@@ -276,7 +278,7 @@ export function BuyCreditPackagesView() {
                         )}
                       </span>
                     </div>
-                    <div className="flex h-9 items-center rounded-md border">
+                    <div className="flex h-9 items-center overflow-hidden rounded-md border border-border">
                       <Button
                         type="button"
                         variant="ghost"

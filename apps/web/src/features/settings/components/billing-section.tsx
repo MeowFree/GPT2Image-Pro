@@ -256,23 +256,32 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
     <div className="space-y-8">
       {/* 当前计划 */}
       <section className="space-y-6">
-        <div>
-          <h2 className="text-xl font-semibold">{t("currentPlan.title")}</h2>
+        <div className="space-y-2">
+          <div className="border-b border-border/60 pb-2">
+            <h2 className="text-xs font-medium uppercase tracking-[1.2px] text-muted-foreground">
+              {t("currentPlan.title")}
+            </h2>
+          </div>
           <p className="text-sm text-muted-foreground">
             {t("currentPlan.description")}
           </p>
         </div>
 
-        <div className="rounded-lg border p-6">
+        <div className="rounded-lg border border-border p-6">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
               <PlanBadge plan={userPlan} size="lg" showLabel={false} />
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-semibold">
+                  <h3 className="font-serif text-lg font-medium">
                     {planResult.data?.planName ?? planConfig.name} Plan
                   </h3>
-                  <Badge variant="secondary">{t("currentPlan.current")}</Badge>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] uppercase tracking-wider text-muted-foreground"
+                  >
+                    {t("currentPlan.current")}
+                  </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {userPlan === "free"
@@ -298,7 +307,7 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
                   </Link>
                 </Button>
                 {isCancelPending ? (
-                  <Badge variant="secondary" className="text-amber-600">
+                  <Badge variant="secondary" className="text-warning">
                     {t("currentPlan.cancelPending", {
                       date: formattedRenewalDate ?? "",
                     })}
@@ -361,29 +370,34 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
 
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div>
-              <p className="text-muted-foreground">
+              <p className="text-xs uppercase tracking-[0.6px] text-muted-foreground">
                 {t("currentPlan.monthlyCredits")}
               </p>
-              <p className="font-medium">
-                {monthlyCredits.toLocaleString("en-US")} credits
+              <p className="mt-1 font-serif text-lg font-medium">
+                {monthlyCredits.toLocaleString("en-US")}{" "}
+                <span className="text-sm font-normal text-muted-foreground">
+                  credits
+                </span>
               </p>
             </div>
             <div>
-              <p className="text-muted-foreground">
+              <p className="text-xs uppercase tracking-[0.6px] text-muted-foreground">
                 {t("currentPlan.renewalDate")}
               </p>
               <p
-                className={`font-medium ${isCancelPending ? "text-amber-600" : ""}`}
+                className={`mt-1 font-serif text-lg font-medium ${isCancelPending ? "text-warning" : ""}`}
               >
                 {formattedRenewalDate ?? t("currentPlan.notApplicable")}
               </p>
             </div>
             <div>
-              <p className="text-muted-foreground">{t("currentPlan.price")}</p>
-              <p className="font-medium">
+              <p className="text-xs uppercase tracking-[0.6px] text-muted-foreground">
+                {t("currentPlan.price")}
+              </p>
+              <p className="mt-1 font-serif text-lg font-medium">
                 {priceDisplay}
                 {priceInterval && (
-                  <span className="text-muted-foreground font-normal">
+                  <span className="text-sm font-normal text-muted-foreground">
                     {" "}
                     /{priceInterval}
                   </span>
@@ -394,21 +408,23 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
         </div>
       </section>
 
-      <Separator />
-
       {/* 账单历史 */}
       <section className="space-y-6">
-        <div>
-          <h2 className="text-xl font-semibold">{t("history.title")}</h2>
+        <div className="space-y-2">
+          <div className="border-b border-border/60 pb-2">
+            <h2 className="text-xs font-medium uppercase tracking-[1.2px] text-muted-foreground">
+              {t("history.title")}
+            </h2>
+          </div>
           <p className="text-sm text-muted-foreground">
             {t("history.description")}
           </p>
         </div>
 
         {/* 表格 */}
-        <div className="rounded-lg border">
+        <div className="overflow-hidden rounded-lg border border-border">
           {/* 表头 */}
-          <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-muted/50 text-sm font-medium text-muted-foreground">
+          <div className="grid grid-cols-12 gap-4 bg-muted/50 px-4 py-3 text-xs font-medium uppercase tracking-[0.6px] text-muted-foreground">
             <div className="col-span-3">{t("history.date")}</div>
             <div className="col-span-4">{t("history.historyDescription")}</div>
             <div className="col-span-2 text-right">{t("history.amount")}</div>
@@ -424,11 +440,11 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
               {t("history.loading")}
             </div>
           ) : billingTransactions.length > 0 ? (
-            <div className="divide-y">
+            <div className="divide-y divide-border/60">
               {billingTransactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="grid grid-cols-12 gap-4 px-4 py-3 text-sm transition-colors hover:bg-muted/30"
+                  className="grid grid-cols-12 gap-4 px-4 py-3 text-sm transition-colors duration-150 even:bg-muted/40 hover:bg-muted/60"
                 >
                   <div className="col-span-3 text-muted-foreground">
                     {formatDate(tx.createdAt, locale, timeZone)}
@@ -449,11 +465,16 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
                       </div>
                     ) : null}
                   </div>
-                  <div className="col-span-2 text-right font-medium">
+                  <div className="col-span-2 text-right font-serif font-medium">
                     {getBillingAmount(tx)}
                   </div>
                   <div className="col-span-2 text-center">
-                    <Badge variant="secondary">{t("history.paid")}</Badge>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] uppercase tracking-wider text-muted-foreground"
+                    >
+                      {t("history.paid")}
+                    </Badge>
                   </div>
                   <div className="col-span-1 text-center text-xs text-muted-foreground">
                     {getReceiptReference(tx)}

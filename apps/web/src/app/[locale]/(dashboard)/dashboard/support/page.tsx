@@ -86,21 +86,19 @@ export default async function SupportPage() {
         .orderBy(desc(ticket.createdAt));
 
   /**
-   * 获取状态徽章样式
+   * 获取状态徽章样式：单色 outline + uppercase 小字，进行中以实心前景色强调
    */
   const getStatusBadge = (status: string) => {
-    const colorMap: Record<string, string> = {
-      open: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
-      in_progress:
-        "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
-      resolved:
-        "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-      closed: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300",
+    const classMap: Record<string, string> = {
+      open: "border-foreground/40 text-foreground",
+      in_progress: "border-transparent bg-foreground text-background",
+      resolved: "text-muted-foreground",
+      closed: "text-muted-foreground/70",
     };
     return (
       <Badge
-        className={colorMap[status] || colorMap.closed}
-        variant="secondary"
+        variant="outline"
+        className={`text-[10px] uppercase tracking-wider ${classMap[status] || classMap.closed}`}
       >
         {t(`statuses.${status}` as Parameters<typeof t>[0])}
       </Badge>
@@ -108,19 +106,18 @@ export default async function SupportPage() {
   };
 
   /**
-   * 获取优先级徽章样式
+   * 获取优先级徽章样式：单色为主，高优先级用 destructive 语义色
    */
   const getPriorityBadge = (priority: string) => {
-    const colorMap: Record<string, string> = {
-      low: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-      medium:
-        "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
-      high: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
+    const classMap: Record<string, string> = {
+      low: "text-muted-foreground/70",
+      medium: "text-muted-foreground",
+      high: "border-destructive/40 text-destructive",
     };
     return (
       <Badge
-        className={colorMap[priority] || colorMap.medium}
-        variant="secondary"
+        variant="outline"
+        className={`text-[10px] uppercase tracking-wider ${classMap[priority] || classMap.medium}`}
       >
         {t(`priorities.${priority}` as Parameters<typeof t>[0])}
       </Badge>
@@ -139,8 +136,10 @@ export default async function SupportPage() {
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">{t("title")}</h2>
-          <p className="text-muted-foreground">
+          <h2 className="font-serif text-2xl font-medium tracking-tight">
+            {t("title")}
+          </h2>
+          <p className="text-sm text-muted-foreground">
             {isAdmin ? t("adminSubtitle") : t("subtitle")}
           </p>
         </div>
@@ -154,10 +153,10 @@ export default async function SupportPage() {
 
       {/* 工单列表 */}
       {tickets.length === 0 ? (
-        <Card>
+        <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <Ticket className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">{t("noTickets")}</h3>
+            <Ticket className="mb-4 h-12 w-12 text-muted-foreground/50" />
+            <h3 className="font-serif text-lg font-medium">{t("noTickets")}</h3>
             <p className="text-muted-foreground mb-4">
               {t("noTicketsDescription")}
             </p>
@@ -173,17 +172,20 @@ export default async function SupportPage() {
         <div className="space-y-4">
           {tickets.map((tkt) => (
             <Link key={tkt.id} href={`/${locale}/dashboard/support/${tkt.id}`}>
-              <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+              <Card className="cursor-pointer transition-colors duration-150 hover:border-foreground/20 hover:bg-muted/50">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
-                      <CardTitle className="flex items-center gap-2 text-base">
+                      <CardTitle className="flex items-center gap-2 font-serif text-base font-medium">
                         {tkt.unread && (
-                          <span className="h-2 w-2 rounded-full bg-red-500" />
+                          <span className="h-2 w-2 rounded-full bg-destructive" />
                         )}
                         <span>{tkt.subject}</span>
                         {tkt.unread && (
-                          <Badge className="bg-red-500 text-white" variant="secondary">
+                          <Badge
+                            variant="destructive"
+                            className="text-[10px] uppercase tracking-wider"
+                          >
                             新动态
                           </Badge>
                         )}

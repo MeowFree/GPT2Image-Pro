@@ -235,7 +235,7 @@ export function ApiConfigForm() {
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between rounded-lg border border-border px-4 py-3 text-sm text-muted-foreground transition-colors hover:bg-muted/50"
+        className="flex w-full items-center justify-between rounded-lg border border-border px-4 py-3 text-sm text-muted-foreground transition-colors duration-150 hover:bg-muted/50 hover:text-foreground"
       >
         <span>{t("apiConfig.customEndpoint")}</span>
         <ChevronDown
@@ -244,7 +244,7 @@ export function ApiConfigForm() {
       </button>
 
       {expanded && (
-        <div className="space-y-4 rounded-lg border border-border p-4">
+        <div className="space-y-4 rounded-lg border border-border p-4 animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
           {/* Active toggle (only if config exists) */}
           {hasConfig && (
             <div className="flex items-center justify-between">
@@ -268,7 +268,10 @@ export function ApiConfigForm() {
 
           {/* Base URL */}
           <div className="space-y-2">
-            <Label htmlFor="api-base-url" className="text-sm">
+            <Label
+              htmlFor="api-base-url"
+              className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+            >
               {t("apiConfig.baseUrl")}
             </Label>
             <Input
@@ -282,7 +285,10 @@ export function ApiConfigForm() {
 
           {/* API Key */}
           <div className="space-y-2">
-            <Label htmlFor="api-key" className="text-sm">
+            <Label
+              htmlFor="api-key"
+              className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+            >
               {t("apiConfig.apiKey")}
             </Label>
             <Input
@@ -297,7 +303,10 @@ export function ApiConfigForm() {
 
           {/* Model (optional) */}
           <div className="space-y-2">
-            <Label htmlFor="api-model" className="text-sm">
+            <Label
+              htmlFor="api-model"
+              className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+            >
               {t("apiConfig.model")}
             </Label>
             <Input
@@ -331,7 +340,10 @@ export function ApiConfigForm() {
           </div>
 
           <div className="space-y-2 rounded-md border border-border px-3 py-3">
-            <Label htmlFor="api-chat-upstream" className="text-sm">
+            <Label
+              htmlFor="api-chat-upstream"
+              className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+            >
               Chat Completions 上游
             </Label>
             <Select
@@ -400,7 +412,7 @@ export function ApiConfigForm() {
           {/* Documentation link */}
           <a
             href="/docs"
-            className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
             <ExternalLink className="h-3 w-3" />
             {t("apiConfig.docsLink")}

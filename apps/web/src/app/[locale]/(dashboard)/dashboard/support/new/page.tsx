@@ -81,8 +81,10 @@ export default function NewTicketPage() {
           </Button>
         </Link>
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">新建工单</h2>
-          <p className="text-muted-foreground">
+          <h2 className="font-serif text-2xl font-medium tracking-tight">
+            新建工单
+          </h2>
+          <p className="text-sm text-muted-foreground">
             描述您遇到的问题，我们会尽快回复
           </p>
         </div>
@@ -90,14 +92,21 @@ export default function NewTicketPage() {
 
       {/* 工单表单 */}
       <Card>
-        <CardHeader>
-          <CardTitle>工单信息</CardTitle>
+        <CardHeader className="border-b border-border/60">
+          <CardTitle className="text-xs font-medium uppercase tracking-[1.2px] text-muted-foreground">
+            工单信息
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* 主题 */}
             <div className="space-y-2">
-              <Label htmlFor="subject">主题 *</Label>
+              <Label
+                htmlFor="subject"
+                className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+              >
+                主题 *
+              </Label>
               <Input
                 id="subject"
                 placeholder="简要描述您的问题"
@@ -112,7 +121,12 @@ export default function NewTicketPage() {
             {/* 类别和优先级 */}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="category">类别</Label>
+                <Label
+                  htmlFor="category"
+                  className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+                >
+                  类别
+                </Label>
                 <Select value={category} onValueChange={setCategory}>
                   <SelectTrigger id="category">
                     <SelectValue placeholder="选择类别" />
@@ -128,7 +142,12 @@ export default function NewTicketPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="priority">优先级</Label>
+                <Label
+                  htmlFor="priority"
+                  className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+                >
+                  优先级
+                </Label>
                 <Select value={priority} onValueChange={setPriority}>
                   <SelectTrigger id="priority">
                     <SelectValue placeholder="选择优先级" />
@@ -146,7 +165,12 @@ export default function NewTicketPage() {
 
             {/* 详细描述 */}
             <div className="space-y-2">
-              <Label htmlFor="message">详细描述 *</Label>
+              <Label
+                htmlFor="message"
+                className="text-xs uppercase tracking-[0.6px] text-muted-foreground"
+              >
+                详细描述 *
+              </Label>
               <Textarea
                 id="message"
                 placeholder="请详细描述您遇到的问题，包括：&#10;- 问题发生的时间&#10;- 具体的错误信息&#10;- 您已尝试的解决方法"
