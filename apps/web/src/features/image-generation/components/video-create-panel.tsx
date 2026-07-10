@@ -444,7 +444,9 @@ export function VideoCreatePanel({
         </p>
       )}
       {status === "error" && error && (
-        <p className="animate-in fade-in text-sm text-destructive">{error}</p>
+        <p className="animate-in fade-in text-sm text-destructive motion-reduce:animate-none">
+          {error}
+        </p>
       )}
       {status === "done" && videoUrl && (
         <video

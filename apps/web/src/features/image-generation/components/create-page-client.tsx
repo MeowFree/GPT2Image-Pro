@@ -5256,7 +5256,7 @@ export function CreatePageClient({
     if (!thinking) return null;
     return (
       <details
-        className="mb-3 rounded-md border border-border bg-background/70 p-2"
+        className="mb-3 rounded-md border border-border bg-muted/30 p-2"
         open={open}
       >
         <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
@@ -5273,7 +5273,7 @@ export function CreatePageClient({
     if (!agent || !showAgentProcessHint) return null;
     return (
       <details
-        className="mb-3 rounded-md border border-border bg-background/70 p-2"
+        className="mb-3 rounded-md border border-border bg-muted/30 p-2"
         open={open}
       >
         <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
@@ -5345,7 +5345,7 @@ export function CreatePageClient({
   const renderAgentTaskCard = (task: AgentTaskCard) => (
     <div
       key={task.key}
-      className={`rounded-md border bg-background/75 p-2.5 ${agentTaskBorderClass(
+      className={`rounded-md border bg-background p-2.5 ${agentTaskBorderClass(
         task.status
       )}`}
     >
@@ -5382,7 +5382,7 @@ export function CreatePageClient({
               )}
             </div>
             <span
-              className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium ${agentTaskStatusClass(
+              className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${agentTaskStatusClass(
                 task.status
               )}`}
             >
@@ -5434,7 +5434,7 @@ export function CreatePageClient({
 
     return (
       <details
-        className="mb-3 rounded-md border border-border bg-background/70 p-2"
+        className="mb-3 rounded-md border border-border bg-muted/30 p-2"
         open={open}
       >
         <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
@@ -5459,7 +5459,7 @@ export function CreatePageClient({
                   )}
                 </div>
                 <span
-                  className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${agentTaskStatusClass(
+                  className={`rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${agentTaskStatusClass(
                     round.status
                   )}`}
                 >
@@ -5512,7 +5512,7 @@ export function CreatePageClient({
     const hasVisibleAgentProgress =
       isAgentStream && chatStream.agentEvents.length > 0;
     return (
-      <div className="rounded-lg border border-border bg-muted/35 px-3 py-3 text-sm text-foreground">
+      <div className="rounded-lg rounded-bl-[5px] border border-border bg-background px-3 py-3 text-sm text-foreground">
         {renderThinkingBlock(chatStream.thinking, true)}
         {hasVisibleAgentProgress
           ? renderAgentRoundCards(
@@ -7846,7 +7846,7 @@ export function CreatePageClient({
         )}
 
         {modeResult && !loading && (
-          <section className="mt-8 mb-10 space-y-4">
+          <section className="mt-8 mb-10 space-y-4 animate-in fade-in zoom-in-95 duration-400 motion-reduce:animate-none">
             <button
               type="button"
               onClick={() => setSelectedRecentId(modeResult.generationId)}
@@ -7931,11 +7931,11 @@ export function CreatePageClient({
 
   return (
     <div className="container mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-12">
-      <header className="mb-8 space-y-2">
+      <header className="mb-10 space-y-2.5">
         <h1 className="font-serif text-3xl font-semibold tracking-tight md:text-4xl">
           {copy("Create", "创作")}
         </h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           {copy(
             "Generate a new image from text, or transform uploaded images with a prompt.",
             "用文字生成新图片，或通过提示词改造上传的图片。"
@@ -7973,23 +7973,29 @@ export function CreatePageClient({
         }}
         className="mb-10"
       >
-        <TabsList className="mb-4 h-auto flex-wrap justify-start border border-border bg-muted/40">
-          <TabsTrigger value="text">
+        <TabsList className="mb-6 h-auto flex-wrap justify-start gap-1 rounded-full border border-border bg-muted/40 p-1">
+          <TabsTrigger value="text" className="gap-1.5 rounded-full px-4">
             <Wand2 className="h-4 w-4" />
             {copy("Text to image", "文生图")}
           </TabsTrigger>
-          <TabsTrigger value="image">
+          <TabsTrigger value="image" className="gap-1.5 rounded-full px-4">
             <ImagePlus className="h-4 w-4" />
             {copy("Image to image", "图生图")}
           </TabsTrigger>
-          <TabsTrigger value="chat" disabled={!chatAllowed}>
+          <TabsTrigger
+            value="chat"
+            disabled={!chatAllowed}
+            className="gap-1.5 rounded-full px-4"
+          >
             <MessageSquare className="h-4 w-4" />
             {copy("chat(codex)", "chat(codex)")}
             {!chatAllowed && (
-              <span className="text-[10px] text-muted-foreground">Pro</span>
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Pro
+              </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="chat-web">
+          <TabsTrigger value="chat-web" className="gap-1.5 rounded-full px-4">
             <MessageSquare className="h-4 w-4" />
             {copy("chat(web)", "chat(web)")}
           </TabsTrigger>
@@ -7997,26 +8003,39 @@ export function CreatePageClient({
             value="agent"
             disabled={!effectiveAgentAllowed}
             title={agentBackendUnavailableReason}
+            className="gap-1.5 rounded-full px-4"
           >
             <Wand2 className="h-4 w-4" />
             {copy("Agent", "Agent")}
             {gpt55ChatAllowed && (
-              <span className="text-[10px] text-muted-foreground">GPT-5.5</span>
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                GPT-5.5
+              </span>
             )}
             {!agentAllowed ? (
-              <span className="text-[10px] text-muted-foreground">Locked</span>
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Locked
+              </span>
             ) : agentBackendUnavailableReason ? (
-              <span className="text-[10px] text-muted-foreground">Codex</span>
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Codex
+              </span>
             ) : null}
           </TabsTrigger>
-          <TabsTrigger value="waterfall" disabled={!waterfallAllowed}>
+          <TabsTrigger
+            value="waterfall"
+            disabled={!waterfallAllowed}
+            className="gap-1.5 rounded-full px-4"
+          >
             <ImagePlus className="h-4 w-4" />
             {copy("Waterfall", "瀑布流")}
             {!waterfallAllowed && (
-              <span className="text-[10px] text-muted-foreground">Locked</span>
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Locked
+              </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="video">
+          <TabsTrigger value="video" className="gap-1.5 rounded-full px-4">
             <Wand2 className="h-4 w-4" />
             {copy("Video", "视频")}
           </TabsTrigger>
@@ -8028,11 +8047,11 @@ export function CreatePageClient({
             onValueChange={(value) => setTextMode(value as TextGenerationMode)}
             className="space-y-4"
           >
-            <TabsList className="border border-border bg-muted/40">
-              <TabsTrigger value="single">
+            <TabsList className="rounded-full border border-border bg-muted/40 p-1">
+              <TabsTrigger value="single" className="rounded-full px-4">
                 {copy("Single prompt", "单提示词")}
               </TabsTrigger>
-              <TabsTrigger value="lines">
+              <TabsTrigger value="lines" className="rounded-full px-4">
                 {copy("Line batch", "逐行批量")}
               </TabsTrigger>
             </TabsList>
@@ -8051,7 +8070,7 @@ export function CreatePageClient({
                   )}
                   rows={5}
                   disabled={isTextSingleGenerating}
-                  className="resize-none border-input bg-background text-base"
+                  className="resize-none rounded-lg border-input bg-background text-base"
                 />
                 {promptOptimizationField(
                   "text-prompt-optimization",
@@ -8091,7 +8110,7 @@ export function CreatePageClient({
                   )}
                   rows={8}
                   disabled={isTextLinesGenerating}
-                  className="resize-none border-input bg-background text-base"
+                  className="resize-none rounded-lg border-input bg-background text-base"
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span>
@@ -8164,7 +8183,7 @@ export function CreatePageClient({
                 )}
                 rows={5}
                 disabled={isEditing}
-                className="resize-none border-input bg-background text-base"
+                className="resize-none rounded-lg border-input bg-background text-base"
                 onBlur={() => setTimeout(() => setEditMention(null), 120)}
                 onClick={(event) => {
                   const target = event.currentTarget;
@@ -9033,8 +9052,8 @@ export function CreatePageClient({
                             <div
                               className={`rounded-lg border px-3 py-3 text-sm ${
                                 message.role === "user"
-                                  ? "border-primary/20 bg-primary text-primary-foreground"
-                                  : "border-border bg-muted/35 text-foreground"
+                                  ? "rounded-br-[5px] border-transparent bg-secondary text-secondary-foreground"
+                                  : "rounded-bl-[5px] border-border bg-background text-foreground"
                               }`}
                             >
                               {message.role === "user" ? (
@@ -9044,7 +9063,7 @@ export function CreatePageClient({
                                       {message.attachments.map((attachment) => (
                                         <div
                                           key={attachment.id}
-                                          className="relative h-12 w-12 overflow-hidden rounded-md border border-primary-foreground/25 bg-muted"
+                                          className="relative h-12 w-12 overflow-hidden rounded-md border border-border bg-muted"
                                         >
                                           {attachment.kind === "file" ||
                                           !attachment.previewUrl ? (
@@ -9104,7 +9123,7 @@ export function CreatePageClient({
                                           key={chatFile.url}
                                           href={chatFile.url}
                                           download
-                                          className="inline-flex items-center gap-2 rounded border border-border bg-background px-2 py-1 text-sm hover:bg-muted"
+                                          className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1 text-sm transition-colors duration-150 hover:bg-muted"
                                         >
                                           <FileText className="h-4 w-4" />
                                           {copy("Download", "下载")}{" "}
@@ -9855,7 +9874,7 @@ export function CreatePageClient({
       {recent.length > 0 && (
         <section className="space-y-4">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-            <h2 className="font-serif text-xl font-semibold">
+            <h2 className="font-serif text-xl font-semibold tracking-tight">
               {copy("Recent", "最近生成")}
             </h2>
             <p className="text-xs text-muted-foreground">
@@ -9884,7 +9903,7 @@ export function CreatePageClient({
                 <button
                   key={g.id}
                   type="button"
-                  className={`group relative aspect-square overflow-hidden rounded-md border bg-muted text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  className={`group relative aspect-square overflow-hidden rounded-md border bg-muted text-left transition duration-150 disabled:cursor-not-allowed disabled:opacity-60 ${
                     selectedForEdit && activeMode === "image"
                       ? "border-primary ring-2 ring-primary/50"
                       : "hover:border-foreground/40"
@@ -9905,7 +9924,7 @@ export function CreatePageClient({
                       alt={g.prompt}
                       fill
                       sizes="80px"
-                      className="object-contain transition-transform group-hover:scale-105"
+                      className="object-contain transition-[transform,filter] duration-150 group-hover:scale-105 group-hover:brightness-105"
                       unoptimized={shouldBypassImageOptimization(g.imageUrl)}
                     />
                   ) : (
@@ -9913,7 +9932,7 @@ export function CreatePageClient({
                       <ImagePlus className="h-6 w-6" />
                     </div>
                   )}
-                  <span className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  <span className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
                     {isConversationMode(activeMode) ? (
                       <>
                         <MessageSquare className="mr-1 h-3 w-3" />
