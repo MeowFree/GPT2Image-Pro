@@ -343,10 +343,10 @@ export function VideoCreatePanel({
                     setSelectedHistoryId(null);
                   }
                 }}
-                className={`h-14 w-14 overflow-hidden rounded-md border ${
+                className={`h-14 w-14 overflow-hidden rounded-md border transition-[border-color,box-shadow] duration-150 ${
                   selectedHistoryId === item.id
-                    ? "ring-2 ring-primary"
-                    : "border-border"
+                    ? "border-primary ring-1 ring-primary"
+                    : "border-border hover:border-foreground/40"
                 }`}
               >
                 {/* 历史缩略图(本站已生成图)。biome-ignore lint/performance/noImgElement: 简单缩略图选择器 */}
@@ -439,18 +439,18 @@ export function VideoCreatePanel({
       </details>
 
       {status === "running" && (
-        <p className="text-sm text-muted-foreground">
+        <p className="animate-pulse text-sm text-muted-foreground motion-reduce:animate-none">
           视频生成中，可能需要数分钟，请保持页面打开…
         </p>
       )}
       {status === "error" && error && (
-        <p className="text-sm text-destructive">{error}</p>
+        <p className="animate-in fade-in text-sm text-destructive">{error}</p>
       )}
       {status === "done" && videoUrl && (
         <video
           src={videoUrl}
           controls
-          className="w-full max-w-2xl rounded-lg border border-border"
+          className="w-full max-w-2xl rounded-lg border border-border animate-in fade-in zoom-in-95 duration-400 motion-reduce:animate-none"
         >
           <track kind="captions" />
         </video>
