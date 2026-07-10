@@ -1,0 +1,35 @@
+"use client";
+
+/**
+ * 三大转场的进度编排(GL uniform 驱动,自身无可见 DOM)。
+ * ZoomThrough:镜头扎进画面,深度推轨+径向拖影+压暗,末端交给墨章。
+ * takeover 仅在转场窗口内开启(窗口内无可交互内容)。
+ * B 增殖 / C 选中回中随 Task 9/10 补入本文件。
+ */
+import { useMotionValueEvent } from "framer-motion";
+import { useCinema } from "./cinema-gl";
+import { useSceneProgress } from "./cinema-stage";
+
+/** easeInCubic:穿越要有"扎进去"的加速度 */
+const easeIn = (t: number) => t * t * t;
+
+/**
+ * 转场 A 穿越:dive 幕进度映射 dolly pass 的 uniforms 并管理画布 takeover。
+ * 窗口内画布提升 z 盖过正文(dolly 全屏输出即全世界),
+ * 窗口外立即归还——正文恢复可交互。全部量为进度纯函数,倒放成立。
+ */
+export function ZoomThroughTransition() {
+  const p = useSceneProgress("dive");
+  const { engine, setTakeover } = useCinema();
+  useMotionValueEvent(p, "change", (v) => {
+    const active = v > 0.001 && v < 0.999;
+    setTakeover(active);
+    engine?.setProgress("dollyVisible", active ? 1 : 0);
+    engine?.setProgress("dollyZoom", 1 + easeIn(v) * 17);
+    // 拖影在中段最强,进出为零
+    engine?.setProgress("dollySmear", 1 - Math.abs(v * 2 - 1));
+    // 末端 30% 压暗到墨色,与宣言章底色 #0e0e0d 咬合
+    engine?.setProgress("dollyDark", Math.max(0, (v - 0.7) / 0.3));
+  });
+  return null;
+}

@@ -15,10 +15,13 @@ import {
   SceneLayer,
 } from "@/features/marketing/components/cinema/cinema-stage";
 import { createDenoisePass } from "@/features/marketing/components/cinema/gl/passes/denoise";
+import { createDollyPass } from "@/features/marketing/components/cinema/gl/passes/dolly";
 import { createParticlesPass } from "@/features/marketing/components/cinema/gl/passes/particles";
 import { renderTextTexture } from "@/features/marketing/components/cinema/gl/text-texture";
 import { GenerateScene } from "@/features/marketing/components/cinema/scene-generate";
+import { ManifestoScene } from "@/features/marketing/components/cinema/scene-manifesto";
 import { OpeningScene } from "@/features/marketing/components/cinema/scene-opening";
+import { ZoomThroughTransition } from "@/features/marketing/components/cinema/transitions";
 
 /** 挂载处(client effect):样张解码完成后注册去噪显影 pass,与后续首页相同写法 */
 function DenoisePassMount() {
@@ -30,6 +33,26 @@ function DenoisePassMount() {
     let disposed = false;
     img.decode().then(() => {
       if (!disposed) engine.addPass(createDenoisePass(img));
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [engine]);
+  return null;
+}
+
+/** 推轨 pass 挂载:样张与深度图双图解码完成后注册(穿越期间画布即全世界) */
+function DollyPassMount() {
+  const { engine } = useCinema();
+  useEffect(() => {
+    if (!engine) return;
+    const img = new Image();
+    img.src = "/cinema/artwork-hero.webp";
+    const depth = new Image();
+    depth.src = "/cinema/artwork-hero-depth.webp";
+    let disposed = false;
+    Promise.all([img.decode(), depth.decode()]).then(() => {
+      if (!disposed) engine.addPass(createDollyPass(img, depth));
     });
     return () => {
       disposed = true;
@@ -89,6 +112,7 @@ export default function CinemaDemoPage() {
   return (
     <CinemaGLProvider>
       <DenoisePassMount />
+      <DollyPassMount />
       <ParticlesPassMount />
       <TitlePassMount />
       <main className="bg-background">
@@ -99,6 +123,10 @@ export default function CinemaDemoPage() {
           <SceneLayer scene="generate">
             <GenerateScene />
           </SceneLayer>
+          <SceneLayer scene="manifesto">
+            <ManifestoScene />
+          </SceneLayer>
+          <ZoomThroughTransition />
         </CinemaStage>
       </main>
     </CinemaGLProvider>
