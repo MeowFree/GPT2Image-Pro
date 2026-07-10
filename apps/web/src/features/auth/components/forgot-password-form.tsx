@@ -105,15 +105,15 @@ export function ForgotPasswordForm() {
   if (isSuccess) {
     return (
       <div className="w-full space-y-6">
-        {/* 图标 */}
-        <div className="flex flex-col items-center space-y-4 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted text-foreground">
+        {/* 图标徽章与标题:留白拉开徽章与标题,副行收紧 */}
+        <div className="flex flex-col items-center text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-muted text-foreground">
             <Mail className="h-6 w-6" />
           </div>
-          <h1 className="font-serif text-2xl font-medium tracking-tight">
+          <h1 className="mt-5 font-serif text-2xl font-medium tracking-tight">
             {copy("Check your email", "请查看邮箱")}
           </h1>
-          <p className="text-sm leading-relaxed text-muted-foreground">
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             {copy("We've sent a password reset link to", "密码重置链接已发送至")}{" "}
             <span className="font-medium text-foreground">{email}</span>
           </p>
@@ -124,7 +124,7 @@ export function ForgotPasswordForm() {
         <div className="space-y-3 text-center">
           <Button
             variant="outline"
-            className="w-full"
+            className="h-11 w-full"
             onClick={handleResend}
             disabled={isLoading || resendCooldown > 0}
           >
@@ -155,16 +155,16 @@ export function ForgotPasswordForm() {
 
   return (
     <div className="w-full space-y-6">
-      {/* Logo 和标题 */}
-      <div className="flex flex-col items-center space-y-4 text-center">
+      {/* 图标徽章与标题:留白拉开徽章与标题,副行收紧 */}
+      <div className="flex flex-col items-center text-center">
         {/* Logo 图标 */}
-        <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted text-foreground">
+        <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-muted text-foreground">
           <KeyRound className="h-6 w-6" />
         </div>
-        <h1 className="font-serif text-2xl font-medium tracking-tight">
+        <h1 className="mt-5 font-serif text-2xl font-medium tracking-tight">
           {copy("Forgot your password?", "忘记密码？")}
         </h1>
-        <p className="text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           {copy(
             "Enter your email below and we'll send you a link to reset it.",
             "输入邮箱后，我们会向你发送密码重置链接。"
@@ -175,8 +175,8 @@ export function ForgotPasswordForm() {
       {/* 错误提示 */}
       <AuthErrorAlert message={error} />
 
-      {/* 表单 */}
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {/* 表单:输入组间距统一 space-y-5 */}
+      <form onSubmit={handleSubmit} className="space-y-5">
         {/* 邮箱输入 */}
         <div className="space-y-2">
           <Label htmlFor="email">{copy("Email address", "邮箱地址")}</Label>
@@ -192,8 +192,8 @@ export function ForgotPasswordForm() {
           />
         </div>
 
-        {/* 提交按钮 */}
-        <Button type="submit" className="w-full" disabled={isLoading}>
+        {/* 提交按钮:主按钮加高至 h-11 */}
+        <Button type="submit" className="h-11 w-full" disabled={isLoading}>
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -205,12 +205,12 @@ export function ForgotPasswordForm() {
         </Button>
       </form>
 
-      {/* 返回登录链接 */}
+      {/* 返回登录链接:常驻淡下划线,hover 过渡为前景色下划线 */}
       <p className="text-center text-sm text-muted-foreground">
         {copy("Remember your password?", "想起密码了？")}{" "}
         <Link
           href={`/${locale}/sign-in`}
-          className="font-medium text-foreground underline-offset-4 hover:underline"
+          className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors duration-150 hover:decoration-foreground"
         >
           {copy("Back to Login", "返回登录")}
         </Link>

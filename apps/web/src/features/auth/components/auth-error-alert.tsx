@@ -17,10 +17,11 @@ export function AuthErrorAlert({ message, className }: AuthErrorAlertProps) {
   if (!message) return null;
 
   return (
+    // 入场动画放缓至 300ms:淡入下移更从容,避免瞬跳感
     <div
       className={
         className ||
-        "rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm leading-relaxed text-destructive animate-in fade-in slide-in-from-top-1 duration-150 motion-reduce:animate-none"
+        "rounded-md border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm leading-relaxed text-destructive animate-in fade-in slide-in-from-top-1 duration-300 motion-reduce:animate-none"
       }
     >
       {message}

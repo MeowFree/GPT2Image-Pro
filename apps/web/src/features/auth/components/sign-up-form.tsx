@@ -292,17 +292,18 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
   if (emailSent) {
     return (
       <div className="w-full space-y-6">
-        <div className="flex flex-col items-center space-y-4 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted text-foreground">
+        {/* 图标徽章与标题:留白拉开徽章与标题,副行收紧 */}
+        <div className="flex flex-col items-center text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-muted text-foreground">
             <Mail className="h-6 w-6" />
           </div>
-          <h1 className="font-serif text-2xl font-medium tracking-tight">
+          <h1 className="mt-5 font-serif text-2xl font-medium tracking-tight">
             {t("verifyEmail.title")}
           </h1>
-          <p className="text-sm leading-relaxed text-muted-foreground">
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             {t("verifyEmail.description", { email })}
           </p>
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
             {t("verifyEmail.hint")}
           </p>
         </div>
@@ -310,7 +311,7 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
         <div className="flex flex-col items-center gap-3">
           <Button
             variant="outline"
-            className="w-full"
+            className="h-11 w-full"
             onClick={handleResendEmail}
             disabled={resendCooldown > 0}
           >
@@ -331,13 +332,13 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
 
   return (
     <div className="w-full space-y-6">
-      {/* Logo 和标题 */}
-      <div className="flex flex-col items-center space-y-2 text-center">
+      {/* Logo 和标题:品牌区与标题间留白拉开,标题与副行收紧,形成排版节奏 */}
+      <div className="flex flex-col items-center text-center">
         <AuthLogo />
-        <h1 className="font-serif text-2xl font-medium tracking-tight">
+        <h1 className="mt-5 font-serif text-2xl font-medium tracking-tight">
           {t("title")}
         </h1>
-        <p className="text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           {t("subtitle")}
         </p>
       </div>
@@ -351,7 +352,7 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
           <div className="space-y-3">
             <Button
               variant="outline"
-              className="w-full"
+              className="h-11 w-full"
               onClick={handleGoogleSignUp}
               disabled={isLoading}
             >
@@ -360,14 +361,14 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
             </Button>
           </div>
 
-          {/* 分隔线 */}
+          {/* 分隔线:小标签规格,遮字背景与卡片一致 */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <Separator className="w-full" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase tracking-widest">
+            <div className="relative flex justify-center text-[11px] uppercase tracking-widest">
               {/* 遮线背景取卡片色:表单位于 bg-card 容器内 */}
-              <span className="bg-card px-2 text-muted-foreground">
+              <span className="bg-card px-3 text-muted-foreground">
                 {tCommon("or")}
               </span>
             </div>
@@ -375,8 +376,8 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
         </>
       ) : null}
 
-      {/* 邮箱密码表单 */}
-      <form onSubmit={handleEmailSignUp} className="space-y-4">
+      {/* 邮箱密码表单:输入组间距统一 space-y-5 */}
+      <form onSubmit={handleEmailSignUp} className="space-y-5">
         {/* 姓名输入 */}
         <div className="space-y-2">
           <Label htmlFor="name">{t("nameLabel")}</Label>
@@ -494,18 +495,18 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
           />
         </div>
 
-        {/* 提交按钮 */}
-        <Button type="submit" className="w-full" disabled={isLoading}>
+        {/* 提交按钮:主按钮加高至 h-11 */}
+        <Button type="submit" className="h-11 w-full" disabled={isLoading}>
           {isLoading ? t("loading") : t("submit")}
         </Button>
       </form>
 
-      {/* 登录链接 */}
+      {/* 登录链接:常驻淡下划线,hover 过渡为前景色下划线 */}
       <p className="text-center text-sm text-muted-foreground">
         {t("haveAccount")}{" "}
         <Link
           href={`/${locale}/sign-in`}
-          className="font-medium text-foreground underline-offset-4 hover:underline"
+          className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors duration-150 hover:decoration-foreground"
         >
           {t("signInLink")}
         </Link>

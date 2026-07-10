@@ -121,13 +121,13 @@ export function SignInForm({ googleAuthEnabled = false }: SignInFormProps) {
 
   return (
     <div className="w-full space-y-6">
-      {/* Logo 和标题 */}
-      <div className="flex flex-col items-center space-y-2 text-center">
+      {/* Logo 和标题:品牌区与标题间留白拉开,标题与副行收紧,形成排版节奏 */}
+      <div className="flex flex-col items-center text-center">
         <AuthLogo />
-        <h1 className="font-serif text-2xl font-medium tracking-tight">
+        <h1 className="mt-5 font-serif text-2xl font-medium tracking-tight">
           {t("title")}
         </h1>
-        <p className="text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           {t("subtitle")}
         </p>
       </div>
@@ -135,11 +135,11 @@ export function SignInForm({ googleAuthEnabled = false }: SignInFormProps) {
       {/* 错误提示 */}
       <AuthErrorAlert message={error} />
 
-      {/* 重发验证邮件 */}
+      {/* 重发验证邮件:与主按钮同高,保持全宽控件节奏一致 */}
       {showResend && (
         <Button
           variant="outline"
-          className="w-full"
+          className="h-11 w-full"
           onClick={handleResendEmail}
           disabled={resendCooldown > 0}
         >
@@ -155,7 +155,7 @@ export function SignInForm({ googleAuthEnabled = false }: SignInFormProps) {
           <div className="space-y-3">
             <Button
               variant="outline"
-              className="w-full"
+              className="h-11 w-full"
               onClick={handleGoogleSignIn}
               disabled={isLoading}
             >
@@ -164,14 +164,14 @@ export function SignInForm({ googleAuthEnabled = false }: SignInFormProps) {
             </Button>
           </div>
 
-          {/* 分隔线 */}
+          {/* 分隔线:小标签规格,遮字背景与卡片一致 */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <Separator className="w-full" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase tracking-widest">
+            <div className="relative flex justify-center text-[11px] uppercase tracking-widest">
               {/* 遮线背景取卡片色:表单位于 bg-card 容器内 */}
-              <span className="bg-card px-2 text-muted-foreground">
+              <span className="bg-card px-3 text-muted-foreground">
                 {tCommon("or")}
               </span>
             </div>
@@ -179,8 +179,8 @@ export function SignInForm({ googleAuthEnabled = false }: SignInFormProps) {
         </>
       ) : null}
 
-      {/* 邮箱密码表单 */}
-      <form onSubmit={handleEmailSignIn} className="space-y-4">
+      {/* 邮箱密码表单:输入组间距统一 space-y-5 */}
+      <form onSubmit={handleEmailSignIn} className="space-y-5">
         {/* 邮箱输入 */}
         <div className="space-y-2">
           <Label htmlFor="email">{t("emailLabel")}</Label>
@@ -233,18 +233,18 @@ export function SignInForm({ googleAuthEnabled = false }: SignInFormProps) {
           </Link>
         </div>
 
-        {/* 提交按钮 */}
-        <Button type="submit" className="w-full" disabled={isLoading}>
+        {/* 提交按钮:主按钮加高至 h-11 */}
+        <Button type="submit" className="h-11 w-full" disabled={isLoading}>
           {isLoading ? t("loading") : t("submit")}
         </Button>
       </form>
 
-      {/* 注册链接 */}
+      {/* 注册链接:常驻淡下划线,hover 过渡为前景色下划线 */}
       <p className="text-center text-sm text-muted-foreground">
         {t("noAccount")}{" "}
         <Link
           href={`/${locale}/sign-up`}
-          className="font-medium text-foreground underline-offset-4 hover:underline"
+          className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors duration-150 hover:decoration-foreground"
         >
           {t("signUpLink")}
         </Link>
