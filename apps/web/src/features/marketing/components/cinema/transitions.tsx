@@ -1,13 +1,21 @@
 "use client";
 
 /**
- * 三大转场的进度编排(GL uniform 驱动,自身无可见 DOM)。
- * ZoomThrough:镜头扎进画面,深度推轨+径向拖影+压暗,末端交给墨章。
- * Multiply:图像粒子云从画布主角矩形散开,重凝为 16 格网格。
- * PickAndReturn:选中回中的胶片接触阴影(DOM 飞回由 scene-wall 承担)。
+ * 三大转场的进度编排(full 态 GL uniform 驱动,自身无可见 DOM)。
+ * ZoomThrough:镜头扎进画面,深度推轨+径向拖影+压暗,末端交给墨章;
+ * lite 态退化为整层样张 scale 放大 + 压暗到墨色(纯 transform/opacity)。
+ * Multiply:图像粒子云从画布主角矩形散开,重凝为 16 格网格
+ * (lite 态网格直接淡入,见 scene-multiply)。
+ * PickAndReturn:选中回中的胶片接触阴影(DOM 飞回由 scene-wall 承担,
+ * lite 态无 GL 晕影,DOM 飞回自足)。
  * takeover 仅在转场窗口内开启(窗口内无可交互内容)。
  */
-import { useMotionValueEvent } from "framer-motion";
+import {
+  type MotionValue,
+  motion,
+  useMotionValueEvent,
+  useTransform,
+} from "framer-motion";
 import { bell } from "./cinema-config";
 import { centerSquareRect } from "./cinema-geometry";
 import { useCinema } from "./cinema-gl";
@@ -27,7 +35,7 @@ const easeIn = (t: number) => t * t * t;
 export function ZoomThroughTransition() {
   const p = useSceneProgress("dive");
   const chapter = useSceneProgress("manifesto");
-  const { engine, setTakeover } = useCinema();
+  const { engine, status, setTakeover } = useCinema();
   // 流体键由 dive 与 manifesto 双进度联合决定,任一变化都重算
   const feedFluid = (dive: number, manifesto: number) => {
     engine?.setProgress("fluidP", Math.max(0, (dive - 0.55) / 0.45));
@@ -35,9 +43,9 @@ export function ZoomThroughTransition() {
     engine?.setProgress("fluidVisible", on ? 1 : 0);
   };
   useMotionValueEvent(p, "change", (v) => {
-    const active = v > 0.001 && v < 0.999;
-    setTakeover(active);
-    engine?.setProgress("dollyVisible", active ? 1 : 0);
+    // takeover 只在有画布(full)时有意义,lite 无 GL 不触发状态翻转
+    if (engine) setTakeover(v > 0.001 && v < 0.999);
+    engine?.setProgress("dollyVisible", v > 0.001 && v < 0.999 ? 1 : 0);
     engine?.setProgress("dollyZoom", 1 + easeIn(v) * 17);
     // 拖影在中段最强,进出为零
     engine?.setProgress("dollySmear", 1 - Math.abs(v * 2 - 1));
@@ -48,7 +56,44 @@ export function ZoomThroughTransition() {
   useMotionValueEvent(chapter, "change", (v) => {
     feedFluid(p.get(), v);
   });
+  // lite 态穿越:无 dolly/流体,以整层放大 + 压暗的 DOM 简化保住段落语义
+  if (status !== "full") return <LiteZoomThrough progress={p} />;
   return null;
+}
+
+/**
+ * lite 态穿越层:全屏样张随 dive 进度整层放大(扎进画面的简化表达),
+ * 末端 45% 压暗到墨色与宣言章底色咬合;窗口边缘 2% 淡入淡出
+ * (与 SceneLayer 边缘一致),窗口外完全不可见。
+ * 全部量为进度纯函数,倒放成立;transform 与透明度分层绑定(铁律)。
+ */
+function LiteZoomThrough({ progress }: { progress: MotionValue<number> }) {
+  const opacity = useTransform(progress, (v) => {
+    if (v <= 0 || v >= 1) return 0;
+    return Math.min(1, Math.min(v, 1 - v) / 0.02);
+  });
+  const scale = useTransform(progress, (v) => 1 + easeIn(v) * 1.8);
+  const darkOpacity = useTransform(progress, (v) =>
+    Math.max(0, (v - 0.55) / 0.45)
+  );
+  return (
+    <motion.div
+      style={{ opacity }}
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 overflow-hidden"
+    >
+      <motion.img
+        src="/cinema/artwork-hero.webp"
+        alt=""
+        style={{ scale }}
+        className="h-full w-full object-cover"
+      />
+      <motion.div
+        style={{ opacity: darkOpacity }}
+        className="absolute inset-0 bg-[#0e0e0d]"
+      />
+    </motion.div>
+  );
 }
 
 /**

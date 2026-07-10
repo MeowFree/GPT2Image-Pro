@@ -57,9 +57,7 @@ export function InkThread({
     Math.min(1, Math.max(0, v))
   );
   // 刻度点亮:线尾扫过中点后亮起(函数式)
-  const labelOpacity = useTransform(scrollYProgress, (v) =>
-    v > 0.5 ? 1 : 0
-  );
+  const labelOpacity = useTransform(scrollYProgress, (v) => (v > 0.5 ? 1 : 0));
   const isStatic = status === "static";
 
   return (

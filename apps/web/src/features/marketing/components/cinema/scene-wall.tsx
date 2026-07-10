@@ -194,9 +194,7 @@ export function WallScene() {
                 vw={vw}
                 vh={vh}
                 plaqueTitle={
-                  useCaseKey
-                    ? tUseCases(`items.${useCaseKey}.title`)
-                    : null
+                  useCaseKey ? tUseCases(`items.${useCaseKey}.title`) : null
                 }
               />
             );

@@ -11,6 +11,7 @@
 import { motion, useTransform } from "framer-motion";
 import { useEffect, useState } from "react";
 import { gridPos } from "./cinema-geometry";
+import { useCinema } from "./cinema-gl";
 import { useSceneProgress } from "./cinema-stage";
 
 /** 展墙样张清单:现有营销素材仅主样张一张,不足 16 格由滤镜变体补足 */
@@ -56,12 +57,17 @@ function useViewportSize(): { vw: number; vh: number } {
 
 export function MultiplyScene() {
   const p = useSceneProgress("multiply");
+  const { status } = useCinema();
   const { vw, vh } = useViewportSize();
+  const isFull = status === "full";
   // 底色回纸白:墨色罩(与宣言章底色 #0e0e0d 同色)随重凝进度撤除。
   // 纯样式 MotionValue,单独节点绑定(分层铁律)。
   const backdrop = useTransform(p, (v) => `rgba(14, 14, 13, ${1 - v})`);
-  // DOM 网格:粒子重凝完成前不可见(粒子 p>=1 即停绘,0.82 起交叉接管)
-  const gridOpacity = useTransform(p, (v) => Math.max(0, (v - 0.82) / 0.18));
+  // DOM 网格:full 态粒子重凝完成前不可见(粒子 p>=1 即停绘,0.82 起
+  // 交叉接管);lite 态无粒子,网格在前 30% 直接淡入(v1 简化转场)
+  const gridOpacity = useTransform(p, (v) =>
+    isFull ? Math.max(0, (v - 0.82) / 0.18) : Math.min(1, v / 0.3)
+  );
   return (
     <div className="relative h-full w-full">
       <motion.div

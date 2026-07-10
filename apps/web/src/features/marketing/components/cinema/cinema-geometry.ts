@@ -66,8 +66,7 @@ export function stripPos(
   _vh: number
 ): ViewportRect & { trackWidth: number } {
   const x = STRIP_GAP + i * (STRIP_W + STRIP_GAP);
-  const y =
-    0.5 - STRIP_H / 2 + (i % 2 === 0 ? -STRIP_STAGGER : STRIP_STAGGER);
+  const y = 0.5 - STRIP_H / 2 + (i % 2 === 0 ? -STRIP_STAGGER : STRIP_STAGGER);
   const trackWidth = STRIP_GAP + count * (STRIP_W + STRIP_GAP);
   return { x, y, w: STRIP_W, h: STRIP_H, trackWidth };
 }

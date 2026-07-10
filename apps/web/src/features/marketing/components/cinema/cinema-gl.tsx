@@ -38,6 +38,11 @@ export function useCinema(): CinemaContextValue {
 /** 初始探测:减动效/窄屏直接 static,不建上下文 */
 function probeInitialStatus(): GLStatus {
   if (typeof window === "undefined") return "static";
+  // dev 专用强制降级参数(?gl=lite|static):三层回退走查用,生产不读取
+  if (process.env.NODE_ENV !== "production") {
+    const forced = new URLSearchParams(window.location.search).get("gl");
+    if (forced === "lite" || forced === "static") return forced;
+  }
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     return "static";
   }
