@@ -67,7 +67,7 @@ export function PrimaryActionEmail({
             <Section className="mb-6 text-center">
               <Button
                 href={actionUrl}
-                className="inline-block rounded-md bg-violet-600 px-6 py-3 text-center text-sm font-semibold text-white no-underline"
+                className="inline-block rounded-md bg-gray-900 px-6 py-3 text-center text-sm font-semibold text-white no-underline"
               >
                 {actionLabel}
               </Button>
@@ -86,7 +86,7 @@ export function PrimaryActionEmail({
                 If the button above doesn&apos;t work, copy and paste this URL
                 into your browser:
               </Text>
-              <Text className="m-0 break-all text-xs text-violet-600">
+              <Text className="m-0 break-all text-xs text-gray-600 underline">
                 {actionUrl}
               </Text>
             </Section>

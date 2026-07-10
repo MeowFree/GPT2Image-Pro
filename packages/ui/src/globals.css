@@ -75,13 +75,6 @@
   --font-serif: "Noto Serif Variable", "Noto Serif SC Variable", "Noto Serif",
     "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
 
-  --radius: 12px;
-
-  /* Transitions — GPT2IMAGE design tokens */
-  --transition-fast: 150ms ease;
-  --transition-normal: 250ms ease;
-  --transition-slow: 400ms ease;
-
   /* Light Mode — GPT2IMAGE Monochrome */
   --background: #ffffff;
   --foreground: #1a1a1a;

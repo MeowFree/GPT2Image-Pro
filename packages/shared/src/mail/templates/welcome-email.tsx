@@ -66,7 +66,7 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailProps) {
             <Section className="mb-8 text-center">
               <Button
                 href={dashboardUrl}
-                className="inline-block rounded-md bg-violet-600 px-6 py-3 text-center text-sm font-semibold text-white no-underline"
+                className="inline-block rounded-md bg-gray-900 px-6 py-3 text-center text-sm font-semibold text-white no-underline"
               >
                 Go to Dashboard
               </Button>
@@ -91,7 +91,7 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailProps) {
               Need help? Reply to this email or visit our{" "}
               <Link
                 href="https://example.com/docs"
-                className="text-violet-600 no-underline"
+                className="text-gray-900 underline"
               >
                 documentation
               </Link>

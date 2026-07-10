@@ -78,7 +78,7 @@ export function SupportTicketNotificationEmail({
             <Section className="mb-6 text-center">
               <Button
                 href={ticketUrl}
-                className="inline-block rounded-md bg-violet-600 px-6 py-3 text-center text-sm font-semibold text-white no-underline"
+                className="inline-block rounded-md bg-gray-900 px-6 py-3 text-center text-sm font-semibold text-white no-underline"
               >
                 查看工单
               </Button>
@@ -88,7 +88,7 @@ export function SupportTicketNotificationEmail({
               <Text className="m-0 mb-2 text-xs text-gray-600">
                 如果按钮无法打开，请复制下面的地址：
               </Text>
-              <Text className="m-0 break-all text-xs text-violet-600">
+              <Text className="m-0 break-all text-xs text-gray-600 underline">
                 {ticketUrl}
               </Text>
             </Section>

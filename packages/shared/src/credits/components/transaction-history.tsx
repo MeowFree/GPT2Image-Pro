@@ -286,7 +286,7 @@ export function TransactionHistory({ timeZone }: { timeZone: string }) {
                   <div
                     className={cn(
                       "col-span-2 text-right font-medium",
-                      isIncome ? "text-emerald-600" : "text-red-500"
+                      isIncome ? "text-success" : "text-destructive"
                     )}
                   >
                     {isIncome ? "+" : "-"}

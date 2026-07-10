@@ -266,17 +266,8 @@ export function CookieSettingsDialog({ children }: CookieSettingsDialogProps) {
         {/* Footer */}
         <div className="flex items-center justify-between border-t px-6 py-4">
           <div className="flex gap-2">
-            <Button
-              onClick={handleAcceptAll}
-              className="bg-gray-900 text-white hover:bg-gray-800"
-            >
-              {t("acceptAll")}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleRejectAll}
-              className="border-gray-900 text-gray-900 hover:bg-gray-100"
-            >
+            <Button onClick={handleAcceptAll}>{t("acceptAll")}</Button>
+            <Button variant="outline" onClick={handleRejectAll}>
               {t("rejectAll")}
             </Button>
           </div>

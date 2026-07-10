@@ -30,7 +30,7 @@ function getHostname(url: string | undefined): string {
  *
  * 功能:
  * - 显示站点名称和描述
- * - 使用品牌配色 (violet 渐变)
+ * - 品牌单色配色(GPT2IMAGE 黑白体系,暖调深底 + Georgia 衬线标题)
  * - 动态显示站点 URL
  */
 export function createOgImageResponse(): ImageResponse {
@@ -45,9 +45,9 @@ export function createOgImageResponse(): ImageResponse {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "#0a0a0a",
+        backgroundColor: "#1a1a1a",
         backgroundImage:
-          "radial-gradient(circle at 25% 25%, #7c3aed20 0%, transparent 50%), radial-gradient(circle at 75% 75%, #7c3aed10 0%, transparent 50%)",
+          "radial-gradient(circle at 25% 25%, rgba(255,255,255,0.05) 0%, transparent 50%), radial-gradient(circle at 75% 75%, rgba(255,255,255,0.03) 0%, transparent 50%)",
       }}
     >
       {/* Logo / Brand */}
@@ -63,13 +63,13 @@ export function createOgImageResponse(): ImageResponse {
           style={{
             width: 80,
             height: 80,
-            background: "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+            background: "#ffffff",
             borderRadius: 20,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             marginRight: 24,
-            boxShadow: "0 8px 32px rgba(124, 58, 237, 0.4)",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
           }}
         >
           <svg
@@ -77,7 +77,7 @@ export function createOgImageResponse(): ImageResponse {
             height="48"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="white"
+            stroke="#1a1a1a"
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -90,10 +90,9 @@ export function createOgImageResponse(): ImageResponse {
         <span
           style={{
             fontSize: 64,
-            fontWeight: 700,
-            background: "linear-gradient(135deg, #ffffff 0%, #a5a5a5 100%)",
-            backgroundClip: "text",
-            color: "transparent",
+            fontWeight: 500,
+            fontFamily: "Georgia, serif",
+            color: "#f5f5f5",
           }}
         >
           {siteConfig.name}
@@ -104,7 +103,7 @@ export function createOgImageResponse(): ImageResponse {
       <div
         style={{
           fontSize: 28,
-          color: "#a1a1aa",
+          color: "#b0b0b0",
           textAlign: "center",
           maxWidth: 800,
           lineHeight: 1.4,
@@ -121,15 +120,15 @@ export function createOgImageResponse(): ImageResponse {
           display: "flex",
           alignItems: "center",
           padding: "12px 24px",
-          background: "rgba(124, 58, 237, 0.1)",
+          background: "rgba(255, 255, 255, 0.06)",
           borderRadius: 50,
-          border: "1px solid rgba(124, 58, 237, 0.3)",
+          border: "1px solid rgba(255, 255, 255, 0.18)",
         }}
       >
         <span
           style={{
             fontSize: 18,
-            color: "#a78bfa",
+            color: "#d4d4d4",
           }}
         >
           {hostname}
