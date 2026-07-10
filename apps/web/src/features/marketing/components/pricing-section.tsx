@@ -627,14 +627,14 @@ export function PricingSection({
   };
 
   return (
-    <section id="pricing" className="container py-24">
+    <section id="pricing" className="container py-20 md:py-28">
       <div className="mx-auto max-w-6xl">
         {/* Header */}
         <div className="mb-12 text-center">
           <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
             {t("title")}
           </h2>
-          <p className="mx-auto max-w-2xl text-muted-foreground">
+          <p className="mx-auto max-w-2xl leading-relaxed text-muted-foreground">
             {pricingSubtitle}
           </p>
         </div>
@@ -654,10 +654,14 @@ export function PricingSection({
               <Card
                 key={planId}
                 className={cn(
-                  "relative flex flex-col rounded-xl",
-                  popular && "border-foreground shadow-lg shadow-foreground/10",
+                  "relative flex flex-col rounded-xl border-border transition-[border-color,box-shadow] duration-150 hover:border-foreground/30 hover:shadow-whisper",
+                  // 推荐档:细 ring + 轻阴影,替代粗边框重阴影
+                  popular &&
+                    !isCurrent &&
+                    "ring-1 ring-foreground/20 shadow-whisper",
+                  // enterprise 卡边框本就更深,悬停保持同深度避免反向变浅
                   planId === "enterprise" &&
-                    "border-foreground/60 bg-muted/20",
+                    "border-foreground/60 bg-muted/20 hover:border-foreground/60",
                   isCurrent && "ring-2 ring-foreground"
                 )}
               >
@@ -672,7 +676,7 @@ export function PricingSection({
                   </Badge>
                 )}
                 <CardHeader>
-                  <CardTitle className="text-lg font-semibold">
+                  <CardTitle className="text-lg font-medium">
                     {t(`plans.${planId}.name`)}
                   </CardTitle>
                   <p className="text-sm text-muted-foreground">
@@ -681,7 +685,8 @@ export function PricingSection({
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col">
                   <div className="mb-4">
-                    <span className="text-4xl font-bold">
+                    {/* 价格数字:衬线大号 */}
+                    <span className="font-serif text-4xl font-medium">
                       ¥<AnimatedPrice value={price} />
                     </span>
                     <span className="text-sm text-muted-foreground">
@@ -690,10 +695,10 @@ export function PricingSection({
                   </div>
 
                   {/* Credits highlight */}
-                  <div className="mb-5 rounded-lg border bg-muted/30 px-3 py-2.5">
+                  <div className="mb-5 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
                     <div className="flex items-center gap-1.5">
                       <Coins className="size-4 text-foreground" />
-                      <span className="text-lg font-bold">
+                      <span className="font-serif text-lg font-medium">
                         {planId === "free" ? (
                           formatCredits(planCredits)
                         ) : (
@@ -779,7 +784,7 @@ export function PricingSection({
           <div className="mt-10">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h3 className="text-xl font-semibold">
+                <h3 className="font-serif text-xl font-medium">
                   {copy("Extra Credit Packages", "额外积分包")}
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -817,13 +822,13 @@ export function PricingSection({
                   <Card
                     key={pkg.id}
                     className={cn(
-                      "flex flex-col rounded-xl",
-                      pkg.popular && "border-foreground/70"
+                      "flex flex-col rounded-xl border-border transition-[border-color,box-shadow] duration-150 hover:border-foreground/30 hover:shadow-whisper",
+                      pkg.popular && "ring-1 ring-foreground/20 shadow-whisper"
                     )}
                   >
                     <CardHeader className="space-y-2">
                       <div className="flex items-start justify-between gap-3">
-                        <CardTitle className="text-base font-semibold">
+                        <CardTitle className="text-base font-medium">
                           {pkg.name}
                         </CardTitle>
                         {pkg.popular && (
@@ -840,7 +845,7 @@ export function PricingSection({
                     <CardContent className="flex flex-1 flex-col gap-4">
                       <div>
                         <div className="flex items-end gap-2">
-                          <span className="text-3xl font-bold">
+                          <span className="font-serif text-3xl font-medium">
                             {displayPrice}
                           </span>
                           <span className="pb-1 text-sm text-muted-foreground">
@@ -914,8 +919,8 @@ export function PricingSection({
           </div>
         )}
 
-        <div className="mt-8 rounded-lg border bg-muted/30 px-4 py-4">
-          <h3 className="text-sm font-semibold">{t("billingRules.title")}</h3>
+        <div className="mt-8 rounded-lg border border-border bg-muted/30 px-4 py-4">
+          <h3 className="text-sm font-medium">{t("billingRules.title")}</h3>
           <ul className="mt-3 grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
             {billingRuleItems.map((item) => (
               <li key={item} className="flex gap-2">

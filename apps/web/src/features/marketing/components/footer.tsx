@@ -41,7 +41,7 @@ export async function Footer() {
   const isZh = (await getLocale()) === "zh";
 
   return (
-    <footer className="border-t bg-background">
+    <footer className="border-t border-border/60 bg-background">
       <div className="container py-16">
         <div className="grid gap-12 lg:grid-cols-[1fr_1fr]">
           {/* 品牌区 */}
@@ -60,7 +60,8 @@ export async function Footer() {
           <div className="grid grid-cols-2 gap-8">
             {/* 产品 */}
             <div>
-              <h3 className="mb-4 text-sm font-semibold">
+              {/* 分组标签:小字大写字距,弱化为 muted */}
+              <h3 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {isZh ? "产品" : "Product"}
               </h3>
               <ul className="space-y-3">
@@ -82,7 +83,7 @@ export async function Footer() {
 
             {/* 法律 */}
             <div>
-              <h3 className="mb-4 text-sm font-semibold">
+              <h3 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {isZh ? "法律" : "Legal"}
               </h3>
               <ul className="space-y-3">
@@ -102,7 +103,7 @@ export async function Footer() {
         </div>
 
         {/* 底部栏 */}
-        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t pt-8 sm:flex-row">
+        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-border/60 pt-8 sm:flex-row">
           <p className="text-sm text-muted-foreground">
             {isZh
               ? `© ${new Date().getFullYear()} ${siteConfig.name}。保留所有权利。`

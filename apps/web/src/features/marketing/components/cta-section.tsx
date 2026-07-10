@@ -13,18 +13,19 @@ export function CTASection() {
   const getStartedHref = session?.user ? "/dashboard/create" : "/sign-up";
 
   return (
-    <section className="container py-24">
+    <section className="container py-20 md:py-28">
       <div className="mx-auto max-w-4xl">
-        <div className="relative overflow-hidden rounded-3xl border border-border bg-background p-8 text-center md:p-16">
+        <div className="relative overflow-hidden rounded-xl border border-border bg-background p-8 text-center shadow-whisper md:p-16">
           <div className="relative">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-foreground/20 px-4 py-2 text-sm text-foreground">
+            {/* 胶囊徽标:统一 chips 语言 */}
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-muted-foreground">
               {t("badge")}
             </div>
 
             <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
               {t("title")}
             </h2>
-            <p className="mx-auto mb-8 max-w-xl text-muted-foreground">
+            <p className="mx-auto mb-8 max-w-xl leading-relaxed text-muted-foreground">
               {t("subtitle")}
             </p>
 

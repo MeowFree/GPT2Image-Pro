@@ -119,7 +119,7 @@ export function NavMenu() {
               <motion.span
                 layoutId="nav-pill"
                 className="absolute inset-0 -z-10 rounded-md bg-muted"
-                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                transition={{ type: "spring", bounce: 0, duration: 0.3 }}
               />
             )}
             {t("products")}
@@ -143,11 +143,11 @@ export function NavMenu() {
                 onMouseEnter={handleProductsEnter}
                 onMouseLeave={handleProductsLeave}
               >
-                <div className="w-[640px] rounded-xl border bg-popover p-4 shadow-lg">
+                <div className="w-[640px] rounded-lg border border-border bg-popover p-4 shadow-menu">
                   <div className="grid grid-cols-3 gap-4">
                     {productsNav.map((group) => (
                       <div key={group.title}>
-                        <h4 className="mb-3 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        <h4 className="mb-3 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                           {t(productsTitleMap[group.title] || group.title)}
                         </h4>
                         <div className="space-y-1">
@@ -158,7 +158,7 @@ export function NavMenu() {
                                 key={item.title}
                                 href={item.href}
                                 onClick={() => setProductsOpen(false)}
-                                className="flex items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted"
+                                className="flex items-start gap-3 rounded-md px-2 py-2 transition-colors duration-150 hover:bg-muted"
                               >
                                 <Icon className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
                                 <div>
@@ -209,13 +209,14 @@ export function NavMenu() {
                       className="absolute inset-0 -z-10 rounded-md bg-muted"
                       transition={{
                         type: "spring",
-                        bounce: 0.2,
-                        duration: 0.6,
+                        bounce: 0,
+                        duration: 0.3,
                       }}
                     />
                   )}
+                  {/* 当前路由静态底色:无动画诉求,用普通元素即可 */}
                   {active && !hoveredItem && (
-                    <motion.span className="absolute inset-0 -z-10 rounded-md bg-muted/50" />
+                    <span className="absolute inset-0 -z-10 rounded-md bg-muted/50" />
                   )}
                   {navTitleMap[item.title] || item.title}
                 </Link>

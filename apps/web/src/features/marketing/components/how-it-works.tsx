@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Download, MessageSquare, Settings } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 const stepConfig = [
   { key: "upload" as const, icon: Settings, step: "01" },
@@ -11,68 +11,72 @@ const stepConfig = [
 
 export function HowItWorks() {
   const t = useTranslations("HowItWorks");
+  const isZh = useLocale().startsWith("zh");
 
   return (
-    <section id="how-it-works" className="container bg-muted/30 py-24">
-      <div className="mx-auto max-w-4xl">
-        {/* Header */}
-        <div className="mb-16 text-center">
-          <p className="mb-2 text-sm font-medium uppercase tracking-wider text-foreground">
-            {t("label")}
-          </p>
-          <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
-            {t("title")}
-          </h2>
-          <p className="mx-auto max-w-2xl text-muted-foreground">
-            {t("subtitle")}
-          </p>
-        </div>
-
-        {/* Steps */}
-        <div className="space-y-12">
-          {stepConfig.map((step, index) => {
-            const Icon = step.icon;
-            return (
-              <div key={step.step} className="relative flex gap-6 md:gap-10">
-                {/* Connector Line */}
-                {index < stepConfig.length - 1 && (
-                  <div className="absolute left-6 top-16 h-[calc(100%-2rem)] w-px bg-border md:left-10" />
-                )}
-
-                {/* Icon */}
-                <div className="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border bg-background shadow-sm md:h-20 md:w-20">
-                  <Icon className="h-5 w-5 text-foreground md:h-8 md:w-8" />
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 pb-8">
-                  <div className="mb-2 flex items-center gap-3">
-                    <span className="text-sm font-medium text-foreground">
-                      Step {step.step}
-                    </span>
-                  </div>
-                  <h3 className="mb-2 font-serif text-xl font-medium">
-                    {t(`steps.${step.key}.title`)}
-                  </h3>
-                  <p className="text-muted-foreground">
-                    {t(`steps.${step.key}.description`)}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Completion */}
-        <div className="mt-8 flex items-center justify-center gap-3 rounded-xl border bg-card p-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-foreground/10 text-foreground">
-            <Check className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="font-medium">{t("completion.title")}</p>
-            <p className="text-sm text-muted-foreground">
-              {t("completion.description")}
+    // 全幅浅底节:与前后 bg-background 节形成明暗交替的书页节奏
+    <section id="how-it-works" className="bg-secondary/50 py-20 md:py-28">
+      <div className="container">
+        <div className="mx-auto max-w-4xl">
+          {/* Header */}
+          <div className="mb-16 text-center">
+            <p className="mb-2 text-sm font-medium uppercase tracking-wider text-muted-foreground">
+              {t("label")}
             </p>
+            <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
+              {t("title")}
+            </h2>
+            <p className="mx-auto max-w-2xl leading-relaxed text-muted-foreground">
+              {t("subtitle")}
+            </p>
+          </div>
+
+          {/* Steps */}
+          <div className="space-y-12">
+            {stepConfig.map((step, index) => {
+              const Icon = step.icon;
+              return (
+                <div key={step.step} className="relative flex gap-6 md:gap-10">
+                  {/* Connector Line */}
+                  {index < stepConfig.length - 1 && (
+                    <div className="absolute left-6 top-16 h-[calc(100%-2rem)] w-px bg-border md:left-10" />
+                  )}
+
+                  {/* Icon */}
+                  <div className="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-border bg-background shadow-whisper md:h-20 md:w-20">
+                    <Icon className="h-5 w-5 text-foreground md:h-8 md:w-8" />
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 pb-8">
+                    <div className="mb-2 flex items-center gap-3">
+                      <span className="text-sm font-medium text-muted-foreground">
+                        {isZh ? `步骤 ${step.step}` : `Step ${step.step}`}
+                      </span>
+                    </div>
+                    <h3 className="mb-2 font-serif text-xl font-medium">
+                      {t(`steps.${step.key}.title`)}
+                    </h3>
+                    <p className="leading-relaxed text-muted-foreground">
+                      {t(`steps.${step.key}.description`)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Completion */}
+          <div className="mt-8 flex items-center justify-center gap-3 rounded-lg border border-border bg-background p-6">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-foreground/10 text-foreground">
+              <Check className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-medium">{t("completion.title")}</p>
+              <p className="text-sm text-muted-foreground">
+                {t("completion.description")}
+              </p>
+            </div>
           </div>
         </div>
       </div>

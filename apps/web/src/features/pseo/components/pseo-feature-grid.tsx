@@ -37,10 +37,10 @@ export function PseoFeatureGrid({ page }: { page: PseoPage }) {
           <Badge variant="secondary" className="mb-4">
             {page.category}
           </Badge>
-          <h2 className="mb-4 text-balance font-serif text-3xl font-bold tracking-tight md:text-4xl">
+          <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
             {sections.features.title}
           </h2>
-          <p className="mx-auto max-w-2xl text-muted-foreground">
+          <p className="mx-auto max-w-2xl leading-relaxed text-muted-foreground">
             {sections.features.subtitle}
           </p>
         </div>
@@ -51,16 +51,16 @@ export function PseoFeatureGrid({ page }: { page: PseoPage }) {
             return (
               <Card
                 key={feature.title}
-                className="group rounded-2xl border-0 bg-muted/50 transition-colors hover:bg-muted"
+                className="group border-border bg-background shadow-none transition-[border-color,box-shadow] duration-150 hover:border-foreground/30 hover:shadow-whisper"
               >
                 <CardContent className="p-6">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-foreground/5 text-foreground transition-colors group-hover:bg-foreground group-hover:text-background">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-foreground/5 text-foreground transition-colors duration-150 group-hover:bg-foreground group-hover:text-background">
                     <Icon className="h-6 w-6" />
                   </div>
-                  <h3 className="mb-2 text-base font-semibold">
+                  <h3 className="mb-2 text-base font-medium">
                     {feature.title}
                   </h3>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
                     {feature.description}
                   </p>
                 </CardContent>

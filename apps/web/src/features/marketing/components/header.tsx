@@ -71,7 +71,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
         {/* 左侧 - Logo + 导航菜单 */}
         <div className="flex items-center gap-8">
@@ -144,7 +144,7 @@ export function Header() {
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors md:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground md:hidden"
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -174,7 +174,7 @@ export function Header() {
                   <div className="ml-3 space-y-1 border-l border-border pl-3">
                     {productsNav.map((group) => (
                       <div key={group.title} className="py-1">
-                        <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        <div className="px-3 py-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                           {tNav(productsTitleMap[group.title] || group.title)}
                         </div>
                         {group.items.map((item) => {

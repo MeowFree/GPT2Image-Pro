@@ -4756,7 +4756,9 @@ function ListBlock({
   type: "valid" | "invalid";
 }) {
   const Icon = type === "valid" ? Check : X;
-  const color = type === "valid" ? "text-emerald-600" : "text-amber-600";
+  // 单色体系:支持项用前景色勾,不支持项用 muted 叉,靠图标形状区分语义
+  const color =
+    type === "valid" ? "text-foreground" : "text-muted-foreground";
   return (
     <ul className="space-y-2 text-sm text-muted-foreground">
       {items.map((item) => (
@@ -5048,7 +5050,7 @@ function ExternalApiDocs({
                   item.startsWith("Async tasks (async)");
                 return (
                   <li className="flex gap-2" key={item}>
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
                     <span
                       className={
                         emphasize ? "font-semibold text-foreground" : undefined
@@ -5120,7 +5122,9 @@ function FieldName({
     <div className="space-y-1">
       <div
         className={`font-mono text-xs leading-relaxed ${
-          field.custom ? "font-bold text-foreground" : "text-muted-foreground"
+          field.custom
+            ? "font-semibold text-foreground"
+            : "text-muted-foreground"
         }`}
       >
         {/* 参数名常把多个等价别名用 " / " 串联（如 "size / quality / moderation"）。

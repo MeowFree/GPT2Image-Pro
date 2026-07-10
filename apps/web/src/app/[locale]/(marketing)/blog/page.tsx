@@ -75,12 +75,12 @@ export default async function BlogPage({
         ]}
       />
 
-      {/* Header */}
-      <div className="mb-16 text-center">
-        <h1 className="text-4xl font-bold tracking-tight md:text-5xl">
+      {/* Header - 衬线标题 + 编辑部式入场 */}
+      <div className="mb-16 text-center animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
+        <h1 className="font-serif text-4xl font-medium tracking-tight md:text-5xl">
           {locale === "zh" ? "博客文章" : "Blog Posts"}
         </h1>
-        <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+        <p className="mx-auto mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">
           {locale === "zh"
             ? "发现 GPT2IMAGE 团队的最新见解、教程和更新。了解产品最新动态。"
             : "Discover the latest insights, tutorials, and updates from the GPT2IMAGE team. Learn about the latest product news."}

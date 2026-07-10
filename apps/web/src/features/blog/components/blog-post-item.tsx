@@ -27,7 +27,7 @@ export function BlogPostItem({ post }: BlogPostItemProps) {
           </div>
 
           {/* Title */}
-          <h2 className="font-serif text-2xl font-bold tracking-tight transition-colors group-hover:text-foreground md:text-3xl">
+          <h2 className="font-serif text-2xl font-medium tracking-tight underline-offset-4 group-hover:underline md:text-3xl">
             {post.title}
           </h2>
 
@@ -42,24 +42,12 @@ export function BlogPostItem({ post }: BlogPostItemProps) {
           </p>
         </div>
 
-        {/* Image */}
-        <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-xl border bg-muted md:w-[380px]">
+        {/* 图片占位符 - 单色编辑部风:文章首字的衬线大字标 */}
+        <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-lg border border-border bg-muted transition-colors duration-150 group-hover:bg-accent md:w-[380px]">
           <div className="flex h-full items-center justify-center">
-            {/* Placeholder for blog image */}
-            <div className="grid grid-cols-2 gap-3 p-6">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background shadow-sm">
-                <span className="text-lg font-bold">N</span>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background shadow-sm">
-                <span className="text-lg font-bold text-blue-500">⚛</span>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background shadow-sm">
-                <span className="text-lg font-bold text-blue-600">TS</span>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background shadow-sm">
-                <span className="text-lg font-bold text-cyan-500">🌊</span>
-              </div>
-            </div>
+            <span className="font-serif text-6xl font-medium text-foreground/15 transition-colors duration-150 group-hover:text-foreground/30">
+              {post.title.charAt(0)}
+            </span>
           </div>
         </div>
       </Link>

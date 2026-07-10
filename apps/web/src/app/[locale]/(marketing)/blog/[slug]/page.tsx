@@ -131,7 +131,7 @@ export default async function BlogPostPage({
       {/* 返回链接 */}
       <Link
         href="/blog"
-        className="mb-8 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
+        className="mb-8 inline-flex items-center text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
         ← {locale === "zh" ? "返回博客" : "Back to Blog"}
       </Link>
@@ -144,7 +144,7 @@ export default async function BlogPostPage({
             {post.tags.map((tag) => (
               <span
                 key={tag}
-                className="rounded-full bg-foreground/5 px-3 py-1 text-xs font-medium text-foreground"
+                className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
               >
                 {tag}
               </span>
@@ -153,13 +153,13 @@ export default async function BlogPostPage({
         )}
 
         {/* 标题 */}
-        <h1 className="mb-4 font-serif text-4xl font-bold tracking-tight md:text-5xl">
+        <h1 className="mb-4 font-serif text-4xl font-medium leading-[1.15] tracking-tight md:text-5xl">
           {post.title}
         </h1>
 
         {/* 描述 */}
         {post.description && (
-          <p className="mb-6 text-xl text-muted-foreground">
+          <p className="mb-6 text-xl leading-relaxed text-muted-foreground">
             {post.description}
           </p>
         )}
@@ -172,8 +172,8 @@ export default async function BlogPostPage({
         </div>
       </header>
 
-      {/* 文章内容 */}
-      <div className="prose prose-lg dark:prose-invert max-w-none prose-headings:font-bold prose-a:text-foreground prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-pre:bg-muted">
+      {/* 文章内容 - 标题沿用衬线 font-medium 的全站层级 */}
+      <div className="prose prose-lg dark:prose-invert max-w-none prose-headings:font-serif prose-headings:font-medium prose-a:text-foreground prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-pre:bg-muted">
         <MDXContent />
       </div>
     </article>

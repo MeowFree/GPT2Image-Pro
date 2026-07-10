@@ -56,10 +56,11 @@
   --radius-4xl: 40px;
 
   /* 阴影 token(对齐 GPT2IMAGE 参考实现):
-     whisper=悬浮卡片轻抬升, menu=下拉菜单, modal=模态弹窗 */
-  --shadow-whisper: 0 4px 24px rgb(0 0 0 / 0.05);
-  --shadow-menu: 0 4px 20px rgb(0 0 0 / 0.08);
-  --shadow-modal: 0 8px 40px rgb(0 0 0 / 0.15);
+     whisper=悬浮卡片轻抬升, menu=下拉菜单, modal=模态弹窗。
+     经 -src 变量间接引用:暗色下纯黑淡阴影不可见,须按主题加重(见 .dark)。 */
+  --shadow-whisper: var(--shadow-whisper-src);
+  --shadow-menu: var(--shadow-menu-src);
+  --shadow-modal: var(--shadow-modal-src);
 }
 
 :root {
@@ -74,6 +75,11 @@
     "Liberation Mono", Menlo, monospace;
   --font-serif: "Noto Serif Variable", "Noto Serif SC Variable", "Noto Serif",
     "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
+
+  /* 阴影源值(light):低透明度黑,纸面轻抬升 */
+  --shadow-whisper-src: 0 4px 24px rgb(0 0 0 / 0.05);
+  --shadow-menu-src: 0 4px 20px rgb(0 0 0 / 0.08);
+  --shadow-modal-src: 0 8px 40px rgb(0 0 0 / 0.15);
 
   /* Light Mode — GPT2IMAGE Monochrome */
   --background: #ffffff;
@@ -133,6 +139,11 @@
 }
 
 .dark {
+  /* 阴影源值(dark):暗底上淡阴影不可见,加重透明度以保留抬升层次 */
+  --shadow-whisper-src: 0 4px 24px rgb(0 0 0 / 0.4);
+  --shadow-menu-src: 0 4px 20px rgb(0 0 0 / 0.5);
+  --shadow-modal-src: 0 8px 40px rgb(0 0 0 / 0.65);
+
   /* Dark Mode — Warm dark tones (GPT2IMAGE) */
   --background: #1a1a1a;
   --foreground: #e0e0e0;

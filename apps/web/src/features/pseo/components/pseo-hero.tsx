@@ -16,21 +16,21 @@ export function PseoHero({ page }: { page: PseoPage }) {
       <div className="absolute -top-20 right-0 h-56 w-56 rounded-full bg-foreground/5 blur-3xl" />
       <div className="absolute -bottom-24 left-0 h-56 w-56 rounded-full bg-foreground/5 blur-3xl" />
 
-      <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="mx-auto grid max-w-6xl items-center gap-12 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none lg:grid-cols-[1.1fr_0.9fr]">
         <div>
           <Badge
             variant="outline"
-            className="mb-6 rounded-full border-border px-4 py-2 text-xs font-semibold uppercase tracking-wider"
+            className="mb-6 rounded-full border-border px-4 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground"
           >
             {hero.badge}
           </Badge>
 
-          <h1 className="mb-6 text-balance font-serif text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl">
+          <h1 className="mb-6 text-balance font-serif text-4xl font-medium leading-[1.1] tracking-tight md:text-5xl lg:text-6xl">
             {hero.title}{" "}
             <span className="text-foreground">{hero.highlight}</span>
           </h1>
 
-          <p className="mb-8 text-lg text-muted-foreground md:text-xl">
+          <p className="mb-8 text-lg leading-relaxed text-muted-foreground md:text-xl">
             {hero.subtitle}
           </p>
 
@@ -51,10 +51,10 @@ export function PseoHero({ page }: { page: PseoPage }) {
           <div className="grid gap-6 sm:grid-cols-3">
             {stats.map((stat) => (
               <div key={stat.label} className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   {stat.label}
                 </p>
-                <p className="text-2xl font-semibold text-foreground">
+                <p className="font-serif text-2xl font-medium text-foreground">
                   {stat.value}
                 </p>
                 <p className="text-sm text-muted-foreground">{stat.detail}</p>
@@ -65,9 +65,9 @@ export function PseoHero({ page }: { page: PseoPage }) {
 
         <div className="relative">
           <div className="absolute -inset-4 rounded-3xl bg-foreground/5 blur-2xl" />
-          <Card className="relative overflow-hidden border bg-background/80">
+          <Card className="relative overflow-hidden border-border bg-background/80 shadow-whisper">
             <CardContent className="p-6">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {hero.summaryTitle}
               </p>
               <ul className="mt-4 space-y-3 text-sm">
@@ -79,7 +79,7 @@ export function PseoHero({ page }: { page: PseoPage }) {
                 ))}
               </ul>
 
-              <div className="mt-6 space-y-3 rounded-xl bg-muted/60 p-4 text-sm">
+              <div className="mt-6 space-y-3 rounded-md bg-muted/60 p-4 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">
                     {isZh ? "分类" : "Category"}

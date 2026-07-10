@@ -15,25 +15,25 @@ export function HeroSection() {
 
   return (
     <section className="container relative overflow-hidden py-20 md:py-28 lg:py-32">
-      <div className="mx-auto flex max-w-4xl flex-col items-center">
-        {/* Badge */}
+      <div className="mx-auto flex max-w-4xl flex-col items-center animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
+        {/* Badge - 胶囊语言:边框弱化,悬停提亮 */}
         <Badge
           variant="outline"
-          className="mb-6 gap-2 rounded-full border-foreground/20 px-4 py-2 text-sm font-medium"
+          className="mb-6 gap-2 rounded-full border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:border-foreground/30 hover:text-foreground"
         >
           {t("badge")}
           <ArrowRight className="h-3.5 w-3.5" />
         </Badge>
 
-        {/* Headline */}
-        <h1 className="mb-6 text-center font-serif text-4xl font-medium tracking-tight md:text-5xl lg:text-6xl">
+        {/* Headline - 衬线大标题,行高收紧至 1.1 */}
+        <h1 className="mb-6 text-center font-serif text-4xl font-medium leading-[1.1] tracking-tight md:text-5xl lg:text-6xl">
           {t("title1")}
           <br />
           <span className="text-foreground">{t("titleHighlight")}</span>
         </h1>
 
         {/* Subtitle */}
-        <p className="mb-10 max-w-2xl text-balance text-center text-lg text-muted-foreground">
+        <p className="mb-10 max-w-2xl text-balance text-center text-lg leading-relaxed text-muted-foreground">
           {t("subtitle")}
         </p>
 

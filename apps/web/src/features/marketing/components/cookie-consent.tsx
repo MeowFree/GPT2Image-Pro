@@ -134,21 +134,21 @@ export function CookieConsent() {
     <div
       className={cn(
         "fixed bottom-0 left-0 right-0 z-50 p-4",
-        "animate-in slide-in-from-bottom-5 duration-300"
+        "animate-in fade-in slide-in-from-bottom-5 duration-400 motion-reduce:animate-none"
       )}
     >
       <div className="container">
-        <div className="rounded-lg border bg-background p-6 shadow-lg">
+        <div className="rounded-lg border border-border bg-background p-6 shadow-modal">
           {!showDetails ? (
             // 简洁视图
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex-1">
-                <h3 className="text-lg font-semibold">{t("title")}</h3>
+                <h3 className="text-lg font-medium">{t("title")}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {t("description")}
                   <Link
                     href="/legal/privacy"
-                    className="ml-1 underline underline-offset-4 hover:text-foreground"
+                    className="ml-1 underline underline-offset-4 transition-colors duration-150 hover:text-foreground"
                   >
                     {t("privacyPolicy")}
                   </Link>
@@ -175,7 +175,7 @@ export function CookieConsent() {
             // 详细设置视图
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">
+                <h3 className="text-lg font-medium">
                   {t("preferencesTitle")}
                 </h3>
                 <Button
@@ -189,7 +189,7 @@ export function CookieConsent() {
 
               <div className="space-y-3">
                 {/* 必要 Cookie */}
-                <div className="flex items-start justify-between rounded-md border p-4">
+                <div className="flex items-start justify-between rounded-md border border-border p-4">
                   <div className="flex-1">
                     <h4 className="font-medium">{t("essential.title")}</h4>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -202,7 +202,7 @@ export function CookieConsent() {
                 </div>
 
                 {/* 分析 Cookie */}
-                <div className="flex items-start justify-between rounded-md border p-4">
+                <div className="flex items-start justify-between rounded-md border border-border p-4">
                   <div className="flex-1">
                     <h4 className="font-medium">{t("analytics.title")}</h4>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -220,7 +220,7 @@ export function CookieConsent() {
                 </div>
 
                 {/* 营销 Cookie */}
-                <div className="flex items-start justify-between rounded-md border p-4">
+                <div className="flex items-start justify-between rounded-md border border-border p-4">
                   <div className="flex-1">
                     <h4 className="font-medium">{t("marketing.title")}</h4>
                     <p className="mt-1 text-sm text-muted-foreground">

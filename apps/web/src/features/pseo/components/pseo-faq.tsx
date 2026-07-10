@@ -14,26 +14,33 @@ export function PseoFaq({ page }: { page: PseoPage }) {
     <section className="container py-24" id="faq">
       <div className="mx-auto max-w-3xl">
         <div className="mb-12 text-center">
-          <h2 className="mb-4 text-balance text-3xl font-bold tracking-tight md:text-4xl">
+          <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
             {sections.faq.title}
           </h2>
-          <p className="mx-auto max-w-2xl text-muted-foreground">
+          <p className="mx-auto max-w-2xl leading-relaxed text-muted-foreground">
             {sections.faq.subtitle}
           </p>
         </div>
 
-        <Accordion type="single" collapsible className="w-full">
-          {faq.map((item, index) => (
-            <AccordionItem key={item.question} value={`item-${index}`}>
-              <AccordionTrigger className="text-left">
-                {item.question}
-              </AccordionTrigger>
-              <AccordionContent className="text-muted-foreground">
-                {item.answer}
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+        {/* 手风琴收进边框卡,与营销页 FAQ 统一卡片语言 */}
+        <div className="rounded-lg border border-border bg-background px-6">
+          <Accordion type="single" collapsible className="w-full">
+            {faq.map((item, index) => (
+              <AccordionItem
+                key={item.question}
+                value={`item-${index}`}
+                className="last:border-b-0"
+              >
+                <AccordionTrigger className="text-left">
+                  {item.question}
+                </AccordionTrigger>
+                <AccordionContent className="leading-relaxed text-muted-foreground">
+                  {item.answer}
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </div>
       </div>
     </section>
   );

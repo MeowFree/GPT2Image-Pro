@@ -9,10 +9,10 @@ export function PseoUseCases({ page }: { page: PseoPage }) {
     <section className="container py-24" id="use-cases">
       <div className="mx-auto max-w-6xl">
         <div className="mb-12 text-center">
-          <h2 className="mb-4 text-balance font-serif text-3xl font-bold tracking-tight md:text-4xl">
+          <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
             {sections.useCases.title}
           </h2>
-          <p className="mx-auto max-w-2xl text-muted-foreground">
+          <p className="mx-auto max-w-2xl leading-relaxed text-muted-foreground">
             {sections.useCases.subtitle}
           </p>
         </div>
@@ -21,18 +21,18 @@ export function PseoUseCases({ page }: { page: PseoPage }) {
           {useCases.map((useCase) => (
             <Card
               key={useCase.title}
-              className="rounded-2xl border-0 bg-muted/50 transition-colors hover:bg-muted"
+              className="border-border bg-background shadow-none transition-[border-color,box-shadow] duration-150 hover:border-foreground/30 hover:shadow-whisper"
             >
               <CardContent className="flex h-full flex-col p-6">
-                <h3 className="text-lg font-semibold text-foreground">
+                <h3 className="text-lg font-medium text-foreground">
                   {useCase.title}
                 </h3>
-                <p className="mt-3 text-sm text-muted-foreground">
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                   {useCase.description}
                 </p>
                 <div className="mt-auto pt-6">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-semibold text-foreground">
+                    <span className="font-serif text-3xl font-medium text-foreground">
                       {useCase.metric}
                     </span>
                     <span className="text-sm text-muted-foreground">

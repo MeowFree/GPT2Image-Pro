@@ -75,15 +75,15 @@ export default async function LegalPage({
       {/* 返回链接 */}
       <Link
         href="/"
-        className="mb-8 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
+        className="mb-8 inline-flex items-center text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
         ← {locale === "zh" ? "返回首页" : "Back to Home"}
       </Link>
 
       {/* 文档头部 */}
-      <header className="mb-8 border-b pb-8">
+      <header className="mb-8 border-b border-border pb-8">
         {/* 标题 */}
-        <h1 className="mb-4 font-serif text-3xl font-bold tracking-tight md:text-4xl">
+        <h1 className="mb-4 font-serif text-3xl font-medium tracking-tight md:text-4xl">
           {doc.title}
         </h1>
 
@@ -95,12 +95,12 @@ export default async function LegalPage({
       </header>
 
       {/* 文档内容 - 使用 Tailwind Typography 样式 */}
-      <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:font-semibold prose-h2:text-xl prose-h2:mt-8 prose-h3:text-lg prose-a:text-foreground prose-a:no-underline hover:prose-a:underline prose-table:text-sm prose-th:bg-muted prose-th:p-2 prose-td:p-2 prose-td:border">
+      <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:font-serif prose-headings:font-medium prose-h2:text-xl prose-h2:mt-8 prose-h3:text-lg prose-a:text-foreground prose-a:no-underline hover:prose-a:underline prose-table:text-sm prose-th:bg-muted prose-th:p-2 prose-td:p-2 prose-td:border">
         <MDXContent />
       </div>
 
       {/* 底部导航 */}
-      <footer className="mt-12 border-t pt-8">
+      <footer className="mt-12 border-t border-border pt-8">
         <div className="flex flex-wrap gap-4 text-sm">
           <span className="text-muted-foreground">
             {locale === "zh" ? "其他法律文档：" : "Other Legal Documents:"}

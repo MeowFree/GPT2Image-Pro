@@ -74,7 +74,7 @@ export function SlaStatusSection({
   if (!visible) {
     if (!canToggleVisibility) return null;
     return (
-      <section className="border-y bg-muted/25">
+      <section className="border-y border-border/60 bg-secondary/50">
         <div className="container flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-medium text-foreground">
@@ -108,7 +108,7 @@ export function SlaStatusSection({
   }
 
   return (
-    <section className="border-y bg-muted/25">
+    <section className="border-y border-border/60 bg-secondary/50">
       <div className="container py-10">
         <div className="grid gap-6 lg:grid-cols-[1.3fr_2fr] lg:items-center">
           <div>
@@ -147,23 +147,25 @@ export function SlaStatusSection({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-lg border bg-background p-4">
+            <div className="rounded-lg border border-border bg-background p-4">
               <p className="text-xs font-medium text-muted-foreground">
                 {copy("SLA", "SLA")}
               </p>
-              <p className="mt-2 text-2xl font-semibold">
+              <p className="mt-2 font-serif text-2xl font-medium">
                 {formatPercent(stats.successRate)}
               </p>
             </div>
             {items.map((item) => (
               <div
                 key={item.label}
-                className="rounded-lg border bg-background p-4"
+                className="rounded-lg border border-border bg-background p-4"
               >
                 <p className="text-xs font-medium text-muted-foreground">
                   {item.label}
                 </p>
-                <p className="mt-2 text-2xl font-semibold">{item.value}</p>
+                <p className="mt-2 font-serif text-2xl font-medium">
+                  {item.value}
+                </p>
               </div>
             ))}
           </div>

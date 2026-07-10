@@ -21,33 +21,35 @@ export function PseoRelated({ pages, title, subtitle }: PseoRelatedProps) {
     <section className="container py-24" id="related">
       <div className="mx-auto max-w-6xl">
         <div className="mb-12 text-center">
-          <h2 className="mb-4 text-balance font-serif text-3xl font-bold tracking-tight md:text-4xl">
+          <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
             {title}
           </h2>
-          <p className="mx-auto max-w-2xl text-muted-foreground">{subtitle}</p>
+          <p className="mx-auto max-w-2xl leading-relaxed text-muted-foreground">
+            {subtitle}
+          </p>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
           {pages.map((page) => (
             <Card
               key={page.slug}
-              className="group rounded-2xl border-0 bg-muted/50 transition-colors hover:bg-muted"
+              className="group border-border bg-background shadow-none transition-[border-color,box-shadow] duration-150 hover:border-foreground/30 hover:shadow-whisper"
             >
               <CardContent className="flex h-full flex-col p-6">
                 <div className="mb-4 flex items-center justify-between">
                   <Badge variant="secondary">{page.category}</Badge>
-                  <ArrowUpRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
+                  <ArrowUpRight className="h-4 w-4 text-muted-foreground transition-colors duration-150 group-hover:text-foreground" />
                 </div>
-                <h3 className="mb-2 text-lg font-semibold">
+                <h3 className="mb-2 text-lg font-medium">
                   {page.data.hero.title} {page.data.hero.highlight}
                 </h3>
-                <p className="mb-6 text-sm text-muted-foreground">
+                <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
                   {page.data.seo.description}
                 </p>
                 <div className="mt-auto">
                   <Link
                     href={`/pseo/${page.slug}`}
-                    className="text-sm font-semibold text-foreground hover:underline"
+                    className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
                   >
                     View template
                   </Link>
