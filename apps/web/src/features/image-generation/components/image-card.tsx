@@ -87,7 +87,7 @@ export function ImageCard({
   return (
     <Card
       onClick={handleCardClick}
-      className={`group gap-0 overflow-hidden rounded-lg border border-border bg-background p-0 shadow-none transition-[transform,box-shadow] duration-250 motion-reduce:transition-none ${
+      className={`group gap-0 overflow-hidden rounded-lg border border-border bg-background p-0 shadow-none transition-[translate,box-shadow] duration-250 motion-reduce:transition-none ${
         clickable
           ? "cursor-pointer hover:-translate-y-1 hover:shadow-whisper"
           : ""

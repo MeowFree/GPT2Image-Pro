@@ -9924,7 +9924,7 @@ export function CreatePageClient({
                       alt={g.prompt}
                       fill
                       sizes="80px"
-                      className="object-contain transition-[transform,filter] duration-150 group-hover:scale-105 group-hover:brightness-105"
+                      className="object-contain transition-[scale,filter] duration-150 group-hover:scale-105 group-hover:brightness-105"
                       unoptimized={shouldBypassImageOptimization(g.imageUrl)}
                     />
                   ) : (

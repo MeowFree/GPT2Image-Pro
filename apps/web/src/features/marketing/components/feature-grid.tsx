@@ -51,7 +51,7 @@ export function FeatureGrid() {
                 delay={(index % 3) * 0.1}
                 className="h-full"
               >
-                <Card className="group h-full border-border bg-background shadow-none transition-[border-color,box-shadow,transform] duration-250 hover:-translate-y-1 hover:border-foreground/30 hover:shadow-whisper">
+                <Card className="group h-full border-border bg-background shadow-none transition-[border-color,box-shadow,translate] duration-250 hover:-translate-y-1 hover:border-foreground/30 hover:shadow-whisper">
                   <CardContent className="p-6">
                     <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-foreground/5 text-foreground transition-colors duration-150 group-hover:bg-foreground group-hover:text-background">
                       <Icon className="h-5 w-5" />

@@ -422,7 +422,7 @@ export function ImagePricingChartCard({
                 const example = getExampleFormula(point, normalizedPricing);
                 return (
                   <div
-                    className="rounded-md border bg-background/70 p-2"
+                    className="rounded-md border bg-background p-2"
                     key={point.size}
                   >
                     <div className="font-medium text-foreground">
@@ -442,7 +442,7 @@ export function ImagePricingChartCard({
                 );
               })}
             </div>
-            <div className="mt-3 rounded-md border bg-background/70 p-2">
+            <div className="mt-3 rounded-md border bg-background p-2">
               <div className="font-medium text-foreground">
                 {copy("With group multiplier", "含分组倍率示例")}
               </div>

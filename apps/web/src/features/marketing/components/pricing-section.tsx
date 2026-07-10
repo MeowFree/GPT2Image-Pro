@@ -694,7 +694,7 @@ export function PricingSection({
           type="button"
           aria-label={copy("Previous plan", "上一个套餐")}
           onClick={() => scrollPlans(-1)}
-          className="absolute left-4 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground shadow-menu backdrop-blur transition-[color,border-color,transform] duration-150 hover:border-foreground/40 hover:text-foreground active:scale-95 md:flex"
+          className="absolute left-4 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground shadow-menu backdrop-blur transition-[color,border-color,scale] duration-150 hover:border-foreground/40 hover:text-foreground active:scale-95 md:flex"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
@@ -702,7 +702,7 @@ export function PricingSection({
           type="button"
           aria-label={copy("Next plan", "下一个套餐")}
           onClick={() => scrollPlans(1)}
-          className="absolute right-4 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground shadow-menu backdrop-blur transition-[color,border-color,transform] duration-150 hover:border-foreground/40 hover:text-foreground active:scale-95 md:flex"
+          className="absolute right-4 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground shadow-menu backdrop-blur transition-[color,border-color,scale] duration-150 hover:border-foreground/40 hover:text-foreground active:scale-95 md:flex"
         >
           <ChevronRight className="h-5 w-5" />
         </button>
@@ -725,8 +725,10 @@ export function PricingSection({
                 key={planId}
                 data-plan-card={planId}
                 className={cn(
-                  // 轮播卡:固定宽度 + snap 对齐,悬停轻抬升(transform 合成层)
-                  "relative flex w-[300px] shrink-0 snap-center flex-col rounded-xl border-border transition-[border-color,box-shadow,transform] duration-250 hover:-translate-y-1.5 hover:border-foreground/30 hover:shadow-whisper sm:w-[330px] lg:w-[350px]",
+                  // 轮播卡:固定宽度 + snap 对齐,悬停轻抬升。
+                  // WHY translate:v4 的 -translate-y-* 产出原生 translate 属性,
+                  // 过渡表写 transform 不会生效(位移瞬跳)。
+                  "relative flex w-[300px] shrink-0 snap-center flex-col rounded-xl border-border transition-[border-color,box-shadow,translate] duration-250 hover:-translate-y-1.5 hover:border-foreground/30 hover:shadow-whisper sm:w-[330px] lg:w-[350px]",
                   // 推荐档:细 ring + 轻阴影,替代粗边框重阴影
                   popular &&
                     !isCurrent &&
