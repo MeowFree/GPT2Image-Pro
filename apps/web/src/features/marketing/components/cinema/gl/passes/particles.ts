@@ -64,23 +64,29 @@ void main() {
       (mod(tile, 4.0) + 0.5) / 4.0,
       (floor(tile / 4.0) + 0.5) / 4.0
     );
+    // 编排分两段:前 22% 原位微爆散(笔画轮廓可辨的"碎裂瞬间"),
+    // 之后才向格位收敛——立即收敛会把圆相抹成无形云
+    float conv = smoothstep(0.22, 0.92, uP);
+    vec2 scatter = (vec2(r2, r3) - 0.5) * 0.035 * smoothstep(0.0, 0.28, uP);
     // 目标点带瓦片内散布,重凝时收紧
-    vec2 spread = (vec2(r2, r3) - 0.5) * 0.16 * (1.0 - uP);
+    vec2 spread = (vec2(r2, r3) - 0.5) * 0.1 * (1.0 - uP);
     vec2 dst = tileCenter + spread;
     float bellP = 1.0 - abs(uP * 2.0 - 1.0);
     vec2 wander = vec2(
       sin(i * 0.37 + uP * 9.0),
       cos(i * 0.29 + uP * 7.0)
-    ) * 0.04 * bellP;
-    pos = mix(src, dst, smoothstep(0.0, 1.0, uP)) + wander;
+    ) * 0.012 * bellP;
+    pos = mix(src + scatter, dst, conv) + wander;
     vec3 texel = texture(uImage, srcLocal).rgb;
     float srcLum = dot(texel, vec3(0.299, 0.587, 0.114));
-    // 墨键控:纸底像素只留极微尘埃,笔画本体飞散重组
-    float inkAmt = smoothstep(0.9, 0.5, srcLum);
+    // 墨键控:纸底像素完全不显(alpha 与 size 双键控——数万个微透明
+    // 尘点叠加会积成实心云,淹没笔画轮廓),飞散重组的是笔画本体。
+    // WHY 1.0-smoothstep 而非反序边界:GLSL 规定 edge0>=edge1 未定义
+    float inkAmt = 1.0 - smoothstep(0.5, 0.9, srcLum);
     // 暗底段显作淡墨雾(负片),随底色回纸转为真实墨色
     vColor = mix(vec3(0.88, 0.86, 0.81), texel, smoothstep(0.35, 0.75, uP));
-    alpha = inkAmt * 0.92 + 0.05;
-    size = 1.4 + inkAmt * 2.2 + bellP * 2.0;
+    alpha = inkAmt * 0.92;
+    size = (0.6 + inkAmt * 2.6) + bellP * 2.0 * inkAmt;
   }
   vAlpha = alpha;
   gl_Position = vec4(toClip(pos), 0.0, 1.0);
@@ -138,15 +144,16 @@ export function createParticlesPass(image: TexImageSource | null): CinemaPass {
           ? (progress.get("splashP") ?? 0)
           : (progress.get("morphP") ?? 0);
       if (p <= 0 || p >= 1) return;
-      // morph 模式因墨键控丢弃纸底粒子,需更高采样密度补足可见数
+      // morph 模式因墨键控丢弃纸底粒子(墨覆盖率约 15%),
+      // 需更高采样密度补足可见粒数
       const count =
         mode < 0.5
           ? ctx.tier >= 2
             ? 24000
             : 6000
           : ctx.tier >= 2
-            ? 36000
-            : 9000;
+            ? 48000
+            : 12000;
       // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram 为 WebGL API 非 React hook
       gl.useProgram(prog);
       if (tex) {

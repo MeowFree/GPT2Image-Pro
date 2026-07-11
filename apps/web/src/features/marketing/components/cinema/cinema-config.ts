@@ -65,3 +65,16 @@ export function bell(p: number): number {
   const c = Math.min(1, Math.max(0, p));
   return 1 - Math.abs(c * 2 - 1);
 }
+
+/**
+ * 影片暗场窗口(主进度分数):穿越压暗起点 -> 增殖回纸点。
+ * 页头退场(HeaderDimmer)与章节导轨反色共用本窗口,单一事实。
+ */
+export function darkWindow(): { start: number; end: number } {
+  const dive = sceneWindow("dive");
+  const multiply = sceneWindow("multiply");
+  return {
+    start: dive.start + (dive.end - dive.start) * 0.6,
+    end: multiply.start + (multiply.end - multiply.start) * 0.55,
+  };
+}

@@ -13,7 +13,7 @@ import { useMotionValueEvent } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { ChapterRail } from "./chapter-rail";
-import { sceneWindow } from "./cinema-config";
+import { darkWindow } from "./cinema-config";
 import { CinemaGLProvider, useCinema } from "./cinema-gl";
 import { CinemaStage, SceneLayer, useMaster } from "./cinema-stage";
 import type { CinemaEngine } from "./gl/engine";
@@ -139,11 +139,8 @@ function FilmPasses() {
 function HeaderDimmer() {
   const master = useMaster();
   useMotionValueEvent(master, "change", (m) => {
-    const dive = sceneWindow("dive");
-    const multiply = sceneWindow("multiply");
-    const from = dive.start + (dive.end - dive.start) * 0.6;
-    const to = multiply.start + (multiply.end - multiply.start) * 0.55;
-    document.body.toggleAttribute("data-cinema-dark", m >= from && m < to);
+    const { start, end } = darkWindow();
+    document.body.toggleAttribute("data-cinema-dark", m >= start && m < end);
   });
   useEffect(() => () => document.body.removeAttribute("data-cinema-dark"), []);
   return null;
