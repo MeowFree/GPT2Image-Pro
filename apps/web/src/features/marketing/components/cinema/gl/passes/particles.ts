@@ -3,6 +3,8 @@
  * 模式 0 墨溅:原点迸溅+伪重力,位置是进度的纯函数(倒放成立);
  * 模式 1 布局 morph:画布矩形内均匀采样 -> 4x4 网格重排,途中曲线扰动,
  * 颜色在顶点阶段采样图像纹理(WebGL2 VS 纹理拾取)。
+ * morph 按墨键控:纸底像素几乎不成粒,飞散重组的是笔画本体;
+ * 暗底段粒子显作淡墨雾(负片),随底色回纸转为真实墨色。
  */
 import {
   type CinemaPass,
@@ -71,9 +73,14 @@ void main() {
       cos(i * 0.29 + uP * 7.0)
     ) * 0.04 * bellP;
     pos = mix(src, dst, smoothstep(0.0, 1.0, uP)) + wander;
-    vColor = texture(uImage, srcLocal).rgb;
-    alpha = 0.9;
-    size = 2.0 + bellP * 2.0;
+    vec3 texel = texture(uImage, srcLocal).rgb;
+    float srcLum = dot(texel, vec3(0.299, 0.587, 0.114));
+    // 墨键控:纸底像素只留极微尘埃,笔画本体飞散重组
+    float inkAmt = smoothstep(0.9, 0.5, srcLum);
+    // 暗底段显作淡墨雾(负片),随底色回纸转为真实墨色
+    vColor = mix(vec3(0.88, 0.86, 0.81), texel, smoothstep(0.35, 0.75, uP));
+    alpha = inkAmt * 0.92 + 0.05;
+    size = 1.4 + inkAmt * 2.2 + bellP * 2.0;
   }
   vAlpha = alpha;
   gl_Position = vec4(toClip(pos), 0.0, 1.0);
@@ -131,7 +138,15 @@ export function createParticlesPass(image: TexImageSource | null): CinemaPass {
           ? (progress.get("splashP") ?? 0)
           : (progress.get("morphP") ?? 0);
       if (p <= 0 || p >= 1) return;
-      const count = ctx.tier >= 2 ? 24000 : 6000;
+      // morph 模式因墨键控丢弃纸底粒子,需更高采样密度补足可见数
+      const count =
+        mode < 0.5
+          ? ctx.tier >= 2
+            ? 24000
+            : 6000
+          : ctx.tier >= 2
+            ? 36000
+            : 9000;
       // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram 为 WebGL API 非 React hook
       gl.useProgram(prog);
       if (tex) {
