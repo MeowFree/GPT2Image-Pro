@@ -13,27 +13,16 @@ import { ArrowRight } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 import { Link } from "@/i18n/routing";
+import { cellSrc } from "./cinema-artworks";
 
-/** 展墙样张与滤镜变体:与 scene-multiply/scene-wall 的 16 格逐位一致 */
-const WALL_SRCS = ["/cinema/wall/w01.webp"] as const;
-
-/** 确定性滤镜变体:灰度/对比度组合维持黑白编辑部影调,同图不同格可辨 */
-const FILTERS = [
-  "none",
-  "grayscale(1)",
-  "contrast(1.2)",
-  "grayscale(1) contrast(1.25)",
-  "grayscale(0.5)",
-  "contrast(0.85)",
-  "grayscale(1) contrast(0.9)",
-  "grayscale(0.7) contrast(1.1)",
-] as const;
-
-/** 16 幅样张静态描述:id 稳定作 React key,src/filter 由格序确定性派生 */
+/**
+ * 16 幅样张静态描述:样张出自 cinema-artworks 事实源(与动效版
+ * 增殖网格/展墙逐位一致),id 稳定作 React key。
+ */
 const WALL_CELLS = Array.from({ length: 16 }, (_, i) => ({
-  id: `w${String(i + 1).padStart(2, "0")}`,
-  src: WALL_SRCS[i % WALL_SRCS.length] ?? WALL_SRCS[0],
-  filter: FILTERS[i % FILTERS.length] ?? "none",
+  id: `cell${String(i + 1).padStart(2, "0")}`,
+  index: i,
+  src: cellSrc(i),
 }));
 
 /** 卖点键序:承接原 feature-grid(已退役)featureConfig 全六项(Features.items.*) */
@@ -223,22 +212,25 @@ function StaticSteps() {
 
 /** 样张网格:md+ 为 4x4 网格,窄屏退化原生横滑 snap(设计稿回退阶梯) */
 function StaticWall() {
+  const tCinema = useTranslations("Cinema");
+  // 铭牌题名:与 cinema-artworks 清单逐位对应的 16 个作品名
+  const wallTitles = tCinema.raw("wallTitles") as string[];
   return (
     <section className="border-t border-border py-20">
       <div className="container">
         <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 md:grid md:grid-cols-4 md:gap-6 md:overflow-visible md:pb-0">
           {WALL_CELLS.map((cell) => (
-            <figure
-              key={cell.id}
-              className="m-0 w-56 shrink-0 snap-center overflow-hidden border border-border md:w-auto"
-            >
-              <img
-                src={cell.src}
-                alt=""
-                aria-hidden="true"
-                style={{ filter: cell.filter }}
-                className="aspect-square h-auto w-full object-cover"
-              />
+            <figure key={cell.id} className="m-0 w-56 shrink-0 snap-center md:w-auto">
+              <div className="overflow-hidden border border-border">
+                <img
+                  src={cell.src}
+                  alt={wallTitles[cell.index] ?? ""}
+                  className="aspect-square h-auto w-full object-cover"
+                />
+              </div>
+              <figcaption className="mt-2 font-serif text-xs tracking-wide text-muted-foreground">
+                {wallTitles[cell.index] ?? ""}
+              </figcaption>
             </figure>
           ))}
         </div>

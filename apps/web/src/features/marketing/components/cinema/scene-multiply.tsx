@@ -10,31 +10,19 @@
  */
 import { motion, useTransform } from "framer-motion";
 import { useEffect, useState } from "react";
+import { cellSrc } from "./cinema-artworks";
 import { gridPos } from "./cinema-geometry";
 import { useCinema } from "./cinema-gl";
 import { useSceneProgress } from "./cinema-stage";
 
-/** 展墙样张清单:现有营销素材仅主样张一张,不足 16 格由滤镜变体补足 */
-const WALL_SRCS = ["/cinema/wall/w01.webp"] as const;
-
-/** 确定性滤镜变体:灰度/对比度组合维持黑白编辑部影调,同图不同格可辨 */
-const FILTERS = [
-  "none",
-  "grayscale(1)",
-  "contrast(1.2)",
-  "grayscale(1) contrast(1.25)",
-  "grayscale(0.5)",
-  "contrast(0.85)",
-  "grayscale(1) contrast(0.9)",
-  "grayscale(0.7) contrast(1.1)",
-] as const;
-
-/** 16 格静态描述:id 稳定作 React key,src/filter 由格序确定性派生 */
+/**
+ * 16 格静态描述:样张出自 cinema-artworks 事实源(与展墙逐位一致,
+ * 幕界同格同图接管才无跳变),id 稳定作 React key。
+ */
 const GRID_CELLS = Array.from({ length: 16 }, (_, i) => ({
-  id: `w${String(i + 1).padStart(2, "0")}`,
+  id: `cell${String(i + 1).padStart(2, "0")}`,
   index: i,
-  src: WALL_SRCS[i % WALL_SRCS.length] ?? WALL_SRCS[0],
-  filter: FILTERS[i % FILTERS.length] ?? "none",
+  src: cellSrc(i),
 }));
 
 /**
@@ -93,7 +81,6 @@ export function MultiplyScene() {
                     src={cell.src}
                     alt=""
                     aria-hidden="true"
-                    style={{ filter: cell.filter }}
                     className="h-full w-full object-cover"
                   />
                 </figure>

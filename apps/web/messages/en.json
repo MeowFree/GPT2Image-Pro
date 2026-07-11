@@ -262,9 +262,27 @@
     "seeDemo": "See Examples"
   },
   "Cinema": {
-    "promptSample": "A porcelain teacup on rice paper, ink wash, morning light",
+    "promptSample": "One stroke of thick ink drawing a circle on rice paper, heavy attack, dry finish, generous negative space",
     "finaleHint": "The next one is yours to generate",
-    "framingLabel": "Framing"
+    "framingLabel": "Framing",
+    "wallTitles": [
+      "Bamboo Shadow",
+      "Distant Peaks",
+      "Lone Boat",
+      "Ink Plum",
+      "Moon and Cloud",
+      "Reed Shoal",
+      "Waterfall",
+      "One Stroke",
+      "Pine Wind",
+      "Twin Carp",
+      "Pagoda",
+      "Swallows and Willow",
+      "Lotus",
+      "Arched Bridge",
+      "Passing Rain",
+      "Cursive Study"
+    ]
   },
   "DashboardPages": {
     "dashboard": {

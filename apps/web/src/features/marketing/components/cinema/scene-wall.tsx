@@ -14,6 +14,7 @@
 import { motion, useTransform } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
+import { cellSrc, PICKED_INDEX } from "./cinema-artworks";
 import { sceneProgress } from "./cinema-config";
 import {
   centerSquareRect,
@@ -25,41 +26,14 @@ import { useMaster } from "./cinema-stage";
 import type { ViewportRect } from "./gl/dom-sync";
 
 /**
- * 展墙样张与滤镜变体:与 scene-multiply 的 16 格逐位一致——
- * 增殖网格淡出与展墙淡入在幕界交叠,同格同图同滤镜接管才无跳变。
+ * 16 幅展品静态描述:样张出自 cinema-artworks 事实源(与增殖网格
+ * 逐位一致,幕界同格同图接管才无跳变),id 稳定作 React key。
  */
-const WALL_SRCS = ["/cinema/wall/w01.webp"] as const;
-
-/** 确定性滤镜变体:灰度/对比度组合维持黑白编辑部影调,同图不同格可辨 */
-const FILTERS = [
-  "none",
-  "grayscale(1)",
-  "contrast(1.2)",
-  "grayscale(1) contrast(1.25)",
-  "grayscale(0.5)",
-  "contrast(0.85)",
-  "grayscale(1) contrast(0.9)",
-  "grayscale(0.7) contrast(1.1)",
-] as const;
-
-/** 16 幅展品静态描述:id 稳定作 React key,src/filter 由格序确定性派生 */
 const WALL_CELLS = Array.from({ length: 16 }, (_, i) => ({
-  id: `w${String(i + 1).padStart(2, "0")}`,
+  id: `cell${String(i + 1).padStart(2, "0")}`,
   index: i,
-  src: WALL_SRCS[i % WALL_SRCS.length] ?? WALL_SRCS[0],
-  filter: FILTERS[i % FILTERS.length] ?? "none",
+  src: cellSrc(i),
 }));
-
-/** 被选中项:横条视觉中段,转场 C 固定选它回中 */
-const PICKED_INDEX = 7;
-
-/** 铭牌标题的 UseCases key 序,承接原 use-cases-section(已退役)useCaseConfig */
-const USE_CASE_KEYS = [
-  "designers",
-  "marketers",
-  "creators",
-  "developers",
-] as const;
 
 /** 展墙罗马编号 I-XVI:纯排版记号,不入 i18n */
 const ROMAN = [
@@ -156,11 +130,13 @@ function useViewportSize(): { vw: number; vh: number } {
 }
 
 export function WallScene() {
-  const tUseCases = useTranslations("UseCases");
+  const tCinema = useTranslations("Cinema");
   const tHow = useTranslations("HowItWorks");
   const tQuotes = useTranslations("Testimonials");
   const master = useMaster();
   const { vw, vh } = useViewportSize();
+  // 铭牌题名:与 cinema-artworks 清单逐位对应的 16 个作品名
+  const wallTitles = tCinema.raw("wallTitles") as string[];
   const quotes = (
     tQuotes.raw("items") as { content: string; author: string; role: string }[]
   ).slice(0, WHISPER_AFTER.length);
@@ -185,20 +161,15 @@ export function WallScene() {
     >
       {vw > 0 && vh > 0 ? (
         <>
-          {WALL_CELLS.map((cell) => {
-            const useCaseKey = USE_CASE_KEYS[cell.index];
-            return (
-              <WallFigure
-                key={cell.id}
-                cell={cell}
-                vw={vw}
-                vh={vh}
-                plaqueTitle={
-                  useCaseKey ? tUseCases(`items.${useCaseKey}.title`) : null
-                }
-              />
-            );
-          })}
+          {WALL_CELLS.map((cell) => (
+            <WallFigure
+              key={cell.id}
+              cell={cell}
+              vw={vw}
+              vh={vh}
+              plaqueTitle={wallTitles[cell.index] ?? null}
+            />
+          ))}
           {WHISPER_AFTER.map((afterIndex, qi) => (
             <WallWhisper
               key={afterIndex}
@@ -268,7 +239,6 @@ function WallFigure({
             src={cell.src}
             alt=""
             aria-hidden="true"
-            style={{ filter: cell.filter }}
             className="h-full w-full object-cover"
           />
         </div>

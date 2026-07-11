@@ -262,9 +262,27 @@
     "seeDemo": "查看示例"
   },
   "Cinema": {
-    "promptSample": "宣纸上的白瓷茶盏，水墨风，晨光",
+    "promptSample": "一笔浓墨，在宣纸上画一个圆：起笔重，收笔枯，大量留白",
     "finaleHint": "下一张，由你来生成",
-    "framingLabel": "装裱规格"
+    "framingLabel": "装裱规格",
+    "wallTitles": [
+      "竹影",
+      "远山",
+      "孤舟",
+      "墨梅",
+      "云月",
+      "芦洲",
+      "飞瀑",
+      "一笔圆",
+      "松风",
+      "双鲤",
+      "塔影",
+      "燕柳",
+      "荷净",
+      "虹桥",
+      "疏雨",
+      "草书"
+    ]
   },
   "DashboardPages": {
     "dashboard": {
