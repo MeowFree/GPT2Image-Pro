@@ -48,9 +48,14 @@ export function MultiplyScene() {
   const { status } = useCinema();
   const { vw, vh } = useViewportSize();
   const isFull = status === "full";
-  // 底色回纸白:墨色罩(与宣言章底色 #0e0e0d 同色)随重凝进度撤除。
+  // 底色回纸白:墨色罩(与宣言章底色 #0e0e0d 同色)在粒子迸发前(12%)
+  // 保持,随后平滑撤除,72% 处回到纸面——不再有长段死黑视口。
   // 纯样式 MotionValue,单独节点绑定(分层铁律)。
-  const backdrop = useTransform(p, (v) => `rgba(14, 14, 13, ${1 - v})`);
+  const backdrop = useTransform(p, (v) => {
+    const t = Math.min(1, Math.max(0, (v - 0.12) / 0.6));
+    const alpha = 1 - t * t * (3 - 2 * t);
+    return `rgba(14, 14, 13, ${alpha})`;
+  });
   // DOM 网格:full 态粒子重凝完成前不可见(粒子 p>=1 即停绘,0.82 起
   // 交叉接管);lite 态无粒子,网格在前 30% 直接淡入(v1 简化转场)
   const gridOpacity = useTransform(p, (v) =>

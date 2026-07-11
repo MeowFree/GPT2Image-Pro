@@ -220,7 +220,10 @@ function StaticWall() {
       <div className="container">
         <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 md:grid md:grid-cols-4 md:gap-6 md:overflow-visible md:pb-0">
           {WALL_CELLS.map((cell) => (
-            <figure key={cell.id} className="m-0 w-56 shrink-0 snap-center md:w-auto">
+            <figure
+              key={cell.id}
+              className="m-0 w-56 shrink-0 snap-center md:w-auto"
+            >
               <div className="overflow-hidden border border-border">
                 <img
                   src={cell.src}

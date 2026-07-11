@@ -53,11 +53,7 @@ export function CinemaStage({ children }: { children: ReactNode }) {
   });
 
   return (
-    <div
-      ref={ref}
-      data-cinema-root=""
-      style={{ height: `${filmTotalVh()}vh` }}
-    >
+    <div ref={ref} data-cinema-root="" style={{ height: `${filmTotalVh()}vh` }}>
       <div className="sticky top-0 h-screen overflow-hidden">
         <MasterContext.Provider value={scrollYProgress}>
           {children}

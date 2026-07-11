@@ -51,11 +51,15 @@ const STRIP_H = 0.52;
 const STRIP_W = 0.36;
 const STRIP_GAP = 0.06;
 const STRIP_STAGGER = 0.045;
+/** 观展低语专属栏位宽(视口宽分数):插在指定格之后,展品间的呼吸位 */
+const STRIP_WHISPER_W = 0.16;
 
 /**
  * 展墙横条第 i 格:自左向右等距排布,首端留一个缝宽,奇偶交错垂直偏移。
- * trackWidth 为整条轨道总宽(视口宽分数,含首尾缝),供推轨位移
- * glide * (trackWidth - 1) 归一化——glide=1 时轨道尾端贴视口右缘。
+ * whisperAfter 列出插有低语栏位的格序,其后所有格顺延一个栏位宽——
+ * 低语是轨道上的一站,不是塞进画缝的注脚。
+ * trackWidth 为整条轨道总宽(视口宽分数,含首尾缝与低语栏位),供推轨
+ * 位移 glide * (trackWidth - 1) 归一化——glide=1 时轨道尾端贴视口右缘。
  * WHY 保留 vw/vh 形参:与 gridPos/centerSquareRect 调用形态对齐,
  * 横条几何全部以视口分数定义,当前无需像素换算。
  */
@@ -63,12 +67,39 @@ export function stripPos(
   i: number,
   count: number,
   _vw: number,
-  _vh: number
+  _vh: number,
+  whisperAfter: readonly number[] = []
 ): ViewportRect & { trackWidth: number } {
-  const x = STRIP_GAP + i * (STRIP_W + STRIP_GAP);
+  const extraBefore = whisperAfter.filter((a) => a < i).length;
+  const x =
+    STRIP_GAP + i * (STRIP_W + STRIP_GAP) + extraBefore * STRIP_WHISPER_W;
   const y = 0.5 - STRIP_H / 2 + (i % 2 === 0 ? -STRIP_STAGGER : STRIP_STAGGER);
-  const trackWidth = STRIP_GAP + count * (STRIP_W + STRIP_GAP);
+  const trackWidth =
+    STRIP_GAP +
+    count * (STRIP_W + STRIP_GAP) +
+    whisperAfter.length * STRIP_WHISPER_W;
   return { x, y, w: STRIP_W, h: STRIP_H, trackWidth };
+}
+
+/**
+ * 低语栏位矩形:位于第 afterIndex 格与下一格之间,占专属栏位宽,
+ * 垂直与横条中线对齐。返回 trackWidth 与 stripPos 一致,供同速推轨。
+ */
+export function stripWhisperSlot(
+  afterIndex: number,
+  count: number,
+  vw: number,
+  vh: number,
+  whisperAfter: readonly number[]
+): ViewportRect & { trackWidth: number } {
+  const base = stripPos(afterIndex, count, vw, vh, whisperAfter);
+  return {
+    x: base.x + STRIP_W + STRIP_GAP / 2,
+    y: 0.5 - STRIP_H / 2,
+    w: STRIP_WHISPER_W,
+    h: STRIP_H,
+    trackWidth: base.trackWidth,
+  };
 }
 
 /**

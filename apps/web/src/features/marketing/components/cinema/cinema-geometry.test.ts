@@ -5,6 +5,7 @@ import {
   gridPos,
   mixRect,
   stripPos,
+  stripWhisperSlot,
 } from "./cinema-geometry";
 
 describe("cinema-geometry", () => {
@@ -28,6 +29,19 @@ describe("cinema-geometry", () => {
     const p1 = stripPos(1, 16, 1600, 900);
     expect(p1.x).toBeGreaterThan(p0.x);
     expect(p0.trackWidth).toBe(p1.trackWidth);
+  });
+
+  it("低语栏位使其后格顺延,栏位落在两格之间且同轨宽", () => {
+    const whispers = [3] as const;
+    const before = stripPos(3, 16, 1600, 900, whispers);
+    const after = stripPos(4, 16, 1600, 900, whispers);
+    const plain = stripPos(4, 16, 1600, 900);
+    // 第 4 格因栏位顺延,比无栏位布局更靠右
+    expect(after.x).toBeGreaterThan(plain.x);
+    const slot = stripWhisperSlot(3, 16, 1600, 900, whispers);
+    expect(slot.x).toBeGreaterThan(before.x + before.w);
+    expect(slot.x + slot.w).toBeLessThan(after.x);
+    expect(slot.trackWidth).toBe(before.trackWidth);
   });
 
   it("mixRect 端点恒等", () => {

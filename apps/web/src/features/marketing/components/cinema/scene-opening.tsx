@@ -124,6 +124,7 @@ export function OpeningScene() {
             </Button>
             {/* 查看示例 = 直达展墙:影片内的真实示例;锚点回退指价格区 */}
             <Button size="lg" variant="outline" className="h-12 px-8" asChild>
+              {/* biome-ignore lint/a11y/useValidAnchor: 仍是页面导航——无 JS 时锚点回退到价格区,有 JS 时平滑滚动到展墙幕 */}
               <a
                 href="#pricing"
                 onClick={(e) => {

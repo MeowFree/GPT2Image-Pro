@@ -21,6 +21,7 @@ import {
   gridPos,
   mixRect,
   stripPos,
+  stripWhisperSlot,
 } from "./cinema-geometry";
 import { useMaster } from "./cinema-stage";
 import type { ViewportRect } from "./gl/dom-sync";
@@ -55,8 +56,13 @@ const ROMAN = [
   "XVI",
 ] as const;
 
-/** 观展低语插在这些格序之后的缝隙里(Testimonials 引言取前三条) */
+/** 观展低语栏位插在这些格序之后(Testimonials 引言取前三条) */
 const WHISPER_AFTER = [3, 8, 12] as const;
+
+/** 展墙拉开后的横条几何(含低语栏位顺延),全场景统一入口 */
+function wallStrip(i: number, vw: number, vh: number) {
+  return stripPos(i, 16, vw, vh, WHISPER_AFTER);
+}
 
 /** 网格拉开段在 wall 幕内的占比:0-0.15 拉开,0.15-1 推轨 */
 const SPREAD_WINDOW = 0.15;
@@ -95,7 +101,7 @@ function figureRect(
   const wallP = sceneProgress(master, "wall");
   const pickP = sceneProgress(master, "pick");
   const { spread, glide } = wallPhases(wallP);
-  const strip = stripPos(i, WALL_CELLS.length, vw, vh);
+  const strip = wallStrip(i, vw, vh);
   const base = mixRect(gridPos(i, vw, vh), strip, easeInOut(spread));
   const glided: ViewportRect = {
     ...base,
@@ -131,7 +137,6 @@ function useViewportSize(): { vw: number; vh: number } {
 
 export function WallScene() {
   const tCinema = useTranslations("Cinema");
-  const tHow = useTranslations("HowItWorks");
   const tQuotes = useTranslations("Testimonials");
   const master = useMaster();
   const { vw, vh } = useViewportSize();
@@ -175,13 +180,13 @@ export function WallScene() {
               key={afterIndex}
               afterIndex={afterIndex}
               content={quotes[qi]?.content ?? ""}
+              author={quotes[qi]?.author ?? ""}
               vw={vw}
               vh={vh}
             />
           ))}
         </>
       ) : null}
-      <StepTick label={tHow("steps.export.title")} />
     </motion.div>
   );
 }
@@ -255,29 +260,35 @@ function WallFigure({
 }
 
 /**
- * 观展低语:一条用户评价化作画框缝隙里的窄栏侧注,
- * 定位于第 afterIndex 幅右侧缝隙,随推轨与横条同速左移;
- * 拉开完成后浮现,pick 幕随其余项一同退场。
+ * 观展低语:一条用户评价占据轨道上的专属栏位(stripWhisperSlot),
+ * 随推轨与横条同速左移——它是展线上的一站,不是塞进画缝的注脚。
+ * 拉开完成后浮现,pick 幕随其余项一同退场;引言下附作者署名。
  */
 function WallWhisper({
   afterIndex,
   content,
+  author,
   vw,
   vh,
 }: {
   afterIndex: number;
   content: string;
+  author: string;
   vw: number;
   vh: number;
 }) {
   const master = useMaster();
-  // 缝隙几何取自 stripPos(单一构图事实):本幅右缘到下一幅左缘
-  const strip = stripPos(afterIndex, WALL_CELLS.length, vw, vh);
-  const next = stripPos(afterIndex + 1, WALL_CELLS.length, vw, vh);
-  const gapWidth = (next.x - strip.x - strip.w) * vw;
+  // 栏位几何取自 stripWhisperSlot(单一构图事实),与横条同 trackWidth
+  const slot = stripWhisperSlot(
+    afterIndex,
+    WALL_CELLS.length,
+    vw,
+    vh,
+    WHISPER_AFTER
+  );
   const x = useTransform(master, (m) => {
     const { glide } = wallPhases(sceneProgress(m, "wall"));
-    return (strip.x + strip.w - glide * (strip.trackWidth - 1)) * vw;
+    return (slot.x - glide * (slot.trackWidth - 1)) * vw;
   });
   const opacity = useTransform(master, (m) => {
     const wallP = sceneProgress(m, "wall");
@@ -286,32 +297,17 @@ function WallWhisper({
   });
   return (
     <motion.div
-      style={{ x, width: gapWidth }}
-      className="absolute left-0 top-0 flex h-full items-center"
+      style={{ x, width: slot.w * vw, top: slot.y * vh, height: slot.h * vh }}
+      className="absolute left-0 flex items-center"
     >
-      <motion.p
-        style={{ opacity }}
-        className="px-2 font-serif text-xs italic leading-relaxed text-muted-foreground"
-      >
-        &ldquo;{content}&rdquo;
-      </motion.p>
+      <motion.figure style={{ opacity }} className="m-0 px-4 text-center">
+        <blockquote className="font-serif text-sm italic leading-relaxed text-muted-foreground">
+          &ldquo;{content}&rdquo;
+        </blockquote>
+        <figcaption className="mt-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground/70">
+          {author}
+        </figcaption>
+      </motion.figure>
     </motion.div>
-  );
-}
-
-/** step03 章节刻度:左下角页边,随展墙浮现,pick 幕退场(HowItWorks key) */
-function StepTick({ label }: { label: string }) {
-  const master = useMaster();
-  const opacity = useTransform(master, (m) => {
-    const { spread } = wallPhases(sceneProgress(m, "wall"));
-    return spread * (1 - sceneProgress(m, "pick"));
-  });
-  return (
-    <motion.p
-      style={{ opacity }}
-      className="absolute bottom-10 left-6 font-mono text-[11px] uppercase tracking-widest text-muted-foreground md:left-10"
-    >
-      03 / {label}
-    </motion.p>
   );
 }

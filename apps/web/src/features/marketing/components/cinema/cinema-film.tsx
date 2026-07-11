@@ -9,10 +9,13 @@
  * 单画布单引擎不变式得以保持。本文件整体为 client 模块,
  * 页面侧直接静态 import 即可(Next 16 惯例)。
  */
+import { useMotionValueEvent } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
+import { ChapterRail } from "./chapter-rail";
+import { sceneWindow } from "./cinema-config";
 import { CinemaGLProvider, useCinema } from "./cinema-gl";
-import { CinemaStage, SceneLayer } from "./cinema-stage";
+import { CinemaStage, SceneLayer, useMaster } from "./cinema-stage";
 import type { CinemaEngine } from "./gl/engine";
 import { createDenoisePass } from "./gl/passes/denoise";
 import { createDollyPass } from "./gl/passes/dolly";
@@ -128,6 +131,24 @@ function FilmPasses() {
   return null;
 }
 
+/**
+ * 暗场页头联动:穿越压暗起点到增殖回纸点之间,站点页头随影片入暗退场
+ * (body[data-cinema-dark],CSS 在 globals 定义)。卸载时清除属性,
+ * 避免离开页面后页头保持隐藏。
+ */
+function HeaderDimmer() {
+  const master = useMaster();
+  useMotionValueEvent(master, "change", (m) => {
+    const dive = sceneWindow("dive");
+    const multiply = sceneWindow("multiply");
+    const from = dive.start + (dive.end - dive.start) * 0.6;
+    const to = multiply.start + (multiply.end - multiply.start) * 0.55;
+    document.body.toggleAttribute("data-cinema-dark", m >= from && m < to);
+  });
+  useEffect(() => () => document.body.removeAttribute("data-cinema-dark"), []);
+  return null;
+}
+
 /** 探测分流:static 走静态编排,其余走单时间轴主舞台(七幕 + 三转场) */
 function FilmBody() {
   const { status } = useCinema();
@@ -154,6 +175,9 @@ function FilmBody() {
         <ZoomThroughTransition />
         <MultiplyTransition />
         <PickAndReturnTransition />
+        {/* 章节导轨与页头暗场联动:全片常驻编排件 */}
+        <ChapterRail />
+        <HeaderDimmer />
       </CinemaStage>
     </div>
   );
