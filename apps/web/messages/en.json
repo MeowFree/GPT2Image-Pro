@@ -273,7 +273,6 @@
       "Moon and Cloud",
       "Reed Shoal",
       "Waterfall",
-      "One Stroke",
       "Pine Wind",
       "Twin Carp",
       "Pagoda",
@@ -281,8 +280,10 @@
       "Lotus",
       "Arched Bridge",
       "Passing Rain",
+      "One Stroke",
       "Cursive Study"
-    ]
+    ],
+    "chapters": ["Prompt", "Diffuse", "Multiply", "Deliver"]
   },
   "DashboardPages": {
     "dashboard": {

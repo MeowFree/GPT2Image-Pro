@@ -18,15 +18,19 @@ export interface SceneDef {
   lengthVh: number;
 }
 
-/** 分镜行程预算(设计稿第四节);终幕独立 200vh 舞台不在此表 */
+/**
+ * 分镜行程预算(设计稿第四节);终幕独立舞台不在此表。
+ * v0.8.1 整体放宽约 20%:每幕驻留更长,显影完成留静止一拍,
+ * 观感由"匀速播片"回到"驻留慢、过渡快"的呼吸节奏。
+ */
 export const FILM_SCENES: readonly SceneDef[] = [
-  { key: "opening", lengthVh: 200 },
-  { key: "generate", lengthVh: 300 },
-  { key: "dive", lengthVh: 150 },
-  { key: "manifesto", lengthVh: 200 },
-  { key: "multiply", lengthVh: 200 },
-  { key: "wall", lengthVh: 400 },
-  { key: "pick", lengthVh: 100 },
+  { key: "opening", lengthVh: 240 },
+  { key: "generate", lengthVh: 360 },
+  { key: "dive", lengthVh: 190 },
+  { key: "manifesto", lengthVh: 240 },
+  { key: "multiply", lengthVh: 240 },
+  { key: "wall", lengthVh: 460 },
+  { key: "pick", lengthVh: 130 },
 ] as const;
 
 export function filmTotalVh(scenes: readonly SceneDef[] = FILM_SCENES) {

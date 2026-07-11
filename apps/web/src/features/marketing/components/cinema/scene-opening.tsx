@@ -16,11 +16,11 @@ import {
 } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 import { Link } from "@/i18n/routing";
 import { useCinema } from "./cinema-gl";
-import { useSceneProgress } from "./cinema-stage";
+import { scrollToScene, useSceneProgress } from "./cinema-stage";
 import { trackElement } from "./gl/dom-sync";
 
 // 幕内窗口(序幕总 200vh):
@@ -39,13 +39,41 @@ export function OpeningScene() {
   const { data: session } = useCurrentSession();
   const getStartedHref = session?.user ? "/dashboard/create" : "/sign-up";
 
+  // 载入显影时间线:标题不等滚动,挂载后 1.4s 内自动完成一次显影;
+  // 之后滚动段接管(取两者最大值)。WHY:master=0 时滚动段为 0,
+  // 若只由滚动驱动,首屏(DOM 字为透明等 GL 显影)会是一片空白。
+  const introT = useRef(0);
+  const feedTitle = useCallback(
+    (scrollV: number) => {
+      engine?.setProgress(
+        "titleP",
+        Math.max(introT.current, seg(scrollV, 0.06, 0.3))
+      );
+    },
+    [engine]
+  );
+  useEffect(() => {
+    if (status !== "full" || !engine) return;
+    // 滚动事件到来前 glow 缺省为 0,intro 期间也要有显影辉光
+    engine.setProgress("titleGlow", 0.3);
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      introT.current = Math.min(1, (now - t0) / 1400);
+      feedTitle(p.get());
+      if (introT.current < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [status, engine, p, feedTitle]);
+
   // 墨滴与标题显影 -> GL
   useMotionValueEvent(p, "change", (v) => {
     engine?.setProgress("splashMode", 0);
     engine?.setProgress("splashP", seg(v, 0, 0.1));
     engine?.setProgress("splashOx", 0.5);
     engine?.setProgress("splashOy", 0.24);
-    engine?.setProgress("titleP", seg(v, 0.06, 0.3));
+    feedTitle(v);
     engine?.setProgress("titleGlow", 0.3);
     engine?.setProgress("titleVisible", v < 0.5 ? 1 : 0);
   });
@@ -94,8 +122,17 @@ export function OpeningScene() {
                 <ArrowRight className="h-4 w-4 transition-transform duration-150 group-hover:translate-x-1" />
               </Link>
             </Button>
+            {/* 查看示例 = 直达展墙:影片内的真实示例;锚点回退指价格区 */}
             <Button size="lg" variant="outline" className="h-12 px-8" asChild>
-              <Link href="/#features">{t("seeDemo")}</Link>
+              <a
+                href="#pricing"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToScene("wall");
+                }}
+              >
+                {t("seeDemo")}
+              </a>
             </Button>
           </div>
         </motion.div>

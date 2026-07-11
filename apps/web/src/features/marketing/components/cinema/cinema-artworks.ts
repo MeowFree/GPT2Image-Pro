@@ -2,13 +2,14 @@
  * 影片样张事实源:增殖网格(scene-multiply)/展墙(scene-wall)/静态回退
  * (static-film)三处消费的 16 格样张清单。三处逐位一致是幕界无跳变
  * 接管的前提,任何一处不得自持副本。
- * index 7(PICKED_INDEX)固定为主角作品「一笔圆」——展墙横移停驻于
- * 视区中段时选中它回中,叙事闭环:终章取回的正是开场生成的那张。
+ * index 14(PICKED_INDEX)固定为主角作品「一笔圆」——推轨结束
+ * (glide=1,轨道尾端贴视口右缘)时 cell 14 恰在视口中带,选中它
+ * 回中是就近取画而非隔空瞬移;叙事闭环:终章取回开场生成的那张。
  * 铭牌题名在 messages 的 Cinema.wallTitles,序号与本清单逐位对应。
  */
 
-/** 被选中项:横条视觉中段,转场 C 固定选它回中 */
-export const PICKED_INDEX = 7;
+/** 被选中项:推轨结束时位于视口中带(stripPos 几何推得),转场 C 选它回中 */
+export const PICKED_INDEX = 14;
 
 /** 16 格样张路径:15 件展墙水墨 + 主角一笔圆(居 PICKED_INDEX) */
 export const WALL_CELL_SRCS: readonly string[] = [
@@ -19,7 +20,6 @@ export const WALL_CELL_SRCS: readonly string[] = [
   "/cinema/wall/w05.webp",
   "/cinema/wall/w06.webp",
   "/cinema/wall/w07.webp",
-  "/cinema/artwork-hero.webp",
   "/cinema/wall/w08.webp",
   "/cinema/wall/w09.webp",
   "/cinema/wall/w10.webp",
@@ -27,6 +27,7 @@ export const WALL_CELL_SRCS: readonly string[] = [
   "/cinema/wall/w12.webp",
   "/cinema/wall/w13.webp",
   "/cinema/wall/w14.webp",
+  "/cinema/artwork-hero.webp",
   "/cinema/wall/w15.webp",
 ];
 

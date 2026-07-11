@@ -13,7 +13,12 @@ import {
   useTransform,
 } from "framer-motion";
 import { createContext, type ReactNode, useContext, useRef } from "react";
-import { filmTotalVh, type SceneKey, sceneProgress } from "./cinema-config";
+import {
+  filmTotalVh,
+  type SceneKey,
+  sceneProgress,
+  sceneWindow,
+} from "./cinema-config";
 import { useCinema } from "./cinema-gl";
 
 const MasterContext = createContext<MotionValue<number> | null>(null);
@@ -48,7 +53,11 @@ export function CinemaStage({ children }: { children: ReactNode }) {
   });
 
   return (
-    <div ref={ref} style={{ height: `${filmTotalVh()}vh` }}>
+    <div
+      ref={ref}
+      data-cinema-root=""
+      style={{ height: `${filmTotalVh()}vh` }}
+    >
       <div className="sticky top-0 h-screen overflow-hidden">
         <MasterContext.Provider value={scrollYProgress}>
           {children}
@@ -56,6 +65,21 @@ export function CinemaStage({ children }: { children: ReactNode }) {
       </div>
     </div>
   );
+}
+
+/**
+ * 滚动到指定幕的起点(按 master 窗口换算文档纵坐标)。
+ * 供"查看示例"等入口跳到展墙:滚动行程 = 行程容器高 - 一屏,
+ * master=v 对应 scrollY = 容器顶部 + v * 行程。找不到容器时静默不动
+ * (static 态无行程容器,调用方自身语义即锚点回退)。
+ */
+export function scrollToScene(key: SceneKey): void {
+  const root = document.querySelector<HTMLElement>("[data-cinema-root]");
+  if (!root) return;
+  const { start } = sceneWindow(key);
+  const top = root.getBoundingClientRect().top + window.scrollY;
+  const travel = root.offsetHeight - window.innerHeight;
+  window.scrollTo({ top: top + start * travel, behavior: "smooth" });
 }
 
 /**
@@ -79,10 +103,11 @@ export function SceneLayer({
   useMotionValueEvent(master, "change", (m) => {
     engine?.setProgress(scene, sceneProgress(m, scene));
   });
-  // 幕内可见:窗口边缘 2% 淡入淡出,避免交界闪切
+  // 幕内可见:窗口边缘 3.5% 淡入淡出,避免交界闪切(幕更长后
+  // 交叠时长相应放宽,交界呼吸更从容)
   const opacity = useTransform(master, (m) => {
     const p = sceneProgress(m, scene);
-    const edge = 0.02;
+    const edge = 0.035;
     if (holdAtStart) {
       if (p >= 1) return 0;
       return Math.min(1, (1 - p) / edge);
