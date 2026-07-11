@@ -69,14 +69,16 @@
 
 > 设计稿 `docs/plan/2026-07-10-homepage-cinema-design.md`（v2 极致渲染版，文末有完成情况与门禁记录），实施计划 `docs/plan/2026-07-10-homepage-cinema-plan.md`（14 Task 全码级拆解 + 实施勘误）。提交 b78fb7f 至 45000ef + docs 收尾。
 
-已完成：首页重构为滚动驱动影片——手写 WebGL2 迷你引擎（denoise/dolly/fluid/particles/post 五 pass + 质量调控 + dom-sync，零新依赖），七幕 1550vh 主行程 + 终幕独立 200vh 舞台，三大转场（穿越/增殖/选中回中）与 bookend 闭环，墨线全页衔接；三层回退（完整 GL / 中端简化 / 静态编排）；既有 i18n key 全部保留，新增 key 收敛 Cinema 命名空间；旧首页区块组件（hero/feature-grid/how-it-works/manifesto/use-cases/testimonials/cta/reveal/scroll-fx）退役；demo 联调路由已删除。
+已完成：首页重构为滚动驱动影片——手写 WebGL2 迷你引擎（denoise/dolly/fluid/particles/post 五 pass + 质量调控 + dom-sync，零新依赖），七幕主行程 + 终幕独立舞台，三大转场（穿越/增殖/选中回中）与 bookend 闭环，墨线全页衔接；三层回退（完整 GL / 中端简化 / 静态编排）；既有 i18n key 全部保留，新增 key 收敛 Cinema 命名空间；旧首页区块组件（hero/feature-grid/how-it-works/manifesto/use-cases/testimonials/cta/reveal/scroll-fx）退役；demo 联调路由已删除。
+
+**v0.8.1 主角与主旨重修（2026-07-11，已落地 main）**：用户反馈主角是 GPT2IMAGE 占位海报、整片莫名其妙。以程序化水墨引擎重绘全部资产（主角一笔圆 + 深度图 + 15 件不同题材展墙作品），样张收敛 `cinema-artworks.ts` 单一事实源，并成批修复走查缺陷（首屏空白/画布瞬移/网点噪场/粒子无形云/低语挤压/死锚点/节奏偏快/章节无指示/暗场页头漂浮）；行程放宽至 1860vh。经过与新增勘误（GLSL smoothstep 反序未定义、VS 采样误判教训、微透明粒子叠加成云、mix-blend-difference 被合成上下文隔离、走查热身与代理坑）见设计稿第十三节。
 
 遗留待办（打磨迭代，非本轮范围）：
 - [ ] **速度响应镜头**（设计稿能力 5）：scroll velocity 喂拖影/折射 uniform（useVelocity 与 dolly/denoise 联动调参），全片触觉签名，独立打磨迭代避免联调变量过多。
 - [ ] **真实扩散帧序列资产**：denoise pass 已留帧序列采样模式接口，拿到真实扩散中间步快照即可替换实时消融。
-- [ ] **主样张深度图离线生成**：`apps/web/public/cinema/artwork-hero-depth.webp` 当前为灰度梯度占位，dolly 的 uDepth 接口已留，离线生成真实深度图后直接替换资产。
+- [x] **主样张深度图离线生成**：v0.8.1 已由程序化水墨引擎同几何生成（笔画近/起笔头最近/纸面远），替换灰度梯度占位。
 - [ ] **展墙玻璃折射高光 GL 版**：当前以 CSS 高光缓扫实现（设计稿允许 DOM 层实现），GL 折射版留作打磨。
-- [ ] **web 测试全量并行 flaky**：service-web-fallback 等 5 文件仅在全量并行运行时互扰失败（隔离复跑全过，与 cinema 无关），待排查 mock 泄漏/并行隔离。
+- [ ] **web 测试全量并行 flaky**：external-api / image-generation / image-backend-pool 多文件仅在全量并行运行时互扰失败（两次全量失败集合不同：13 个/7 个；6 文件隔离复跑 108/108 全过，与 cinema 无关），待排查 mock 泄漏/并行隔离。
 
 ## 仍存在的代码层问题（待办）
 
