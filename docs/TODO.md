@@ -79,7 +79,10 @@
 
 **AI 真实素材接入（2026-07-12，已落地 main）**：经产品自身 v1 API（gpt-image-2, quality high）生成全部 16 张水墨作品（`scripts/gen-artworks.cjs`，原图母版入库 `scripts/artwork-src/`），`scripts/ingest-artworks.cjs` 统一化接收（白点归一/hero 统一朱印/反相深度图/hero 2048 + 墙作 640 webp）替换 `public/cinema`；微距凝视中心按新 hero 构图重校（0.72/0.42 收笔飞白区）。勘误：sharp `negate()` 默认连 alpha 取反（深度图输出全透明，须先 flatten 再 `negate({alpha:false})`）；该部署 `/v1/responses` 502，走 `/v1/images/generations`（自带 keep-alive 保活）。
 
+**v1.0.1 谷段跟随化（2026-07-12，已落地 main）**：谷段三折从一次性入场动画升级为滚动跟随（scrub 可倒放 + 速度触觉）——Pricing「润格廊」240vh sticky 廊道（竖滚横移 + 逐轴 clip-path 展卷 + 地杆卷筒前沿 + useVelocity 微摆 + 落幅签条落款；窄屏/减动效/SSR 保留轮播轨，轴身两轨共用）、SLA 千笔之约落墨 scrub 化（滚回收墨）、FAQ 册页逐折翻折跟随。五条勘误（廊道落幅须以按钮可达为先/紧视口预算/满宽段页边刻度被裁/展卷裁切层与签条/clip 完毕撤 none）见设计稿 §15 v1.0.1 节。
+
 遗留待办（打磨迭代，非本轮范围）：
+- [ ] **无 JS 时谷段轮播卡不可见**：轮播轨（含 SSR 输出）motion.div 的 whileInView initial 在 SSR 内联 opacity:0，无 JS 用户看不到套餐卡（搜索引擎渲染 JS 不受影响）。待统一 mounted 门闩或 SSR 探测方案（v1.0.1 新写的 scrub 样式均已用 mounted 门闩，仅存量 whileInView 受影响）。
 - [ ] **展墙交错格穿地面线**：stripPos 高低交错使部分画作底缘越过地面线，后续统一调几何。
 - [ ] **速度响应镜头**（设计稿能力 5）：scroll velocity 喂拖影/折射 uniform（useVelocity 与 dolly/denoise 联动调参），全片触觉签名，独立打磨迭代避免联调变量过多。
 - [ ] **真实扩散帧序列资产**：denoise pass 已留帧序列采样模式接口，拿到真实扩散中间步快照即可替换实时消融。
