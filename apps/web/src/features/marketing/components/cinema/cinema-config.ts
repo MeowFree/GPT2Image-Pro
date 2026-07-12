@@ -7,6 +7,7 @@
 export type SceneKey =
   | "opening"
   | "generate"
+  | "macro"
   | "dive"
   | "manifesto"
   | "multiply"
@@ -19,18 +20,19 @@ export interface SceneDef {
 }
 
 /**
- * 分镜行程预算(设计稿第四节);终幕独立舞台不在此表。
- * v0.8.1 整体放宽约 20%:每幕驻留更长,显影完成留静止一拍,
- * 观感由"匀速播片"回到"驻留慢、过渡快"的呼吸节奏。
+ * 分镜行程预算(设计稿第四节,v0.9 八幕见第十四节);终幕独立舞台不在此表。
+ * v0.9 新增 macro 凝视幕(money shot 之后推进笔触局部再拉回放大全屏,
+ * 与 dive 无缝交接),opening 加长容纳活墨洇开,pick 加长容纳装裱一拍。
  */
 export const FILM_SCENES: readonly SceneDef[] = [
-  { key: "opening", lengthVh: 240 },
+  { key: "opening", lengthVh: 260 },
   { key: "generate", lengthVh: 360 },
-  { key: "dive", lengthVh: 190 },
+  { key: "macro", lengthVh: 210 },
+  { key: "dive", lengthVh: 200 },
   { key: "manifesto", lengthVh: 240 },
-  { key: "multiply", lengthVh: 240 },
+  { key: "multiply", lengthVh: 250 },
   { key: "wall", lengthVh: 460 },
-  { key: "pick", lengthVh: 130 },
+  { key: "pick", lengthVh: 170 },
 ] as const;
 
 export function filmTotalVh(scenes: readonly SceneDef[] = FILM_SCENES) {

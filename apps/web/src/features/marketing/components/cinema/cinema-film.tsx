@@ -15,7 +15,12 @@ import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { ChapterRail } from "./chapter-rail";
 import { darkWindow } from "./cinema-config";
 import { CinemaGLProvider, useCinema } from "./cinema-gl";
-import { CinemaStage, SceneLayer, useMaster } from "./cinema-stage";
+import {
+  CinemaStage,
+  SceneLayer,
+  useMaster,
+  useSceneProgress,
+} from "./cinema-stage";
 import type { CinemaEngine } from "./gl/engine";
 import { createDenoisePass } from "./gl/passes/denoise";
 import { createDollyPass } from "./gl/passes/dolly";
@@ -131,6 +136,38 @@ function FilmPasses() {
   return null;
 }
 
+/** [0,1] 线性窗口段 */
+function seg01(p: number, a: number, b: number): number {
+  return Math.max(0, Math.min(1, (p - a) / (b - a)));
+}
+
+/**
+ * 活墨编排:序幕淡墨云的显示强度与向心聚拢,跨 opening/generate 两幕
+ * 单点决策(fluid pass 的 inkFade/inkGather 单一事实源;inkP 生命进度
+ * 由 OpeningScene 喂——它属于序幕自身的时间轴)。
+ * fade 是叙事包络而非开关:滴落初洇较显(0.55),标题显影期退成底衬
+ * (0.26,字从墨里显出来、墨不压字),打字聚拢段转浓活跃(0.75,
+ * 墨流被吸向画布),显影开始被画布吸尽(generate 前 28% 归零)。
+ */
+function InkMistDirector() {
+  const opening = useSceneProgress("opening");
+  const generate = useSceneProgress("generate");
+  const { engine } = useCinema();
+  const feed = (o: number, g: number) => {
+    const drop = seg01(o, 0.02, 0.1) * 0.55;
+    const recede = seg01(o, 0.12, 0.24) * (0.26 - 0.55);
+    const rise = seg01(o, 0.55, 0.9) * (0.75 - 0.26);
+    const envelope = drop + recede + rise;
+    const fade = envelope * (1 - seg01(g, 0.02, 0.28));
+    engine?.setProgress("inkFade", fade);
+    const gather = Math.min(seg01(o, 0.6, 0.92), 1 - seg01(g, 0, 0.3));
+    engine?.setProgress("inkGather", gather);
+  };
+  useMotionValueEvent(opening, "change", (v) => feed(v, generate.get()));
+  useMotionValueEvent(generate, "change", (v) => feed(opening.get(), v));
+  return null;
+}
+
 /**
  * 暗场页头联动:穿越压暗起点到增殖回纸点之间,站点页头随影片入暗退场
  * (body[data-cinema-dark],CSS 在 globals 定义)。卸载时清除属性,
@@ -158,9 +195,8 @@ function FilmBody() {
         <SceneLayer scene="opening" holdAtStart>
           <OpeningScene />
         </SceneLayer>
-        <SceneLayer scene="generate">
-          <GenerateScene />
-        </SceneLayer>
+        {/* 显影横跨 generate 与 macro 两幕(连续镜头),自管可见性 */}
+        <GenerateScene />
         <SceneLayer scene="manifesto">
           <ManifestoScene />
         </SceneLayer>
@@ -172,9 +208,10 @@ function FilmBody() {
         <ZoomThroughTransition />
         <MultiplyTransition />
         <PickAndReturnTransition />
-        {/* 章节导轨与页头暗场联动:全片常驻编排件 */}
+        {/* 章节导轨/页头暗场/活墨:全片常驻编排件 */}
         <ChapterRail />
         <HeaderDimmer />
+        <InkMistDirector />
       </CinemaStage>
     </div>
   );

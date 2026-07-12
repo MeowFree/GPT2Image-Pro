@@ -1,10 +1,13 @@
 /**
- * 墨水流体 pass:四分之一分辨率 stable-fluids 墨模拟 + 进度覆盖遮罩。
- * 反转转场的质感层:布局真相由 radialMask 保证(fluidP=1 必然全覆盖,
- * 滚动倒放时遮罩精确可逆);流体 dye 只负责边缘的涡卷质感,残留随耗散
- * 消散——质感层允许半确定性(检查点脉冲全由常量表定义,无随机)。
+ * 墨水流体 pass:四分之一分辨率 stable-fluids 墨模拟,同一实例双用途。
+ * 用途一(dive 反转转场):进度覆盖遮罩为布局真相(fluidP=1 必然全覆盖,
+ * 滚动倒放时遮罩精确可逆),流体 dye 只负责边缘的涡卷质感;
+ * 用途二(序幕活墨,v0.9):墨滴落纸后一团淡墨真实洇开舒展,prompt 打字
+ * 时被向心力聚拢成涡——开场那滴墨就是后来那幅画的原料(因果链)。
+ * 两用途读键互斥(fluidVisible 优先),模式切换必清场;检查点脉冲全由
+ * 常量表定义(半确定性,倒放重进可复现)。
  * 需要 EXT_color_buffer_float(RGBA16F 可渲染);不可用时工厂返回 null,
- * 反转由 dolly 末端压暗与宣言章 DOM 底色兜底(纯遮罩版反转仍成立)。
+ * 反转由 dolly 末端压暗与宣言章 DOM 底色兜底,活墨直接缺席(纯质感层)。
  */
 import {
   type CinemaPass,
@@ -29,15 +32,18 @@ void main() {
   outColor = vec4(texture(uSource, back).xyz * uDissipation, 1.0);
 }`;
 
-/** 检查点脉冲注入:中心向外 8 向高斯 splat,一次绘制注满一轮脉冲 */
+/** 检查点脉冲注入:uCenter 向外 8 向高斯 splat,一次绘制注满一轮脉冲;
+ * uSpread 为 8 向散布半径(dive 0.06 宽散,活墨 0.03 集中成团) */
 const SPLAT_FS = `#version 300 es
 precision highp float;
 uniform sampler2D uTarget;
 uniform vec2 uTexel;
 uniform float uMode;
+uniform vec2 uCenter;
 uniform float uAngle0;
 uniform float uStrength;
 uniform float uRadius;
+uniform float uSpread;
 out vec4 outColor;
 void main() {
   vec2 uv = gl_FragCoord.xy * uTexel;
@@ -45,13 +51,34 @@ void main() {
   for (int k = 0; k < 8; k++) {
     float ang = uAngle0 + float(k) * 0.785398;
     vec2 dir = vec2(cos(ang), sin(ang));
-    vec2 d = uv - (vec2(0.5) + dir * 0.06);
+    vec2 d = uv - (uCenter + dir * uSpread);
     float g = exp(-dot(d, d) / uRadius);
     acc += uMode < 0.5
       ? vec3(dir * uStrength * g, 0.0)
       : vec3(uStrength * g, 0.0, 0.0);
   }
   outColor = vec4(acc, 1.0);
+}`;
+
+/**
+ * 向心汇聚:全场速度加指向 uTarget 的分量(活墨被 prompt"召唤"聚拢)。
+ * 近中心衰减防爆速;投影步会抵消部分散度,墨在中心转成涡——
+ * 聚墨成涡正是水墨行为。
+ */
+const GATHER_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uVelocity;
+uniform vec2 uTexel;
+uniform vec2 uTarget;
+uniform float uAmount;
+out vec4 outColor;
+void main() {
+  vec2 uv = gl_FragCoord.xy * uTexel;
+  vec2 vel = texture(uVelocity, uv).xy;
+  vec2 to = uTarget - uv;
+  float d = max(length(to), 1e-4);
+  vel += (to / d) * uAmount * smoothstep(0.02, 0.3, d);
+  outColor = vec4(vel, 0.0, 1.0);
 }`;
 
 /** 速度散度(中心差分) */
@@ -104,21 +131,40 @@ void main() {
 }`;
 
 /**
- * 合成:coverage = max(墨浓度, 径向遮罩)。遮罩是布局真相
- * (fluidP=1 时角点距离 0.707 < 0.85-0.05,必然全覆盖);
- * 墨色与宣言章底色一致(#0e0e0d)。
+ * 合成,双模式。
+ * uMode 0(dive 覆盖):coverage = max(墨浓度, 径向遮罩)。遮罩是布局真相
+ * (fluidP=1 时角点距离 0.707 < 0.85-0.05,必然全覆盖);墨色与宣言章
+ * 底色一致(#0e0e0d)。
+ * uMode 1(序幕活墨):dye 显作淡墨洇纸——浓处深、边缘透(幂压边缘),
+ * 无遮罩,纯质感层;uFade 由编排层喂(显影开始后墨被画布"吸走")。
  */
 const COMPOSITE_FS = `#version 300 es
 precision highp float;
 uniform sampler2D uDye;
 uniform vec2 uSize;
 uniform float uP;
+uniform float uMode;
+uniform float uFade;
 out vec4 outColor;
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
 void main() {
   vec2 uv = gl_FragCoord.xy / uSize;
+  float dye = texture(uDye, uv).x;
+  if (uMode > 0.5) {
+    // 活墨浓淡两层:浓芯(高幂,深)沉在中心,淡晕(低幂,浅)洇向四周
+    // ——墨不是均匀灰饼;淡晕带吸收阈值(极稀残墨被纸吸收隐形,
+    // 否则被低幂放大成全屏皱纹,走查实证);纸吸墨不均由微扰表达
+    float d = clamp(dye, 0.0, 1.0);
+    float core = pow(d, 2.4) * 0.32;
+    float halo = pow(max(d - 0.05, 0.0) / 0.95, 0.85) * 0.13;
+    float grainy = 0.95 + hash(gl_FragCoord.xy * 0.5) * 0.1;
+    outColor = vec4(0.13, 0.12, 0.105, (core + halo) * grainy * uFade);
+    return;
+  }
   float r = uP * 0.85;
   float mask = smoothstep(r + 0.12, r - 0.05, distance(uv, vec2(0.5)));
-  float dye = texture(uDye, uv).x;
   float coverage = clamp(max(dye, mask), 0.0, 1.0);
   outColor = vec4(0.055, 0.055, 0.051, coverage);
 }`;
@@ -142,6 +188,46 @@ const PULSES: readonly PulseDef[] = [
   { at: 0.3, angle0: 0.26, strength: 1.4, dye: 0.75, radius: 0.0042 },
   { at: 0.5, angle0: 0.13, strength: 1.9, dye: 0.95, radius: 0.006 },
 ];
+
+/** dive 覆盖脉冲的注入中心(视口中央) */
+const DIVE_CENTER: readonly [number, number] = [0.5, 0.5];
+
+/**
+ * 序幕活墨脉冲:落点在墨滴迸溅点略下方(墨落纸),强度远低于 dive
+ * ——要"洇"不要"涌"(强速度场几秒内会把墨吹满全屏成均匀噪雾,
+ * 走查实证,故近乎纯扩散);冲击只给起始一拍,浓度由持续渗出维持。
+ */
+const INK_PULSES: readonly PulseDef[] = [
+  { at: 0.04, angle0: 0.4, strength: 0.08, dye: 0.6, radius: 0.0028 },
+  { at: 0.16, angle0: 1.1, strength: 0.06, dye: 0.35, radius: 0.004 },
+  { at: 0.38, angle0: 2.0, strength: 0.05, dye: 0.25, radius: 0.0055 },
+];
+
+/**
+ * 活墨脉冲的注入中心。坐标为模拟场系(GL 系,y 向上):
+ * y=0.7 即屏幕顶部 30% 处——与墨滴迸溅点(视口分数 0.24)咬合,
+ * 墨云挂在标题上缘,聚拢段被拉向画布中心。
+ */
+const INK_CENTER: readonly [number, number] = [0.5, 0.7];
+
+/** 活墨聚拢目标:画布主角中心(与 centerSquareRect 构图对应) */
+const GATHER_TARGET: readonly [number, number] = [0.5, 0.5];
+
+/** 8 向 splat 散布半径:dive 宽散吞屏,活墨集中成团 */
+const DIVE_SPREAD = 0.06;
+const INK_SPREAD = 0.018;
+
+/**
+ * 活墨渗出速率:活墨模式存续期间每帧按 dt 补墨——浓度是注入率与
+ * 耗散率的动态平衡,与滚动速度无关(快滚/停留/截屏任意时刻可见);
+ * 砚台里的墨,一直在;生命周期完全交给 inkFade(淡出即散)。
+ */
+const INK_SEEP_DYE_RATE = 1.2;
+const INK_SEEP_VEL_RATE = 0.35;
+
+/** 活墨专用耗散:速度快静息(墨靠扩散慢展),墨迹长驻留 */
+const INK_VELOCITY_DISSIPATION = 0.985;
+const INK_DYE_DISSIPATION = 0.9975;
 
 /** 速度场耗散:略低于 1 使涡旋最终静息(isLive 才会停帧) */
 const VELOCITY_DISSIPATION = 0.998;
@@ -194,11 +280,15 @@ interface ProgramInfo {
 interface Programs {
   advect: ProgramInfo;
   splat: ProgramInfo;
+  gather: ProgramInfo;
   divergence: ProgramInfo;
   pressure: ProgramInfo;
   gradient: ProgramInfo;
   composite: ProgramInfo;
 }
+
+/** 双用途模式:0 未激活 / 1 dive 覆盖 / 2 序幕活墨 */
+type FluidMode = 0 | 1 | 2;
 
 function buildProgram(
   gl: WebGL2RenderingContext,
@@ -290,11 +380,16 @@ function swap(pp: PingPong): void {
 
 /**
  * 创建墨水流体 pass;EXT_color_buffer_float 不可用返回 null(跳过)。
- * 读 progress 键:fluidP(0-1 反转覆盖进度)/fluidVisible(< 0.5 跳绘)。
- * 每帧序列:advect(velocity) -> 检查点 splat -> divergence ->
- * pressure Jacobi(满档 14 次,降档 8 次) -> subtractGradient ->
- * advect(dye, 耗散 0.985) -> 全屏合成(alpha 混合,预乘勘误直通)。
- * 分辨率:满档 1/4,降档 1/6。isLive 在可见且能量未耗尽时为 true。
+ * 读 progress 键——用途一(dive):fluidP(0-1 反转覆盖进度)/
+ * fluidVisible(>= 0.5 激活,优先);用途二(序幕活墨):inkP(0-1 活墨
+ * 生命进度,驱动脉冲注入与清场)/inkGather(0-1 向心聚拢强度)/
+ * inkFade(0-1 显示强度,> 0.001 激活)。模式切换必清场(共享模拟场,
+ * 残留跨用途无意义)。
+ * 每帧序列:advect(velocity) -> 检查点 splat -> [活墨向心 gather] ->
+ * divergence -> pressure Jacobi(满档 14 次,降档 8 次) ->
+ * subtractGradient -> advect(dye, 耗散 0.985) -> 全屏合成(alpha 混合,
+ * 预乘勘误直通)。分辨率:满档 1/4,降档 1/6。
+ * isLive 在激活且(能量未耗尽或聚拢中)为 true。
  */
 export function createFluidPass(): CinemaPass | null {
   if (!probeFloatColorBuffer()) return null;
@@ -314,7 +409,10 @@ export function createFluidPass(): CinemaPass | null {
   /** 能量:splat 置 1,随墨耗散同步衰减;静息后引擎停帧 */
   let energy = 0;
   let lastTimeMs = 0;
-  let lastVisible = false;
+  /** 当前激活模式(dive 优先);切换时清场 */
+  let activeMode: FluidMode = 0;
+  /** 最近一帧的聚拢强度:聚拢中场持续演化,isLive 须保持出帧 */
+  let lastGather = 0;
 
   /** 释放全部模拟目标(尺寸/档位变化重建,或 dispose) */
   const releaseTargets = (gl: WebGL2RenderingContext): void => {
@@ -421,12 +519,14 @@ export function createFluidPass(): CinemaPass | null {
     swap(src);
   };
 
-  /** 注入一轮 8 向脉冲到目标场(mode 0 速度 / 1 墨) */
+  /** 注入一轮 8 向脉冲到目标场(mode 0 速度 / 1 墨),center 为注入中心 */
   const splat = (
     gl: WebGL2RenderingContext,
     target: PingPong,
     mode: 0 | 1,
-    pulse: PulseDef
+    pulse: PulseDef,
+    center: readonly [number, number],
+    spread: number
   ): void => {
     if (!programs) return;
     const { prog, loc } = programs.splat;
@@ -436,39 +536,93 @@ export function createFluidPass(): CinemaPass | null {
     gl.uniform1i(loc.uTarget ?? null, 0);
     gl.uniform2f(loc.uTexel ?? null, 1 / allocW, 1 / allocH);
     gl.uniform1f(loc.uMode ?? null, mode);
+    gl.uniform2f(loc.uCenter ?? null, center[0], center[1]);
     gl.uniform1f(loc.uAngle0 ?? null, pulse.angle0);
     gl.uniform1f(
       loc.uStrength ?? null,
       mode === 0 ? pulse.strength : pulse.dye
     );
     gl.uniform1f(loc.uRadius ?? null, pulse.radius);
+    gl.uniform1f(loc.uSpread ?? null, spread);
     blit(gl, target.write);
     swap(target);
   };
 
-  /** 一帧完整模拟步:平流 -> 脉冲 -> 投影 -> 墨平流 */
+  /** 向心汇聚:活墨被 prompt 召唤,全场速度加指向画布中心的分量 */
+  const applyGather = (
+    gl: WebGL2RenderingContext,
+    amount: number,
+    dt: number
+  ): void => {
+    if (!programs || !velocity) return;
+    const { prog, loc } = programs.gather;
+    applyProgram(gl, prog);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, velocity.read.tex);
+    gl.uniform1i(loc.uVelocity ?? null, 0);
+    gl.uniform2f(loc.uTexel ?? null, 1 / allocW, 1 / allocH);
+    gl.uniform2f(loc.uTarget ?? null, GATHER_TARGET[0], GATHER_TARGET[1]);
+    // 幅度克制:向心流太强会把墨吸穿中心散尽(不可压缩场,墨会穿过去,
+    // 静帧上呈"月牙缺口",走查实证)
+    gl.uniform1f(loc.uAmount ?? null, amount * dt * 0.55);
+    blit(gl, velocity.write);
+    swap(velocity);
+  };
+
+  /** 一帧完整模拟步:平流 -> 脉冲 -> [活墨向心] -> 投影 -> 墨平流 */
   const step = (
     gl: WebGL2RenderingContext,
-    fluidP: number,
+    p: number,
     dt: number,
-    tier: number
+    tier: number,
+    mode: FluidMode,
+    gather: number
   ): void => {
     if (!programs || !velocity || !dye || !pressure || !divergence) return;
     gl.disable(gl.BLEND);
-    advect(gl, velocity, VELOCITY_DISSIPATION, dt);
-    // 检查点脉冲:上穿注入(注入与否由计数决定),下穿回收计数
-    while (injected < PULSES.length) {
-      const pulse = PULSES[injected];
-      if (!pulse || fluidP < pulse.at) break;
-      splat(gl, velocity, 0, pulse);
-      splat(gl, dye, 1, pulse);
+    advect(
+      gl,
+      velocity,
+      mode === 2 ? INK_VELOCITY_DISSIPATION : VELOCITY_DISSIPATION,
+      dt
+    );
+    // 检查点脉冲:上穿注入(注入与否由计数决定),下穿回收计数;
+    // 脉冲表与注入中心按模式取用(模式切换必经清场,计数可复用)
+    const pulses = mode === 2 ? INK_PULSES : PULSES;
+    const center = mode === 2 ? INK_CENTER : DIVE_CENTER;
+    const spread = mode === 2 ? INK_SPREAD : DIVE_SPREAD;
+    while (injected < pulses.length) {
+      const pulse = pulses[injected];
+      if (!pulse || p < pulse.at) break;
+      splat(gl, velocity, 0, pulse, center, spread);
+      splat(gl, dye, 1, pulse, center, spread);
       injected += 1;
       energy = 1;
     }
     while (injected > 0) {
-      const prev = PULSES[injected - 1];
-      if (!prev || fluidP >= prev.at) break;
+      const prev = pulses[injected - 1];
+      if (!prev || p >= prev.at) break;
       injected -= 1;
+    }
+    // 活墨持续渗出:浓度为注入率与耗散率的动态平衡——快滚过脉冲点
+    // 或长停留后墨云依旧在场(一次性脉冲会在数秒内耗散殆尽,走查实证);
+    // 存续期间恒渗,聚拢段的向心流因此成为可见的"墨被吸入"动线
+    if (mode === 2 && p > 0.04) {
+      const seep: PulseDef = {
+        at: 0,
+        angle0: p * 6.28 + 0.9,
+        strength: INK_SEEP_VEL_RATE * dt,
+        dye: INK_SEEP_DYE_RATE * dt,
+        radius: 0.0035,
+      };
+      splat(gl, velocity, 0, seep, INK_CENTER, INK_SPREAD);
+      splat(gl, dye, 1, seep, INK_CENTER, INK_SPREAD);
+      energy = Math.max(energy, 0.3);
+    }
+    // 活墨聚拢:向心力持续注入,场保持演化(能量下限同步保持)
+    if (mode === 2 && gather > 0.001) {
+      applyGather(gl, gather, dt);
+      energy = Math.max(energy, gather * 0.4);
     }
     const texelX = 1 / allocW;
     const texelY = 1 / allocH;
@@ -507,9 +661,11 @@ export function createFluidPass(): CinemaPass | null {
     gl.uniform2f(grd.loc.uTexel ?? null, texelX, texelY);
     blit(gl, velocity.write);
     swap(velocity);
-    // 墨平流(耗散 0.985);能量同步衰减,静息后 isLive 停帧
-    advect(gl, dye, DYE_DISSIPATION, dt);
-    energy *= DYE_DISSIPATION;
+    // 墨平流(活墨长驻留/dive 快消散);能量同步衰减,静息后 isLive 停帧
+    const dyeDissipation =
+      mode === 2 ? INK_DYE_DISSIPATION : DYE_DISSIPATION;
+    advect(gl, dye, dyeDissipation, dt);
+    energy *= dyeDissipation;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   };
 
@@ -517,7 +673,11 @@ export function createFluidPass(): CinemaPass | null {
     key: "fluid",
     enabled: true,
     isLive() {
-      return lastVisible && simReady && energy > ENERGY_REST;
+      return (
+        activeMode !== 0 &&
+        simReady &&
+        (energy > ENERGY_REST || lastGather > 0.01)
+      );
     },
     init(gl) {
       programs = {
@@ -532,9 +692,17 @@ export function createFluidPass(): CinemaPass | null {
           "uTarget",
           "uTexel",
           "uMode",
+          "uCenter",
           "uAngle0",
           "uStrength",
           "uRadius",
+          "uSpread",
+        ]),
+        gather: buildProgram(gl, GATHER_FS, [
+          "uVelocity",
+          "uTexel",
+          "uTarget",
+          "uAmount",
         ]),
         divergence: buildProgram(gl, DIVERGENCE_FS, ["uVelocity", "uTexel"]),
         pressure: buildProgram(gl, PRESSURE_FS, [
@@ -547,7 +715,13 @@ export function createFluidPass(): CinemaPass | null {
           "uVelocity",
           "uTexel",
         ]),
-        composite: buildProgram(gl, COMPOSITE_FS, ["uDye", "uSize", "uP"]),
+        composite: buildProgram(gl, COMPOSITE_FS, [
+          "uDye",
+          "uSize",
+          "uP",
+          "uMode",
+          "uFade",
+        ]),
       };
       // 扩展按上下文启用:工厂探测过,真实上下文仍须显式 getExtension
       simReady = gl.getExtension("EXT_color_buffer_float") !== null;
@@ -562,19 +736,37 @@ export function createFluidPass(): CinemaPass | null {
       injected = 0;
       energy = 0;
       lastTimeMs = 0;
+      activeMode = 0;
+      lastGather = 0;
     },
     render(ctx: PassContext) {
       const { gl, progress } = ctx;
       if (!programs) return;
-      lastVisible = (progress.get("fluidVisible") ?? 0) >= 0.5;
-      if (!lastVisible) return;
-      const fluidP = progress.get("fluidP") ?? 0;
-      if (fluidP <= 0) {
-        // 覆盖进度归零:清场并回收计数,重进从静水开始;
-        // 不绘合成(p=0 时遮罩在中心仍有软点,跳绘避免其提前露出)
+      // 模式仲裁:dive 覆盖优先(转场是布局真相),否则活墨,否则不激活
+      const diveOn = (progress.get("fluidVisible") ?? 0) >= 0.5;
+      const inkFade = progress.get("inkFade") ?? 0;
+      const mode: FluidMode = diveOn ? 1 : inkFade > 0.001 ? 2 : 0;
+      if (mode !== activeMode) {
+        // 模式切换必清场:两用途共享模拟场,残留跨用途无意义
+        // (含大跨度跳滚直接落进另一用途窗口的情形)
+        resetFields(gl);
+        activeMode = mode;
+      }
+      if (mode === 0) {
+        lastGather = 0;
+        return;
+      }
+      const p =
+        mode === 1
+          ? (progress.get("fluidP") ?? 0)
+          : (progress.get("inkP") ?? 0);
+      if (p <= 0.001) {
+        // 进度归零:清场并回收计数,重进从静水开始;
+        // 不绘合成(dive 遮罩在 p=0 时中心仍有软点,跳绘避免其提前露出)
         resetFields(gl);
         return;
       }
+      lastGather = mode === 2 ? (progress.get("inkGather") ?? 0) : 0;
       // dt 取真实帧距并钳制:休眠恢复后的大间隔不致模拟爆步
       const dtMs =
         lastTimeMs > 0
@@ -585,9 +777,9 @@ export function createFluidPass(): CinemaPass | null {
         ensureTargets(gl, ctx.width, ctx.height, ctx.tier);
       }
       if (simReady && velocity && dye && pressure && divergence) {
-        step(gl, fluidP, dtMs / 1000, ctx.tier);
+        step(gl, p, dtMs / 1000, ctx.tier, mode, lastGather);
       }
-      // 合成到画布:遮罩兜底保证布局,墨只做涡卷边缘
+      // 合成到画布:dive 遮罩兜底保证布局,活墨为纯质感层
       const cmp = programs.composite;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, ctx.width, ctx.height);
@@ -597,7 +789,9 @@ export function createFluidPass(): CinemaPass | null {
       gl.bindTexture(gl.TEXTURE_2D, dyeTex);
       gl.uniform1i(cmp.loc.uDye ?? null, 0);
       gl.uniform2f(cmp.loc.uSize ?? null, ctx.width, ctx.height);
-      gl.uniform1f(cmp.loc.uP ?? null, fluidP);
+      gl.uniform1f(cmp.loc.uP ?? null, p);
+      gl.uniform1f(cmp.loc.uMode ?? null, mode === 2 ? 1 : 0);
+      gl.uniform1f(cmp.loc.uFade ?? null, mode === 2 ? inkFade : 1);
       gl.enable(gl.BLEND);
       // 透明预乘画布:alpha 通道必须直通(见计划勘误一)
       gl.blendFuncSeparate(

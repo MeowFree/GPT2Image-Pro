@@ -67,12 +67,14 @@ export function OpeningScene() {
     return () => cancelAnimationFrame(raf);
   }, [status, engine, p, feedTitle]);
 
-  // 墨滴与标题显影 -> GL
+  // 墨滴与标题显影 -> GL;活墨生命进度(洇开发展)同步喂入
+  // (inkFade/inkGather 由 InkMistDirector 统一编排,单一事实源)
   useMotionValueEvent(p, "change", (v) => {
     engine?.setProgress("splashMode", 0);
     engine?.setProgress("splashP", seg(v, 0, 0.1));
     engine?.setProgress("splashOx", 0.5);
     engine?.setProgress("splashOy", 0.24);
+    engine?.setProgress("inkP", seg(v, 0.02, 0.55));
     feedTitle(v);
     engine?.setProgress("titleGlow", 0.3);
     engine?.setProgress("titleVisible", v < 0.5 ? 1 : 0);
