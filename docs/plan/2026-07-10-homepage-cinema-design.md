@@ -492,3 +492,55 @@ FAQ 之间不再有死区。
 零新 i18n key（序号与线均为排版记号），文案与交互不动。走查：
 header 三行错落、墨笺落案与顶墨标、例言逐条显影与倒放（滚回
 opacity 0.71 回收中实测）、廊道段标签亮（0.72）/积分包处隐（0）。
+
+## 十六、v1.1 影片主行程扩长（2026-07-12，已实施落地）
+
+用户指令：大幅加长剧情。本轮动影片主行程本身——十幕 2620vh
+扩为**十二幕 3110vh**（+490vh，约 19%），把尚未叙事化的产品能力
+（任意尺寸/4K 输出、画廊收藏）变成新幕，把抽象的批量点阵变成
+真画检片。
+
+### 新幕与扩长
+
+1. **frame「形制」（新幕，220vh，pick 之后）**——任意尺寸直至
+   4K 的物质表达：同一幅画随滚动重新装裱为横批 16:9 -> 立轴
+   9:16 -> 斗方大幅，每形制停拍时画框右下浮现输出尺寸注
+   （3840×2160 / 2160×3840 / 4096×4096，等宽排版记号），底部
+   一句署名（Cinema.frameCaption）；画作 object-cover 自动重构
+   图（拉横即真实的重新构图），装裱 matte 内衬随形制同步变形；
+   幕首尾回归画布主角规格（frameRect 端点=centerSquareRect，
+   与 pick/archive 逐位咬合）。
+2. **archive「藏」（新幕，180vh，影片新收势）**——画廊/历史
+   能力：画作缩小降至画匣口、沉入匣内（clip 匣口平面裁切，
+   可见底缘恒等于匣口线——archiveDrop 几何联动），匣盖自上
+   滑合一拍，纸白题签显影（展墙罗马编号 XV + 作品题名，与
+   铭牌同一事实，零新文案），匣下落"存入你的画廊，随时取回"
+   （Cinema.archiveCaption）；**倒放即开匣取画——署名的承诺
+   由倒放自证**。
+3. **invoke 扩长 190 -> 280vh**——批量检片：点阵点亮进行中，
+   三张真实画作（展墙样张事实源，点阵第 3/7/12 点对应的那幅）
+   如暗房检片先后弹出停一拍再收回，纸白衬边浮于墨底——批量
+   不是抽象的点，每一点都是一幅画。
+
+### 工程要点
+
+- 画作 DOM 五段连续：figureRect 纯函数链延长为 gridPos ->
+  stripPos -> centerSquareRect -> frameRect -> archiveDrop，
+  幕界端点逐位咬合，画作 DOM 全程不换手、零交接跳变。
+- 几何纯函数入 cinema-geometry（frameRect/FRAME_HOLDS/
+  archiveChestRect/archiveDrop），新增 3 个单测用例（端点回归/
+  停拍比例/入匣悬停与全没）。
+- clip 挂载时序：matte 内衬在 -inset-4 盒外，clip-path 参考盒
+  会裁掉一切盒外内容——sink=0 时 clipPath 撤为 none，matte 在
+  archive 早段先行淡出，让出无残影的挂载窗口。
+- ChapterRail 第四章扩为 pick..archive 连续覆盖；舞台高度由
+  filmTotalVh() 动态生成，自动适配。
+- 静态回退补 StaticDelivery（三比例裁切并置 + 两句署名）。
+- 新增 i18n：Cinema.frameCaption / archiveCaption（zh/en）。
+
+### 走查记录
+
+invoke 检片弹出（孤舟浮墨底、点阵过半、03 万象章活跃）、frame
+横批/立轴停拍（尺寸注+matte 跟随+04 交付章活跃）、archive 沉入
+（可见底缘贴匣口线）、合盖题签落幅、倒放开匣取画——全部通过。
+门禁：tsc 0 / biome 0 error / cinema 测试 19/19 / build 绿。

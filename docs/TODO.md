@@ -83,6 +83,8 @@
 
 **v1.0.2 谷段跟随化收尾（2026-07-12，已落地 main）**：静态残余全部纳入跟随语言——InkReveal 通用滚动显影（phase 相位/tilt 微倾/InkRule 装裱线）、积分包「墨笺落案」、计费规则「例言」凡例体（衬线序号共享 folio-numeral）、三折标题区揭幕、InkThread 刻度窗口化（labelFadeAt，长区块尾部让位内容）。见设计稿 §15 v1.0.2 节。
 
+**v1.1 影片主行程扩长（2026-07-12，已落地 main）**：十幕 2620vh 扩为十二幕 3110vh——新增 frame「形制」幕（横批/立轴/斗方三形制停拍 + 尺寸注，任意尺寸直至 4K）与 archive「藏」幕（画作沉入画匣 + 合盖题签，倒放即开匣取画），invoke 扩长容纳批量检片（点亮中真画弹出）。画作 DOM 五段矩形纯函数连续零跳变；ChapterRail 第四章 pick..archive。见设计稿 §16。
+
 遗留待办（打磨迭代，非本轮范围）：
 - [ ] **无 JS 时谷段轮播卡不可见**：轮播轨（含 SSR 输出）motion.div 的 whileInView initial 在 SSR 内联 opacity:0，无 JS 用户看不到套餐卡（搜索引擎渲染 JS 不受影响）。待统一 mounted 门闩或 SSR 探测方案（v1.0.1 新写的 scrub 样式均已用 mounted 门闩，仅存量 whileInView 受影响）。
 - [ ] **展墙交错格穿地面线**：stripPos 高低交错使部分画作底缘越过地面线，后续统一调几何。
