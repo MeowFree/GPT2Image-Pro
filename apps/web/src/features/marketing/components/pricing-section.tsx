@@ -50,6 +50,10 @@ import { PlanInterval } from "@/features/payment/types";
 import { useRouter } from "@/i18n/routing";
 
 import { AnimatedPrice } from "./animated-price";
+import {
+  type PlanGalleryItem,
+  PlanGalleryStage,
+} from "./pricing-plan-gallery";
 
 function submitEpayForm(url: string, params: Record<string, string>) {
   const form = document.createElement("form");
@@ -637,10 +641,171 @@ export function PricingSection({
     );
   };
 
+  /**
+   * 轴身(Card 全体):两轨共用的业务内容,订阅交互与能力清单在内。
+   * 签条(推荐/当前)由 renderPlanBadge 单独渲染——廊道轨的展卷裁切
+   * 会切掉超出轴顶的部分,签条必须位于裁切层之外,故不在 Card 内。
+   */
+  const renderPlanCard = (planId: PricingPlanId) => {
+    const isCurrent = isCurrentPlan(planId);
+    const canUpgrade = canUpgradeToPlan(planId);
+    const isLoading = loadingPlan === planId;
+    const popular = isPopular(planId);
+    const planCredits = getPlanCredits(planId);
+    return (
+      <Card
+        className={cn(
+          // 轴身:去圆角的纸面,悬停以边色与投影回应(立轴不抬升)。
+          // gap-5/py-5:密度收紧,全轴(绳杆地杆含)须容于一屏紧视口
+          "relative flex h-full flex-col gap-5 rounded-none border-border py-5 transition-[border-color,box-shadow] duration-250 hover:border-foreground/30 hover:shadow-whisper",
+          // 推荐档:细 ring + 轻阴影,替代粗边框重阴影
+          popular && !isCurrent && "ring-1 ring-foreground/20 shadow-whisper",
+          // enterprise 卡边框本就更深,悬停保持同深度避免反向变浅
+          planId === "enterprise" &&
+            "border-foreground/60 bg-muted/20 hover:border-foreground/60",
+          isCurrent && "ring-2 ring-foreground"
+        )}
+      >
+        <CardHeader>
+          <CardTitle className="text-lg font-medium">
+            {t(`plans.${planId}.name`)}
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {getPlanDescription(planId)}
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-1 flex-col">
+          <div className="mb-4">
+            {/* 价格数字:衬线大号 */}
+            <span className="font-serif text-4xl font-medium">
+              ¥<AnimatedPrice value={getDisplayPrice(planId)} />
+            </span>
+            <span className="text-sm text-muted-foreground">
+              {getPriceSuffix(planId)}
+            </span>
+          </div>
+
+          {/* Credits highlight */}
+          <div className="mb-4 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+            <div className="flex items-center gap-1.5">
+              <Coins className="size-4 text-foreground" />
+              <span className="font-serif text-lg font-medium">
+                {planId === "free" ? (
+                  formatCredits(planCredits)
+                ) : (
+                  <AnimatedPrice
+                    value={planCredits}
+                    formatOptions={{
+                      useGrouping: true,
+                      maximumFractionDigits: 0,
+                    }}
+                  />
+                )}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {planId === "free"
+                  ? copy("credits", "积分")
+                  : copy("credits / month", "积分 / 月")}
+              </span>
+            </div>
+            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+              <ImageIcon className="size-3" />
+              <span>
+                {t("booksNote", {
+                  count: formatCredits(getEstimated4kCount(planCredits)),
+                })}
+              </span>
+            </div>
+            {planId === "free" && (
+              <div className="mt-1 text-xs text-muted-foreground">
+                {copy("one-time", "一次性")}
+              </div>
+            )}
+          </div>
+
+          {/* 密度收紧:最长档清单 11 条,全轴(绳杆地杆含)须一屏容纳 */}
+          <ul className="mb-5 flex-1 space-y-1.5">
+            {getGeneratedFeatureTexts(planId).map((feature) => (
+              <li key={feature} className="flex items-center gap-2">
+                <Check className="h-4 w-4 shrink-0 text-foreground" />
+                <span className="text-sm text-muted-foreground">
+                  {feature}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {isCurrent ? (
+            <Button
+              className="w-full"
+              variant="outline"
+              onClick={handleManageSubscription}
+              disabled={isPending}
+            >
+              {isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              {t("manageSubscription")}
+            </Button>
+          ) : hasSubscription && planId !== "free" && !canUpgrade ? (
+            <Button className="w-full" variant="outline" disabled>
+              {t("alreadySubscribed")}
+            </Button>
+          ) : (
+            <Button
+              className="w-full"
+              variant={popular ? "default" : "outline"}
+              onClick={() => handleSubscribe(planId)}
+              disabled={isLoading || isPending}
+            >
+              {isLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              {canUpgrade ? t("upgradePlan") : t(`plans.${planId}.cta`)}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  /** 签条:当前订阅优先于推荐;定位与动效由两轨各自包装 */
+  const renderPlanBadge = (planId: PricingPlanId) => {
+    if (isCurrentPlan(planId)) {
+      return (
+        <Badge className="bg-foreground text-background">
+          {t("currentPlan")}
+        </Badge>
+      );
+    }
+    if (isPopular(planId)) {
+      return (
+        <Badge className="bg-foreground text-background">
+          {t("mostPopular")}
+        </Badge>
+      );
+    }
+    return null;
+  };
+
   // -- 套餐轮播控制 --
   const plansScrollRef = useRef<HTMLDivElement>(null);
   // 润格立轴垂落入场;减动效偏好下直接呈现终态
   const reduceMotion = useReducedMotion();
+
+  // 展现双轨(v1.0.1 润格廊):lg+ 且非减动效走 sticky 廊道舞台
+  // (滚动跟随可倒放),其余(窄屏/减动效/SSR/无 JS)走横向轮播。
+  // SSR 恒输出轮播轨,客户端挂载后按介质切换——Pricing 深居页尾,
+  // 切换发生在视口外,无可见跳变。
+  const [stage, setStage] = useState<"carousel" | "gallery">("carousel");
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const decide = () =>
+      setStage(mq.matches && !reduceMotion ? "gallery" : "carousel");
+    decide();
+    mq.addEventListener("change", decide);
+    return () => mq.removeEventListener("change", decide);
+  }, [reduceMotion]);
 
   /** 桌面端箭头:按一张卡宽度(含 24px 间距)平滑步进 */
   const scrollPlans = (direction: 1 | -1) => {
@@ -686,9 +851,23 @@ export function PricingSection({
         </div>
       </div>
 
-      {/* 套餐轮播:snap 横向滑动选择(卡片加宽,替代 5 列挤压网格)。
-          - 触屏直接滑,桌面另有左右箭头按 1 卡步进
-          - 两侧渐隐遮罩提示可滑动;首次挂载把推荐档滚到视口中央 */}
+      {/* 展现双轨(v1.0.1 润格廊):
+          - gallery(lg+ 且非减动效):sticky 廊道舞台,竖滚横移 +
+            逐轴展卷,滚动跟随可倒放——影片镜头语言延伸到谷段
+          - carousel(其余与 SSR):snap 横向轮播 + 垂落入场,触屏直接
+            滑,桌面左右箭头按 1 卡步进,首次挂载推荐档滚到中央 */}
+      {stage === "gallery" ? (
+        <PlanGalleryStage
+          items={PLAN_IDS.map(
+            (planId): PlanGalleryItem => ({
+              planId,
+              popular: !!isPopular(planId) && !isCurrentPlan(planId),
+              card: renderPlanCard(planId),
+              badge: renderPlanBadge(planId),
+            })
+          )}
+        />
+      ) : (
       <div className="relative">
         <div
           aria-hidden
@@ -720,19 +899,12 @@ export function PricingSection({
           className="scrollbar-none flex snap-x snap-mandatory gap-6 overflow-x-auto scroll-smooth px-[max(1.5rem,calc((100vw-72rem)/2))] py-6"
         >
           {PLAN_IDS.map((planId) => {
-            const price = getDisplayPrice(planId);
-            const isCurrent = isCurrentPlan(planId);
-            const canUpgrade = canUpgradeToPlan(planId);
-            const isLoading = loadingPlan === planId;
-            const popular = isPopular(planId);
-            const planCredits = getPlanCredits(planId);
-            const features = getGeneratedFeatureTexts(planId);
-
+            const badge = renderPlanBadge(planId);
             return (
-              // 润格立轴(v1.0 谷段剧情化):每档套餐是一幅挂单的窄长
-              // 立轴——上卷杆/下地杆带轴头,入场自上方垂落展开并微摆
-              // (书画家挂润格的传统);签条(推荐/当前)挂在卷杆上。
-              // 业务交互(订阅/管理/能力清单)原样保留在轴身内。
+              // 润格立轴(轮播轨):每档套餐是一幅挂单的窄长立轴——
+              // 上卷杆/下地杆带轴头,入场自上方垂落展开并微摆
+              // (书画家挂润格的传统);签条(推荐/当前)挂在卷杆下。
+              // 业务交互(订阅/管理/能力清单)在共用轴身内原样保留。
               <motion.div
                 key={planId}
                 data-plan-card={planId}
@@ -749,131 +921,14 @@ export function PricingSection({
                   aria-hidden="true"
                   className="-mx-2 mb-1.5 h-1.5 rounded-full bg-foreground/75"
                 />
-              <Card
-                className={cn(
-                  // 轴身:去圆角的纸面,悬停以边色与投影回应(立轴不抬升)
-                  "relative flex h-full flex-col rounded-none border-border transition-[border-color,box-shadow] duration-250 hover:border-foreground/30 hover:shadow-whisper",
-                  // 推荐档:细 ring + 轻阴影,替代粗边框重阴影
-                  popular &&
-                    !isCurrent &&
-                    "ring-1 ring-foreground/20 shadow-whisper",
-                  // enterprise 卡边框本就更深,悬停保持同深度避免反向变浅
-                  planId === "enterprise" &&
-                    "border-foreground/60 bg-muted/20 hover:border-foreground/60",
-                  isCurrent && "ring-2 ring-foreground"
-                )}
-              >
-                {popular && !isCurrent && (
-                  <Badge className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 bg-foreground text-background">
-                    {t("mostPopular")}
-                  </Badge>
-                )}
-                {isCurrent && (
-                  <Badge className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 bg-foreground text-background">
-                    {t("currentPlan")}
-                  </Badge>
-                )}
-                <CardHeader>
-                  <CardTitle className="text-lg font-medium">
-                    {t(`plans.${planId}.name`)}
-                  </CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    {getPlanDescription(planId)}
-                  </p>
-                </CardHeader>
-                <CardContent className="flex flex-1 flex-col">
-                  <div className="mb-4">
-                    {/* 价格数字:衬线大号 */}
-                    <span className="font-serif text-4xl font-medium">
-                      ¥<AnimatedPrice value={price} />
-                    </span>
-                    <span className="text-sm text-muted-foreground">
-                      {getPriceSuffix(planId)}
-                    </span>
-                  </div>
-
-                  {/* Credits highlight */}
-                  <div className="mb-5 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <Coins className="size-4 text-foreground" />
-                      <span className="font-serif text-lg font-medium">
-                        {planId === "free" ? (
-                          formatCredits(planCredits)
-                        ) : (
-                          <AnimatedPrice
-                            value={planCredits}
-                            formatOptions={{
-                              useGrouping: true,
-                              maximumFractionDigits: 0,
-                            }}
-                          />
-                        )}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {planId === "free"
-                          ? copy("credits", "积分")
-                          : copy("credits / month", "积分 / 月")}
-                      </span>
+                <div className="relative">
+                  {badge ? (
+                    <div className="absolute -top-3 left-1/2 z-10 -translate-x-1/2">
+                      {badge}
                     </div>
-                    <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                      <ImageIcon className="size-3" />
-                      <span>
-                        {t("booksNote", {
-                          count: formatCredits(
-                            getEstimated4kCount(planCredits)
-                          ),
-                        })}
-                      </span>
-                    </div>
-                    {planId === "free" && (
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {copy("one-time", "一次性")}
-                      </div>
-                    )}
-                  </div>
-
-                  <ul className="mb-6 flex-1 space-y-3">
-                    {features.map((feature) => (
-                      <li key={feature} className="flex items-center gap-2">
-                        <Check className="h-4 w-4 shrink-0 text-foreground" />
-                        <span className="text-sm text-muted-foreground">
-                          {feature}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  {isCurrent ? (
-                    <Button
-                      className="w-full"
-                      variant="outline"
-                      onClick={handleManageSubscription}
-                      disabled={isPending}
-                    >
-                      {isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-                      {t("manageSubscription")}
-                    </Button>
-                  ) : hasSubscription && planId !== "free" && !canUpgrade ? (
-                    <Button className="w-full" variant="outline" disabled>
-                      {t("alreadySubscribed")}
-                    </Button>
-                  ) : (
-                    <Button
-                      className="w-full"
-                      variant={popular ? "default" : "outline"}
-                      onClick={() => handleSubscribe(planId)}
-                      disabled={isLoading || isPending}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-                      {canUpgrade ? t("upgradePlan") : t(`plans.${planId}.cta`)}
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
+                  ) : null}
+                  {renderPlanCard(planId)}
+                </div>
                 <div
                   aria-hidden="true"
                   className="relative -mx-3.5 mt-1.5 h-2 rounded-full bg-foreground/85"
@@ -886,6 +941,7 @@ export function PricingSection({
           })}
         </div>
       </div>
+      )}
 
       <div className="container mx-auto max-w-6xl">
         {creditPackages.length > 0 && (

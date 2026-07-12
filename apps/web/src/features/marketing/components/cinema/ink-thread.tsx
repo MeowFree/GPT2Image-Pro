@@ -40,15 +40,19 @@ const STEP_TITLE_PATH = {
  * @param numeral 章节罗马数字(纯排版记号,不入 i18n,与展墙编号同语汇)
  * @param step 步骤刻度键,标题取自 HowItWorks 命名空间
  * @param side 线体贴靠的页边,默认 left
+ * @param labelTop 刻度标签的 sticky 驻留高度,默认 45vh;区块正文与
+ *   视口中带同侧重叠时(如 SLA 左栏大数字)传视口下部空白带避让
  */
 export function InkThread({
   numeral,
   step,
   side = "left",
+  labelTop = "45vh",
 }: {
   numeral: string;
   step: InkStepKey;
   side?: "left" | "right";
+  labelTop?: string;
 }) {
   const t = useTranslations("HowItWorks");
   const tCinema = useTranslations("Cinema");
@@ -104,7 +108,7 @@ export function InkThread({
         )}
       </svg>
       {/* 零高 sticky 骑跨点:标签随滚动驻留在线旁(仅绑透明度,无 transform) */}
-      <div className="sticky top-[45vh] h-0">
+      <div style={{ top: labelTop }} className="sticky h-0">
         <motion.span
           style={isStatic ? undefined : { opacity: labelOpacity }}
           className={`absolute whitespace-nowrap text-[11px] uppercase tracking-widest text-muted-foreground ${
