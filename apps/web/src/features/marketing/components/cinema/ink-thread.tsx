@@ -42,17 +42,21 @@ const STEP_TITLE_PATH = {
  * @param side 线体贴靠的页边,默认 left
  * @param labelTop 刻度标签的 sticky 驻留高度,默认 45vh;区块正文与
  *   视口中带同侧重叠时(如 SLA 左栏大数字)传视口下部空白带避让
+ * @param labelFadeAt 标签在区块行程中的淡出点(0-1),默认 0.86;
+ *   长区块尾部有同侧内容时提前(如润格段积分包/例言进屏前)
  */
 export function InkThread({
   numeral,
   step,
   side = "left",
   labelTop = "45vh",
+  labelFadeAt = 0.86,
 }: {
   numeral: string;
   step: InkStepKey;
   side?: "left" | "right";
   labelTop?: string;
+  labelFadeAt?: number;
 }) {
   const t = useTranslations("HowItWorks");
   const tCinema = useTranslations("Cinema");
@@ -69,8 +73,14 @@ export function InkThread({
   const pathLength = useTransform(scrollYProgress, (v) =>
     Math.min(1, Math.max(0, v))
   );
-  // 刻度点亮:线尾扫过中点后亮起(函数式)
-  const labelOpacity = useTransform(scrollYProgress, (v) => (v > 0.5 ? 1 : 0));
+  // 刻度点亮窗口:线体过中点前亮起,行至淡出点收去——sticky 驻留
+  // 的标签在长区块尾部会压住内容(积分包/例言,走查实证),刻度语义
+  // 本就是"进段打点"而非全程驻留
+  const labelOpacity = useTransform(scrollYProgress, (v) => {
+    const rise = Math.min(1, Math.max(0, (v - 0.38) / 0.07));
+    const fall = 1 - Math.min(1, Math.max(0, (v - labelFadeAt) / 0.07));
+    return Math.min(rise, fall);
+  });
   const isStatic = status === "static";
 
   return (

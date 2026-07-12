@@ -26,6 +26,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { GenerationSlaStats } from "@/features/image-generation/sla";
 import { updateMarketingSlaStatusVisibilityAction } from "@/features/marketing/actions/sla-status";
+import { InkReveal } from "./ink-reveal";
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(2)}%`;
@@ -292,18 +293,26 @@ export function SlaStatusSection({
       <div className="container py-16 md:py-20">
         <div className="grid gap-10 lg:grid-cols-[1.1fr_2fr] lg:items-center">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {copy("Generation SLA", "生图服务 SLA")}
-            </p>
-            <h2 className="mt-2 font-serif text-3xl font-medium tracking-tight">
-              {copy("Every stroke lands", "千笔之约")}
-            </h2>
-            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              {copy(
-                `The latest ${formatNumber(stats.sampleSize)} finished generations, each one a dot of ink on this paper. Availability excludes moderation stops and invalid requests, so platform reliability is visible separately.`,
-                `最近 ${formatNumber(stats.sampleSize)} 张已完结生成，每一张都是这页纸上的一点墨。可用性剔除审核拦截与请求错误，平台侧可靠性单独可见。`
-              )}
-            </p>
+            {/* 左栏三行随滚动错落显影(v1.0.2 同族语言);
+                大数字保留自己的落墨尾段显影,不重复包裹 */}
+            <InkReveal>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {copy("Generation SLA", "生图服务 SLA")}
+              </p>
+            </InkReveal>
+            <InkReveal phase={0.2}>
+              <h2 className="mt-2 font-serif text-3xl font-medium tracking-tight">
+                {copy("Every stroke lands", "千笔之约")}
+              </h2>
+            </InkReveal>
+            <InkReveal phase={0.4}>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                {copy(
+                  `The latest ${formatNumber(stats.sampleSize)} finished generations, each one a dot of ink on this paper. Availability excludes moderation stops and invalid requests, so platform reliability is visible separately.`,
+                  `最近 ${formatNumber(stats.sampleSize)} 张已完结生成，每一张都是这页纸上的一点墨。可用性剔除审核拦截与请求错误，平台侧可靠性单独可见。`
+                )}
+              </p>
+            </InkReveal>
             <motion.p
               style={
                 mounted && !reduced

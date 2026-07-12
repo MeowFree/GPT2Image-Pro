@@ -50,6 +50,8 @@ import { PlanInterval } from "@/features/payment/types";
 import { useRouter } from "@/i18n/routing";
 
 import { AnimatedPrice } from "./animated-price";
+import { folioNumeral } from "./folio-numeral";
+import { InkReveal, InkRevealBoundary, InkRule } from "./ink-reveal";
 import {
   type PlanGalleryItem,
   PlanGalleryStage,
@@ -835,19 +837,28 @@ export function PricingSection({
   });
 
   return (
+    <InkRevealBoundary>
     <section id="pricing" className="py-20 md:py-28">
       <div className="container mx-auto max-w-6xl">
-        {/* Header:装裱眉标承接影片第五幕语义(选中作品的装裱规格) */}
+        {/* Header 揭幕(v1.0.2):眉标/标题/副标随滚动错落显影,
+            标题下装裱横档自中心生长——进入廊道前的开幕一拍 */}
         <div className="mb-12 text-center">
-          <p className="mb-3 text-[11px] uppercase tracking-widest text-muted-foreground">
-            {tCinema("framingLabel")}
-          </p>
-          <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-5xl">
-            {t("title")}
-          </h2>
-          <p className="mx-auto max-w-2xl leading-relaxed text-muted-foreground">
-            {pricingSubtitle}
-          </p>
+          <InkReveal>
+            <p className="mb-3 text-[11px] uppercase tracking-widest text-muted-foreground">
+              {tCinema("framingLabel")}
+            </p>
+          </InkReveal>
+          <InkReveal phase={0.22}>
+            <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-5xl">
+              {t("title")}
+            </h2>
+          </InkReveal>
+          <InkRule className="mx-auto mb-5 w-24" />
+          <InkReveal phase={0.42}>
+            <p className="mx-auto max-w-2xl leading-relaxed text-muted-foreground">
+              {pricingSubtitle}
+            </p>
+          </InkReveal>
         </div>
       </div>
 
@@ -946,26 +957,30 @@ export function PricingSection({
       <div className="container mx-auto max-w-6xl">
         {creditPackages.length > 0 && (
           <div className="mt-10">
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h3 className="font-serif text-xl font-medium">
-                  {copy("Extra Credit Packages", "额外积分包")}
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {copy(
-                    "Top up without changing your subscription. Package names, credits, prices, and plan restrictions come from the admin credit package matrix.",
-                    "无需更换订阅即可补充积分。积分包名称、额度、价格和套餐限制均读取后台积分包矩阵。"
-                  )}
-                </p>
+            <InkReveal>
+              <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h3 className="font-serif text-xl font-medium">
+                    {copy("Extra Credit Packages", "额外积分包")}
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {copy(
+                      "Top up without changing your subscription. Package names, credits, prices, and plan restrictions come from the admin credit package matrix.",
+                      "无需更换订阅即可补充积分。积分包名称、额度、价格和套餐限制均读取后台积分包矩阵。"
+                    )}
+                  </p>
+                </div>
+                <Button variant="outline" onClick={handleBuyCredits}>
+                  <ShoppingCart className="mr-2 h-4 w-4" />
+                  {copy("View packages", "查看积分包")}
+                </Button>
               </div>
-              <Button variant="outline" onClick={handleBuyCredits}>
-                <ShoppingCart className="mr-2 h-4 w-4" />
-                {copy("View packages", "查看积分包")}
-              </Button>
-            </div>
+            </InkReveal>
 
+            {/* 墨笺落案(v1.0.2):积分包是案头便笺——顶部墨标条,
+                逐张随滚动带微倾落定(相位按列错落,滚回收起) */}
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {creditPackages.map((pkg) => {
+              {creditPackages.map((pkg, pkgIndex) => {
                 const planPrices = getPackagePlanPrices(pkg);
                 const prices = planPrices.map((item) => item.price);
                 const minPrice = Math.min(...prices);
@@ -983,10 +998,18 @@ export function PricingSection({
                     : `${formatMoney(minPrice)} - ${formatMoney(maxPrice)}`;
 
                 return (
-                  <Card
+                  <InkReveal
                     key={pkg.id}
+                    phase={(pkgIndex % 3) * 0.18}
+                    tilt={pkgIndex % 2 === 0 ? -1.1 : 1.1}
+                  >
+                  <div
+                    aria-hidden="true"
+                    className="mx-3 h-1 rounded-full bg-foreground/80"
+                  />
+                  <Card
                     className={cn(
-                      "flex flex-col rounded-xl border-border transition-[border-color,box-shadow] duration-150 hover:border-foreground/30 hover:shadow-whisper",
+                      "flex h-full flex-col rounded-none border-border transition-[border-color,box-shadow] duration-150 hover:border-foreground/30 hover:shadow-whisper",
                       pkg.popular && "ring-1 ring-foreground/20 shadow-whisper"
                     )}
                   >
@@ -1077,24 +1100,46 @@ export function PricingSection({
                       </div>
                     </CardContent>
                   </Card>
+                  </InkReveal>
                 );
               })}
             </div>
           </div>
         )}
 
-        <div className="mt-8 rounded-lg border border-border bg-muted/30 px-4 py-4">
-          <h3 className="text-sm font-medium">{t("billingRules.title")}</h3>
-          <ul className="mt-3 grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
-            {billingRuleItems.map((item) => (
-              <li key={item} className="flex gap-2">
-                <Check className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
-                <span>{item}</span>
+        {/* 例言(v1.0.2):计费规则的书页凡例体——灰底白卡退役,
+            标题居中两侧短线,条目衬线序号(一/二/…),随滚动逐条
+            显影(相位错落,滚回倒放)。文案与条目内容不动。 */}
+        <div className="mt-12 border-y border-border/70 py-8">
+          <InkReveal>
+            <div className="flex items-center justify-center gap-4">
+              <span aria-hidden="true" className="h-px w-10 bg-foreground/30" />
+              <h3 className="text-sm font-medium tracking-[0.2em]">
+                {t("billingRules.title")}
+              </h3>
+              <span aria-hidden="true" className="h-px w-10 bg-foreground/30" />
+            </div>
+          </InkReveal>
+          <ul className="mt-6 grid gap-x-10 gap-y-3.5 text-sm leading-relaxed text-muted-foreground md:grid-cols-2">
+            {billingRuleItems.map((item, index) => (
+              <li key={item}>
+                <InkReveal phase={Math.min(0.8, index * 0.14)}>
+                  <div className="flex gap-3">
+                    <span
+                      aria-hidden="true"
+                      className="shrink-0 font-serif text-muted-foreground/60"
+                    >
+                      {folioNumeral(index, isZh)}
+                    </span>
+                    <span>{item}</span>
+                  </div>
+                </InkReveal>
               </li>
             ))}
           </ul>
         </div>
       </div>
     </section>
+    </InkRevealBoundary>
   );
 }

@@ -26,25 +26,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@repo/ui/components/accordion";
-
-/** 中文册页编号(超出回退阿拉伯序号) */
-const ZH_NUMERALS = [
-  "一",
-  "二",
-  "三",
-  "四",
-  "五",
-  "六",
-  "七",
-  "八",
-  "九",
-  "十",
-] as const;
-
-function folioNumeral(index: number, zh: boolean): string {
-  if (zh) return ZH_NUMERALS[index] ?? String(index + 1);
-  return String(index + 1).padStart(2, "0");
-}
+import { folioNumeral } from "./folio-numeral";
+import { InkReveal } from "./ink-reveal";
 
 /**
  * 单折:以自身进入视口的位置为翻折进度(target 元素级 useScroll),
@@ -155,16 +138,23 @@ export function FAQSection() {
     <section className="bg-secondary/50 py-20 md:py-28">
       <div className="container">
         <div className="mx-auto max-w-3xl">
+          {/* Header 揭幕(v1.0.2):三行随滚动错落显影,与谷段同语言 */}
           <div className="mb-12 text-center">
-            <p className="mb-2 text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              {t("label")}
-            </p>
-            <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
-              {t("title")}
-            </h2>
-            <p className="mx-auto max-w-2xl leading-relaxed text-muted-foreground">
-              {t("subtitle")}
-            </p>
+            <InkReveal>
+              <p className="mb-2 text-sm font-medium uppercase tracking-wider text-muted-foreground">
+                {t("label")}
+              </p>
+            </InkReveal>
+            <InkReveal phase={0.22}>
+              <h2 className="mb-4 text-balance font-serif text-3xl font-medium tracking-tight md:text-4xl">
+                {t("title")}
+              </h2>
+            </InkReveal>
+            <InkReveal phase={0.42}>
+              <p className="mx-auto max-w-2xl leading-relaxed text-muted-foreground">
+                {t("subtitle")}
+              </p>
+            </InkReveal>
           </div>
 
           {/* 册页:一问一折,随滚动逐页翻开;展开答案墨迹扫入 */}

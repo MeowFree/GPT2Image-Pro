@@ -118,8 +118,10 @@ async function HomeRuntimeSections({ locale }: { locale: string }) {
 
   return (
     <>
+      {/* 静默谷一:SLA 素面排版 + 页边墨线章节刻度 */}
       {(slaEnabled || canToggleSlaStatus) && (
         <section className="relative">
+          {/* labelTop 78vh:左栏大数字占视口中带,刻度落下部空白避让 */}
           <InkThread numeral="V" step="export" side="left" labelTop="78vh" />
           <SlaStatusSection
             locale={locale}
@@ -129,8 +131,17 @@ async function HomeRuntimeSections({ locale }: { locale: string }) {
           />
         </section>
       )}
+      {/* 谷段二折「润格」:五档立轴挂单走成廊道,墨线续缝。
+          side=left:廊道满宽,右页边标签会被轴身裁切;横移使左侧
+          渐空,左页边标签悬于空白纸面(v1.0.1 走查实证) */}
       <section className="relative">
-        <InkThread numeral="VI" step="framing" side="left" />
+        {/* labelFadeAt 0.6:廊道落幕即收刻度,积分包/例言进屏前隐去 */}
+        <InkThread
+          numeral="VI"
+          step="framing"
+          side="left"
+          labelFadeAt={0.6}
+        />
         <PricingSection
           payment={runtimePaymentConfig}
           capabilityMatrix={capabilityMatrix}
@@ -161,6 +172,7 @@ export default async function HomePage({
         >
           <HomeRuntimeSections locale={locale} />
         </Suspense>
+        {/* 谷段三折「册页」:问答折子 + 页边墨线章节刻度 */}
         <section className="relative">
           <InkThread numeral="VII" step="completion" side="left" />
           <FAQSection />
