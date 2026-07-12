@@ -267,6 +267,10 @@
     "framingLabel": "装裱规格",
     "macroNote": "原生高分辨率——每一丝飞白都经得起凝视",
     "pickCaption": "你的那张。",
+    "promptRevision": "，起笔再重一些，墨色更沉",
+    "invokeComment": "你会打字，你的程序也会",
+    "invokeDone": "200 OK · 16 张已生成",
+    "layersCaption": "PNG · WebP · PSD 分层",
     "wallTitles": [
       "竹影",
       "远山",

@@ -27,7 +27,8 @@ import { createDollyPass } from "./gl/passes/dolly";
 import { createFluidPass } from "./gl/passes/fluid";
 import { createParticlesPass } from "./gl/passes/particles";
 import { renderTextTexture } from "./gl/text-texture";
-import { GenerateScene } from "./scene-generate";
+import { GenerateScene, ReviseMarkLayer } from "./scene-generate";
+import { InvokeScene } from "./scene-invoke";
 import { ManifestoScene } from "./scene-manifesto";
 import { MultiplyScene } from "./scene-multiply";
 import { OpeningScene } from "./scene-opening";
@@ -82,10 +83,26 @@ const TITLE_KEYS = {
 } as const;
 
 /**
- * GL pass 一次性装载:样张/深度图解码与标题纹理就绪后按绘制序注册
- * (denoise 画布 -> dolly -> fluid -> particles -> 标题 denoise;
- * post 已由 provider 先行注册,终幕实例由 FinaleStage 自行注册)。
- * 个别资产失败仅跳过对应 pass,其余演出不受影响;
+ * revise 定稿覆盖实例读键:矩形与画布实例共用(同一 figure),
+ * 进度/可见门独立(GenerateScene 喂)。
+ */
+const REVISE_KEYS = {
+  rect: "canvasRect",
+  p: "reviseP",
+  glow: "reviseGlow",
+  visible: "reviseVisible",
+} as const;
+
+/** 朱笔圈心(图幅分数,起笔浓墨区)与径向生长强度——revise 幕常量 */
+export const REVISE_CENTER = [0.3, 0.45] as const;
+const REVISE_BIAS_STRENGTH = 0.7;
+
+/**
+ * GL pass 一次性装载:样张(定稿/初稿)/深度图解码与标题纹理就绪后按
+ * 绘制序注册(初稿 denoise -> 定稿 revise overlay -> dolly -> fluid ->
+ * particles -> 标题 denoise;post 已由 provider 先行注册,终幕实例由
+ * FinaleStage 自行注册)。个别资产失败仅跳过对应 pass,其余演出不受
+ * 影响(初稿缺失时降级用定稿,revise 幕退化为无覆盖变化);
  * 卸载由 provider dispose 兜底。
  */
 function FilmPasses() {
@@ -96,28 +113,42 @@ function FilmPasses() {
   useEffect(() => {
     if (!engine) return;
     let disposed = false;
-    const artwork = new Image();
-    artwork.src = "/cinema/artwork-hero.webp";
-    const depth = new Image();
-    depth.src = "/cinema/artwork-hero-depth.webp";
-    const artworkReady = artwork
-      .decode()
-      .then(() => artwork)
-      .catch(() => null);
-    const depthReady = depth
-      .decode()
-      .then(() => depth)
-      .catch(() => null);
+    const loadImage = (src: string) => {
+      const img = new Image();
+      img.src = src;
+      return img
+        .decode()
+        .then(() => img)
+        .catch(() => null);
+    };
+    const artworkReady = loadImage("/cinema/artwork-hero.webp");
+    const draftReady = loadImage("/cinema/artwork-hero-draft.webp");
+    const depthReady = loadImage("/cinema/artwork-hero-depth.webp");
     const titleReady = renderTextTexture(titleText, {
       fontPx: 96,
       width: 1536,
       height: 512,
       color: "#1a1a1a",
     }).catch(() => null);
-    Promise.all([artworkReady, depthReady, titleReady]).then(
-      ([art, dep, title]) => {
+    Promise.all([artworkReady, draftReady, depthReady, titleReady]).then(
+      ([art, draft, dep, title]) => {
         if (disposed) return;
-        if (art) engine.addPass(createDenoisePass(art));
+        // 画布显影画初稿(generate/macro 幕的对象);revise overlay 画
+        // 定稿,从朱笔圈心生长覆盖;dive 及以后全部沿用定稿
+        const draftOrFinal = draft ?? art;
+        if (draftOrFinal) engine.addPass(createDenoisePass(draftOrFinal));
+        if (art) {
+          engine.addPass(
+            createDenoisePass(art, REVISE_KEYS, {
+              mode: "overlay",
+              centerBias: [
+                REVISE_CENTER[0],
+                REVISE_CENTER[1],
+                REVISE_BIAS_STRENGTH,
+              ],
+            })
+          );
+        }
         if (art && dep) engine.addPass(createDollyPass(art, dep));
         // 浮点色缓冲不可用时工厂返回 null,反转由 dolly 压暗与墨章底色兜底
         const fluid = createFluidPass();
@@ -125,7 +156,7 @@ function FilmPasses() {
         // 样张缺失时 morph 粒子退化为墨点,序幕墨溅(纯墨色)不受影响
         engine.addPass(createParticlesPass(art));
         if (title) {
-          engine.addPass(createDenoisePass(title, TITLE_KEYS, true));
+          engine.addPass(createDenoisePass(title, TITLE_KEYS, { mode: "text" }));
         }
       }
     );
@@ -200,6 +231,10 @@ function FilmBody() {
         <SceneLayer scene="manifesto">
           <ManifestoScene />
         </SceneLayer>
+        {/* 一行调用:宣言(理念)与增殖(结果)之间的手段,墨底延续 */}
+        <SceneLayer scene="invoke">
+          <InvokeScene />
+        </SceneLayer>
         <SceneLayer scene="multiply">
           <MultiplyScene />
         </SceneLayer>
@@ -208,10 +243,11 @@ function FilmBody() {
         <ZoomThroughTransition />
         <MultiplyTransition />
         <PickAndReturnTransition />
-        {/* 章节导轨/页头暗场/活墨:全片常驻编排件 */}
+        {/* 章节导轨/页头暗场/活墨/朱笔圈:全片常驻编排件 */}
         <ChapterRail />
         <HeaderDimmer />
         <InkMistDirector />
+        <ReviseMarkLayer />
       </CinemaStage>
     </div>
   );

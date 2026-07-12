@@ -1,18 +1,22 @@
 "use client";
 
 /**
- * 第二/三幕:去噪奇观 + 微距凝视(跨 generate/macro 两幕,自管可见性)。
+ * 第二/三/四幕:去噪奇观 + 微距凝视 + 对话修改(跨 generate/macro/
+ * revise 三幕,自管可见性)。
  * generate:画布占位 figure 经 dom-sync 喂 GL 原位绘制,画布绝对居中
  * (与序幕 CanvasFrame 同规格同位,主角矩形全片不换位);幕内进度前 82%
- * 驱动 denoiseP(生长显影),后 18% 为显影完成的静止一拍(money shot);
- * 页边 EXIF 式采样 HUD;卖点解说词为视口右缘浮注;prompt 字幕常驻
- * 画布下方——打出的那句话与显影结果同框互证。
- * macro(v0.9):取景窗推近笔触局部(收锋飞白处)凝视->驻留漂移->拉回
- * 全幅->画布放大成方形 cover 全屏,dive 的全屏 dolly 从 zoom=1 无缝
- * 接管(内容与几何双连续)。全部量为 master 纯函数,倒放成立。
- * WHY 不套 SceneLayer:编排横跨两幕,单幕层会在幕界淡出打断连续镜头,
+ * 驱动 denoiseP(初稿生长显影),后 18% 为显影完成的静止一拍(money
+ * shot);页边 EXIF 式采样 HUD;卖点解说词为视口右缘浮注;prompt 字幕
+ * 常驻画布下方——打出的那句话与显影结果同框互证。
+ * macro(v0.9):取景窗推近笔触局部(收锋飞白处)凝视->驻留漂移->拉回。
+ * revise(v1.0,对话式编辑的剧情):prompt 在原句上接续打字("起笔再重
+ * 一些,墨色更沉")->朱笔手绘圈住起笔区(传统朱笔批改)->定稿从圈心
+ * 向外生长覆盖初稿(denoise overlay 实例)->revision 落幅一拍->画布
+ * 放大成方形 cover 全屏,dive 的全屏 dolly 从 zoom=1 无缝接管
+ * (内容与几何双连续)。全部量为 master 纯函数,倒放成立。
+ * WHY 不套 SceneLayer:编排横跨三幕,单幕层会在幕界淡出打断连续镜头,
  * 故自管可见性(起点淡入与 SceneLayer 边缘一致,dive 前 5% 交棒淡出)。
- * lite 态由 CSS 噪点罩+模糊衰减+transform 凝视兜底。
+ * lite 态由 CSS 噪点罩+模糊衰减+transform 凝视+双图交叉兜底。
  */
 import {
   type MotionValue,
@@ -22,6 +26,7 @@ import {
 } from "framer-motion";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { bell, sceneProgress } from "./cinema-config";
 import { useCinema } from "./cinema-gl";
 import { useMaster, useSceneProgress } from "./cinema-stage";
@@ -46,17 +51,18 @@ function easeInOut(t: number): number {
 }
 
 /**
- * macro 幕取景窗纯函数:推近笔触局部(0-0.42)->驻留缓慢漂移(0.42-0.58)
- * ->拉回全幅(0.58-0.78)。返回 denoise uCrop 的 (x, y, z);z=1 即全幅。
+ * macro 幕取景窗纯函数:推近笔触局部(0-0.45)->驻留缓慢漂移(0.45-0.62)
+ * ->拉回全幅(0.62-0.85)。返回 denoise uCrop 的 (x, y, z);z=1 即全幅。
  * 取景中心 0.72/0.42 为 AI 版一笔圆收笔飞白丝缕最密集的右侧中带
  * (按素材构图校准:起笔浓墨在左,枯笔收锋在右),z 最小 0.32(约
  * 3.1 倍放大),取景窗恒在图像 [0,1] 域内(0.72+-0.16 / 0.42+-0.16)。
+ * v1.0:放大交棒段移入 revise 幕尾,本幕以拉回全幅收束。
  */
 function macroCrop(m: number): { x: number; y: number; z: number } {
-  const zoomIn = easeInOut(seg(m, 0, 0.42));
-  const zoomOut = easeInOut(seg(m, 0.58, 0.78));
+  const zoomIn = easeInOut(seg(m, 0, 0.45));
+  const zoomOut = easeInOut(seg(m, 0.62, 0.85));
   const gaze = Math.min(zoomIn, 1 - zoomOut);
-  const drift = seg(m, 0.42, 0.58);
+  const drift = seg(m, 0.45, 0.62);
   return {
     x: 0.5 + (0.22 - drift * 0.02) * gaze,
     y: 0.5 - 0.08 * gaze,
@@ -64,9 +70,14 @@ function macroCrop(m: number): { x: number; y: number; z: number } {
   };
 }
 
-/** macro 幕画布放大段(0.72-1):方形 cover 全屏,为 dive 全屏交棒 */
-function macroGrow(m: number): number {
-  return easeInOut(seg(m, 0.72, 1));
+/** revise 幕画布放大段(0.82-1):方形 cover 全屏,为 dive 全屏交棒 */
+function reviseGrow(r: number): number {
+  return easeInOut(seg(r, 0.82, 1));
+}
+
+/** revise 幕定稿生长窗口:朱笔圈定(0.25)后自圈心向外覆盖到 0.7 */
+function reviseGrowth(r: number): number {
+  return seg(r, 0.25, 0.7);
 }
 
 export function GenerateScene() {
@@ -75,10 +86,13 @@ export function GenerateScene() {
   const master = useMaster();
   const p = useSceneProgress("generate");
   const macroP = useSceneProgress("macro");
+  const reviseP = useSceneProgress("revise");
   const { engine, status } = useCinema();
   const figureRef = useRef<HTMLDivElement | null>(null);
   const [hudStep, setHudStep] = useState(1);
   const [hudDone, setHudDone] = useState(false);
+  // 修改阶段:0 未开始 / 1 重绘中 / 2 已完成(驱动 HUD 文案)
+  const [revisePhase, setRevisePhase] = useState(0);
 
   useEffect(() => {
     if (status !== "full" || !figureRef.current || !engine) return;
@@ -97,6 +111,7 @@ export function GenerateScene() {
     (m: number) => {
       const g = sceneProgress(m, "generate");
       const mac = sceneProgress(m, "macro");
+      const rev = sceneProgress(m, "revise");
       const d = sceneProgress(m, "dive");
       const dev = seg(g, 0, DEVELOP_END);
       engine?.setProgress("denoiseP", dev);
@@ -106,8 +121,15 @@ export function GenerateScene() {
       engine?.setProgress("canvasCrop.x", crop.x);
       engine?.setProgress("canvasCrop.y", crop.y);
       engine?.setProgress("canvasCrop.z", crop.z);
+      // 定稿覆盖实例:朱笔圈定后自圈心生长,常驻到 dive 交棒
+      // (初稿实例在下层保持,overlay 未显影区透明,重叠无跳变)
+      const growth = reviseGrowth(rev);
+      engine?.setProgress("reviseP", growth);
+      engine?.setProgress("reviseGlow", bell(growth) * 0.5);
+      engine?.setProgress("reviseVisible", rev > 0 && d < 0.05 ? 1 : 0);
       setHudStep(Math.max(1, Math.min(28, Math.floor(1 + dev * 27))));
       setHudDone(g >= DEVELOP_END);
+      setRevisePhase(growth >= 1 ? 2 : growth > 0 ? 1 : 0);
     },
     [engine]
   );
@@ -127,10 +149,10 @@ export function GenerateScene() {
     return Math.min(1, g / 0.035) * (1 - seg(d, 0, 0.05));
   });
 
-  // 画布宽度:基态与序幕 CanvasFrame 同规格;macro 尾段放大成方形
+  // 画布宽度:基态与序幕 CanvasFrame 同规格;revise 尾段放大成方形
   // cover 全屏(超出部分由 sticky 视口 overflow-hidden 裁切)
   const canvasWidth = useTransform(master, (m) => {
-    const grow = macroGrow(sceneProgress(m, "macro"));
+    const grow = reviseGrow(sceneProgress(m, "revise"));
     if (grow <= 0 || typeof window === "undefined") {
       return "min(52vh, 480px)";
     }
@@ -139,10 +161,14 @@ export function GenerateScene() {
     return `${base + (cover - base) * grow}px`;
   });
 
-  // prompt 字幕:入幕即亮,显影段尾端淡出(macro 凝视要纯净画面)
-  const promptOpacity = useTransform(p, (v) =>
-    Math.min(seg(v, 0, 0.05), 1 - seg(v, 0.9, 1))
-  );
+  const hudText =
+    revisePhase === 2
+      ? "revision 02 · complete"
+      : revisePhase === 1
+        ? "revision 02 · repainting"
+        : hudDone
+          ? "step 28 / 28 · complete"
+          : `step ${String(hudStep).padStart(2, "0")} / 28 · denoising`;
 
   return (
     <motion.div
@@ -151,19 +177,17 @@ export function GenerateScene() {
       className="pointer-events-none absolute inset-0"
     >
       {/* 画布主角:与序幕 CanvasFrame 同规格,绝对居中,全片不换位;
-          macro 尾段放大为全屏交棒 dive */}
+          revise 尾段放大为全屏交棒 dive */}
       <motion.div
         ref={figureRef}
         style={{ width: canvasWidth }}
         className="absolute left-1/2 top-1/2 aspect-square -translate-x-1/2 -translate-y-1/2 border border-border bg-background"
       >
         {status !== "full" ? (
-          <LiteCanvasFill progress={p} macroP={macroP} />
+          <LiteCanvasFill progress={p} macroP={macroP} reviseP={reviseP} />
         ) : null}
         <div className="absolute -bottom-8 left-0 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          {hudDone
-            ? "step 28 / 28 · complete"
-            : `step ${String(hudStep).padStart(2, "0")} / 28 · denoising`}
+          {hudText}
         </div>
       </motion.div>
       {/* 卖点解说词:视口右缘浮注,宽屏可见,不影响画布构图 */}
@@ -182,8 +206,78 @@ export function GenerateScene() {
         </div>
       </div>
       <MacroNote progress={macroP} />
-      <PromptEcho opacity={promptOpacity} locale={locale} />
+      <PromptEcho master={master} locale={locale} />
     </motion.div>
+  );
+}
+
+/**
+ * 朱笔手绘圈:revise 幕圈住起笔浓墨区(圈心与 denoise overlay 的
+ * centerBias 同点)——传统书画的朱笔批改。pathLength 随进度"画"出
+ * (起收有呼吸),定稿生长接管后随之退场;开口不闭合,像真手绘。
+ * 朱砂在全片的第二次合法出场(第一次是作品落款印)。
+ */
+const REVISE_RING_PATH = (() => {
+  const cx = 30;
+  const cy = 45;
+  const r = 18;
+  const n = 48;
+  const pts: string[] = [];
+  for (let k = 0; k <= n; k++) {
+    const a = -0.4 + (k / n) * Math.PI * 2.12;
+    // 低频缓摆:手绘圈是整体歪而线条顺,高频抖动会成锯齿(走查实证)
+    const wob =
+      1 + 0.05 * Math.sin((k / n) * Math.PI * 2 * 2.3 + 2) +
+      0.03 * Math.sin((k / n) * Math.PI * 2 * 4.7 + 0.7);
+    const x = cx + Math.cos(a) * r * wob;
+    const y = cy + Math.sin(a) * r * wob * 0.92;
+    pts.push(`${k === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`);
+  }
+  return pts.join("");
+})();
+
+/**
+ * 朱笔圈舞台层:portal 到 body 并以 fixed z-20 越过 GL 画布(z-1)。
+ * WHY portal:position:sticky 的影片舞台自身创建 stacking context,
+ * 且 z-auto 低于画布 z-1——舞台内任何 z-index(以及 fixed 后代)都
+ * 翻不出去,唯有渲染到 body 直下才能参与 root 层叠(走查实证)。
+ * fixed 视口居中与画布基态同规格同位(圈使命在放大段之前已结束,
+ * 不随画布放大);窗口外 opacity 为 0,不占视口。
+ */
+export function ReviseMarkLayer() {
+  const progress = useSceneProgress("revise");
+  const draw = useTransform(progress, (v) => easeInOut(seg(v, 0.12, 0.3)));
+  const opacity = useTransform(
+    progress,
+    (v) => Math.min(1, seg(v, 0.1, 0.16)) * (1 - seg(v, 0.55, 0.7))
+  );
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+  return createPortal(
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed left-1/2 top-1/2 z-20 aspect-square w-[min(52vh,480px)] -translate-x-1/2 -translate-y-1/2"
+    >
+      <motion.svg
+        style={{ opacity }}
+        viewBox="0 0 100 100"
+        className="absolute inset-0 h-full w-full"
+      >
+        <motion.path
+          d={REVISE_RING_PATH}
+          // pathLength=1:把路径长度归一,framer 的 dash 扫描才以整条
+          // 路径为单位(缺省用户单位下会退化成亚像素虚线,走查实证)
+          pathLength={1}
+          fill="none"
+          stroke="#a8352a"
+          strokeWidth="0.9"
+          strokeLinecap="round"
+          style={{ pathLength: draw }}
+        />
+      </motion.svg>
+    </div>,
+    document.body
   );
 }
 
@@ -219,15 +313,35 @@ function MacroNote({ progress }: { progress: MotionValue<number> }) {
  * prompt 字幕:序幕打出的那句话在显影全程常驻同一位置——
  * 输入与结果同框互证,主旨(一句话变成这幅画)不言自明。
  * 位置与序幕 PromptLine 完全一致,幕界交叠时视觉上是同一行字。
+ * revise 幕重新亮起并在原句上接续打出修改指令(创作是一场对话),
+ * 新输入字色更深以示"正在说的话";生命周期为 master 纯函数。
  */
 function PromptEcho({
-  opacity,
+  master,
   locale,
 }: {
-  opacity: MotionValue<number>;
+  master: MotionValue<number>;
   locale: string;
 }) {
   const t = useTranslations("Cinema");
+  const revision = t("promptRevision");
+  const [shownRevision, setShownRevision] = useState("");
+  useMotionValueEvent(master, "change", (m) => {
+    const rev = sceneProgress(m, "revise");
+    const chars = Array.from(revision);
+    const typed = seg(rev, 0.03, 0.2);
+    setShownRevision(chars.slice(0, Math.round(typed * chars.length)).join(""));
+  });
+  const opacity = useTransform(master, (m) => {
+    const g = sceneProgress(m, "generate");
+    const rev = sceneProgress(m, "revise");
+    const d = sceneProgress(m, "dive");
+    const genPhase = Math.min(seg(g, 0, 0.05), 1 - seg(g, 0.9, 1));
+    const revPhase =
+      Math.min(seg(rev, 0, 0.05), 1 - seg(rev, 0.72, 0.85)) *
+      (1 - seg(d, 0, 0.03));
+    return Math.max(genPhase, revPhase);
+  });
   return (
     <motion.p
       style={{ opacity }}
@@ -236,6 +350,7 @@ function PromptEcho({
     >
       <span aria-hidden="true">&gt; </span>
       {t("promptSample")}
+      <span className="text-foreground">{shownRevision}</span>
       <span className="ml-0.5 inline-block h-4 w-[7px] animate-pulse bg-foreground align-middle" />
     </motion.p>
   );
@@ -278,23 +393,27 @@ function Caption({
 
 /**
  * lite 态画布填充:静态样张 + CSS 噪点罩随进度衰减;
- * macro 凝视以 transform 放大模拟(原点对准收锋飞白处)。
+ * macro 凝视以 transform 放大模拟(原点对准收锋飞白处);
+ * revise 以初稿->定稿交叉淡入模拟(定稿随生长进度浮现)。
  */
 function LiteCanvasFill({
   progress,
   macroP,
+  reviseP,
 }: {
   progress: MotionValue<number>;
   macroP: MotionValue<number>;
+  reviseP: MotionValue<number>;
 }) {
   const dev = useTransform(progress, (v) => seg(v, 0, DEVELOP_END));
   const noiseOpacity = useTransform(dev, (v) => 1 - v);
   const blur = useTransform(dev, (v) => `blur(${(1 - v) * 14}px)`);
   const gazeScale = useTransform(macroP, (v) => 1 / macroCrop(v).z);
+  const finalOpacity = useTransform(reviseP, (v) => reviseGrowth(v));
   return (
     <div className="absolute inset-0 overflow-hidden">
       <motion.img
-        src="/cinema/artwork-hero.webp"
+        src="/cinema/artwork-hero-draft.webp"
         alt=""
         aria-hidden="true"
         style={{
@@ -302,6 +421,13 @@ function LiteCanvasFill({
           scale: gazeScale,
           transformOrigin: "72% 42%",
         }}
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      <motion.img
+        src="/cinema/artwork-hero.webp"
+        alt=""
+        aria-hidden="true"
+        style={{ opacity: finalOpacity }}
         className="absolute inset-0 h-full w-full object-cover"
       />
       <motion.div
