@@ -75,6 +75,8 @@
 
 **v0.9 穷尽渲染升级（2026-07-12，已落地 main）**：用户指令"深入穷尽一切渲染技术，加强渲染、剧情长度与丰富度、视觉效果"。八项升级（活墨/生长显影/macro 凝视幕/体积光穿越/涡流粒子/纸面掠光/装裱时刻/墨池地面），八幕 2150vh；设计与走查勘误（活墨速度场吹满全屏、坐标系 y 向上、一次性脉冲被耗散追平须持续渗出、白纸段体积光须用影呈现、低幂 halo 放大残墨成全屏皱纹须加吸收阈值、向心流过强吸穿中心成月牙缺口）见设计稿第十四节。**等待用户提供 GPT Image 2 素材**（规格与统一化管线 `docs/plan/2026-07-12-artwork-brief.md`），到位后写 `ingest-artworks.cjs` 接收替换。
 
+**v1.0 剧情线扩展（2026-07-12，已落地 main）**：十幕 2620vh（新增 revise 对话修改幕/invoke 一行调用幕，pick 分层检视），谷段三折剧情化（SLA 千笔点阵/Pricing 润格立轴/FAQ 册页/墨线三段缝合）。勘误：sticky 舞台自建 stacking context 低于 GL 画布，舞台内 z-index 翻不出去，常驻 GL 上层元素须 portal 到 body；framer motion.path 的 pathLength 扫描必须配 `pathLength={1}` 属性否则退化亚像素虚线；SVG 手绘圈抖动须低频（高频成锯齿）。设计见设计稿第十五节。
+
 **AI 真实素材接入（2026-07-12，已落地 main）**：经产品自身 v1 API（gpt-image-2, quality high）生成全部 16 张水墨作品（`scripts/gen-artworks.cjs`，原图母版入库 `scripts/artwork-src/`），`scripts/ingest-artworks.cjs` 统一化接收（白点归一/hero 统一朱印/反相深度图/hero 2048 + 墙作 640 webp）替换 `public/cinema`；微距凝视中心按新 hero 构图重校（0.72/0.42 收笔飞白区）。勘误：sharp `negate()` 默认连 alpha 取反（深度图输出全透明，须先 flatten 再 `negate({alpha:false})`）；该部署 `/v1/responses` 502，走 `/v1/images/generations`（自带 keep-alive 保活）。
 
 遗留待办（打磨迭代，非本轮范围）：
