@@ -122,15 +122,18 @@ const VIGNETTE_BASE = 0.35;
 
 /**
  * 转场 C 选中回中:pick 幕胶片晕影随脱墙飞行加深再回落——
- * GL 侧的"接触阴影",视线随暗角收向回中的选中项。
- * DOM 侧 FLIP 飞回与其余项退场由 scene-wall 的矩形合成承担。
- * 晕影量为 pickP 的钟形纯函数,两端回到 post 基线,倒放成立。
+ * GL 侧的"接触阴影",视线随暗角收向回中的选中项;
+ * 装裱时刻(0.86-0.98)白闪一拍(postFlash)——盖上画框玻璃的反光。
+ * DOM 侧 FLIP 飞回/matte 装裱由 scene-wall 的矩形合成承担。
+ * 全部量为 pickP 的钟形纯函数,两端回到 post 基线,倒放成立。
  */
 export function PickAndReturnTransition() {
   const p = useSceneProgress("pick");
   const { engine } = useCinema();
   useMotionValueEvent(p, "change", (v) => {
     engine?.setProgress("postVignette", VIGNETTE_BASE + bell(v) * 0.2);
+    const flash = Math.max(0, Math.min(1, (v - 0.86) / 0.12));
+    engine?.setProgress("postFlash", bell(flash) * 0.5);
   });
   return null;
 }

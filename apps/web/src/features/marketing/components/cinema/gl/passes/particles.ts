@@ -1,8 +1,9 @@
 /**
  * 实例化粒子 pass:gl.POINTS + gl_VertexID 派生一切,零缓冲区。
  * 模式 0 墨溅:原点迸溅+伪重力,位置是进度的纯函数(倒放成立);
- * 模式 1 布局 morph:画布矩形内均匀采样 -> 4x4 网格重排,途中曲线扰动,
- * 颜色在顶点阶段采样图像纹理(WebGL2 VS 纹理拾取)。
+ * 模式 1 布局 morph:画布矩形内均匀采样 -> 4x4 网格重排,途中位移由
+ * curl-noise 无散流场输运(v0.9:墨屑在水流中被携带,路径成涡,
+ * 替换正弦 wander),颜色在顶点阶段采样图像纹理(WebGL2 VS 纹理拾取)。
  * morph 按墨键控:纸底像素几乎不成粒,飞散重组的是笔画本体;
  * 暗底段粒子显作淡墨雾(负片),随底色回纸转为真实墨色。
  */
@@ -27,6 +28,32 @@ out float vAlpha;
 
 float hash1(float n) {
   return fract(sin(n * 127.1) * 43758.5453);
+}
+
+float hash2(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash2(i), hash2(i + vec2(1, 0)), u.x),
+    mix(hash2(i + vec2(0, 1)), hash2(i + vec2(1, 1)), u.x),
+    u.y
+  );
+}
+
+// 数值旋度:标量噪声的垂直梯度场——处处无散,粒子沿它走不聚不散,
+// 像墨屑被水流携带;长度钳制到单位内,总位移由外层幅度控制
+vec2 curl(vec2 p) {
+  float e = 0.02;
+  float dy = vnoise(p + vec2(0.0, e)) - vnoise(p - vec2(0.0, e));
+  float dx = vnoise(p + vec2(e, 0.0)) - vnoise(p - vec2(e, 0.0));
+  vec2 v = vec2(dy, -dx) / (2.0 * e);
+  float l = length(v);
+  return l > 1.0 ? v / l : v;
 }
 
 // 视口分数 -> 裁剪空间(y 翻转:分数系自顶向下)
@@ -72,21 +99,24 @@ void main() {
     vec2 spread = (vec2(r2, r3) - 0.5) * 0.1 * (1.0 - uP);
     vec2 dst = tileCenter + spread;
     float bellP = 1.0 - abs(uP * 2.0 - 1.0);
-    vec2 wander = vec2(
-      sin(i * 0.37 + uP * 9.0),
-      cos(i * 0.29 + uP * 7.0)
-    ) * 0.012 * bellP;
-    pos = mix(src + scatter, dst, conv) + wander;
+    // 途中位移:curl-noise 流场输运——域取粒子基准位置(空间连贯,
+    // 相邻粒子同流成涡),场随进度缓慢演化;hold 段权重为零保轮廓,
+    // 幅度沿用 <=0.014 视口宽工艺教训(勘误:大幅扰动会抹平圆相)
+    vec2 base = mix(src + scatter, dst, conv);
+    vec2 flow = curl(base * 2.6 + vec2(uP * 0.7, -uP * 0.5));
+    vec2 wander = flow * 0.014 * bellP * smoothstep(0.1, 0.35, uP);
+    pos = base + wander;
     vec3 texel = texture(uImage, srcLocal).rgb;
     float srcLum = dot(texel, vec3(0.299, 0.587, 0.114));
     // 墨键控:纸底像素完全不显(alpha 与 size 双键控——数万个微透明
     // 尘点叠加会积成实心云,淹没笔画轮廓),飞散重组的是笔画本体。
     // WHY 1.0-smoothstep 而非反序边界:GLSL 规定 edge0>=edge1 未定义
     float inkAmt = 1.0 - smoothstep(0.5, 0.9, srcLum);
-    // 暗底段显作淡墨雾(负片),随底色回纸转为真实墨色
-    vColor = mix(vec3(0.88, 0.86, 0.81), texel, smoothstep(0.35, 0.75, uP));
+    // 暗底段显作淡墨雾(负片),随底色回纸转为真实墨色;
+    // 底色罩保持到中段(scene-multiply),负片段提亮一档保持对比
+    vColor = mix(vec3(0.93, 0.91, 0.86), texel, smoothstep(0.5, 0.85, uP));
     alpha = inkAmt * 0.92;
-    size = (0.6 + inkAmt * 2.6) + bellP * 2.0 * inkAmt;
+    size = (0.6 + inkAmt * 2.6) + bellP * 3.0 * inkAmt;
   }
   vAlpha = alpha;
   gl_Position = vec4(toClip(pos), 0.0, 1.0);

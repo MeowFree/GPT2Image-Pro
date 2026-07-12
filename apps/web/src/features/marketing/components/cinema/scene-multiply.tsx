@@ -48,11 +48,12 @@ export function MultiplyScene() {
   const { status } = useCinema();
   const { vw, vh } = useViewportSize();
   const isFull = status === "full";
-  // 底色回纸白:墨色罩(与宣言章底色 #0e0e0d 同色)在粒子迸发前(12%)
-  // 保持,随后平滑撤除,72% 处回到纸面——不再有长段死黑视口。
+  // 底色回纸白:墨色罩(与宣言章底色 #0e0e0d 同色)保持到粒子飞行
+  // 中段(28%)——淡墨粒子云须衬深底才有存在感(走查实证:撤早了
+  // 中段粒子对着灰底对比尽失),0.9 处回到纸面迎接网格淡入。
   // 纯样式 MotionValue,单独节点绑定(分层铁律)。
   const backdrop = useTransform(p, (v) => {
-    const t = Math.min(1, Math.max(0, (v - 0.12) / 0.6));
+    const t = Math.min(1, Math.max(0, (v - 0.28) / 0.62));
     const alpha = 1 - t * t * (3 - 2 * t);
     return `rgba(14, 14, 13, ${alpha})`;
   });
