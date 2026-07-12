@@ -71,11 +71,36 @@ export function StaticFilm() {
       <StaticOpening />
       <StaticFeatures />
       <StaticManifesto />
+      <StaticInvoke />
       <StaticSteps />
       <StaticWall />
       <StaticQuotes />
       <StaticFinaleLine />
     </div>
+  );
+}
+
+/**
+ * 一行调用(invoke 幕的静态真相):等宽代码块呈现 API 请求与批量
+ * 结果——内容与影片一致,不依赖动画。
+ */
+function StaticInvoke() {
+  const t = useTranslations("Cinema");
+  return (
+    <section className="bg-[#0e0e0d] py-20">
+      <div className="container mx-auto max-w-xl font-mono text-sm leading-relaxed">
+        <p className="mb-4 text-white/45">
+          <span aria-hidden="true"># </span>
+          {t("invokeComment")}
+        </p>
+        <pre className="whitespace-pre-wrap text-white/90">{`POST /v1/images/generations
+{
+  "prompt": "${t("promptSample")}",
+  "n": 16
+}`}</pre>
+        <p className="mt-4 text-white/60">{t("invokeDone")}</p>
+      </div>
+    </section>
   );
 }
 
@@ -124,6 +149,7 @@ function StaticOpening() {
       <p className="mt-8 font-mono text-sm text-muted-foreground">
         <span aria-hidden="true">&gt; </span>
         {tCinema("promptSample")}
+        <span className="text-foreground">{tCinema("promptRevision")}</span>
         <span className="ml-0.5 inline-block h-4 w-[7px] bg-foreground align-middle motion-safe:animate-pulse" />
       </p>
       <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">

@@ -278,6 +278,26 @@ body[data-cinema-dark] [data-site-header] {
   pointer-events: none;
 }
 
+/* FAQ 册页:答案如墨落纸自上而下扫入(radix 展开态触发) */
+@keyframes faq-ink-reveal {
+  from {
+    clip-path: inset(0 0 100% 0);
+    opacity: 0.4;
+  }
+  to {
+    clip-path: inset(0 0 0% 0);
+    opacity: 1;
+  }
+}
+[data-state="open"] .faq-ink-reveal {
+  animation: faq-ink-reveal 0.55s cubic-bezier(0.22, 0.8, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-state="open"] .faq-ink-reveal {
+    animation: none;
+  }
+}
+
 /* 营销页动效基建:无限走马灯与背景呼吸光晕 */
 @keyframes marquee {
   from {

@@ -14,20 +14,26 @@ import { useTranslations } from "next-intl";
 import { useRef } from "react";
 import { useCinema } from "./cinema-gl";
 
-/** 章节刻度可用的步骤键(HowItWorks 四步语汇) */
-type InkStepKey = "upload" | "generate" | "export" | "completion";
+/** 章节刻度可用的步骤键(HowItWorks 四步语汇 + 装裱) */
+type InkStepKey =
+  | "upload"
+  | "generate"
+  | "export"
+  | "completion"
+  | "framing";
 
 /**
  * 步骤键 -> HowItWorks 命名空间标题路径。
  * WHY 单独映射:completion 的 i18n 路径不在 steps 下
- * (与 static-film 的 STEP_ITEMS 同一事实,已核对 messages)。
+ * (与 static-film 的 STEP_ITEMS 同一事实,已核对 messages);
+ * framing 取 Cinema.framingLabel(润格段刻度,v1.0 谷段缝合)。
  */
 const STEP_TITLE_PATH = {
   upload: "steps.upload.title",
   generate: "steps.generate.title",
   export: "steps.export.title",
   completion: "completion.title",
-} as const satisfies Record<InkStepKey, string>;
+} as const satisfies Record<Exclude<InkStepKey, "framing">, string>;
 
 /**
  * 谷段墨线:在最近的 relative 祖先内沿页边铺满全高。
@@ -45,6 +51,9 @@ export function InkThread({
   side?: "left" | "right";
 }) {
   const t = useTranslations("HowItWorks");
+  const tCinema = useTranslations("Cinema");
+  const label =
+    step === "framing" ? tCinema("framingLabel") : t(STEP_TITLE_PATH[step]);
   const { status } = useCinema();
   const ref = useRef<HTMLDivElement | null>(null);
   // 自身行程:区块从视口底进入到从视口顶离开,线随行程扫描生长
@@ -104,7 +113,7 @@ export function InkThread({
         >
           <span className="font-serif">{numeral}</span>
           {" · "}
-          {t(STEP_TITLE_PATH[step])}
+          {label}
         </motion.span>
       </div>
     </div>

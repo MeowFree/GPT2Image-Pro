@@ -142,17 +142,20 @@ export default async function HomePage({
             />
           </section>
         )}
-        {/* 第五幕装裱:定价交互原样保留,仅加装裱眉标 */}
-        <PricingSection
-          payment={runtimePaymentConfig}
-          capabilityMatrix={capabilityMatrix}
-          creditPackages={creditPackages}
-          creditPackageExpiryDays={creditPackageExpiryDays}
-          imageBasePricing={imageBasePricing}
-        />
-        {/* 静默谷二:FAQ 素面排版 + 页边墨线章节刻度 */}
+        {/* 谷段二折「润格」:三档立轴挂单,墨线续缝(v1.0 剧情化) */}
         <section className="relative">
-          <InkThread numeral="VI" step="completion" side="right" />
+          <InkThread numeral="VI" step="framing" side="right" />
+          <PricingSection
+            payment={runtimePaymentConfig}
+            capabilityMatrix={capabilityMatrix}
+            creditPackages={creditPackages}
+            creditPackageExpiryDays={creditPackageExpiryDays}
+            imageBasePricing={imageBasePricing}
+          />
+        </section>
+        {/* 谷段三折「册页」:问答折子 + 页边墨线章节刻度 */}
+        <section className="relative">
+          <InkThread numeral="VII" step="completion" side="left" />
           <FAQSection />
         </section>
         {/* 终幕:反向显影 bookend + CTA(承接原 CTASection 内容) */}

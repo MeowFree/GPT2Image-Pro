@@ -1,9 +1,19 @@
 "use client";
 
+/**
+ * 谷段一折「千笔之约」:生图 SLA 的水墨数据可视化(v1.0 剧情化)。
+ * 可靠性不是读数字,是亲眼看见——最近上千张已完结生成化作一片
+ * 墨点雨,入场时按波次落在纸面排成点阵:成功 = 墨点,平台或上游
+ * 错误 = 朱色空圈,审核拦截与用户请求错误 = 淡灰点(不计入可用性
+ * 的两类以低对比呈现);随后成功率大数字浮现,图例以点色对应。
+ * 点序经固定种子洗牌(错误散布其间,如实呈现);reduced-motion 与
+ * 视口外直接呈现终态,数据真相不依赖动画。
+ * 管理员可见性开关(server action)原样保留。
+ */
 import { Button } from "@repo/ui/components/button";
 import { Eye, Loader2, X } from "lucide-react";
 import { useAction } from "next-safe-action/hooks";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { GenerationSlaStats } from "@/features/image-generation/sla";
 import { updateMarketingSlaStatusVisibilityAction } from "@/features/marketing/actions/sla-status";
@@ -14,6 +24,137 @@ function formatPercent(value: number) {
 
 function formatNumber(value: number) {
   return value.toLocaleString("en-US");
+}
+
+/** 点类型:与图例一一对应 */
+type DotKind = "ok" | "platform" | "muted";
+
+const DOT_COLORS: Record<DotKind, string> = {
+  ok: "#221d1a",
+  platform: "#a8352a",
+  muted: "#c9c2b4",
+};
+
+/** 确定性洗牌种子随机(与水墨引擎同式) */
+function mulberry32(a: number) {
+  let state = a | 0;
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** 由统计构造点序列(封顶 1000,按比例取整,成功补齐余数,固定种子洗牌) */
+function buildDots(stats: GenerationSlaStats): DotKind[] {
+  const total = Math.max(
+    1,
+    Math.min(1000, stats.sampleSize || stats.completed)
+  );
+  const sum = Math.max(1, stats.sampleSize || 1);
+  const platform = Math.round((stats.platformErrors / sum) * total);
+  const muted = Math.round(
+    ((stats.moderationErrors + stats.userRequestErrors) / sum) * total
+  );
+  const ok = Math.max(0, total - platform - muted);
+  const dots: DotKind[] = [
+    ...Array.from({ length: ok }, () => "ok" as const),
+    ...Array.from({ length: platform }, () => "platform" as const),
+    ...Array.from({ length: muted }, () => "muted" as const),
+  ];
+  const rnd = mulberry32(97);
+  for (let i = dots.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const a = dots[i] as DotKind;
+    dots[i] = dots[j] as DotKind;
+    dots[j] = a;
+  }
+  return dots;
+}
+
+/**
+ * 点阵画布:入场按波次落点(约 1.6s),终态与动画中间态均由同一
+ * 绘制函数产出(重入/resize/reduced-motion 都收敛到同一真相)。
+ */
+function DotField({ dots }: { dots: DotKind[] }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const playedRef = useRef(false);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const cols = 50;
+    const rows = Math.ceil(dots.length / cols);
+    let raf = 0;
+    const draw = (progress: number) => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = canvas.clientWidth;
+      const h = (w / cols) * rows;
+      canvas.height = Math.round(h * dpr);
+      canvas.width = Math.round(w * dpr);
+      canvas.style.height = `${h}px`;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, w, h);
+      const cell = w / cols;
+      const r = cell * 0.22;
+      const shown = Math.floor(progress * dots.length);
+      for (let i = 0; i < shown; i++) {
+        const kind = dots[i] as DotKind;
+        const cx = (i % cols) * cell + cell / 2;
+        const cy = Math.floor(i / cols) * cell + cell / 2;
+        // 刚落下的点略大(着纸未收),随后回到常规半径
+        const age = (progress * dots.length - i) / dots.length;
+        const radius = r * (age < 0.02 ? 1.5 - age * 25 : 1);
+        ctx.beginPath();
+        ctx.arc(cx, cy, kind === "muted" ? radius * 0.8 : radius, 0, 7);
+        if (kind === "platform") {
+          ctx.strokeStyle = DOT_COLORS.platform;
+          ctx.lineWidth = 1.4;
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = DOT_COLORS[kind];
+          ctx.fill();
+        }
+      }
+    };
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const play = () => {
+      if (playedRef.current) return;
+      playedRef.current = true;
+      if (reduced) {
+        draw(1);
+        return;
+      }
+      const t0 = performance.now();
+      const tick = (now: number) => {
+        const p = Math.min(1, (now - t0) / 1600);
+        draw(p);
+        if (p < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    };
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) play();
+      },
+      { threshold: 0.3 }
+    );
+    io.observe(canvas);
+    const onResize = () => {
+      if (playedRef.current) draw(1);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      io.disconnect();
+      window.removeEventListener("resize", onResize);
+    };
+  }, [dots]);
+  return <canvas ref={canvasRef} aria-hidden="true" className="w-full" />;
 }
 
 export function SlaStatusSection({
@@ -52,22 +193,24 @@ export function SlaStatusSection({
     }
   );
 
-  const items = [
+  const legend = [
     {
+      kind: "ok" as const,
       label: copy("Completed", "成功生成"),
       value: formatNumber(stats.completed),
     },
     {
+      kind: "platform" as const,
       label: copy("Platform / upstream errors", "平台或上游错误"),
       value: formatNumber(stats.platformErrors),
     },
     {
-      label: copy("Moderation stops", "审核拦截或异常"),
-      value: formatNumber(stats.moderationErrors),
-    },
-    {
-      label: copy("User request errors", "用户请求错误"),
-      value: formatNumber(stats.userRequestErrors),
+      kind: "muted" as const,
+      label: copy(
+        "Moderation stops / request errors",
+        "审核拦截与请求错误"
+      ),
+      value: formatNumber(stats.moderationErrors + stats.userRequestErrors),
     },
   ];
 
@@ -109,30 +252,33 @@ export function SlaStatusSection({
 
   return (
     <section className="border-y border-border/60 bg-secondary/50">
-      <div className="container py-10">
-        <div className="grid gap-6 lg:grid-cols-[1.3fr_2fr] lg:items-center">
+      <div className="container py-16 md:py-20">
+        <div className="grid gap-10 lg:grid-cols-[1.1fr_2fr] lg:items-center">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {copy("Generation SLA", "生图服务 SLA")}
+            </p>
+            <h2 className="mt-2 font-serif text-3xl font-medium tracking-tight">
+              {copy("Every stroke lands", "千笔之约")}
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
               {copy(
-                `Live sample: latest ${formatNumber(stats.sampleSize)} finished generations`,
-                `实时样本：最近 ${formatNumber(stats.sampleSize)} 张已完结生成记录`
+                `The latest ${formatNumber(stats.sampleSize)} finished generations, each one a dot of ink on this paper. Availability excludes moderation stops and invalid requests, so platform reliability is visible separately.`,
+                `最近 ${formatNumber(stats.sampleSize)} 张已完结生成，每一张都是这页纸上的一点墨。可用性剔除审核拦截与请求错误，平台侧可靠性单独可见。`
               )}
             </p>
-            <h2 className="mt-2 font-serif text-2xl font-medium tracking-tight">
-              {copy("Generation SLA", "生图服务 SLA")}
-            </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {copy(
-                "Availability excludes moderation stops and invalid user requests, so platform reliability is visible separately from request quality.",
-                "可用性统计剔除审核拦截和用户请求错误，单独展示平台侧可靠性。"
-              )}
+            <p className="mt-6 font-serif text-5xl font-medium tracking-tight">
+              {formatPercent(stats.successRate)}
+            </p>
+            <p className="mt-1 text-xs uppercase tracking-widest text-muted-foreground">
+              {copy("availability", "可用性")}
             </p>
             {canToggleVisibility && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="mt-4"
+                className="mt-6"
                 onClick={() => updateVisibility({ enabled: false })}
                 disabled={isPending}
               >
@@ -146,28 +292,32 @@ export function SlaStatusSection({
             )}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-lg border border-border bg-background p-4">
-              <p className="text-xs font-medium text-muted-foreground">
-                {copy("SLA", "SLA")}
-              </p>
-              <p className="mt-2 font-serif text-2xl font-medium">
-                {formatPercent(stats.successRate)}
-              </p>
-            </div>
-            {items.map((item) => (
-              <div
-                key={item.label}
-                className="rounded-lg border border-border bg-background p-4"
-              >
-                <p className="text-xs font-medium text-muted-foreground">
+          <div>
+            <DotField dots={buildDots(stats)} />
+            <ul className="mt-5 flex flex-wrap gap-x-8 gap-y-2">
+              {legend.map((item) => (
+                <li
+                  key={item.kind}
+                  className="flex items-center gap-2 text-xs text-muted-foreground"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={
+                      item.kind === "platform"
+                        ? {
+                            border: `1.4px solid ${DOT_COLORS.platform}`,
+                          }
+                        : { backgroundColor: DOT_COLORS[item.kind] }
+                    }
+                  />
                   {item.label}
-                </p>
-                <p className="mt-2 font-serif text-2xl font-medium">
-                  {item.value}
-                </p>
-              </div>
-            ))}
+                  <span className="font-medium text-foreground/80">
+                    {item.value}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </div>

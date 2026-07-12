@@ -92,6 +92,14 @@ function wallPhases(wallP: number): { spread: number; glide: number } {
 }
 
 /**
+ * pick 幕内分段(v1.0 加长后):回中飞行 [0,0.6] -> 装裱 [0.62,0.78]
+ * -> 分层检视 [0.78,0.95](三层错开一拍再合上) -> 落幅。
+ */
+function pickReturn(pickP: number): number {
+  return clamp01(pickP / 0.6);
+}
+
+/**
  * 第 i 幅展品的合成矩形(视口分数):
  * 拉开(gridPos->stripPos) -> 推轨(轨道归一化左移) -> 选中回中/微散。
  * master 单值纯函数——三段连续合成,幕界处逐位咬合。
@@ -112,12 +120,16 @@ function figureRect(
     x: base.x - glide * (strip.trackWidth - 1),
   };
   if (i === PICKED_INDEX) {
-    return mixRect(glided, centerSquareRect(vw, vh), easeInOut(pickP));
+    return mixRect(
+      glided,
+      centerSquareRect(vw, vh),
+      easeInOut(pickReturn(pickP))
+    );
   }
   // 其余项随 pick 垂直微散(±3vh,方向按奇偶),与淡出叠加成让位感
   return {
     ...glided,
-    y: glided.y + pickP * 0.03 * (i % 2 === 0 ? -1 : 1),
+    y: glided.y + pickReturn(pickP) * 0.03 * (i % 2 === 0 ? -1 : 1),
   };
 }
 
@@ -205,7 +217,7 @@ function WallFloorLine({ vw, vh }: { vw: number; vh: number }) {
   const strip = wallStrip(0, vw, vh);
   const opacity = useTransform(master, (m) => {
     const { spread } = wallPhases(sceneProgress(m, "wall"));
-    return spread * (1 - sceneProgress(m, "pick")) * 0.8;
+    return spread * (1 - pickReturn(sceneProgress(m, "pick"))) * 0.8;
   });
   return (
     <motion.div
@@ -249,14 +261,16 @@ function WallFigure({
     master,
     (m) => figureRect(cell.index, m, vw, vh).h * vh
   );
-  // 非选中项随 pick 退场;选中项恒亮直到终点
+  // 非选中项随回中段退场;选中项恒亮直到终点
   const figOpacity = useTransform(master, (m) =>
-    cell.index === PICKED_INDEX ? 1 : 1 - sceneProgress(m, "pick")
+    cell.index === PICKED_INDEX
+      ? 1
+      : 1 - pickReturn(sceneProgress(m, "pick"))
   );
   // 铭牌只属于展墙形态:随拉开浮现,随选中退场
   const plaqueOpacity = useTransform(master, (m) => {
     const { spread } = wallPhases(sceneProgress(m, "wall"));
-    return spread * (1 - sceneProgress(m, "pick"));
+    return spread * (1 - pickReturn(sceneProgress(m, "pick")));
   });
   // 墨池倒影与铭牌同生命周期(展墙形态专属)
   const mirrorOpacity = plaqueOpacity;
@@ -275,6 +289,9 @@ function WallFigure({
             className="h-full w-full object-cover"
           />
         </div>
+        {cell.index === PICKED_INDEX ? (
+          <LayersInspect src={cell.src} />
+        ) : null}
         {/* 墨池倒影:画作映在墨面上,mask 向下渐隐 + 微模糊(水面漫反射) */}
         <motion.div
           aria-hidden="true"
@@ -308,7 +325,7 @@ function FramingReveal() {
   const t = useTranslations("Cinema");
   const master = useMaster();
   const reveal = useTransform(master, (m) =>
-    easeInOut(clamp01((sceneProgress(m, "pick") - 0.72) / 0.22))
+    easeInOut(clamp01((sceneProgress(m, "pick") - 0.62) / 0.16))
   );
   const shadow = useTransform(
     reveal,
@@ -326,6 +343,98 @@ function FramingReveal() {
         className="pointer-events-none absolute left-1/2 top-full mt-7 -translate-x-1/2 whitespace-nowrap text-center font-serif text-sm italic text-muted-foreground"
       >
         {t("pickCaption")}
+      </motion.p>
+    </>
+  );
+}
+
+/**
+ * 分层检视(仅选中项,v1.0):装裱后画作短暂分离为三片错开的层——
+ * 纸底层/墨画层/印章层(印层为右下角裁切),彼此微位移微旋、层间
+ * 投影,一拍后合回原位;随后"PNG · WebP · PSD 分层"署名浮现。
+ * 交付格式的动画表达:分层是看得见的,不是列表里的一行字。
+ * 三层叠于原图之上,分离量为 pick 纯函数钟形(合上后完全透明,
+ * 原图恢复唯一真相)。
+ */
+function LayersInspect({ src }: { src: string }) {
+  const t = useTranslations("Cinema");
+  const master = useMaster();
+  // 分离量:0.78-0.95 窗口内钟形(错开一拍再合上)
+  const split = useTransform(master, (m) => {
+    const p = sceneProgress(m, "pick");
+    const w = clamp01((p - 0.78) / 0.17);
+    return Math.sin(Math.min(1, w) * Math.PI);
+  });
+  const visibility = useTransform(split, (v) => (v > 0.001 ? 1 : 0));
+  const paperX = useTransform(split, (v) => v * -14);
+  const paperY = useTransform(split, (v) => v * 10);
+  const paperRotate = useTransform(split, (v) => v * -1.2);
+  const inkX = useTransform(split, (v) => v * 4);
+  const inkY = useTransform(split, (v) => v * -6);
+  const sealX = useTransform(split, (v) => v * 18);
+  const sealY = useTransform(split, (v) => v * -14);
+  const sealRotate = useTransform(split, (v) => v * 1.4);
+  const layerShadow = useTransform(
+    split,
+    (v) => `0 ${8 * v}px ${22 * v}px rgba(24, 20, 15, ${0.16 * v})`
+  );
+  // 署名与分层同窗浮现,落幅后保持(交割单)
+  const captionOpacity = useTransform(master, (m) =>
+    clamp01((sceneProgress(m, "pick") - 0.8) / 0.12)
+  );
+  return (
+    <>
+      <motion.div
+        aria-hidden="true"
+        style={{ opacity: visibility }}
+        className="pointer-events-none absolute inset-0"
+      >
+        {/* 纸底层:空白宣纸 */}
+        <motion.div
+          style={{
+            x: paperX,
+            y: paperY,
+            rotate: paperRotate,
+            boxShadow: layerShadow,
+          }}
+          className="absolute inset-0 border border-border/60 bg-[#f5f2ea]"
+        />
+        {/* 墨画层:画作本体 */}
+        <motion.div
+          style={{ x: inkX, y: inkY, boxShadow: layerShadow }}
+          className="absolute inset-0 overflow-hidden border border-border/60 bg-[#f5f2ea]"
+        >
+          <img
+            src={src}
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full object-cover"
+          />
+        </motion.div>
+        {/* 印章层:右下角局部裁切(印是独立的一层) */}
+        <motion.div
+          style={{
+            x: sealX,
+            y: sealY,
+            rotate: sealRotate,
+            boxShadow: layerShadow,
+          }}
+          className="absolute bottom-[6%] right-[6%] h-[16%] w-[16%] overflow-hidden border border-border/50 bg-[#f5f2ea]"
+        >
+          <img
+            src={src}
+            alt=""
+            aria-hidden="true"
+            className="absolute h-[625%] w-[625%] max-w-none object-cover"
+            style={{ right: "-37.5%", bottom: "-37.5%" }}
+          />
+        </motion.div>
+      </motion.div>
+      <motion.p
+        style={{ opacity: captionOpacity }}
+        className="pointer-events-none absolute left-1/2 top-full mt-14 -translate-x-1/2 whitespace-nowrap text-center font-mono text-[11px] uppercase tracking-widest text-muted-foreground/80"
+      >
+        {t("layersCaption")}
       </motion.p>
     </>
   );
@@ -365,7 +474,7 @@ function WallWhisper({
   const opacity = useTransform(master, (m) => {
     const wallP = sceneProgress(m, "wall");
     const pickP = sceneProgress(m, "pick");
-    return clamp01((wallP - SPREAD_WINDOW) / 0.1) * (1 - pickP);
+    return clamp01((wallP - SPREAD_WINDOW) / 0.1) * (1 - pickReturn(pickP));
   });
   return (
     <motion.div

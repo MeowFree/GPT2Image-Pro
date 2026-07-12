@@ -132,7 +132,8 @@ export function PickAndReturnTransition() {
   const { engine } = useCinema();
   useMotionValueEvent(p, "change", (v) => {
     engine?.setProgress("postVignette", VIGNETTE_BASE + bell(v) * 0.2);
-    const flash = Math.max(0, Math.min(1, (v - 0.86) / 0.12));
+    // 玻璃反光对齐装裱完成时刻(0.62-0.78 装裱,0.7 附近盖上玻璃)
+    const flash = Math.max(0, Math.min(1, (v - 0.68) / 0.14));
     engine?.setProgress("postFlash", bell(flash) * 0.5);
   });
   return null;

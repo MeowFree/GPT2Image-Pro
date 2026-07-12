@@ -30,6 +30,7 @@ import {
   Loader2,
   ShoppingCart,
 } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
@@ -638,6 +639,8 @@ export function PricingSection({
 
   // -- 套餐轮播控制 --
   const plansScrollRef = useRef<HTMLDivElement>(null);
+  // 润格立轴垂落入场;减动效偏好下直接呈现终态
+  const reduceMotion = useReducedMotion();
 
   /** 桌面端箭头:按一张卡宽度(含 24px 间距)平滑步进 */
   const scrollPlans = (direction: 1 | -1) => {
@@ -726,14 +729,30 @@ export function PricingSection({
             const features = getGeneratedFeatureTexts(planId);
 
             return (
-              <Card
+              // 润格立轴(v1.0 谷段剧情化):每档套餐是一幅挂单的窄长
+              // 立轴——上卷杆/下地杆带轴头,入场自上方垂落展开并微摆
+              // (书画家挂润格的传统);签条(推荐/当前)挂在卷杆上。
+              // 业务交互(订阅/管理/能力清单)原样保留在轴身内。
+              <motion.div
                 key={planId}
                 data-plan-card={planId}
+                initial={
+                  reduceMotion ? false : { opacity: 0, scaleY: 0.08, rotate: 0.8 }
+                }
+                whileInView={{ opacity: 1, scaleY: 1, rotate: 0 }}
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ duration: 0.7, ease: [0.22, 0.8, 0.36, 1] }}
+                style={{ transformOrigin: "top center" }}
+                className="w-[300px] shrink-0 snap-center sm:w-[330px] lg:w-[350px]"
+              >
+                <div
+                  aria-hidden="true"
+                  className="-mx-2 mb-1.5 h-1.5 rounded-full bg-foreground/75"
+                />
+              <Card
                 className={cn(
-                  // 轮播卡:固定宽度 + snap 对齐,悬停轻抬升。
-                  // WHY translate:v4 的 -translate-y-* 产出原生 translate 属性,
-                  // 过渡表写 transform 不会生效(位移瞬跳)。
-                  "relative flex w-[300px] shrink-0 snap-center flex-col rounded-xl border-border transition-[border-color,box-shadow,translate] duration-250 hover:-translate-y-1.5 hover:border-foreground/30 hover:shadow-whisper sm:w-[330px] lg:w-[350px]",
+                  // 轴身:去圆角的纸面,悬停以边色与投影回应(立轴不抬升)
+                  "relative flex h-full flex-col rounded-none border-border transition-[border-color,box-shadow] duration-250 hover:border-foreground/30 hover:shadow-whisper",
                   // 推荐档:细 ring + 轻阴影,替代粗边框重阴影
                   popular &&
                     !isCurrent &&
@@ -745,12 +764,12 @@ export function PricingSection({
                 )}
               >
                 {popular && !isCurrent && (
-                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-foreground text-background">
+                  <Badge className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 bg-foreground text-background">
                     {t("mostPopular")}
                   </Badge>
                 )}
                 {isCurrent && (
-                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-foreground text-background">
+                  <Badge className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 bg-foreground text-background">
                     {t("currentPlan")}
                   </Badge>
                 )}
@@ -855,6 +874,14 @@ export function PricingSection({
                   )}
                 </CardContent>
               </Card>
+                <div
+                  aria-hidden="true"
+                  className="relative -mx-3.5 mt-1.5 h-2 rounded-full bg-foreground/85"
+                >
+                  <span className="absolute -left-1 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-foreground" />
+                  <span className="absolute -right-1 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-foreground" />
+                </div>
+              </motion.div>
             );
           })}
         </div>
