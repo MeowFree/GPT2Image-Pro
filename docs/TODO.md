@@ -75,9 +75,10 @@
 
 **v0.9 穷尽渲染升级（2026-07-12，已落地 main）**：用户指令"深入穷尽一切渲染技术，加强渲染、剧情长度与丰富度、视觉效果"。八项升级（活墨/生长显影/macro 凝视幕/体积光穿越/涡流粒子/纸面掠光/装裱时刻/墨池地面），八幕 2150vh；设计与走查勘误（活墨速度场吹满全屏、坐标系 y 向上、一次性脉冲被耗散追平须持续渗出、白纸段体积光须用影呈现、低幂 halo 放大残墨成全屏皱纹须加吸收阈值、向心流过强吸穿中心成月牙缺口）见设计稿第十四节。**等待用户提供 GPT Image 2 素材**（规格与统一化管线 `docs/plan/2026-07-12-artwork-brief.md`），到位后写 `ingest-artworks.cjs` 接收替换。
 
+**AI 真实素材接入（2026-07-12，已落地 main）**：经产品自身 v1 API（gpt-image-2, quality high）生成全部 16 张水墨作品（`scripts/gen-artworks.cjs`，原图母版入库 `scripts/artwork-src/`），`scripts/ingest-artworks.cjs` 统一化接收（白点归一/hero 统一朱印/反相深度图/hero 2048 + 墙作 640 webp）替换 `public/cinema`；微距凝视中心按新 hero 构图重校（0.72/0.42 收笔飞白区）。勘误：sharp `negate()` 默认连 alpha 取反（深度图输出全透明，须先 flatten 再 `negate({alpha:false})`）；该部署 `/v1/responses` 502，走 `/v1/images/generations`（自带 keep-alive 保活）。
+
 遗留待办（打磨迭代，非本轮范围）：
-- [ ] **GPT Image 2 真实素材接入**：用户生成 16 张（hero enso 2048+ 与 15 幅万象 1024+，prompt 模板见 artwork-brief），实现 ingest 管线（底色归一/统一纸纹/统一朱印/深度图/webp 导出）后逐位替换。
-- [ ] **展墙交错格穿地面线**：stripPos 高低交错使部分画作底缘越过地面线，素材更新时统一调几何。
+- [ ] **展墙交错格穿地面线**：stripPos 高低交错使部分画作底缘越过地面线，后续统一调几何。
 - [ ] **速度响应镜头**（设计稿能力 5）：scroll velocity 喂拖影/折射 uniform（useVelocity 与 dolly/denoise 联动调参），全片触觉签名，独立打磨迭代避免联调变量过多。
 - [ ] **真实扩散帧序列资产**：denoise pass 已留帧序列采样模式接口，拿到真实扩散中间步快照即可替换实时消融。
 - [x] **主样张深度图离线生成**：v0.8.1 已由程序化水墨引擎同几何生成（笔画近/起笔头最近/纸面远），替换灰度梯度占位。

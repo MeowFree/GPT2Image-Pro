@@ -1,7 +1,9 @@
 # 首页影片 GPT Image 2 素材简报（v0.9）
 
-状态：等待用户生成。素材未到不阻塞渲染升级（程序化资产先顶上）。
-接收后由统一化管线处理，直接替换 `apps/web/public/cinema/` 下同名文件。
+状态：已完成（2026-07-12）。16 张全部经产品自身 v1 API 生成
+（`scripts/gen-artworks.cjs`，本文档的 prompt 模板逐字使用），
+`scripts/ingest-artworks.cjs` 统一化后已替换 `public/cinema/`；
+原图母版入库 `scripts/artwork-src/`（AI 生成非确定性，不可复现）。
 
 ## 为什么要真实生图
 
