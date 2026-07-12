@@ -121,3 +121,133 @@ export function mixRect(
     h: a.h * k + b.h * c,
   };
 }
+
+/** easeInOutCubic:形制变换与入匣下沉的起收呼吸(模块私有) */
+function easeInOutCubic(t: number): number {
+  if (t < 0.5) return 4 * t * t * t;
+  const u = -2 * t + 2;
+  return 1 - (u * u * u) / 2;
+}
+
+/**
+ * frame 幕三段停拍窗口(幕内进度分数):每个形制变换完成后的驻留段,
+ * 尺寸注在此窗口显影。与 frameRect 的分段节点同一事实源。
+ */
+export const FRAME_HOLDS: readonly { start: number; end: number }[] = [
+  { start: 0.2, end: 0.34 },
+  { start: 0.48, end: 0.62 },
+  { start: 0.76, end: 0.86 },
+] as const;
+
+/**
+ * 按宽高比适配的居中矩形:ratio = 宽/高,heightPx 为期望高,
+ * 超出安全区(宽 84% / 高 72%)时保比例收缩。
+ */
+function ratioRect(
+  ratio: number,
+  heightPx: number,
+  vw: number,
+  vh: number
+): ViewportRect {
+  const sw = vw > 0 ? vw : 1;
+  const sh = vh > 0 ? vh : 1;
+  let hPx = heightPx;
+  let wPx = heightPx * ratio;
+  const maxW = sw * 0.84;
+  const maxH = sh * 0.72;
+  if (wPx > maxW) {
+    wPx = maxW;
+    hPx = wPx / ratio;
+  }
+  if (hPx > maxH) {
+    hPx = maxH;
+    wPx = hPx * ratio;
+  }
+  const w = wPx / sw;
+  const h = hPx / sh;
+  return { x: 0.5 - w / 2, y: 0.5 - h / 2, w, h };
+}
+
+/**
+ * frame 幕「形制」矩形:同一幅画的装裱形制序列——
+ * 方(承接 pick 落幅)-> 横批 16:9 -> 立轴 9:16 -> 斗方大幅 -> 回方
+ * (交棒 archive)。每段 easeInOut,停拍窗与 FRAME_HOLDS 对齐;
+ * 端点回归 centerSquareRect(前后幕逐位咬合),全程 frameP 纯函数。
+ */
+export function frameRect(
+  frameP: number,
+  vw: number,
+  vh: number
+): ViewportRect {
+  const sh = vh > 0 ? vh : 1;
+  const square = centerSquareRect(vw, vh);
+  const wide = ratioRect(16 / 9, sh * 0.4, vw, vh);
+  const tall = ratioRect(9 / 16, sh * 0.68, vw, vh);
+  const grand = ratioRect(1, sh * 0.66, vw, vh);
+  const stops: readonly { at: number; rect: ViewportRect }[] = [
+    { at: 0.06, rect: square },
+    { at: FRAME_HOLDS[0]?.start ?? 0.2, rect: wide },
+    { at: FRAME_HOLDS[0]?.end ?? 0.34, rect: wide },
+    { at: FRAME_HOLDS[1]?.start ?? 0.48, rect: tall },
+    { at: FRAME_HOLDS[1]?.end ?? 0.62, rect: tall },
+    { at: FRAME_HOLDS[2]?.start ?? 0.76, rect: grand },
+    { at: FRAME_HOLDS[2]?.end ?? 0.86, rect: grand },
+    { at: 0.98, rect: square },
+  ];
+  const first = stops[0];
+  if (!first || frameP <= first.at) return square;
+  for (let k = 0; k < stops.length - 1; k++) {
+    const a = stops[k];
+    const b = stops[k + 1];
+    if (!a || !b) break;
+    if (frameP <= b.at) {
+      const t = (frameP - a.at) / (b.at - a.at);
+      return mixRect(a.rect, b.rect, easeInOutCubic(t));
+    }
+  }
+  return square;
+}
+
+/** 画匣矩形:视口中央偏下的横匣(archive 幕的容器与画作落点事实源) */
+export function archiveChestRect(vw: number, vh: number): ViewportRect {
+  const sw = vw > 0 ? vw : 1;
+  const sh = vh > 0 ? vh : 1;
+  const wPx = Math.min(0.44 * sh, 420);
+  const hPx = 0.15 * sh;
+  const w = wPx / sw;
+  const h = hPx / sh;
+  return { x: 0.5 - w / 2, y: 0.62, w, h };
+}
+
+/**
+ * archive 幕「藏」:画作自中央缩小下移到匣口,再沉入匣内。
+ * 返回画作矩形与没入比例 sink(0-1,驱动匣口平面的 clip 裁切:
+ * 画底先入匣,可见高度 = h * (1 - sink))。
+ * 分段:[0,0.14] 停拍承接 -> [0.14,0.5] 缩小降至匣口悬停 ->
+ * [0.5,0.74] 下沉没入 -> [0.74,1] 全没(匣盖/题签由场景层接管)。
+ * 全程 archiveP 纯函数,倒放即画作从匣中升回。
+ */
+export function archiveDrop(
+  archiveP: number,
+  vw: number,
+  vh: number
+): { rect: ViewportRect; sink: number } {
+  const sw = vw > 0 ? vw : 1;
+  const sh = vh > 0 ? vh : 1;
+  const square = centerSquareRect(vw, vh);
+  const chest = archiveChestRect(vw, vh);
+  const sidePx = Math.min(0.3 * sh, chest.w * sw * 0.72);
+  const w = sidePx / sw;
+  const h = sidePx / sh;
+  // 悬停位:画底贴匣口(chest.y),水平居中
+  const hover: ViewportRect = { x: 0.5 - w / 2, y: chest.y - h, w, h };
+  const approach = easeInOutCubic(
+    Math.min(1, Math.max(0, (archiveP - 0.14) / 0.36))
+  );
+  const sink = easeInOutCubic(
+    Math.min(1, Math.max(0, (archiveP - 0.5) / 0.24))
+  );
+  const base = mixRect(square, hover, approach);
+  // 下沉:矩形整体下移 sink*h,配合 clip 呈现"没入匣口平面"
+  return { rect: { ...base, y: base.y + sink * h }, sink };
+}

@@ -9,9 +9,15 @@
  * 纯 DOM 三档通用)与展厅地面线,随拉开浮现、随选中退场;
  * v0.9 装裱时刻:选中项落幅时白卡纸 matte 内衬浮现 + 画框投影加深 +
  * "你的那张"落款字(Cinema.pickCaption),交付感的物质表达。
- * 每格矩形 = gridPos -> stripPos -> centerSquareRect 三段进度合成,
- * 全部为 master 的纯函数,任意滚动位置可复现(倒放成立)。
- * WHY 不套 SceneLayer:编排横跨 wall 与 pick 两幕,单幕层会在幕界
+ * v1.1 形制变换(frame 幕):同一幅画重新装裱为横批/立轴/斗方,
+ * 每形制停拍时右下浮现输出尺寸注——任意尺寸直至 4K 的动画表达,
+ * matte 随形制同步变形;入匣下沉(archive 幕):画作缩小降至画匣口
+ * 沉入(clip 匣口平面裁切,可见底缘恒等于匣口线),匣体由
+ * scene-archive 接管。
+ * 每格矩形 = gridPos -> stripPos -> centerSquareRect -> frameRect ->
+ * archiveDrop 五段进度合成,全部为 master 的纯函数,任意滚动位置
+ * 可复现(倒放成立)。
+ * WHY 不套 SceneLayer:编排横跨 wall..archive 四幕,单幕层会在幕界
  * 淡出打断飞回,故本组件自管可见性(起点淡入与 SceneLayer 边缘一致)。
  * 依赖 useMaster;GL 侧接触阴影与装裱闪光由 PickAndReturnTransition 喂键。
  */
@@ -21,7 +27,10 @@ import { useEffect, useState } from "react";
 import { cellSrc, PICKED_INDEX } from "./cinema-artworks";
 import { sceneProgress } from "./cinema-config";
 import {
+  archiveDrop,
   centerSquareRect,
+  FRAME_HOLDS,
+  frameRect,
   gridPos,
   mixRect,
   stripPos,
@@ -40,8 +49,8 @@ const WALL_CELLS = Array.from({ length: 16 }, (_, i) => ({
   src: cellSrc(i),
 }));
 
-/** 展墙罗马编号 I-XVI:纯排版记号,不入 i18n */
-const ROMAN = [
+/** 展墙罗马编号 I-XVI:纯排版记号,不入 i18n(archive 题签共用) */
+export const ROMAN = [
   "I",
   "II",
   "III",
@@ -101,8 +110,10 @@ function pickReturn(pickP: number): number {
 
 /**
  * 第 i 幅展品的合成矩形(视口分数):
- * 拉开(gridPos->stripPos) -> 推轨(轨道归一化左移) -> 选中回中/微散。
- * master 单值纯函数——三段连续合成,幕界处逐位咬合。
+ * 拉开(gridPos->stripPos) -> 推轨(轨道归一化左移) -> 选中回中/微散
+ * -> 形制变换(frame,v1.1) -> 入匣下沉(archive,v1.1)。
+ * master 单值纯函数——五段连续合成,幕界处逐位咬合(frameRect 首尾
+ * 与 archiveDrop 起点均回归 centerSquareRect)。
  */
 function figureRect(
   i: number,
@@ -120,6 +131,10 @@ function figureRect(
     x: base.x - glide * (strip.trackWidth - 1),
   };
   if (i === PICKED_INDEX) {
+    const archiveP = sceneProgress(master, "archive");
+    if (archiveP > 0) return archiveDrop(archiveP, vw, vh).rect;
+    const frameP = sceneProgress(master, "frame");
+    if (frameP > 0) return frameRect(frameP, vw, vh);
     return mixRect(
       glided,
       centerSquareRect(vw, vh),
@@ -131,6 +146,11 @@ function figureRect(
     ...glided,
     y: glided.y + pickReturn(pickP) * 0.03 * (i % 2 === 0 ? -1 : 1),
   };
+}
+
+/** 选中项入匣没入比例(0-1):驱动匣口平面 clip,非选中项恒 0 */
+function pickedSink(master: number, vw: number, vh: number): number {
+  return archiveDrop(sceneProgress(master, "archive"), vw, vh).sink;
 }
 
 /**
@@ -202,6 +222,7 @@ export function WallScene() {
               vh={vh}
             />
           ))}
+          <FrameCaption />
         </>
       ) : null}
     </motion.div>
@@ -274,13 +295,22 @@ function WallFigure({
   });
   // 墨池倒影与铭牌同生命周期(展墙形态专属)
   const mirrorOpacity = plaqueOpacity;
+  // 入匣裁切(仅选中项,v1.1):匣口平面吃掉画作没入部分——
+  // 可见底缘恒等于匣口线(几何联动见 archiveDrop);sink=0 时撤为
+  // none,避免 clip 参考盒裁掉盒外的 matte 内衬
+  const clipPath = useTransform(master, (m) => {
+    if (cell.index !== PICKED_INDEX) return "none";
+    const sink = pickedSink(m, vw, vh);
+    return sink > 0.001 ? `inset(0 0 ${(sink * 100).toFixed(2)}% 0)` : "none";
+  });
   return (
     <motion.figure
-      style={{ x, y, width, height }}
+      style={{ x, y, width, height, clipPath }}
       className="absolute left-0 top-0 m-0"
     >
       <motion.div style={{ opacity: figOpacity }} className="h-full w-full">
         {cell.index === PICKED_INDEX ? <FramingReveal /> : null}
+        {cell.index === PICKED_INDEX ? <FrameSizeNotes /> : null}
         <div className="h-full w-full overflow-hidden border border-border bg-background">
           <img
             src={cell.src}
@@ -324,13 +354,21 @@ function WallFigure({
 function FramingReveal() {
   const t = useTranslations("Cinema");
   const master = useMaster();
-  const reveal = useTransform(master, (m) =>
-    easeInOut(clamp01((sceneProgress(m, "pick") - 0.62) / 0.16))
-  );
+  // matte 贯穿 pick 落幅与 frame 形制变换(装裱随形制同变),
+  // archive 早段淡出——内衬不入匣,也为 clip 挂载让出无残影窗口
+  const reveal = useTransform(master, (m) => {
+    const rise = easeInOut(clamp01((sceneProgress(m, "pick") - 0.62) / 0.16));
+    return rise * (1 - clamp01(sceneProgress(m, "archive") / 0.12));
+  });
   const shadow = useTransform(
     reveal,
     (v) => `0 ${18 * v}px ${56 * v}px rgba(24, 20, 15, ${0.2 * v})`
   );
+  // "你的那张"只属于 pick 落幅一拍,形制变换开始即让位尺寸注
+  const captionOpacity = useTransform(master, (m) => {
+    const rise = easeInOut(clamp01((sceneProgress(m, "pick") - 0.62) / 0.16));
+    return rise * (1 - clamp01(sceneProgress(m, "frame") / 0.06));
+  });
   return (
     <>
       <motion.div
@@ -339,12 +377,85 @@ function FramingReveal() {
         className="pointer-events-none absolute -inset-4 -z-10 border border-border/60 bg-[#faf8f3]"
       />
       <motion.p
-        style={{ opacity: reveal }}
+        style={{ opacity: captionOpacity }}
         className="pointer-events-none absolute left-1/2 top-full mt-7 -translate-x-1/2 whitespace-nowrap text-center font-serif text-sm italic text-muted-foreground"
       >
         {t("pickCaption")}
       </motion.p>
     </>
+  );
+}
+
+/** 形制变换的三段尺寸注文案:纯数字排版记号,不入 i18n */
+const FRAME_SIZE_LABELS = [
+  "3840 × 2160",
+  "2160 × 3840",
+  "4096 × 4096",
+] as const;
+
+/**
+ * 尺寸注(仅选中项,v1.1):每个形制停拍窗内,画框右下角外浮现
+ * 输出尺寸——"任意尺寸直至 4K"的证词;随 figure 变形同步移动。
+ */
+function FrameSizeNotes() {
+  return (
+    <>
+      {FRAME_HOLDS.map((hold, i) => (
+        <FrameSizeNote
+          key={FRAME_SIZE_LABELS[i] ?? String(i)}
+          hold={hold}
+          label={FRAME_SIZE_LABELS[i] ?? ""}
+        />
+      ))}
+    </>
+  );
+}
+
+function FrameSizeNote({
+  hold,
+  label,
+}: {
+  hold: { start: number; end: number };
+  label: string;
+}) {
+  const master = useMaster();
+  const opacity = useTransform(master, (m) => {
+    const p = sceneProgress(m, "frame");
+    return Math.min(
+      clamp01((p - hold.start) / 0.05),
+      1 - clamp01((p - hold.end) / 0.05)
+    );
+  });
+  return (
+    <motion.p
+      style={{ opacity }}
+      className="pointer-events-none absolute right-0 top-full mt-3 whitespace-nowrap font-mono text-[11px] uppercase tracking-widest text-muted-foreground"
+    >
+      {label}
+    </motion.p>
+  );
+}
+
+/**
+ * 形制署名(视口级,v1.1):frame 幕全程底部一句
+ * "任意尺寸,直至 4K"(Cinema.frameCaption)——特点用动画演,
+ * 文字只署名;首末让位相邻幕的落款。
+ */
+function FrameCaption() {
+  const t = useTranslations("Cinema");
+  const master = useMaster();
+  const opacity = useTransform(master, (m) => {
+    const p = sceneProgress(m, "frame");
+    if (p <= 0) return 0;
+    return Math.min(clamp01((p - 0.1) / 0.08), 1 - clamp01((p - 0.9) / 0.08));
+  });
+  return (
+    <motion.p
+      style={{ opacity }}
+      className="pointer-events-none absolute bottom-[9vh] left-1/2 -translate-x-1/2 whitespace-nowrap text-center font-serif text-sm italic text-muted-foreground"
+    >
+      {t("frameCaption")}
+    </motion.p>
   );
 }
 
@@ -378,10 +489,11 @@ function LayersInspect({ src }: { src: string }) {
     split,
     (v) => `0 ${8 * v}px ${22 * v}px rgba(24, 20, 15, ${0.16 * v})`
   );
-  // 署名与分层同窗浮现,落幅后保持(交割单)
-  const captionOpacity = useTransform(master, (m) =>
-    clamp01((sceneProgress(m, "pick") - 0.8) / 0.12)
-  );
+  // 署名与分层同窗浮现,pick 落幅保持(交割单),形制变换起让位尺寸注
+  const captionOpacity = useTransform(master, (m) => {
+    const rise = clamp01((sceneProgress(m, "pick") - 0.8) / 0.12);
+    return rise * (1 - clamp01(sceneProgress(m, "frame") / 0.06));
+  });
   return (
     <>
       <motion.div

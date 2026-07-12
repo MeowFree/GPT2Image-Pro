@@ -1,18 +1,22 @@
 "use client";
 
 /**
- * 第七幕「一行调用」:API 与批量能力的剧情化(v1.0)。
+ * 第七幕「一行调用」:API 与批量能力的剧情化(v1.0,v1.1 扩长)。
  * 墨底延续宣言章,等宽字逐字打出真实请求体(与序幕 prompt 打字互文
  * ——你会打字,你的程序也会),回车一拍后 4x4 墨点阵按序点亮
  * (十六张生成完成的物质表达,与增殖/展墙的 16 格同构),末行落
  * "200 OK · 16 张已生成"。材质世界观:等宽字即活字铅字,印刷属于
- * 纸墨体系。全部量为幕内进度纯函数,倒放成立;因果链:宣言(理念)
+ * 纸墨体系。
+ * v1.1 批量检片:点亮进行中,三张真实画作(展墙样张事实源)如暗房
+ * 检片先后弹出停一拍再收回——批量不是抽象的点,每一点都是一幅画。
+ * 全部量为幕内进度纯函数,倒放成立;因果链:宣言(理念)
  * -> 一行调用(手段) -> 增殖(结果) -> 展墙(万象)。
  * 请求体不写域名(永真);lite/full 同一 DOM 演出,无 GL 依赖。
  */
 import { motion, useMotionValueEvent, useTransform } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
+import { cellSrc } from "./cinema-artworks";
 import { useSceneProgress } from "./cinema-stage";
 
 /** 幕内窗口线性段 */
@@ -28,10 +32,33 @@ const REQUEST_LINES = [
   "}",
 ] as const;
 
-/** 打字窗口 [0.06, 0.42]:总字符数内逐字推进,行间无停顿(机器打字) */
-const TYPE_WINDOW: readonly [number, number] = [0.06, 0.42];
-/** 点阵点亮窗口 [0.52, 0.82]:16 点按序亮起 */
-const GRID_WINDOW: readonly [number, number] = [0.52, 0.82];
+/** 打字窗口 [0.04, 0.26]:总字符数内逐字推进,行间无停顿(机器打字) */
+const TYPE_WINDOW: readonly [number, number] = [0.04, 0.26];
+/** 点阵点亮窗口 [0.36, 0.6]:16 点按序亮起 */
+const GRID_WINDOW: readonly [number, number] = [0.36, 0.6];
+
+/**
+ * 批量检片(v1.1):点亮中三张真画先后弹出——窗口错落钟形
+ * (浮起停一拍收回),位置绕开中央请求文本块;样张取展墙事实源
+ * (点阵第 3/7/12 点对应的那幅,点与画同一身份)。
+ */
+const PREVIEWS = [
+  {
+    index: 2,
+    window: [0.4, 0.62] as const,
+    className: "left-[6%] top-[10%]",
+  },
+  {
+    index: 6,
+    window: [0.52, 0.74] as const,
+    className: "right-[7%] top-[8%]",
+  },
+  {
+    index: 11,
+    window: [0.64, 0.86] as const,
+    className: "right-[15%] bottom-[9%]",
+  },
+] as const;
 
 const TOTAL_CHARS = REQUEST_LINES.reduce(
   (acc, line) => acc + Array.from(line).length,
@@ -60,15 +87,15 @@ export function InvokeScene() {
       Math.round(seg(v, GRID_WINDOW[0], GRID_WINDOW[1]) * 16)
     );
   });
-  // 注释行先亮(引导语),点阵回车后浮现,完成行在点阵全亮后落款
-  const commentOpacity = useTransform(p, (v) => seg(v, 0.02, 0.08));
-  const gridOpacity = useTransform(p, (v) => seg(v, 0.44, 0.52));
-  const doneOpacity = useTransform(p, (v) => seg(v, 0.84, 0.92));
+  // 注释行先亮(引导语),点阵回车后浮现,完成行在检片收尽后落款
+  const commentOpacity = useTransform(p, (v) => seg(v, 0.02, 0.07));
+  const gridOpacity = useTransform(p, (v) => seg(v, 0.3, 0.36));
+  const doneOpacity = useTransform(p, (v) => seg(v, 0.88, 0.94));
   const typingStarted = useTransform(p, (v) =>
     v > TYPE_WINDOW[0] ? 1 : 0
   );
   return (
-    <div className="flex h-full items-center justify-center bg-[#0e0e0d]">
+    <div className="relative flex h-full items-center justify-center bg-[#0e0e0d]">
       <div className="w-[min(88vw,560px)] font-mono text-sm leading-relaxed md:text-base">
         {/* 引导注释:活字排版的旁白 */}
         <motion.p
@@ -113,7 +140,48 @@ export function InvokeScene() {
           {t("invokeDone")}
         </motion.p>
       </div>
+      {/* 批量检片:三张真画在墨底上先后亮起再收回(暗房检片) */}
+      {PREVIEWS.map((preview) => (
+        <InvokePreview key={preview.index} preview={preview} />
+      ))}
     </div>
+  );
+}
+
+/**
+ * 单张检片:窗口内钟形生命(浮起停一拍收回),纸白衬边浮在墨底上。
+ * transform(scale/y)与 opacity 分层绑定(铁律)。
+ */
+function InvokePreview({
+  preview,
+}: {
+  preview: (typeof PREVIEWS)[number];
+}) {
+  const p = useSceneProgress("invoke");
+  const life = useTransform(p, (v) => {
+    const t = seg(v, preview.window[0], preview.window[1]);
+    return Math.sin(Math.min(1, Math.max(0, t)) * Math.PI);
+  });
+  const opacity = useTransform(life, (v) => Math.min(1, v * 1.8));
+  const scale = useTransform(life, (v) => 0.66 + v * 0.34);
+  const y = useTransform(life, (v) => (1 - v) * 24);
+  return (
+    <motion.div
+      aria-hidden="true"
+      style={{ opacity }}
+      className={`pointer-events-none absolute ${preview.className}`}
+    >
+      <motion.div
+        style={{ y, scale }}
+        className="w-[min(24vh,220px)] bg-[#f5f2ea] p-1.5 shadow-[0_18px_40px_rgba(0,0,0,0.5)]"
+      >
+        <img
+          src={cellSrc(preview.index)}
+          alt=""
+          className="aspect-square w-full object-cover"
+        />
+      </motion.div>
+    </motion.div>
   );
 }
 

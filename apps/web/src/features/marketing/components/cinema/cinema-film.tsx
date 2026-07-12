@@ -25,6 +25,7 @@ import { createDollyPass } from "./gl/passes/dolly";
 import { createFluidPass } from "./gl/passes/fluid";
 import { createParticlesPass } from "./gl/passes/particles";
 import { renderTextTexture } from "./gl/text-texture";
+import { ArchiveChest } from "./scene-archive";
 import { GenerateScene, ReviseMarkLayer } from "./scene-generate";
 import { InvokeScene } from "./scene-invoke";
 import { ManifestoScene } from "./scene-manifesto";
@@ -221,8 +222,10 @@ function FilmBody() {
         <SceneLayer scene="multiply">
           <MultiplyScene />
         </SceneLayer>
-        {/* 展墙横跨 wall 与 pick 两幕,自管可见性,不套 SceneLayer */}
+        {/* 展墙横跨 wall..archive 四幕(v1.1),自管可见性,不套 SceneLayer;
+            画匣在其后渲染(层叠序:匣面与题签浮于沉入的画作之上) */}
         <WallScene />
+        <ArchiveChest />
         <ZoomThroughTransition />
         <MultiplyTransition />
         <PickAndReturnTransition />

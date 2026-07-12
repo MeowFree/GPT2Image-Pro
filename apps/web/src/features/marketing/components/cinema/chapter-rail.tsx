@@ -19,12 +19,13 @@ const RAIL_LIGHT_BG_COLOR = "#221d1a";
 
 /** 章 -> 幕窗口映射:每章覆盖 [首幕起点, 末幕终点);
  * 第二章连续涵盖 generate..manifesto 之间的 macro/revise/dive,
- * 第三章自 invoke 起(一行调用生成万象,invoke 是万象的手段) */
+ * 第三章自 invoke 起(一行调用生成万象,invoke 是万象的手段),
+ * 第四章交付连续涵盖 pick/frame/archive(拣选/形制/入藏,v1.1) */
 const CHAPTERS: readonly { first: SceneKey; last: SceneKey }[] = [
   { first: "opening", last: "opening" },
   { first: "generate", last: "manifesto" },
   { first: "invoke", last: "wall" },
-  { first: "pick", last: "pick" },
+  { first: "pick", last: "archive" },
 ];
 
 /** 章在主进度中的窗口 */

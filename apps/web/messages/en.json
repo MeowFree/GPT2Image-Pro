@@ -271,6 +271,8 @@
     "invokeComment": "You can type. So can your code",
     "invokeDone": "200 OK · 16 images generated",
     "layersCaption": "PNG · WebP · Layered PSD",
+    "frameCaption": "Same stroke, any size, up to 4K",
+    "archiveCaption": "Saved to your gallery, yours to retrieve",
     "wallTitles": [
       "Bamboo Shadow",
       "Distant Peaks",

@@ -14,7 +14,9 @@ export type SceneKey =
   | "invoke"
   | "multiply"
   | "wall"
-  | "pick";
+  | "pick"
+  | "frame"
+  | "archive";
 
 export interface SceneDef {
   key: SceneKey;
@@ -27,6 +29,10 @@ export interface SceneDef {
  * 覆盖初稿,画布放大交棒段从 macro 尾移入本幕尾)与 invoke「一行调用」
  * (墨底等宽字打出 API 请求,批量响应点亮,承接宣言与增殖的因果);
  * pick 加长容纳装裱后的分层检视一拍。
+ * v1.1 十二幕:invoke 扩长容纳批量检片预览(点亮中真画弹出);
+ * pick 之后新增 frame「形制」(同一幅画重新装裱为横批/立轴/斗方,
+ * 任意尺寸直至 4K 的物质表达)与 archive「藏」(画作收入画匣题签
+ * 落幅——你的画廊,影片新收势)。
  */
 export const FILM_SCENES: readonly SceneDef[] = [
   { key: "opening", lengthVh: 260 },
@@ -35,10 +41,12 @@ export const FILM_SCENES: readonly SceneDef[] = [
   { key: "revise", lengthVh: 230 },
   { key: "dive", lengthVh: 200 },
   { key: "manifesto", lengthVh: 240 },
-  { key: "invoke", lengthVh: 190 },
+  { key: "invoke", lengthVh: 280 },
   { key: "multiply", lengthVh: 260 },
   { key: "wall", lengthVh: 460 },
   { key: "pick", lengthVh: 220 },
+  { key: "frame", lengthVh: 220 },
+  { key: "archive", lengthVh: 180 },
 ] as const;
 
 export function filmTotalVh(scenes: readonly SceneDef[] = FILM_SCENES) {

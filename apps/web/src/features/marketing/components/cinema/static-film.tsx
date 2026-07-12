@@ -74,6 +74,7 @@ export function StaticFilm() {
       <StaticInvoke />
       <StaticSteps />
       <StaticWall />
+      <StaticDelivery />
       <StaticQuotes />
       <StaticFinaleLine />
     </div>
@@ -264,6 +265,49 @@ function StaticWall() {
           ))}
         </div>
       </div>
+    </section>
+  );
+}
+
+/**
+ * 交付静态编排(v1.1):形制与入藏两幕的内容真相——主角画作以
+ * 横批/立轴/斗方三种裁切并置(任意尺寸直至 4K),下附两句署名
+ * (frameCaption/archiveCaption)。动效版为 frame/archive 两幕。
+ */
+function StaticDelivery() {
+  const t = useTranslations("Cinema");
+  const formats = [
+    { label: "3840 × 2160", aspect: "aspect-[16/9]" },
+    { label: "2160 × 3840", aspect: "aspect-[9/16]" },
+    { label: "4096 × 4096", aspect: "aspect-square" },
+  ] as const;
+  return (
+    <section className="container border-t border-border py-20">
+      <div className="mx-auto flex max-w-4xl flex-wrap items-end justify-center gap-8">
+        {formats.map((format) => (
+          <figure key={format.label} className="m-0 w-44 md:w-52">
+            <div
+              className={`overflow-hidden border border-border ${format.aspect}`}
+            >
+              <img
+                src="/cinema/artwork-hero.webp"
+                alt=""
+                aria-hidden="true"
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <figcaption className="mt-2 text-center font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+              {format.label}
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+      <p className="mt-10 text-center font-serif text-sm italic text-muted-foreground">
+        {t("frameCaption")}
+      </p>
+      <p className="mt-2 text-center font-serif text-sm italic text-muted-foreground">
+        {t("archiveCaption")}
+      </p>
     </section>
   );
 }
