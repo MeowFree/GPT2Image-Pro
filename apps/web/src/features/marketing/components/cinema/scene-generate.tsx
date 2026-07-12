@@ -48,9 +48,9 @@ function easeInOut(t: number): number {
 /**
  * macro 幕取景窗纯函数:推近笔触局部(0-0.42)->驻留缓慢漂移(0.42-0.58)
  * ->拉回全幅(0.58-0.78)。返回 denoise uCrop 的 (x, y, z);z=1 即全幅。
- * 取景中心 0.64/0.68 为一笔圆收锋飞白与起笔浓墨的交叠区(走查校准:
- * 0.40 高度对着的是右上空弧),z 最小 0.32(约 3.1 倍放大),
- * 取景窗恒在图像 [0,1] 域内(0.64+-0.16 / 0.68+-0.16)。
+ * 取景中心 0.72/0.42 为 AI 版一笔圆收笔飞白丝缕最密集的右侧中带
+ * (按素材构图校准:起笔浓墨在左,枯笔收锋在右),z 最小 0.32(约
+ * 3.1 倍放大),取景窗恒在图像 [0,1] 域内(0.72+-0.16 / 0.42+-0.16)。
  */
 function macroCrop(m: number): { x: number; y: number; z: number } {
   const zoomIn = easeInOut(seg(m, 0, 0.42));
@@ -58,8 +58,8 @@ function macroCrop(m: number): { x: number; y: number; z: number } {
   const gaze = Math.min(zoomIn, 1 - zoomOut);
   const drift = seg(m, 0.42, 0.58);
   return {
-    x: 0.5 + (0.14 + drift * 0.02) * gaze,
-    y: 0.5 + 0.18 * gaze,
+    x: 0.5 + (0.22 - drift * 0.02) * gaze,
+    y: 0.5 - 0.08 * gaze,
     z: 1 - 0.68 * gaze,
   };
 }
@@ -300,7 +300,7 @@ function LiteCanvasFill({
         style={{
           filter: blur,
           scale: gazeScale,
-          transformOrigin: "63% 40%",
+          transformOrigin: "72% 42%",
         }}
         className="absolute inset-0 h-full w-full object-cover"
       />
