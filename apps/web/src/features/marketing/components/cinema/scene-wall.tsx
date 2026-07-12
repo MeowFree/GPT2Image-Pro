@@ -3,13 +3,17 @@
 /**
  * 第四幕展墙 + 转场 C 选中回中。
  * 16 格网格拉开成横向展墙,竖滚驱动横向推轨;衬线铭牌罗马编号,
- * 用户评价化作画框缝隙间的观展低语;pick 幕中央一幅(index 7)脱墙
- * 飞回视口中央成画布主角规格(与序幕 bookend 同构图),其余项淡出微散。
+ * 用户评价化作画框缝隙间的观展低语;pick 幕选中一幅脱墙飞回视口
+ * 中央成画布主角规格(与序幕 bookend 同构图),其余项淡出微散。
+ * v0.9 空间纵深:每幅画作下方墨池倒影(翻转 + mask 渐隐 + 微模糊,
+ * 纯 DOM 三档通用)与展厅地面线,随拉开浮现、随选中退场;
+ * v0.9 装裱时刻:选中项落幅时白卡纸 matte 内衬浮现 + 画框投影加深 +
+ * "你的那张"落款字(Cinema.pickCaption),交付感的物质表达。
  * 每格矩形 = gridPos -> stripPos -> centerSquareRect 三段进度合成,
  * 全部为 master 的纯函数,任意滚动位置可复现(倒放成立)。
  * WHY 不套 SceneLayer:编排横跨 wall 与 pick 两幕,单幕层会在幕界
  * 淡出打断飞回,故本组件自管可见性(起点淡入与 SceneLayer 边缘一致)。
- * 依赖 useMaster;GL 侧接触阴影由 transitions 的 PickAndReturnTransition 喂键。
+ * 依赖 useMaster;GL 侧接触阴影与装裱闪光由 PickAndReturnTransition 喂键。
  */
 import { motion, useTransform } from "framer-motion";
 import { useTranslations } from "next-intl";
@@ -166,6 +170,7 @@ export function WallScene() {
     >
       {vw > 0 && vh > 0 ? (
         <>
+          <WallFloorLine vw={vw} vh={vh} />
           {WALL_CELLS.map((cell) => (
             <WallFigure
               key={cell.id}
@@ -188,6 +193,26 @@ export function WallScene() {
         </>
       ) : null}
     </motion.div>
+  );
+}
+
+/**
+ * 展厅地面线:画作底缘处一条通宽发丝线——墨池水面的边界,
+ * 与倒影共同给展厅一个"地面"。随拉开浮现,随选中退场。
+ */
+function WallFloorLine({ vw, vh }: { vw: number; vh: number }) {
+  const master = useMaster();
+  const strip = wallStrip(0, vw, vh);
+  const opacity = useTransform(master, (m) => {
+    const { spread } = wallPhases(sceneProgress(m, "wall"));
+    return spread * (1 - sceneProgress(m, "pick")) * 0.8;
+  });
+  return (
+    <motion.div
+      aria-hidden="true"
+      style={{ opacity, top: (strip.y + strip.h) * vh + 1 }}
+      className="pointer-events-none absolute inset-x-0 h-px bg-border"
+    />
   );
 }
 
@@ -233,12 +258,15 @@ function WallFigure({
     const { spread } = wallPhases(sceneProgress(m, "wall"));
     return spread * (1 - sceneProgress(m, "pick"));
   });
+  // 墨池倒影与铭牌同生命周期(展墙形态专属)
+  const mirrorOpacity = plaqueOpacity;
   return (
     <motion.figure
       style={{ x, y, width, height }}
       className="absolute left-0 top-0 m-0"
     >
       <motion.div style={{ opacity: figOpacity }} className="h-full w-full">
+        {cell.index === PICKED_INDEX ? <FramingReveal /> : null}
         <div className="h-full w-full overflow-hidden border border-border bg-background">
           <img
             src={cell.src}
@@ -247,6 +275,18 @@ function WallFigure({
             className="h-full w-full object-cover"
           />
         </div>
+        {/* 墨池倒影:画作映在墨面上,mask 向下渐隐 + 微模糊(水面漫反射) */}
+        <motion.div
+          aria-hidden="true"
+          style={{ opacity: mirrorOpacity }}
+          className="pointer-events-none absolute left-0 top-full mt-0.5 h-[42%] w-full overflow-hidden"
+        >
+          <img
+            src={cell.src}
+            alt=""
+            className="w-full -scale-y-100 blur-[2px] [mask-image:linear-gradient(to_bottom,rgba(0,0,0,0.34),transparent_78%)]"
+          />
+        </motion.div>
         <motion.figcaption
           style={{ opacity: plaqueOpacity }}
           className="absolute left-0 top-full mt-3 whitespace-nowrap font-serif text-xs tracking-wide text-muted-foreground"
@@ -256,6 +296,38 @@ function WallFigure({
         </motion.figcaption>
       </motion.div>
     </motion.figure>
+  );
+}
+
+/**
+ * 装裱时刻(仅选中项):回中完成后白卡纸 matte 内衬在画外一圈浮现,
+ * 画框投影同步加深,下方落一行"你的那张"——交付的物质证词。
+ * matte 置于画作 DOM 之前且负 z,只露出四边;全部量为 pick 纯函数。
+ */
+function FramingReveal() {
+  const t = useTranslations("Cinema");
+  const master = useMaster();
+  const reveal = useTransform(master, (m) =>
+    easeInOut(clamp01((sceneProgress(m, "pick") - 0.72) / 0.22))
+  );
+  const shadow = useTransform(
+    reveal,
+    (v) => `0 ${18 * v}px ${56 * v}px rgba(24, 20, 15, ${0.2 * v})`
+  );
+  return (
+    <>
+      <motion.div
+        aria-hidden="true"
+        style={{ opacity: reveal, boxShadow: shadow }}
+        className="pointer-events-none absolute -inset-4 -z-10 border border-border/60 bg-[#faf8f3]"
+      />
+      <motion.p
+        style={{ opacity: reveal }}
+        className="pointer-events-none absolute left-1/2 top-full mt-7 -translate-x-1/2 whitespace-nowrap text-center font-serif text-sm italic text-muted-foreground"
+      >
+        {t("pickCaption")}
+      </motion.p>
+    </>
   );
 }
 
