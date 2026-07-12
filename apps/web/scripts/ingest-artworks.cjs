@@ -139,6 +139,17 @@ async function ingestHero() {
     return;
   }
   const norm = await normalized(src);
+  // 初稿派生(revise 幕的修改前版本):同构图墨色减淡——线性映射把
+  // 墨(约 34)提到淡灰(约 110)而纸白(242)不动,微模糊作湿墨未收;
+  // 不盖印:落款印属于定稿,初稿未完成。构图与定稿逐像素一致,
+  // "起笔再重一些,墨色更沉"的修改剧情才能成立。
+  await sharp(norm)
+    .linear(0.635, 88.4)
+    .blur(0.5)
+    .resize(2048, 2048)
+    .webp({ quality: 86 })
+    .toFile(path.join(OUT_DIR, "artwork-hero-draft.webp"));
+  console.log("hero -> artwork-hero-draft.webp (2048, 初稿减淡版)");
   const meta = await sharp(norm).metadata();
   const W = meta.width || 2048;
   // 统一朱砂印:全片唯一强调色,阴刻「一」,种子固定可复现

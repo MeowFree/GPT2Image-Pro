@@ -8,9 +8,11 @@
  * 未显影区域是纸灰底上漂移的絮状墨云(材质世界观:纸/墨,非数字网点);
  * IGN 只保留微小权重做收敛抖动。矩形由 dom-sync 喂入,GL 在 DOM 原位绘制。
  * uCrop 取景窗供 macro 凝视幕:推近笔触局部,边缘随取景收窄入焦外(DOF)。
- * keys 参数使多实例共存(画布显影与标题显影读不同 progress 键);
- * textMode 供文字纹理:未显影区域输出透明而非噪场,按 alpha 混合叠加,
- * 显影偏置改按纹理 alpha(笔画实体先显影)。
+ * keys 参数使多实例共存(画布显影与标题显影读不同 progress 键)。
+ * 三种模式(v1.0):field 为噪场底显影(默认,画布主角);text 供文字
+ * 纹理——未显影区输出透明,显影偏置按纹理 alpha(笔画实体先显影);
+ * overlay 供 revise 定稿覆盖初稿——未显影区输出透明,偏置按亮度,
+ * 配 centerBias 径向偏置(离朱笔圈心越远越晚显影,修改从圈选处生长)。
  */
 import {
   type CinemaPass,
@@ -28,8 +30,9 @@ uniform vec4 uRect;
 uniform float uP;
 uniform float uGlow;
 uniform float uTime;
-uniform float uTextMode;
+uniform float uMode;
 uniform vec3 uCrop;
+uniform vec3 uCenterBias;
 out vec4 outColor;
 float ign(vec2 p) {
   return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
@@ -81,11 +84,23 @@ void main() {
   float structure = fbm(local * 5.0 + (warp - 0.5) * 0.9);
   float grain = fbm(local * 23.0);
   float dither = ign(gl_FragCoord.xy);
-  float bias = uTextMode > 0.5 ? texel.a * 0.3 : (1.0 - texLum) * 0.35;
-  float threshold = structure * 0.52 + grain * 0.3 + dither * 0.18 - bias;
+  float bias = uMode > 0.5 && uMode < 1.5
+    ? texel.a * 0.3
+    : (1.0 - texLum) * 0.35;
+  // 径向偏置:离圈心越远显影阈值越高(修改从朱笔圈选处向外生长);
+  // 强度 0 时无效果,不影响其他实例
+  float radial = length(local - uCenterBias.xy) * uCenterBias.z;
+  float threshold =
+    structure * 0.52 + grain * 0.3 + dither * 0.18 - bias + radial;
   float reveal = smoothstep(
     threshold - 0.06, threshold + 0.06, uP * 1.7 - 0.5);
-  if (uTextMode > 0.5) {
+  if (uMode > 1.5) {
+    // overlay:未显影区透明,已显影为图像本体(叠于底层初稿之上,
+    // 定稿沿生长前锋逐步覆盖)
+    outColor = vec4(imgCol, reveal);
+    return;
+  }
+  if (uMode > 0.5) {
     // 文字纹理为深色字+透明底:未显影区域输出透明("墨渗入纸"),
     // 噪场底色对文字不适用
     outColor = vec4(texel.rgb, reveal * texel.a);
@@ -124,19 +139,31 @@ const DEFAULT_KEYS: DenoiseKeys = {
   crop: "canvasCrop",
 };
 
+/** 显影模式:field 噪场底 / text 文字透明底 / overlay 定稿覆盖初稿 */
+export type DenoiseMode = "field" | "text" | "overlay";
+
+export interface DenoiseOptions {
+  mode?: DenoiseMode;
+  /** 圈心生长偏置 [圈心x, 圈心y, 强度];缺省强度 0(关闭) */
+  centerBias?: readonly [number, number, number];
+}
+
 /**
  * 创建去噪显影 pass。
  * 读 progress 键(默认):denoiseP(显影进度)/canvasRect.x|y|w|h(矩形视口
  * 分数)/denoiseGlow(白部辉光)/denoiseVisible(< 0.5 跳绘,缺省视为可见)。
  * keys 覆写读键即可多实例共存(标题显影读 titleRect/titleP/...);
- * pass key 取 denoise:rect 键名以区分实例。
- * textMode:文字纹理模式,未显影区域输出透明并按 alpha 混合。
+ * pass key 取 rect+p 键名以区分实例(revise 与画布实例共用 rect)。
+ * options.mode 见 DenoiseMode;text/overlay 输出透明底,按 alpha 混合。
  */
 export function createDenoisePass(
   image: TexImageSource,
   keys: DenoiseKeys = DEFAULT_KEYS,
-  textMode = false
+  options: DenoiseOptions = {}
 ): CinemaPass {
+  const mode: DenoiseMode = options.mode ?? "field";
+  const modeValue = mode === "field" ? 0 : mode === "text" ? 1 : 2;
+  const centerBias = options.centerBias ?? ([0.5, 0.5, 0] as const);
   let prog: WebGLProgram | null = null;
   let tex: WebGLTexture | null = null;
   const loc: Record<string, WebGLUniformLocation | null> = {};
@@ -147,11 +174,12 @@ export function createDenoisePass(
     "uP",
     "uGlow",
     "uTime",
-    "uTextMode",
+    "uMode",
     "uCrop",
+    "uCenterBias",
   ] as const;
   return {
-    key: `denoise:${keys.rect}`,
+    key: `denoise:${keys.rect}:${keys.p}`,
     enabled: true,
     init(gl) {
       prog = compileProgram(gl, FULLSCREEN_VS, FS);
@@ -172,8 +200,8 @@ export function createDenoisePass(
       gl.useProgram(prog);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, tex);
-      if (textMode) {
-        // 文字纹理带透明底,必须混合叠加以免整块覆写其他 pass;
+      if (mode !== "field") {
+        // text/overlay 输出透明底,必须混合叠加以免整块覆写其他 pass;
         // 透明预乘画布 alpha 通道须直通(见计划勘误一)
         gl.enable(gl.BLEND);
         gl.blendFuncSeparate(
@@ -195,7 +223,13 @@ export function createDenoisePass(
       gl.uniform1f(loc.uP ?? null, progress.get(keys.p) ?? 0);
       gl.uniform1f(loc.uGlow ?? null, progress.get(keys.glow) ?? 0);
       gl.uniform1f(loc.uTime ?? null, ctx.timeMs);
-      gl.uniform1f(loc.uTextMode ?? null, textMode ? 1 : 0);
+      gl.uniform1f(loc.uMode ?? null, modeValue);
+      gl.uniform3f(
+        loc.uCenterBias ?? null,
+        centerBias[0],
+        centerBias[1],
+        centerBias[2]
+      );
       // 微距取景窗:未配置或未喂键时为全幅原样(0.5/0.5/1)
       gl.uniform3f(
         loc.uCrop ?? null,
@@ -204,7 +238,7 @@ export function createDenoisePass(
         (keys.crop ? progress.get(`${keys.crop}.z`) : undefined) ?? 1
       );
       gl.drawArrays(gl.TRIANGLES, 0, 3);
-      if (textMode) gl.disable(gl.BLEND);
+      if (mode !== "field") gl.disable(gl.BLEND);
     },
     dispose(gl) {
       if (prog) gl.deleteProgram(prog);

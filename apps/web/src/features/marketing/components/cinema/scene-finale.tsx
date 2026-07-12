@@ -108,7 +108,7 @@ function FinaleFilm() {
     });
   }, [engine, status]);
 
-  // 终幕 denoise 实例注册:textMode=true——未显影像素输出透明,反向显影的
+  // 终幕 denoise 实例注册:text 模式——未显影像素输出透明,反向显影的
   // 终点是空白纸面(DOM 纸底)而非噪场;卸载由 provider dispose 兜底
   useEffect(() => {
     if (!engine) return;
@@ -118,7 +118,9 @@ function FinaleFilm() {
     img.decode().then(
       () => {
         if (!disposed) {
-          engine.addPass(createDenoisePass(img, FINALE_KEYS, true));
+          engine.addPass(
+            createDenoisePass(img, FINALE_KEYS, { mode: "text" })
+          );
         }
       },
       () => {

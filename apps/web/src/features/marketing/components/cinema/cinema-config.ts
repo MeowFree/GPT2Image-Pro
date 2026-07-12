@@ -8,8 +8,10 @@ export type SceneKey =
   | "opening"
   | "generate"
   | "macro"
+  | "revise"
   | "dive"
   | "manifesto"
+  | "invoke"
   | "multiply"
   | "wall"
   | "pick";
@@ -20,19 +22,23 @@ export interface SceneDef {
 }
 
 /**
- * 分镜行程预算(设计稿第四节,v0.9 八幕见第十四节);终幕独立舞台不在此表。
- * v0.9 新增 macro 凝视幕(money shot 之后推进笔触局部再拉回放大全屏,
- * 与 dive 无缝交接),opening 加长容纳活墨洇开,pick 加长容纳装裱一拍。
+ * 分镜行程预算(设计稿第四节,v1.0 十幕见第十五节);终幕独立舞台不在此表。
+ * v1.0 新增 revise「再改一笔」(对话式编辑:朱笔圈选 + 定稿从圈心生长
+ * 覆盖初稿,画布放大交棒段从 macro 尾移入本幕尾)与 invoke「一行调用」
+ * (墨底等宽字打出 API 请求,批量响应点亮,承接宣言与增殖的因果);
+ * pick 加长容纳装裱后的分层检视一拍。
  */
 export const FILM_SCENES: readonly SceneDef[] = [
   { key: "opening", lengthVh: 260 },
   { key: "generate", lengthVh: 360 },
-  { key: "macro", lengthVh: 210 },
+  { key: "macro", lengthVh: 200 },
+  { key: "revise", lengthVh: 230 },
   { key: "dive", lengthVh: 200 },
   { key: "manifesto", lengthVh: 240 },
-  { key: "multiply", lengthVh: 250 },
+  { key: "invoke", lengthVh: 190 },
+  { key: "multiply", lengthVh: 260 },
   { key: "wall", lengthVh: 460 },
-  { key: "pick", lengthVh: 170 },
+  { key: "pick", lengthVh: 220 },
 ] as const;
 
 export function filmTotalVh(scenes: readonly SceneDef[] = FILM_SCENES) {
