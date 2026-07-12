@@ -41,9 +41,17 @@ export function trackElement(
   schedule();
   window.addEventListener("scroll", schedule, { passive: true });
   window.addEventListener("resize", schedule);
+  // 元素自身尺寸变化也要跟(macro 幕画布放大是宽度动画,非滚动位移);
+  // 旧浏览器无 ResizeObserver 时退回仅 scroll/resize(最多滞后一帧)
+  const ro =
+    typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(schedule)
+      : null;
+  ro?.observe(el);
   return () => {
     if (raf !== null) cancelAnimationFrame(raf);
     window.removeEventListener("scroll", schedule);
     window.removeEventListener("resize", schedule);
+    ro?.disconnect();
   };
 }

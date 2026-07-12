@@ -2,8 +2,12 @@
  * 扩散显影 pass:结构噪声主导 + 按目标亮度偏置的逐像素显影。
  * 每个像素有自己的显影时刻,且深色(墨)像素先显影——大结构先出、
  * 细节后出,视觉上是"这一笔正在被画出来",区别于整图交叉淡化。
+ * v0.9 生长升级:显影前锋经域扭曲呈指状分形生长(扩散模型的物质隐喻,
+ * 全部保持进度纯函数、倒放成立);已显影区域"由湿到干"——湿阶段
+ * 软采样微洇加深,随显影完成收敛锐利。
  * 未显影区域是纸灰底上漂移的絮状墨云(材质世界观:纸/墨,非数字网点);
  * IGN 只保留微小权重做收敛抖动。矩形由 dom-sync 喂入,GL 在 DOM 原位绘制。
+ * uCrop 取景窗供 macro 凝视幕:推近笔触局部,边缘随取景收窄入焦外(DOF)。
  * keys 参数使多实例共存(画布显影与标题显影读不同 progress 键);
  * textMode 供文字纹理:未显影区域输出透明而非噪场,按 alpha 混合叠加,
  * 显影偏置改按纹理 alpha(笔画实体先显影)。
@@ -25,6 +29,7 @@ uniform float uP;
 uniform float uGlow;
 uniform float uTime;
 uniform float uTextMode;
+uniform vec3 uCrop;
 out vec4 outColor;
 float ign(vec2 p) {
   return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
@@ -53,16 +58,33 @@ void main() {
     outColor = vec4(0.0);
     return;
   }
-  vec4 texel = texture(uImage, local);
+  // 微距取景窗:crop 中心 + 缩放(缺省 0.5/0.5/1 即全幅原样)
+  vec2 sampleUv = uCrop.xy + (local - 0.5) * uCrop.z;
+  vec4 texel = texture(uImage, sampleUv);
   float texLum = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
+  // 由湿到干:显影中软采样微洇(墨未干),完成后收敛锐利;
+  // 微距时边缘随距取景中心变糊(浅景深,凝视中心锐利)
+  float dry = smoothstep(0.55, 1.0, uP);
+  float soft = (1.0 - dry) * 0.0045
+    + length(local - 0.5) * (1.0 - uCrop.z) * 0.007;
+  vec3 blurred = (texel.rgb
+    + texture(uImage, sampleUv + vec2(soft, soft * 0.6)).rgb
+    + texture(uImage, sampleUv + vec2(-soft, soft)).rgb
+    + texture(uImage, sampleUv + vec2(soft * 0.5, -soft)).rgb
+    + texture(uImage, sampleUv + vec2(-soft * 0.7, -soft * 0.5)).rgb
+  ) * 0.2;
+  vec3 imgCol = mix(texel.rgb, blurred, clamp(soft * 400.0, 0.0, 1.0));
   // 阈值构成:大结构(同区域同批显影)>细颗粒(边缘破碎)>IGN 微抖(收敛),
+  // 结构噪声经域扭曲——显影前锋呈指状分形生长而非软圆边;
   // 再按目标减去亮度偏置——深色的墨先落纸,大结构先出、细节后出
-  float structure = fbm(local * 5.0);
+  vec2 warp = vec2(fbm(local * 3.0 + 7.3), fbm(local * 3.0 - 2.1));
+  float structure = fbm(local * 5.0 + (warp - 0.5) * 0.9);
   float grain = fbm(local * 23.0);
   float dither = ign(gl_FragCoord.xy);
   float bias = uTextMode > 0.5 ? texel.a * 0.3 : (1.0 - texLum) * 0.35;
   float threshold = structure * 0.52 + grain * 0.3 + dither * 0.18 - bias;
-  float reveal = smoothstep(threshold - 0.1, threshold + 0.1, uP * 1.7 - 0.5);
+  float reveal = smoothstep(
+    threshold - 0.06, threshold + 0.06, uP * 1.7 - 0.5);
   if (uTextMode > 0.5) {
     // 文字纹理为深色字+透明底:未显影区域输出透明("墨渗入纸"),
     // 噪场底色对文字不适用
@@ -76,21 +98,22 @@ void main() {
   float flake = smoothstep(0.6, 0.95, cloud * 0.55 + fleck * 0.45);
   vec3 paperCol = vec3(0.955, 0.945, 0.915) * (0.97 + fleck * 0.05);
   vec3 noiseCol = mix(paperCol, vec3(0.35, 0.33, 0.31), flake * 0.5);
-  vec3 col = mix(noiseCol, texel.rgb, reveal);
-  // 显影带瞬时加深:墨落纸未干时更深,随显影完成回到成品色
+  vec3 col = mix(noiseCol, imgCol, reveal);
+  // 显影带瞬时加深:墨落纸未干时更深(湿边暗环),随显影完成回到成品色
   float band = reveal * (1.0 - reveal) * 4.0;
-  col *= 1.0 - band * 0.08 * (1.0 - texLum);
+  col *= 1.0 - band * 0.16 * (1.0 - texLum);
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   col += uGlow * smoothstep(0.75, 1.0, lum) * 0.25;
   outColor = vec4(col, 1.0);
 }`;
 
-/** 多实例显影 pass 的 progress 读键配置 */
+/** 多实例显影 pass 的 progress 读键配置;crop 可选(仅画布实例用微距) */
 export interface DenoiseKeys {
   rect: string;
   p: string;
   glow: string;
   visible: string;
+  crop?: string;
 }
 
 const DEFAULT_KEYS: DenoiseKeys = {
@@ -98,6 +121,7 @@ const DEFAULT_KEYS: DenoiseKeys = {
   p: "denoiseP",
   glow: "denoiseGlow",
   visible: "denoiseVisible",
+  crop: "canvasCrop",
 };
 
 /**
@@ -124,6 +148,7 @@ export function createDenoisePass(
     "uGlow",
     "uTime",
     "uTextMode",
+    "uCrop",
   ] as const;
   return {
     key: `denoise:${keys.rect}`,
@@ -171,6 +196,13 @@ export function createDenoisePass(
       gl.uniform1f(loc.uGlow ?? null, progress.get(keys.glow) ?? 0);
       gl.uniform1f(loc.uTime ?? null, ctx.timeMs);
       gl.uniform1f(loc.uTextMode ?? null, textMode ? 1 : 0);
+      // 微距取景窗:未配置或未喂键时为全幅原样(0.5/0.5/1)
+      gl.uniform3f(
+        loc.uCrop ?? null,
+        (keys.crop ? progress.get(`${keys.crop}.x`) : undefined) ?? 0.5,
+        (keys.crop ? progress.get(`${keys.crop}.y`) : undefined) ?? 0.5,
+        (keys.crop ? progress.get(`${keys.crop}.z`) : undefined) ?? 1
+      );
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       if (textMode) gl.disable(gl.BLEND);
     },
