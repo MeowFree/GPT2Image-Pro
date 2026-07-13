@@ -544,3 +544,39 @@ invoke 检片弹出（孤舟浮墨底、点阵过半、03 万象章活跃）、f
 横批/立轴停拍（尺寸注+matte 跟随+04 交付章活跃）、archive 沉入
 （可见底缘贴匣口线）、合盖题签落幅、倒放开匣取画——全部通过。
 门禁：tsc 0 / biome 0 error / cinema 测试 19/19 / build 绿。
+
+### v1.1.1 首帧闪切修复（2026-07-13，已实施落地）
+
+用户实证缺陷：进入页面一瞬间显示"之前的 UI"，随后突变为带
+动画的新 UI。根因是一族"SSR/初帧展示 A 态、JS 就绪后切 B 态"
+的时序缺口，三层修复：
+
+1. **影片探测闪切（主因）**：status 初值 static（SSR 渲染
+   StaticFilm 旧排版），探测在 useEffect（paint 后）才切 full
+   ——JS 加载期 + 一帧突变。修复三件套：
+   - 布局注入**内联同步探测脚本**（与 probeInitialStatus 同
+     判据：?gl=static/减动效/窄屏走静态，其余设
+     html[data-cinema="film"]），正文解析前钉住形态；
+   - globals 规则使 [data-film-fallback] 在 film 判定下首字节
+     起不可见（visibility hidden + 100vh 占位防谷段抢首屏），
+     JS 加载期呈空场纸底、影片就绪后标题显影开幕；
+   - 探测移至 **useIsomorphicLayoutEffect**（hydration 后、
+     paint 前收敛，无突变帧），并落 cinemaReady 信号——脚本
+     4 秒兜底：bundle 加载失败时撤销 dataset 露出静态真相
+     （无 JS/爬虫恒见静态编排，内容真相不变式保持）。
+2. **Pricing 双轨闪切**：JS matchMedia 切换改为 **CSS media
+   query 双 DOM 显隐**（廊道 hidden lg:motion-safe:block /
+   轮播 lg:motion-safe:hidden），SSR 首字节即正确形态，锚点
+   直达/恢复滚动零切换帧；交互状态两轨共享同一组件闭包，
+   隐藏轨无布局成本。stage state 与 matchMedia effect 删除。
+3. **谷段 scrub 回跳（同族）**：InkReveal/InkRule/FAQ 折子/
+   SLA 落墨与大数字统一加 **engage 门（useInkEngaged）**——
+   挂载时元素已进入显影窗口（刷新恢复滚动位置/锚点直达）则
+   保持终态，待其退出视口下缘（进度归零）后再参与滚动显影;
+   消除"SSR 可见内容在 JS 就绪瞬间突变回隐藏态"。
+
+走查：html dataset 握手（cinema=film + cinemaReady=1）、
+fallback 探测后不在 DOM、注入探针元素确认隐藏规则生效
+（visibility hidden/900px/overflow hidden）、Pricing 廊道
+display block 轮播 none、reload 恢复滚动至 SLA 后大数字
+opacity=1 且点阵保持铺满（零回跳）、首屏影片开幕无回归。
