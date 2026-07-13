@@ -198,12 +198,37 @@ function InkMistDirector() {
   return null;
 }
 
-/** 探测分流:static 走静态编排,其余走单时间轴主舞台(七幕 + 三转场) */
+/**
+ * 暗场页头联动:穿越压暗起点到增殖回纸点之间,站点页头随影片入暗退场
+ * (body[data-cinema-dark],CSS 在 globals 定义)。卸载时清除属性,
+ * 避免离开页面后页头保持隐藏。
+ */
+function HeaderDimmer() {
+  const master = useMaster();
+  useMotionValueEvent(master, "change", (m) => {
+    const { start, end } = darkWindow();
+    document.body.toggleAttribute("data-cinema-dark", m >= start && m < end);
+  });
+  useEffect(() => () => document.body.removeAttribute("data-cinema-dark"), []);
+  return null;
+}
+
+/** 探测分流:static 走静态编排,其余走单时间轴主舞台 */
 function FilmBody() {
-  const { status } = useCinema();
+  const { status, probed } = useCinema();
   const filmRef = useRef<HTMLDivElement | null>(null);
   useEngineWake(filmRef);
-  if (status === "static") return <StaticFilm />;
+  if (status === "static") {
+    return (
+      // no-flash 占位标记:探测完成前(SSR HTML/JS 加载期),布局的
+      // 内联脚本判定影片设备时以 CSS 隐去本占位(空场纸底开幕),
+      // 避免静态排版闪现后被影片替换的突变;探测后仍为 static
+      // (减动效/窄屏/强制降级)则移除标记,静态编排正常显示
+      <div data-film-fallback={probed ? undefined : ""}>
+        <StaticFilm />
+      </div>
+    );
+  }
   return (
     <div ref={filmRef}>
       <CinemaStage>

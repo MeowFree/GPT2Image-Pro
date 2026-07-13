@@ -795,19 +795,12 @@ export function PricingSection({
   // 润格立轴垂落入场;减动效偏好下直接呈现终态
   const reduceMotion = useReducedMotion();
 
-  // 展现双轨(v1.0.1 润格廊):lg+ 且非减动效走 sticky 廊道舞台
-  // (滚动跟随可倒放),其余(窄屏/减动效/SSR/无 JS)走横向轮播。
-  // SSR 恒输出轮播轨,客户端挂载后按介质切换——Pricing 深居页尾,
-  // 切换发生在视口外,无可见跳变。
-  const [stage, setStage] = useState<"carousel" | "gallery">("carousel");
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const decide = () =>
-      setStage(mq.matches && !reduceMotion ? "gallery" : "carousel");
-    decide();
-    mq.addEventListener("change", decide);
-    return () => mq.removeEventListener("change", decide);
-  }, [reduceMotion]);
+  // 展现双轨(v1.0.1 润格廊,v1.1.1 改 CSS 断点显隐):两轨常驻 DOM,
+  // lg+ 且非减动效由 media query 显示廊道、隐藏轮播,其余反之。
+  // WHY 不用 JS matchMedia 切换:SSR 恒输出单轨时,锚点直达或刷新
+  // 恢复滚动位置的用户会看到轮播闪现再突变为廊道(实证缺陷);
+  // CSS 在首字节渲染即正确,零切换帧。隐藏轨无布局成本,交互状态
+  // (订阅 loading 等)两轨共享同一组件闭包。
 
   /** 桌面端箭头:按一张卡宽度(含 24px 间距)平滑步进 */
   const scrollPlans = (direction: 1 | -1) => {
@@ -862,12 +855,12 @@ export function PricingSection({
         </div>
       </div>
 
-      {/* 展现双轨(v1.0.1 润格廊):
-          - gallery(lg+ 且非减动效):sticky 廊道舞台,竖滚横移 +
-            逐轴展卷,滚动跟随可倒放——影片镜头语言延伸到谷段
-          - carousel(其余与 SSR):snap 横向轮播 + 垂落入场,触屏直接
-            滑,桌面左右箭头按 1 卡步进,首次挂载推荐档滚到中央 */}
-      {stage === "gallery" ? (
+      {/* 展现双轨(CSS media query 显隐,SSR 即正确形态):
+          - 廊道(lg+ 且非减动效):sticky 舞台,竖滚横移 + 逐轴展卷,
+            滚动跟随可倒放——影片镜头语言延伸到谷段
+          - 轮播(其余):snap 横向轮播 + 垂落入场,触屏直接滑,
+            桌面左右箭头按 1 卡步进,首次挂载推荐档滚到中央 */}
+      <div className="hidden lg:motion-safe:block">
         <PlanGalleryStage
           items={PLAN_IDS.map(
             (planId): PlanGalleryItem => ({
@@ -878,7 +871,8 @@ export function PricingSection({
             })
           )}
         />
-      ) : (
+      </div>
+      <div className="lg:motion-safe:hidden">
       <div className="relative">
         <div
           aria-hidden
@@ -952,7 +946,7 @@ export function PricingSection({
           })}
         </div>
       </div>
-      )}
+      </div>
 
       <div className="container mx-auto max-w-6xl">
         {creditPackages.length > 0 && (

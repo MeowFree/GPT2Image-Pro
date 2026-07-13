@@ -15,6 +15,18 @@ import { routing } from "@/i18n/routing";
 import "@repo/ui/globals.css";
 
 /**
+ * 首页影片 no-flash 探测(与 CinemaGLProvider.probeInitialStatus
+ * 同判据:强制降级参数/减动效/窄屏走静态,其余影片壳)。必须内联
+ * 同步执行:在正文解析前把 html[data-cinema] 钉住,配合 globals 的
+ * 占位隐藏规则,JS 加载期显示空场纸底而非旧静态排版——否则用户
+ * 会看到"进入瞬间旧 UI 闪现 -> 突变为影片"(实证缺陷)。
+ * 4 秒内 React 未落 cinemaReady(bundle 加载失败)则撤销,露出
+ * 静态编排的内容真相。非首页路由无 data-film-fallback 元素,
+ * 本脚本对其无副作用。
+ */
+const CINEMA_PROBE_SCRIPT = `(function(){try{var d=document.documentElement;if(/[?&]gl=static/.test(location.search))return;if(window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;if(window.innerWidth<768)return;d.dataset.cinema="film";setTimeout(function(){if(!d.dataset.cinemaReady){delete d.dataset.cinema}},4000)}catch(e){}})();`;
+
+/**
  * 生成静态参数
  * 为每个支持的语言生成静态页面
  */
@@ -117,6 +129,10 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} suppressHydrationWarning>
       <body className="font-serif antialiased">
+        <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: no-flash 探测须内联同步执行,脚本为本文件常量非用户输入
+          dangerouslySetInnerHTML={{ __html: CINEMA_PROBE_SCRIPT }}
+        />
         <NextIntlClientProvider messages={messages}>
           <Providers>
             {children}

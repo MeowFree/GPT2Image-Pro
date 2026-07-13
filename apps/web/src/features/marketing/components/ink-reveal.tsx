@@ -13,6 +13,7 @@
  * 使用方:<InkReveal phase={0.2}><h2>…</h2></InkReveal>
  */
 import {
+  type MotionValue,
   motion,
   useReducedMotion,
   useScroll,
@@ -57,6 +58,27 @@ function useInkRevealActive(): boolean {
   return mounted && !reduceMotion;
 }
 
+/**
+ * engage 门:挂载时元素已进入显影窗口(刷新恢复滚动位置/锚点直达)
+ * 则保持终态,待其退出视口下缘(进度归零)后再参与滚动显影——
+ * 否则 SSR 可见内容会在 JS 就绪瞬间突变回隐藏态(实证的"进入瞬间
+ * 旧貌闪切"族缺陷)。framer 在 layout effect 内量测,本 effect 晚于
+ * 量测执行,get() 已是真实进度。谷段各 scrub 组件(册页/落墨)共用。
+ */
+export function useInkEngaged(progress: MotionValue<number>): boolean {
+  const [engaged, setEngaged] = useState(false);
+  useEffect(() => {
+    if (progress.get() <= 0.001) {
+      setEngaged(true);
+      return;
+    }
+    return progress.on("change", (v) => {
+      if (v <= 0.001) setEngaged(true);
+    });
+  }, [progress]);
+  return engaged;
+}
+
 export function InkReveal({
   children,
   phase = 0,
@@ -70,7 +92,7 @@ export function InkReveal({
   tilt?: number;
   className?: string;
 }) {
-  const active = useInkRevealActive();
+  const activeBase = useInkRevealActive();
   const ref = useRef<HTMLDivElement | null>(null);
   // 窗口:元素顶从视口 97% 走到 70%;相位平移起点、压缩跨度,
   // 保证任何相位在窗口尾都收敛到 1(倒放对称)
@@ -78,6 +100,8 @@ export function InkReveal({
     target: ref,
     offset: ["start 0.97", "start 0.7"],
   });
+  const engaged = useInkEngaged(scrollYProgress);
+  const active = activeBase && engaged;
   const reveal = useSpring(
     useTransform(scrollYProgress, (v) => {
       const shift = phase * 0.45;
@@ -113,12 +137,14 @@ export function InkReveal({
  * 独立小件,同一显影语言;宽度由使用方 className 控制。
  */
 export function InkRule({ className }: { className?: string }) {
-  const active = useInkRevealActive();
+  const activeBase = useInkRevealActive();
   const ref = useRef<HTMLDivElement | null>(null);
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ["start 0.96", "start 0.72"],
   });
+  const engaged = useInkEngaged(scrollYProgress);
+  const active = activeBase && engaged;
   const scaleX = useSpring(
     useTransform(scrollYProgress, (v) => clamp01(v)),
     { stiffness: 120, damping: 22 }

@@ -26,7 +26,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { GenerationSlaStats } from "@/features/image-generation/sla";
 import { updateMarketingSlaStatusVisibilityAction } from "@/features/marketing/actions/sla-status";
-import { InkReveal } from "./ink-reveal";
+import { InkReveal, useInkEngaged } from "./ink-reveal";
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(2)}%`;
@@ -221,6 +221,9 @@ export function SlaStatusSection({
     target: fieldRef,
     offset: ["start 0.92", "center 0.48"],
   });
+  // engage 门:刷新恢复滚动位置落在本段时保持终态,避免铺满的
+  // 点阵与大数字在 JS 就绪瞬间突变回中间态(退出视口后再参演)
+  const engaged = useInkEngaged(scrollYProgress);
   // 大数字显影:点阵铺满的尾声墨色聚成读数(透明度与聚焦分开驱动,
   // 都是普通样式,无 transform 混绑)
   const percentReveal = useTransform(scrollYProgress, (v) =>
@@ -315,7 +318,7 @@ export function SlaStatusSection({
             </InkReveal>
             <motion.p
               style={
-                mounted && !reduced
+                mounted && !reduced && engaged
                   ? { opacity: percentReveal, filter: percentBlur }
                   : undefined
               }
@@ -349,7 +352,7 @@ export function SlaStatusSection({
             <DotField
               dots={buildDots(stats)}
               progress={scrollYProgress}
-              reduced={!mounted || reduced}
+              reduced={!mounted || reduced || !engaged}
             />
             <ul className="mt-5 flex flex-wrap gap-x-8 gap-y-2">
               {legend.map((item) => (

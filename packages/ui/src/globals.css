@@ -268,6 +268,27 @@
   position: relative !important;
 }
 
+/* 影片暗场页头联动:穿越/宣言暗场窗口内站点页头退场,
+   由 cinema-film 按主进度切换 body[data-cinema-dark] */
+[data-site-header] {
+  transition: opacity 0.35s ease;
+}
+body[data-cinema-dark] [data-site-header] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 首页影片 no-flash:布局内联脚本判定影片设备时,静态排版占位在
+   首字节渲染起即不可见(JS 加载期呈空场纸底,影片就绪后标题显影
+   开幕),避免"旧排版闪现 -> 影片替换"的突变;保留一屏高度占位,
+   防其后的谷段区块在加载期抢占首屏。React 探测完成后移除
+   data-film-fallback,真静态设备不受本规则影响。 */
+html[data-cinema="film"] [data-film-fallback] {
+  visibility: hidden;
+  height: 100vh;
+  overflow: hidden;
+}
+
 /* FAQ 册页:答案如墨落纸自上而下扫入(radix 展开态触发) */
 @keyframes faq-ink-reveal {
   from {

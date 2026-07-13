@@ -11,6 +11,7 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -19,14 +20,26 @@ import { createPostPass } from "./gl/passes/post";
 
 export type GLStatus = "full" | "lite" | "static";
 
+/**
+ * SSR 安全的 layout effect:初始探测必须在首帧 paint 之前收敛
+ * (useEffect 在 paint 后跑,会让用户看到一帧静态排版再突变为影片
+ * ——用户实证的"进入瞬间旧 UI 闪切");服务端无 DOM 用 useEffect
+ * 兜底以避 SSR 警告(服务端本就不执行)。
+ */
+const useIsomorphicLayoutEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 interface CinemaContextValue {
   status: GLStatus;
+  /** 初始探测是否已完成:no-flash 占位标记的移除时机 */
+  probed: boolean;
   engine: CinemaEngine | null;
   setTakeover: (on: boolean) => void;
 }
 
 const CinemaContext = createContext<CinemaContextValue>({
   status: "static",
+  probed: false,
   engine: null,
   setTakeover: () => {},
 });
@@ -57,10 +70,15 @@ export function CinemaGLProvider({ children }: { children: ReactNode }) {
   const [probed, setProbed] = useState(false);
   const [takeover, setTakeover] = useState(false);
 
-  // 先探测决定是否渲染 canvas,再在 canvas 就绪后建引擎(两段 effect)
-  useEffect(() => {
+  // 先探测决定是否渲染 canvas,再在 canvas 就绪后建引擎(两段 effect)。
+  // WHY layout effect:探测在 hydration 后、首帧 paint 前同步收敛,
+  // 用户不会看到"静态排版一帧 -> 影片"的突变;并落 cinemaReady 信号,
+  // 通知布局里的内联 no-flash 脚本无须撤销占位隐藏(其 4s 兜底仅在
+  // bundle 加载失败时露出静态真相)。
+  useIsomorphicLayoutEffect(() => {
     setStatus(probeInitialStatus());
     setProbed(true);
+    document.documentElement.dataset.cinemaReady = "1";
   }, []);
 
   useEffect(() => {
@@ -94,7 +112,7 @@ export function CinemaGLProvider({ children }: { children: ReactNode }) {
   }, [probed, status]);
 
   return (
-    <CinemaContext.Provider value={{ status, engine, setTakeover }}>
+    <CinemaContext.Provider value={{ status, probed, engine, setTakeover }}>
       {status === "full" ? (
         <canvas
           ref={canvasRef}

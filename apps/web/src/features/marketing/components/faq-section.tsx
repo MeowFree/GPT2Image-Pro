@@ -27,7 +27,7 @@ import {
   AccordionTrigger,
 } from "@repo/ui/components/accordion";
 import { folioNumeral } from "./folio-numeral";
-import { InkReveal } from "./ink-reveal";
+import { InkReveal, useInkEngaged } from "./ink-reveal";
 
 /**
  * 单折:以自身进入视口的位置为翻折进度(target 元素级 useScroll),
@@ -54,6 +54,9 @@ function FolioItem({
     target: ref,
     offset: ["start 0.98", "start 0.74"],
   });
+  // engage 门:挂载时已进窗口的折子保持翻平终态,避免刷新恢复
+  // 滚动位置时可见折子突变回折起(与 InkReveal 同族缺陷)
+  const engaged = useInkEngaged(scrollYProgress);
   // spring:纸页翻落的重量感;目标为滚动纯函数,倒放时跟随折回
   const reveal = useSpring(
     useTransform(scrollYProgress, (v) => Math.min(1, Math.max(0, v))),
@@ -63,11 +66,12 @@ function FolioItem({
   const y = useTransform(reveal, (v) => (1 - v) * 14);
   const opacity = useTransform(reveal, (v) => Math.min(1, v * 1.6));
 
+  const animated = active && engaged;
   return (
-    <motion.div ref={ref} style={active ? { opacity } : undefined}>
+    <motion.div ref={ref} style={animated ? { opacity } : undefined}>
       <motion.div
         style={
-          active
+          animated
             ? {
                 rotateX,
                 y,
