@@ -27,11 +27,6 @@ export interface GenerateImageParams {
   /** 高清修复:true 时对最终图用 SCUNet 盲复原(去噪/去压缩块/增强质感,不改分辨率);仅在主开关
    *  IMAGE_RESTORATION_ENABLED 开时生效,默认关(见 operations.ts / image-restoration.ts)。 */
   hdRepair?: boolean;
-  /** 分块修复:true 时把最终图切成 2×2 web 尺寸块,逐块 gpt-image-2 img2img 重绘(重点修文字)
-   *  再拼接、超分到目标。逐块单独计费。仅在主开关 IMAGE_BLOCK_REPAIR_ENABLED 开时生效。 */
-  blockRepair?: boolean;
-  /** 分块修复每块提示词(覆盖管理端默认);为空用默认。 */
-  repairPrompt?: string;
 }
 
 export interface GenerateImageResult {
@@ -189,11 +184,6 @@ export interface EditImageParams {
   /** 高清修复:true 时对最终图用 SCUNet 盲复原(去噪/去压缩块/增强质感,不改分辨率);仅在主开关
    *  IMAGE_RESTORATION_ENABLED 开时生效,默认关(见 operations.ts / image-restoration.ts)。 */
   hdRepair?: boolean;
-  /** 分块修复:true 时把最终图切成 2×2 web 尺寸块,逐块 gpt-image-2 img2img 重绘(重点修文字)
-   *  再拼接、超分到目标。逐块单独计费。仅在主开关 IMAGE_BLOCK_REPAIR_ENABLED 开时生效。 */
-  blockRepair?: boolean;
-  /** 分块修复每块提示词(覆盖管理端默认);为空用默认。 */
-  repairPrompt?: string;
 }
 
 export interface ChatImageParams {
@@ -240,11 +230,6 @@ export interface ChatImageParams {
   /** 高清修复:true 时对最终图用 SCUNet 盲复原(去噪/去压缩块/增强质感,不改分辨率);仅在主开关
    *  IMAGE_RESTORATION_ENABLED 开时生效,默认关(见 operations.ts / image-restoration.ts)。 */
   hdRepair?: boolean;
-  /** 分块修复:true 时把最终图切成 2×2 web 尺寸块,逐块 gpt-image-2 img2img 重绘(重点修文字)
-   *  再拼接、超分到目标。逐块单独计费。仅在主开关 IMAGE_BLOCK_REPAIR_ENABLED 开时生效。 */
-  blockRepair?: boolean;
-  /** 分块修复每块提示词(覆盖管理端默认);为空用默认。 */
-  repairPrompt?: string;
 }
 
 export interface ChatGptWebConversationState {

@@ -58,6 +58,16 @@ describe("image backend error classification", () => {
     ).toBe(true);
   });
 
+  it("switches accounts when Web returns the uploaded input as output", async () => {
+    const isImageBackendSwitchableError = await loadClassifier();
+
+    expect(
+      isImageBackendSwitchableError(
+        "ChatGPT Web backend returned input image as output"
+      )
+    ).toBe(true);
+  });
+
   it("switches accounts for Codex Responses 429 usage limits", async () => {
     const isImageBackendSwitchableError = await loadClassifier();
 
@@ -306,6 +316,18 @@ describe("image backend error classification", () => {
         "ChatGPTAgentToolRateLimitException you were unable to invoke the image_gen.text2im tool right now"
       )
     ).toBe(true);
+  });
+
+  it("把 ChatGPT Web Temporal RPCError 当作临时平台错误(换号重试)", async () => {
+    const svc = await loadService();
+    const err =
+      "RPCError Encountered exception: <class 'temporalio.service.RPCError'>.";
+
+    expect(svc.isImageBackendSwitchableError(err)).toBe(true);
+    expect(svc.isUnclassifiedBackendError(err)).toBe(false);
+    const failure = await svc.classifyFailure(err);
+    expect(failure.status).toBe("active");
+    expect(failure.cooldownUntil).toBeInstanceOf(Date);
   });
 
   it("把 ChatGPT 画图工具限流归类为 limited + 短冷却(默认 3 分钟)", async () => {

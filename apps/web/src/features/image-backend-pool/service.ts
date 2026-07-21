@@ -1245,6 +1245,7 @@ function isRecoverableBackendError(error?: string | null) {
   return (
     isUnsupportedModelBackendError(error) ||
     isTransientNetworkBackendError(error) ||
+    isChatGptWebTemporalBackendError(error) ||
     isToolRateLimitBackendError(error) ||
     normalized.includes("429") ||
     normalized.includes("529") ||
@@ -1285,6 +1286,7 @@ function isRecoverableBackendError(error?: string | null) {
     normalized.includes("non-json images api response") ||
     normalized.includes("upstream returned no image output") ||
     normalized.includes("returned no image output") ||
+    normalized.includes("returned input image as output") ||
     normalized.includes("api returned no image data") ||
     normalized.includes("http 500") ||
     normalized.includes("status_code=500") ||
@@ -1305,6 +1307,16 @@ function isRecoverableBackendError(error?: string | null) {
     // 我方算 token 下载图片因 429/限流/超时/5xx 失败属瞬时，可切后端重试。
     (isTokenCountDownloadFailure(normalized) &&
       isTransientFileDownloadFailure(normalized))
+  );
+}
+
+function isChatGptWebTemporalBackendError(error?: string | null) {
+  const normalized = (error || "").toLowerCase();
+  return (
+    (normalized.includes("rpcerror") &&
+      normalized.includes("temporalio.service.rpcerror")) ||
+    (normalized.includes("rpcerror encountered exception") &&
+      normalized.includes("temporalio"))
   );
 }
 

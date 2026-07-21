@@ -90,11 +90,6 @@ const externalImageGenerationSchema = z.object({
   // 显式 false=general-x4v3(轻量快)。仅在超分主开关开且触发超分时生效。
   hdRepair: z.boolean().optional(),
   hd_repair: z.boolean().optional(),
-  // 分块修复:切成 2×2 web 块逐块 gpt-image-2 重绘再拼接超分;逐块单独计费。默认关。
-  blockRepair: z.boolean().optional(),
-  block_repair: z.boolean().optional(),
-  repairPrompt: z.string().max(8000).optional(),
-  repair_prompt: z.string().max(8000).optional(),
   stream: z.boolean().optional(),
   async: z.boolean().optional(),
   callback_url: z.string().url().optional(),
@@ -286,8 +281,6 @@ export const postExternalImageGenerations = withApiLogging(
         parsed.data.forceWeb,
       forceFirefly: parsed.data.forceFirefly ?? parsed.data.force_firefly,
       hdRepair: parsed.data.hdRepair ?? parsed.data.hd_repair,
-      blockRepair: parsed.data.blockRepair ?? parsed.data.block_repair,
-      repairPrompt: parsed.data.repairPrompt ?? parsed.data.repair_prompt,
     };
     const responseFormat = parsed.data.response_format || "b64_json";
 

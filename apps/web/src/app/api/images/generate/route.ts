@@ -66,11 +66,6 @@ const generateImageSchema = z.object({
   // 高清修复:上游图偏小需超分时选模型。默认(含省略)=SwinIR;显式 false=general-x4v3(快)。
   hdRepair: z.boolean().optional(),
   hd_repair: z.boolean().optional(),
-  // 分块修复:切成 2×2 web 块逐块 gpt-image-2 重绘再拼接超分;逐块单独计费。默认关。
-  blockRepair: z.boolean().optional(),
-  block_repair: z.boolean().optional(),
-  repairPrompt: z.string().max(8000).optional(),
-  repair_prompt: z.string().max(8000).optional(),
 });
 
 function errorResponse(message: string, status = 400) {
@@ -159,8 +154,6 @@ export const POST = withApiLogging(async (request: NextRequest) => {
       parsed.data.requires_responses_backend,
     forceFirefly: parsed.data.forceFirefly ?? parsed.data.force_firefly,
     hdRepair: parsed.data.hdRepair ?? parsed.data.hd_repair,
-    blockRepair: parsed.data.blockRepair ?? parsed.data.block_repair,
-    repairPrompt: parsed.data.repairPrompt ?? parsed.data.repair_prompt,
   };
   const requestedGenerationIds =
     parsed.data.generationIds || parsed.data.generation_ids;

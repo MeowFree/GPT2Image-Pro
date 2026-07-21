@@ -148,8 +148,6 @@ export type SettingKey =
   | "IMAGE_MODEL_MULTIPLIERS"
   | "IMAGE_SUPER_RESOLUTION_ENABLED"
   | "IMAGE_RESTORATION_ENABLED"
-  | "IMAGE_BLOCK_REPAIR_ENABLED"
-  | "IMAGE_MASK_OUTPAINT_ENABLED"
   | "EDITABLE_FILE_PPT_CREDITS"
   | "EDITABLE_FILE_PSD_CREDITS"
   | "VIDEO_BASE_CREDITS_PER_SECOND"
@@ -1353,24 +1351,6 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     label: "出图高清修复（SCUNet）",
     description:
       "开启后，用户在创作时勾选「高清修复」的最终图会用 SCUNet 盲复原（去噪/去压缩块/增强质感，不改分辨率）。CPU 推理较重（512 约 11 秒、1024 约 35 秒），有全局串行闸防并发打满机器；需用户手动勾选、仅对最终图触发；默认关闭。与「超分校准」独立：修复在原分辨率跑、超分再放大。",
-    category: "models",
-    valueType: "boolean",
-    defaultValue: false,
-  },
-  {
-    key: "IMAGE_BLOCK_REPAIR_ENABLED",
-    label: "出图生成式修复（gpt-image-2 整图重绘）",
-    description:
-      "开启后，用户勾选「生成式修复」的最终图会缩到 web 甜点分辨率（约 1280），一次性用 gpt-image-2 img2img 整图重绘（重点修文字/细节、保持构图与内容不变），再超分补足到目标分辨率。整图一次重绘无接缝（不再切块，避免重叠重影）；单独调用一次后端并计费。替代自动超分。修复提示词有内置默认，用户/API 可用 repair_prompt 覆盖，无需在此配置。需用户手动勾选、仅对最终图触发；默认关闭。与「掩码外绘」互斥，后者优先。",
-    category: "models",
-    valueType: "boolean",
-    defaultValue: false,
-  },
-  {
-    key: "IMAGE_MASK_OUTPAINT_ENABLED",
-    label: "出图掩码外绘修复（gpt-image-2 无缝分块）",
-    description:
-      "开启后（优先于「生成式修复」），用户勾选「生成式修复」的最终图在目标分辨率上切成 1K 重叠块，按顺序逐块用 gpt-image-2 带 mask 编辑：锁住与已完成邻块的重叠区、只重绘新区域，让相邻块无缝衔接（消除切块重影）。路由到会发送 mask 且尊重 1K 尺寸的 codex 后端（web 不发 mask）。每块单独调用后端并单独计费（最后加和），比整图重绘更慢更贵。需用户手动勾选、仅对最终图触发；默认关闭。实验性。",
     category: "models",
     valueType: "boolean",
     defaultValue: false,

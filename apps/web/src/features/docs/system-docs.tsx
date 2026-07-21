@@ -794,13 +794,6 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
                 "本站扩展：高清修复。默认 false。设为 true 时最终图用 SCUNet 盲复原（去噪 / 去压缩块 / 增强质感，不改分辨率），与超分放大相互独立、可叠加；需管理端开启修复主开关，CPU 较重、服务端串行排队。与 /v1/images/generations 同义。",
             },
             {
-              name: "block_repair / blockRepair、repair_prompt",
-              requirement: "可选",
-              custom: true,
-              description:
-                "本站扩展：生成式修复。默认 false。整图缩到 web 甜点分辨率后一次性 gpt-image-2 img2img 重绘再超分，重点修文字、无接缝，单独计费；repair_prompt 指定提示词。需管理端开启「生成式修复」主开关。与 /v1/images/generations 同义。",
-            },
-            {
               name: "thinking / reasoning.effort",
               requirement: "可选",
               custom: true,
@@ -1106,20 +1099,6 @@ curl https://gpt2image.superapi.buzz/v1/images/task_... \\
               custom: true,
               description:
                 "本站扩展：高清修复。默认 false。设为 true 时，最终图会用 SCUNet 盲复原（去噪 / 去压缩块 / 增强质感，不改分辨率），与「超分放大」相互独立、可叠加。需管理端开启「高清修复」主开关方生效；CPU 推理较重（512 约 11 秒、1024 约 35 秒）、服务端串行排队，出图更慢。false 或未开启修复时无副作用。",
-            },
-            {
-              name: "block_repair / blockRepair",
-              requirement: "可选",
-              custom: true,
-              description:
-                "本站扩展：生成式修复。默认 false。设为 true 时，最终图缩到 web 甜点分辨率（约 1280），一次性用 gpt-image-2 img2img 整图重绘（重点修文字/细节、保持构图与内容不变），再超分到目标尺寸。整图一次重绘无接缝；额外调用一次后端并单独计费，比超分/高清修复更慢更贵；需管理端开启「生成式修复」主开关方生效。启用成功时替代自动超分。",
-            },
-            {
-              name: "repair_prompt / repairPrompt",
-              requirement: "可选",
-              custom: true,
-              description:
-                "本站扩展：生成式修复整图 img2img 的提示词。仅在 block_repair=true 时生效；留空则用内置默认（强调只修清晰度与文字、保持构图/内容不变，无需在后台配置）。",
             },
             {
               name: "stream",
@@ -1441,20 +1420,6 @@ data: {"type":"image_edit.completed","index":0,"generation_id":"...","generation
               custom: true,
               description:
                 "本站扩展：高清修复。默认 false。设为 true 时，最终图会用 SCUNet 盲复原（去噪 / 去压缩块 / 增强质感，不改分辨率），与「超分放大」相互独立、可叠加。需管理端开启「高清修复」主开关方生效；CPU 推理较重（512 约 11 秒、1024 约 35 秒）、服务端串行排队，出图更慢。false 或未开启修复时无副作用。",
-            },
-            {
-              name: "block_repair / blockRepair",
-              requirement: "可选",
-              custom: true,
-              description:
-                "本站扩展：生成式修复。默认 false。设为 true 时，最终图缩到 web 甜点分辨率（约 1280），一次性用 gpt-image-2 img2img 整图重绘（重点修文字/细节、保持构图与内容不变），再超分到目标尺寸。整图一次重绘无接缝；额外调用一次后端并单独计费，比超分/高清修复更慢更贵；需管理端开启「生成式修复」主开关方生效。启用成功时替代自动超分。",
-            },
-            {
-              name: "repair_prompt / repairPrompt",
-              requirement: "可选",
-              custom: true,
-              description:
-                "本站扩展：生成式修复整图 img2img 的提示词。仅在 block_repair=true 时生效；留空则用内置默认（强调只修清晰度与文字、保持构图/内容不变，无需在后台配置）。",
             },
             {
               name: "stream",
@@ -2460,12 +2425,8 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
           "与超分相互独立。用户在创作页勾选「高清修复」或 API 传 hd_repair=true 时，对最终图用 SCUNet 做盲复原（去噪 / 去压缩块 / 增强质感，不改分辨率）。CPU 推理较重（512 约 11 秒、1024 约 35 秒）、服务端全局串行排队，出图更慢；由管理端「出图高清修复(SCUNet)」开关控制，需用户手动勾选，默认关。",
         ],
         [
-          "生成式修复（手动，gpt-image-2）",
-          "与高清修复不同：它用真实生成后端重绘。用户勾选「生成式修复」或 API 传 block_repair=true 时，把最终图缩到 web 甜点分辨率（约 1280），一次性用 gpt-image-2 img2img 整图重绘（重点修文字/细节、保持构图与内容不变，提示词取 repair_prompt 或内置默认），再超分补足到目标尺寸。整图一次重绘无接缝（不再切块，避免重叠重影）；额外调用一次后端并单独计费，比超分/高清修复更慢也更贵；由管理端「出图生成式修复」开关控制，需手动勾选，默认关。启用成功时替代自动超分。",
-        ],
-        [
           "组合与顺序",
-          "超分与高清修复可叠加：先修复（原分辨率，省算力）再超分（放大到目标）。生成式修复启用时自带超分到目标、替代自动超分。都不裁剪、不改宽高比；任一步失败自动回退原图，不阻断出图。",
+          "超分与高清修复可叠加：先修复（原分辨率，省算力）再超分（放大到目标）。都不裁剪、不改宽高比；任一步失败自动回退原图，不阻断出图。",
         ],
       ],
     },
@@ -4743,12 +4704,8 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
           "Independent of super-resolution. When the user checks 'HD repair' or the API sends hd_repair=true, the final image is restored with SCUNet (denoise / de-blocking / detail enhancement, no size change). CPU-heavy (about 11s at 512, 35s at 1024) and serialized server-side, so it takes longer; controlled by the admin 'HD repair (SCUNet)' switch, off by default and opt-in per request.",
         ],
         [
-          "Generative repair (manual, gpt-image-2)",
-          "Unlike HD repair, this redraws through the real generation backend. When the user checks 'Generative repair' or the API sends block_repair=true, the final image is shrunk to the web sweet-spot resolution (~1280) and redrawn once with gpt-image-2 img2img (fixing text/detail while keeping composition and content unchanged, using repair_prompt or a built-in default), then upscaled to the target size. A single whole-image redraw means no seams (no tiling, no overlap ghosting); one extra backend call billed separately — slower and costlier than super-resolution / HD repair; controlled by the admin 'Generative repair' switch, off by default and opt-in. When active it replaces auto super-resolution.",
-        ],
-        [
           "Order & composition",
-          "Super-resolution and HD repair can stack: restore first (native resolution, cheaper), then upscale to target. Generative repair, when enabled, upscales to target itself and replaces auto super-resolution. Nothing crops or changes aspect ratio; on any failure it falls back to the original and never blocks generation.",
+          "Super-resolution and HD repair can stack: restore first (native resolution, cheaper), then upscale to target. Nothing crops or changes aspect ratio; on any failure it falls back to the original and never blocks generation.",
         ],
       ],
     },

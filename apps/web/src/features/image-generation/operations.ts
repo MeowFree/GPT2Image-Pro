@@ -58,7 +58,6 @@ import { buildInputImagesMetadata } from "./generation-metadata";
 import { getRuntimeImageBaseCreditPricing } from "./pricing-settings";
 import { withImageGenerationQueue } from "./queue";
 import {
-  DEFAULT_IMAGE_MODEL,
   DEFAULT_IMAGE_SIZE,
   getImageCreditCostBreakdown,
   getImageModel,
@@ -69,15 +68,11 @@ import {
   isFireflyModel,
   isImageSizeWithinPixelRange,
   normalizeImageSize,
-  parseImageSize,
   roundCreditAmount,
   roundUpCreditAmount,
 } from "./resolution";
-import { generativeRepairImage } from "./generative-repair";
-import { maskedOutpaintImage } from "./masked-outpaint";
 import { restoreImage } from "./image-restoration";
 import { calibrateImageResolution } from "./resolution-calibration";
-import { superResolve } from "./super-resolution";
 import {
   editImage,
   generateChatImage,
@@ -844,45 +839,6 @@ function resolveOutputGenerationId(
     : `${parentGenerationId}-${index + 1}`;
 }
 
-// 生成式修复默认提示词：整图重绘、只修不改（请求级 repair_prompt 可覆盖）。
-// 也用于掩码外绘的首块（种子块，无邻居、整块基于原图内容重绘）。
-const DEFAULT_BLOCK_REPAIR_PROMPT =
-  "Redraw this entire image to restore and sharpen it: fix blurry or garbled text and fine details, keep the exact same composition, layout, colors and content unchanged. Do not add, remove, move or reinterpret anything.";
-
-/** 块在网格中的方位词（如 top-left / top-right / bottom / center）。 */
-function describeOutpaintRegion(
-  col: number,
-  row: number,
-  cols: number,
-  rows: number
-): string {
-  const h =
-    cols <= 1 ? "" : col === 0 ? "left" : col === cols - 1 ? "right" : "center";
-  const v =
-    rows <= 1 ? "" : row === 0 ? "top" : row === rows - 1 ? "bottom" : "middle";
-  return [v, h].filter(Boolean).join("-") || "whole";
-}
-
-/**
- * 掩码外绘「自主拓展」位置提示词：不喂原图/参考,只按块方位告诉模型「根据四周已渲染内容补出该方位」。
- * 首块(无左/上邻)=修复种子;其余=从已提交的非黑边缘往黑区补,且强调只画本方位、勿把整幅画塞进一块。
- */
-function buildOutpaintPrompt(pos: {
-  col: number;
-  row: number;
-  cols: number;
-  rows: number;
-}): string {
-  const region = describeOutpaintRegion(pos.col, pos.row, pos.cols, pos.rows);
-  const hasLeft = pos.col > 0;
-  const hasTop = pos.row > 0;
-  if (!hasLeft && !hasTop) {
-    return `This picture is the ${region} region of a larger complete image. Restore and sharpen only this ${region} region — fix blurry or garbled text and fine details, keep the same content. Render only what belongs in this ${region} region at its true scale; do NOT zoom out or squeeze the whole scene into this frame.`;
-  }
-  const edges = hasLeft && hasTop ? "left and top" : hasLeft ? "left" : "top";
-  return `This tile is the ${region} region of a larger image. The non-black pixels along the ${edges} edge(s) are the already-rendered neighbouring region. Using those surroundings as context, extend the scene into the black area — fill in only the ${region} direction so it continues seamlessly from the ${edges} edge(s), matching style, lighting, colours and perspective. Render only this ${region} region at its true scale; do NOT zoom out or draw the whole scene, and change nothing outside the black area.`;
-}
-
 async function storeGeneratedImageOutput(params: {
   output: {
     imageBase64?: string;
@@ -902,12 +858,6 @@ async function storeGeneratedImageOutput(params: {
   requestedFormat?: string;
   /** 高清修复开关(请求级):true 且主开关开时用 SCUNet 盲复原最终图(不改分辨率);其余不修复。 */
   hdRepair?: boolean;
-  /** 分块修复开关(请求级):true 时把图切成 2×2 web 尺寸块逐块 gpt-image-2 重绘再拼接。 */
-  blockRepair?: boolean;
-  /** 分块修复的每块提示词(请求级覆盖);为空则用管理端默认。 */
-  repairPrompt?: string;
-  /** 逐块计费回调(由调用点注入,携带 chargeAdditionalCredits+定价);每成功重绘一块调一次。 */
-  chargeTile?: (tileSize: string, tileIndex: number) => Promise<void>;
 }) {
   let imageBuffer: Buffer = await toImageBuffer(params.output);
   // 出图后处理（仅对最终图）：修复与超分两个独立步骤，各自主开关门控、失败回退不阻断。
@@ -924,128 +874,9 @@ async function storeGeneratedImageOutput(params: {
       const restored = await restoreImage(imageBuffer);
       imageBuffer = restored.buffer;
     }
-    // 生成式修复（手动 blockRepair）：两种技术二选一，由管理端主开关决定，均自带到目标分辨率
-    // （启用成功时替代下面独立超分）、逐块/次计费(chargeTile)、失败回退不阻断：
-    //  - IMAGE_MASK_OUTPAINT_ENABLED：掩码顺序外绘（1K tile + mask，路由 codex，无缝，见 masked-outpaint.ts）
-    //  - IMAGE_BLOCK_REPAIR_ENABLED ：整图一次重绘 + general 超分（见 generative-repair.ts）
-    let blockRepaired = false;
-    if (params.blockRepair === true) {
-      const target = parseImageSize(params.requestedSize || DEFAULT_IMAGE_SIZE);
-      // 提示词:请求级 repairPrompt 覆盖 > 内置默认(无需管理端配置)。
-      const repairPrompt =
-        params.repairPrompt?.trim() || DEFAULT_BLOCK_REPAIR_PROMPT;
-      const maskOutpaint = await getRuntimeSettingBoolean(
-        "IMAGE_MASK_OUTPAINT_ENABLED",
-        false
-      );
-      const wholeRepair = await getRuntimeSettingBoolean(
-        "IMAGE_BLOCK_REPAIR_ENABLED",
-        false
-      );
-      if (target && maskOutpaint) {
-        // 掩码顺序外绘（留黑真外绘）:在目标尺寸上切 1K 重叠块,逐块把待补区留黑、
-        // 只留已提交邻块的边,让模型「从边缘往黑区外绘」,并严格照整幅原图参考还原该处内容。
-        // 路由 codex(会发 mask、尊重 1K)。首块(i=0,无邻居)按原图内容整块重绘作种子。
-        // 诊断日志(临时):开始/每块失败/完成都打点,便于确认外绘是否跑、每块成败(见 tileref 复盘)。
-        logWarn("掩码外绘开始", {
-          generationId: params.generationId,
-          target: `${target.width}x${target.height}`,
-        });
-        try {
-          const res = await maskedOutpaintImage(
-            imageBuffer,
-            Math.max(target.width, target.height),
-            async (tileCanvas, mask, pos, w, h, i) => {
-              try {
-                const edited = await editImage(params.config, {
-                  // 自主拓展:按块方位给位置提示词(「根据四周已渲染内容补出该方位」),
-                  // 不喂原图/参考。首块=修复种子;其余=从已提交边缘往黑区补该方位。
-                  prompt: buildOutpaintPrompt(pos),
-                  // images[0]=待补块（已提交邻块边缘 + 黑色待补区，mask 标黑区为重绘）；不再给参考图。
-                  images: [
-                    { data: tileCanvas, name: "tile.png", type: "image/png" },
-                  ],
-                  mask: { data: mask, name: "mask.png", type: "image/png" },
-                  size: `${w}x${h}`,
-                  model: DEFAULT_IMAGE_MODEL,
-                  outputFormat: "png",
-                  requiresResponsesBackend: true,
-                });
-                if (edited.error || !edited.imageBase64) {
-                  throw new Error(edited.error || "该块无输出");
-                }
-                await params.chargeTile?.(`${w}x${h}`, i);
-                return Buffer.from(edited.imageBase64, "base64");
-              } catch (tileError) {
-                // 每块失败原本被 maskedOutpaintImage 静默吞掉;这里显式打点便于诊断。
-                logWarn("掩码外绘该块失败", {
-                  generationId: params.generationId,
-                  tile: i,
-                  size: `${w}x${h}`,
-                  error:
-                    tileError instanceof Error
-                      ? tileError.message
-                      : String(tileError),
-                });
-                throw tileError;
-              }
-            },
-            superResolve
-          );
-          imageBuffer = res.buffer;
-          blockRepaired = res.tilesRepaired > 0;
-          logWarn("掩码外绘完成", {
-            generationId: params.generationId,
-            tilesRepaired: res.tilesRepaired,
-            tilesTotal: res.tilesTotal,
-            blockRepaired,
-          });
-        } catch (error) {
-          logWarn("掩码外绘修复失败，回退原图", {
-            generationId: params.generationId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      } else if (target && wholeRepair) {
-        const targetLongEdge = Math.max(target.width, target.height);
-        try {
-          const repairedResult = await generativeRepairImage(
-            imageBuffer,
-            targetLongEdge,
-            // 整图重绘:gpt-image-2 img2img(强制 web 后端,尺寸较稳),成功后计费一次。
-            async (whole, w, h) => {
-              const edited = await editImage(params.config, {
-                prompt: repairPrompt,
-                images: [{ data: whole, name: "image.png", type: "image/png" }],
-                size: `${w}x${h}`,
-                model: DEFAULT_IMAGE_MODEL,
-                outputFormat: "png",
-                forceWebBackend: true,
-              });
-              if (edited.error || !edited.imageBase64) {
-                throw new Error(edited.error || "生成式修复:无输出");
-              }
-              await params.chargeTile?.(`${w}x${h}`, 0);
-              return Buffer.from(edited.imageBase64, "base64");
-            },
-            superResolve
-          );
-          imageBuffer = repairedResult.buffer;
-          blockRepaired = repairedResult.repaired;
-        } catch (error) {
-          logWarn("生成式修复失败，回退原图", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    }
     // 超分（自动 + 主开关 IMAGE_SUPER_RESOLUTION_ENABLED）：上游图较长边 < 目标 2/3 时用
-    // 轻量 general-x4v3 放大到目标尺寸（快，见 resolution-calibration.ts）。生成式修复已管到
-    // 目标分辨率时跳过（避免二次超分）。
-    if (
-      !blockRepaired &&
-      (await getRuntimeSettingBoolean("IMAGE_SUPER_RESOLUTION_ENABLED", false))
-    ) {
+    // 轻量 general-x4v3 放大到目标尺寸（快，见 resolution-calibration.ts）。
+    if (await getRuntimeSettingBoolean("IMAGE_SUPER_RESOLUTION_ENABLED", false)) {
       const calibrated = await calibrateImageResolution(
         imageBuffer,
         params.requestedSize || DEFAULT_IMAGE_SIZE
@@ -2775,28 +2606,6 @@ async function runQueuedImageGenerationForUser({
             requestedSize: size,
             requestedFormat: input.outputFormat,
             hdRepair: input.hdRepair,
-            blockRepair: input.blockRepair,
-            repairPrompt: input.repairPrompt,
-            // 生成式修复计费:重绘一次按尺寸扣一次,幂等 sourceRef 防重试重复扣。
-            chargeTile: async (tileSize, tileIndex) => {
-              const tileCost = applyBillingMultiplierToCreditCost(
-                getImageCreditCostBreakdown(tileSize, {
-                  textModerationCount: 0,
-                  imageModerationCount: 0,
-                  basePricing: imageBasePricing,
-                  quality: input.quality as ImageQualityLevel | undefined,
-                  thinking: input.thinking as ImageThinkingLevel | undefined,
-                }),
-                billingMultiplier
-              ).totalCredits;
-              await chargeAdditionalCredits(
-                tileCost,
-                "image-generation",
-                `生成式修复 (${tileSize})`,
-                { blockRepair: true, tileSize, index: tileIndex },
-                `${outputGenerationId}:blockrepair-${tileIndex}`
-              );
-            },
           })
         );
         if (isAgentChatInput) {

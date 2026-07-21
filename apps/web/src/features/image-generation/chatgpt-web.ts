@@ -1429,6 +1429,7 @@ function imageCandidatesAfterMessage(
   return mergeImageCandidates(
     conversationNodesAfterMessage(conversationText, requestMessageId).flatMap(
       ({ id, node }) => {
+        if (nodeAuthorRole(node) === "user") return [];
         const candidate = imageCandidateFromConversationNode(id, node);
         return candidate ? [candidate] : [];
       }
@@ -1954,6 +1955,37 @@ async function downloadImageOutputs(
   return outputs;
 }
 
+function imageBase64Sha256(imageBase64: string) {
+  return createHash("sha256")
+    .update(Buffer.from(imageBase64, "base64"))
+    .digest("hex");
+}
+
+function inputImageSha256Set(images: ImageInputFile[]) {
+  return new Set(
+    images
+      .map((image) =>
+        image.data?.length
+          ? createHash("sha256").update(image.data).digest("hex")
+          : ""
+      )
+      .filter(Boolean)
+  );
+}
+
+function outputMatchesInputImage(
+  imageOutputs: NonNullable<GenerateImageResult["imageOutputs"]>,
+  images: ImageInputFile[]
+) {
+  if (!imageOutputs.length || !images.length) return false;
+  const inputHashes = inputImageSha256Set(images);
+  if (!inputHashes.size) return false;
+  return imageOutputs.some((output) => {
+    if (!output.imageBase64) return false;
+    return inputHashes.has(imageBase64Sha256(output.imageBase64));
+  });
+}
+
 // 在飞「续接对话」占用集合:同一 ChatGPT 会话同一时刻只允许一个请求续接。并发的同提示
 // 请求(读到同一旧会话状态)只放行第一个续接,其余强制开新对话,避免同时从同一节点分叉、
 // 产出几乎一样的图。进程内即可:线上正常流量全打主副本(3308),备副本仅 failover 启用。
@@ -2162,6 +2194,9 @@ async function runWebImage(
     );
     if (!imageOutputs[0]?.imageBase64) {
       return { error: "ChatGPT Web backend returned no downloadable image" };
+    }
+    if (outputMatchesInputImage(imageOutputs, images)) {
+      return { error: "ChatGPT Web backend returned input image as output" };
     }
     const selectionMessageId =
       selectionMessageIdFromStream || resolved.selectionMessageId || "";
@@ -2988,6 +3023,7 @@ export const __testing__ = {
   imageSelectionAfterMessage,
   conversationNodesAfterMessage,
   extractImageIds,
+  outputMatchesInputImage,
   extractSelectionMessageId,
   scopedConversationTextAfterMessage,
   extractEditableArtifacts,

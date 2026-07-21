@@ -161,6 +161,86 @@ describe("ChatGPT Web image choices", () => {
     ]);
   });
 
+  it("ignores user-uploaded image nodes after a request message", () => {
+    const conversation = {
+      current_node: "generated_1",
+      mapping: {
+        request_1: {
+          id: "request_1",
+          create_time: 100,
+          children: ["uploaded_1", "generated_1"],
+          message: {
+            id: "request_1",
+            create_time: 100,
+            author: { role: "user" },
+          },
+        },
+        uploaded_1: {
+          id: "uploaded_1",
+          parent: "request_1",
+          create_time: 101,
+          message: {
+            id: "uploaded_message_1",
+            author: { role: "user" },
+            content: {
+              content_type: "multimodal_text",
+              parts: [{ asset_pointer: "sediment://uploaded_input" }],
+            },
+          },
+        },
+        generated_1: {
+          id: "generated_1",
+          parent: "request_1",
+          create_time: 102,
+          message: {
+            id: "generated_message_1",
+            author: { role: "assistant" },
+            content: {
+              parts: [{ asset_pointer: "sediment://generated_output" }],
+            },
+            metadata: {
+              image_gen_group_id: "group_1",
+              generation_index: 1,
+            },
+          },
+        },
+      },
+    };
+
+    expect(
+      __testing__.imageCandidatesAfterMessage(
+        JSON.stringify(conversation),
+        "request_1"
+      )
+    ).toEqual([
+      {
+        fileIds: [],
+        sedimentIds: ["generated_output"],
+        messageId: "generated_message_1",
+        groupId: "group_1",
+        generationIndex: 1,
+      },
+    ]);
+  });
+
+  it("detects exact Web outputs that match input images", () => {
+    const input = Buffer.from("same image bytes");
+
+    expect(
+      __testing__.outputMatchesInputImage(
+        [{ imageBase64: input.toString("base64"), index: 0 }],
+        [{ data: input, name: "input.jpg", type: "image/jpeg" }]
+      )
+    ).toBe(true);
+
+    expect(
+      __testing__.outputMatchesInputImage(
+        [{ imageBase64: Buffer.from("new image").toString("base64"), index: 0 }],
+        [{ data: input, name: "input.jpg", type: "image/jpeg" }]
+      )
+    ).toBe(false);
+  });
+
   it("extracts the Web selection message id from SSE metadata", () => {
     const sse = [
       'data: {"v":{"id":"select_message_1","metadata":{"selected_image_message_id":"choice_message_a"}}}',

@@ -862,16 +862,6 @@ export const POST = withApiLogging(async (request: NextRequest) => {
   );
   // 高清修复:显式 false 走轻量 general-x4v3;undefined/true 由后端选 SwinIR 超分。
   const hdRepair = getOptionalBoolean(formData, "hdRepair", "hd_repair");
-  // 分块修复:切成 2×2 web 块逐块 gpt-image-2 重绘再拼接;逐块单独计费。默认关。
-  const blockRepair = getOptionalBoolean(
-    formData,
-    "blockRepair",
-    "block_repair"
-  );
-  const repairPromptRaw =
-    formData.get("repairPrompt") ?? formData.get("repair_prompt");
-  const repairPrompt =
-    typeof repairPromptRaw === "string" ? repairPromptRaw : undefined;
 
   const thinkingValue = getText(formData, "thinking") || "low";
   if (!VALID_THINKING.has(thinkingValue as ThinkingLevel)) {
@@ -972,8 +962,6 @@ export const POST = withApiLogging(async (request: NextRequest) => {
           background,
           transparentMatte,
           hdRepair,
-          blockRepair,
-          repairPrompt,
           stream: useStreamResponse,
           thinking,
           agentMode,
