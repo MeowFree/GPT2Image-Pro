@@ -322,7 +322,6 @@
     "dashboard": "控制台",
     "products": "功能",
     "pricing": "定价",
-    "blog": "博客",
     "docs": "文档",
     "features": "功能",
     "changelog": "更新日志",
@@ -531,7 +530,6 @@
     "docs": "文档",
     "pseo": "PSEO",
     "pricing": "定价",
-    "blog": "博客",
     "about": "关于",
     "productsMenu": {
       "core": {

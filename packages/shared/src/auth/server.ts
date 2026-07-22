@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { cache } from "react";
 
 import { auth } from "./index";
 
@@ -19,11 +20,11 @@ import { auth } from "./index";
  * }
  * ```
  */
-export async function getServerSession() {
+export const getServerSession = cache(async function getServerSession() {
   return auth.api.getSession({
     headers: await headers(),
   });
-}
+});
 
 /**
  * 获取当前用户

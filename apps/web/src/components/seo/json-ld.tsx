@@ -1,8 +1,6 @@
 import {
-  type ArticleSchemaInput,
   type BreadcrumbItem,
   type FAQItem,
-  generateArticleSchema,
   generateBreadcrumbSchema,
   generateFAQSchema,
   generateOrganizationSchema,
@@ -34,13 +32,6 @@ export function SiteJsonLd({ locale }: { locale: LocaleType }) {
       <JsonLdScript data={generateOrganizationSchema()} />
     </>
   );
-}
-
-/**
- * Article (for blog posts)
- */
-export function ArticleJsonLd(props: ArticleSchemaInput) {
-  return <JsonLdScript data={generateArticleSchema(props)} />;
 }
 
 /**

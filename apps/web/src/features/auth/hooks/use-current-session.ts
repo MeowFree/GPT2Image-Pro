@@ -1,7 +1,15 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  createElement,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 import type { AppUserRole } from "@repo/shared/auth/roles";
 
@@ -15,10 +23,22 @@ export type CurrentSession = {
   };
 } | null;
 
-export function useCurrentSession(initialData?: CurrentSession) {
+type CurrentSessionState = {
+  data: CurrentSession;
+  isPending: boolean;
+  reload: () => void;
+};
+
+const CurrentSessionContext = createContext<CurrentSessionState | null>(null);
+
+function useCurrentSessionState(
+  initialData?: CurrentSession,
+  disabled = false
+): CurrentSessionState {
   const pathname = usePathname();
+  const hasInitialData = initialData !== undefined;
   const [data, setData] = useState<CurrentSession>(initialData ?? null);
-  const [isPending, setIsPending] = useState(!initialData);
+  const [isPending, setIsPending] = useState(!hasInitialData);
   const [reloadToken, setReloadToken] = useState(0);
 
   const reload = useCallback(() => {
@@ -26,6 +46,7 @@ export function useCurrentSession(initialData?: CurrentSession) {
   }, []);
 
   useEffect(() => {
+    if (disabled || (hasInitialData && reloadToken === 0)) return;
     const controller = new AbortController();
 
     async function loadSession() {
@@ -66,23 +87,48 @@ export function useCurrentSession(initialData?: CurrentSession) {
     loadSession();
 
     return () => controller.abort();
-  }, [pathname, reloadToken]);
+  }, [disabled, hasInitialData, pathname, reloadToken]);
 
   useEffect(() => {
+    if (disabled) return;
     const refreshOnVisible = () => {
       if (document.visibilityState === "visible") reload();
     };
+    const refreshFromBfcache = (event: PageTransitionEvent) => {
+      if (event.persisted) reload();
+    };
 
     window.addEventListener("focus", reload);
-    window.addEventListener("pageshow", reload);
+    window.addEventListener("pageshow", refreshFromBfcache);
     document.addEventListener("visibilitychange", refreshOnVisible);
 
     return () => {
       window.removeEventListener("focus", reload);
-      window.removeEventListener("pageshow", reload);
+      window.removeEventListener("pageshow", refreshFromBfcache);
       document.removeEventListener("visibilitychange", refreshOnVisible);
     };
-  }, [reload]);
+  }, [disabled, reload]);
 
   return { data, isPending, reload };
+}
+
+export function CurrentSessionProvider({
+  children,
+  initialData,
+}: {
+  children: ReactNode;
+  initialData: CurrentSession;
+}) {
+  const value = useCurrentSessionState(initialData);
+  return createElement(
+    CurrentSessionContext.Provider,
+    { value },
+    children
+  );
+}
+
+export function useCurrentSession(initialData?: CurrentSession) {
+  const shared = useContext(CurrentSessionContext);
+  const standalone = useCurrentSessionState(initialData, shared !== null);
+  return shared ?? standalone;
 }

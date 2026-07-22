@@ -9,7 +9,6 @@ import { useRef, useState } from "react";
 import {
   NavigationMenu,
   NavigationMenuItem,
-  NavigationMenuLink,
   NavigationMenuList,
 } from "@repo/ui/components/navigation-menu";
 import { mainNav, productsNav } from "@repo/shared/config";
@@ -56,7 +55,6 @@ export function NavMenu() {
     Features: t("features"),
     Docs: t("docs"),
     Pricing: t("pricing"),
-    Blog: t("blog"),
   };
 
   const isActive = (href: string) => {
@@ -191,36 +189,33 @@ export function NavMenu() {
           const active = isActive(item.href);
           return (
             <NavigationMenuItem key={item.href}>
-              <NavigationMenuLink asChild>
-                <Link
-                  href={item.href}
-                  onClick={(e) => handleClick(e, item.href)}
-                  onMouseEnter={() => setHoveredItem(item.href)}
-                  className={cn(
-                    "relative inline-flex h-9 items-center justify-center px-4 py-2 text-sm font-medium transition-colors",
-                    active
-                      ? "text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {hoveredItem === item.href && (
-                    <motion.span
-                      layoutId="nav-pill"
-                      className="absolute inset-0 -z-10 rounded-md bg-muted"
-                      transition={{
-                        type: "spring",
-                        bounce: 0,
-                        duration: 0.3,
-                      }}
-                    />
-                  )}
-                  {/* 当前路由静态底色:无动画诉求,用普通元素即可 */}
-                  {active && !hoveredItem && (
-                    <span className="absolute inset-0 -z-10 rounded-md bg-muted/50" />
-                  )}
-                  {navTitleMap[item.title] || item.title}
-                </Link>
-              </NavigationMenuLink>
+              <Link
+                href={item.href}
+                onClick={(e) => handleClick(e, item.href)}
+                onMouseEnter={() => setHoveredItem(item.href)}
+                className={cn(
+                  "relative inline-flex h-9 items-center justify-center px-4 py-2 text-sm font-medium transition-colors",
+                  active
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {hoveredItem === item.href && (
+                  <motion.span
+                    layoutId="nav-pill"
+                    className="absolute inset-0 -z-10 rounded-md bg-muted"
+                    transition={{
+                      type: "spring",
+                      bounce: 0,
+                      duration: 0.3,
+                    }}
+                  />
+                )}
+                {active && !hoveredItem && (
+                  <span className="absolute inset-0 -z-10 rounded-md bg-muted/50" />
+                )}
+                {navTitleMap[item.title] || item.title}
+              </Link>
             </NavigationMenuItem>
           );
         })}

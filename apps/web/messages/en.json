@@ -329,7 +329,6 @@
     "docs": "Docs",
     "pseo": "PSEO",
     "pricing": "Pricing",
-    "blog": "Blog",
     "about": "About",
     "productsMenu": {
       "core": {
@@ -358,7 +357,6 @@
     "dashboard": "Dashboard",
     "products": "Features",
     "pricing": "Pricing",
-    "blog": "Blog",
     "docs": "Documentation",
     "features": "Features",
     "changelog": "Changelog",

@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 import { siteConfig } from "@repo/shared/config";
 import { getAllPseoParams } from "@/features/pseo/lib/pseo-data";
-import { getAllBlogSlugs, getAllLegalSlugs } from "@/lib/source";
+import { getAllLegalSlugs } from "@/lib/source";
 
 /** Supported locales */
 const locales = ["en", "zh"] as const;
@@ -30,7 +30,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   // Static pages that exist for each locale
   const staticPaths = [
     "", // homepage
-    "/blog",
     "/pseo",
   ];
 
@@ -54,15 +53,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     }))
   );
 
-  // Blog posts (dynamic)
-  const blogSlugs = getAllBlogSlugs();
-  const blogRoutes = blogSlugs.map(({ locale, slug }) => ({
-    url: `${baseUrl}/${locale}/blog/${slug}`,
-    lastModified: now,
-    changeFrequency: "monthly" as const,
-    priority: 0.7,
-  }));
-
   // Legal pages (dynamic)
   const legalSlugs = getAllLegalSlugs();
   const legalRoutes = legalSlugs.map(({ locale, slug }) => ({
@@ -83,7 +73,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     ...staticRoutes,
     ...solutionRoutes,
-    ...blogRoutes,
     ...legalRoutes,
     ...pseoRoutes,
   ];

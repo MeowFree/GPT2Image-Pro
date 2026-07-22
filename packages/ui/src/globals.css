@@ -268,16 +268,6 @@
   position: relative !important;
 }
 
-/* 影片暗场页头联动:穿越/宣言暗场窗口内站点页头退场,
-   由 cinema-film 按主进度切换 body[data-cinema-dark] */
-[data-site-header] {
-  transition: opacity 0.35s ease;
-}
-body[data-cinema-dark] [data-site-header] {
-  opacity: 0;
-  pointer-events: none;
-}
-
 /* FAQ 册页:答案如墨落纸自上而下扫入(radix 展开态触发) */
 @keyframes faq-ink-reveal {
   from {

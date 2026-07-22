@@ -67,7 +67,6 @@ export function Header() {
     Features: tNav("features"),
     Docs: tNav("docs"),
     Pricing: tNav("pricing"),
-    Blog: tNav("blog"),
   };
 
   return (

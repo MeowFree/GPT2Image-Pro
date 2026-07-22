@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { getUserRoleById } from "@repo/shared/auth/role-server";
 import { isAdminRole } from "@repo/shared/auth/roles";
 import { getServerSession } from "@repo/shared/auth/server";
@@ -86,12 +87,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function HomePage({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}) {
-  const { locale } = await params;
+async function HomeRuntimeSections({ locale }: { locale: string }) {
   const [
     runtimePaymentConfig,
     capabilityMatrix,
@@ -122,46 +118,53 @@ export default async function HomePage({
 
   return (
     <>
-      {/* JSON-LD Structured Data */}
+      {(slaEnabled || canToggleSlaStatus) && (
+        <section className="relative">
+          <InkThread numeral="V" step="export" side="left" labelTop="78vh" />
+          <SlaStatusSection
+            locale={locale}
+            stats={slaStats}
+            initiallyEnabled={slaEnabled}
+            canToggleVisibility={canToggleSlaStatus}
+          />
+        </section>
+      )}
+      <section className="relative">
+        <InkThread numeral="VI" step="framing" side="left" />
+        <PricingSection
+          payment={runtimePaymentConfig}
+          capabilityMatrix={capabilityMatrix}
+          creditPackages={creditPackages}
+          creditPackageExpiryDays={creditPackageExpiryDays}
+          imageBasePricing={imageBasePricing}
+        />
+      </section>
+    </>
+  );
+}
+
+export default async function HomePage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+
+  return (
+    <>
       <SiteJsonLd locale={locale as "en" | "zh"} />
       <SoftwareAppJsonLd locale={locale as "en" | "zh"} />
 
-      {/* 影片化首页:七幕影片承接原 Hero..Testimonials 区块;
-          谷段常规流(SLA/Pricing/FAQ)与终幕作 children 传入 CinemaFilm,
-          与影片共享同一 GL 上下文与探测结果(单画布单引擎不变式) */}
       <CinemaFilm>
-        {/* 静默谷一:SLA 素面排版 + 页边墨线章节刻度 */}
-        {(slaEnabled || canToggleSlaStatus) && (
-          <section className="relative">
-            {/* labelTop 78vh:左栏大数字占视口中带,刻度落下部空白避让 */}
-            <InkThread numeral="V" step="export" side="left" labelTop="78vh" />
-            <SlaStatusSection
-              locale={locale}
-              stats={slaStats}
-              initiallyEnabled={slaEnabled}
-              canToggleVisibility={canToggleSlaStatus}
-            />
-          </section>
-        )}
-        {/* 谷段二折「润格」:五档立轴挂单走成廊道,墨线续缝。
-            side=left:廊道满宽,右页边标签会被轴身裁切;横移使左侧
-            渐空,左页边标签悬于空白纸面(v1.0.1 走查实证) */}
-        <section className="relative">
-          <InkThread numeral="VI" step="framing" side="left" />
-          <PricingSection
-            payment={runtimePaymentConfig}
-            capabilityMatrix={capabilityMatrix}
-            creditPackages={creditPackages}
-            creditPackageExpiryDays={creditPackageExpiryDays}
-            imageBasePricing={imageBasePricing}
-          />
-        </section>
-        {/* 谷段三折「册页」:问答折子 + 页边墨线章节刻度 */}
+        <Suspense
+          fallback={<div aria-hidden="true" className="min-h-[160vh]" />}
+        >
+          <HomeRuntimeSections locale={locale} />
+        </Suspense>
         <section className="relative">
           <InkThread numeral="VII" step="completion" side="left" />
           <FAQSection />
         </section>
-        {/* 终幕:反向显影 bookend + CTA(承接原 CTASection 内容) */}
         <FinaleStage />
       </CinemaFilm>
     </>

@@ -19,14 +19,6 @@ export function generateWebSiteSchema(locale: LocaleType) {
         ? "AI-powered chat-to-image generation platform. Transform your words into stunning visuals through natural conversation."
         : "AI驱动的对话生图平台，通过自然对话将你的想法转化为精美视觉图片。",
     inLanguage: locale === "en" ? "en-US" : "zh-CN",
-    potentialAction: {
-      "@type": "SearchAction",
-      target: {
-        "@type": "EntryPoint",
-        urlTemplate: `${getBaseUrl()}/{locale}/blog?q={search_term_string}`,
-      },
-      "query-input": "required name=search_term_string",
-    },
   };
 }
 
@@ -46,68 +38,6 @@ export function generateOrganizationSchema() {
       contactType: "customer support",
       email: siteConfig.author.email,
     },
-  };
-}
-
-/**
- * Article Schema Input
- */
-export interface ArticleSchemaInput {
-  title: string;
-  description: string;
-  slug: string;
-  locale: LocaleType;
-  publishedAt: string;
-  updatedAt?: string;
-  author?: string;
-  image?: string;
-  tags?: string[];
-}
-
-/**
- * Article Schema - for blog posts
- */
-export function generateArticleSchema(input: ArticleSchemaInput) {
-  const {
-    title,
-    description,
-    slug,
-    locale,
-    publishedAt,
-    updatedAt,
-    author,
-    image,
-    tags,
-  } = input;
-
-  return {
-    "@context": "https://schema.org",
-    "@type": "Article",
-    headline: title,
-    description,
-    url: `${getBaseUrl()}/${locale}/blog/${slug}`,
-    inLanguage: locale === "en" ? "en-US" : "zh-CN",
-    datePublished: publishedAt,
-    dateModified: updatedAt || publishedAt,
-    author: {
-      "@type": "Person",
-      name: author || siteConfig.author.name,
-    },
-    publisher: {
-      "@type": "Organization",
-      name: siteConfig.name,
-      logo: {
-        "@type": "ImageObject",
-        url: `${getBaseUrl()}/logo.png`,
-      },
-    },
-    ...(image && {
-      image: {
-        "@type": "ImageObject",
-        url: image.startsWith("http") ? image : `${getBaseUrl()}${image}`,
-      },
-    }),
-    ...(tags && tags.length > 0 && { keywords: tags.join(", ") }),
   };
 }
 
