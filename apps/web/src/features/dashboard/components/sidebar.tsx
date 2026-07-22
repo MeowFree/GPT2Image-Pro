@@ -11,12 +11,18 @@ import {
   Users,
 } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useTranslations } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
-import { type MouseEvent, useEffect, useRef, useState } from "react";
+import {
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@repo/ui/components/avatar";
 import {
@@ -63,6 +69,23 @@ type DashboardSidebarProps = {
   initialSession?: CurrentSession;
 };
 
+function SidebarNavigationStatus({
+  onPendingChange,
+}: {
+  onPendingChange: (token: symbol, pending: boolean) => void;
+}) {
+  const { pending } = useLinkStatus();
+  const tokenRef = useRef(Symbol("sidebar-navigation"));
+
+  useEffect(() => {
+    const token = tokenRef.current;
+    onPendingChange(token, pending);
+    return () => onPendingChange(token, false);
+  }, [onPendingChange, pending]);
+
+  return null;
+}
+
 export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -79,19 +102,21 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
 
   // Popover 开关状态
   const [open, setOpen] = useState(false);
-  const pendingNavigationRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const target = pendingNavigationRef.current;
-    if (!target) return;
-    if (target === pathname) {
-      pendingNavigationRef.current = null;
-      return;
-    }
-
-    // An older RSC request committed after a newer sidebar click.
-    window.location.replace(target);
-  }, [pathname]);
+  const navigationIntentRef = useRef<string | null>(null);
+  const pendingNavigationTokensRef = useRef(new Set<symbol>());
+  const handleNavigationPendingChange = useCallback(
+    (token: symbol, pending: boolean) => {
+      if (pending) {
+        pendingNavigationTokensRef.current.add(token);
+      } else {
+        pendingNavigationTokensRef.current.delete(token);
+        if (pendingNavigationTokensRef.current.size === 0) {
+          navigationIntentRef.current = null;
+        }
+      }
+    },
+    []
+  );
 
   // 获取用户订阅计划
   const { execute: fetchPlan, result: planResult } = useAction(getMyPlanAction);
@@ -208,13 +233,17 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
     const target = localizedHref(href);
     if (target === pathname) return;
 
-    const previousTarget = pendingNavigationRef.current;
-    pendingNavigationRef.current = target;
-    if (previousTarget && previousTarget !== target) {
-      // Cancel the older RSC navigation so a slow first click cannot win later.
+    const previousTarget = navigationIntentRef.current;
+    navigationIntentRef.current = target;
+    if (
+      pendingNavigationTokensRef.current.size > 0 ||
+      (previousTarget && previousTarget !== target)
+    ) {
+      // App Router cannot cancel an in-flight RSC navigation. Stop it at the
+      // browser level so the newly clicked destination takes over immediately.
       event.preventDefault();
+      window.stop();
       window.location.assign(target);
-      return;
     }
   };
 
@@ -349,6 +378,9 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                         collapsed && "justify-center px-0"
                       )}
                     >
+                      <SidebarNavigationStatus
+                        onPendingChange={handleNavigationPendingChange}
+                      />
                       {/* 激活指示竖线:淡入 + 纵向展开;非激活时保留元素,靠 opacity/scale 过渡 */}
                       <span
                         aria-hidden="true"
