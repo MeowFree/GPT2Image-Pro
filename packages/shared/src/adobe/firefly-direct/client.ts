@@ -391,12 +391,13 @@ export class AdobeFireflyClient {
       string,
       unknown
     >;
-    const pollUrl = extractResultLink(submitResp.headers, submitData);
-    if (!pollUrl) {
+    const rawPollUrl = extractResultLink(submitResp.headers, submitData);
+    if (!rawPollUrl) {
       throw new AdobeRequestError(
         "video submit succeeded but no poll url returned"
       );
     }
+    const pollUrl = normalizeVideoPollUrl(rawPollUrl);
 
     // 视频生成耗时较长，默认 600s 超时、3s 轮询（移植视频规格）。
     const timeoutMs = input.timeoutMs ?? 600_000;
@@ -521,4 +522,26 @@ export function extractResultLink(
     return String((resultLink as Record<string, unknown>).href || "").trim();
   }
   return "";
+}
+
+/** 将 firefly-epo 分片链接转换成 Adobe 实际的视频任务查询地址。 */
+export function normalizeVideoPollUrl(rawUrl: string): string {
+  if (!rawUrl) return rawUrl;
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.host;
+    const pathParts = parsed.pathname.split("/").filter(Boolean);
+    if (!host || pathParts.length === 0 || !host.startsWith("firefly-epo")) {
+      return rawUrl;
+    }
+
+    const jobId = pathParts.at(-1);
+    const hostSuffix = host.slice("firefly-epo".length).split(".", 1)[0] || "";
+    const shard = hostSuffix.slice(0, 4).trim();
+    if (!jobId || !/^\d{4}$/.test(shard)) return rawUrl;
+
+    return `https://bks-epo${shard}.adobe.io/v2/jobs/result/${jobId}?host=${host}/`;
+  } catch {
+    return rawUrl;
+  }
 }

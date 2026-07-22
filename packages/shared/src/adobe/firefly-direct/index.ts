@@ -17,9 +17,10 @@ export {
   type GenerateImageOutput,
   type GenerateVideoInput,
   type GenerateVideoOutput,
+  normalizeVideoPollUrl,
 } from "./client";
 export * from "./errors";
 export * from "./payloads";
 export * from "./signing";
-export * from "./video-catalog";
 export * from "./transport";
+export * from "./video-catalog";

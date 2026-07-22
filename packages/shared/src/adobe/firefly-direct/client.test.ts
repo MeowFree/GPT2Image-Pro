@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { AdobeFireflyClient, extractResultLink } from "./client";
+import {
+  AdobeFireflyClient,
+  extractResultLink,
+  normalizeVideoPollUrl,
+} from "./client";
 import { AuthError, QuotaExhaustedError } from "./errors";
 import type {
   FireflyTransport,
@@ -72,6 +76,28 @@ describe("extractResultLink", () => {
   });
   it("无则返回空", () => {
     expect(extractResultLink({}, {})).toBe("");
+  });
+});
+
+describe("normalizeVideoPollUrl", () => {
+  it("将 firefly-epo 分片地址转换为 bks 任务查询地址", () => {
+    expect(
+      normalizeVideoPollUrl(
+        "https://firefly-epo1234-prod.adobe.io/v2/jobs/video-job-1"
+      )
+    ).toBe(
+      "https://bks-epo1234.adobe.io/v2/jobs/result/video-job-1?host=firefly-epo1234-prod.adobe.io/"
+    );
+  });
+
+  it("不修改普通、非法或无法识别分片的地址", () => {
+    expect(normalizeVideoPollUrl("https://poll.example/jobs/1")).toBe(
+      "https://poll.example/jobs/1"
+    );
+    expect(
+      normalizeVideoPollUrl("https://firefly-epoabcd.adobe.io/jobs/1")
+    ).toBe("https://firefly-epoabcd.adobe.io/jobs/1");
+    expect(normalizeVideoPollUrl("not a url")).toBe("not a url");
   });
 });
 
@@ -188,5 +214,52 @@ describe("AdobeFireflyClient.generateImage", () => {
     // 现在 gpt-image 图生图只有一个 referenceBlobs 候选,一次 submit 即可。
     const submits = api.calls.filter((c) => c.url.includes("generate-async"));
     expect(submits.length).toBe(1);
+  });
+});
+
+describe("AdobeFireflyClient.generateVideo", () => {
+  it("规范化 firefly-epo 轮询地址后下载视频", async () => {
+    const api = new MockTransport((req, index) => {
+      if (index === 0) {
+        return jsonResponse(
+          200,
+          {},
+          {
+            "x-override-status-link":
+              "https://firefly-epo5678-prod.adobe.io/jobs/video-job-2",
+          }
+        );
+      }
+      expect(req.url).toBe(
+        "https://bks-epo5678.adobe.io/v2/jobs/result/video-job-2?host=firefly-epo5678-prod.adobe.io/"
+      );
+      return jsonResponse(200, {
+        status: "COMPLETED",
+        outputs: [{ video: { presignedUrl: "https://cdn/video.mp4" } }],
+      });
+    });
+    const download = new MockTransport(() =>
+      bytesResponse(200, Buffer.from("MP4DATA"))
+    );
+    const client = new AdobeFireflyClient({
+      transport: api,
+      downloadTransport: download,
+    });
+
+    const out = await client.generateVideo({
+      token: FAKE_TOKEN,
+      prompt: "test video",
+      upstreamModel: "openai:firefly:colligo:sora2",
+      upstreamModelId: "sora",
+      upstreamModelVersion: "sora-2",
+      engine: "sora2",
+      duration: 4,
+      size: { width: 1280, height: 720 },
+      generateAudio: false,
+      pollIntervalMs: 1,
+    });
+
+    expect(out.bytes.toString("utf-8")).toBe("MP4DATA");
+    expect(download.calls[0]?.url).toBe("https://cdn/video.mp4");
   });
 });
