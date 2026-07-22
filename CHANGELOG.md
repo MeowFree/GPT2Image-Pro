@@ -4,6 +4,16 @@
 
 ## 未发布
 
+## v0.8.2 (2026-07-22)
+
+本版同步 `adobe2api` 最新 Firefly Express 协议，补齐视频生成与轮询兼容，并订正生图超时和无效输入图的错误归因。
+
+### Adobe 兼容
+
+- **Firefly 会话切换至 Adobe Express 协议**:IMS 客户端改为 `projectx_webapp`，Origin/Referer 切换到 `new.express.adobe.com`，scope 固定为 `AdobeID,firefly_api,openid`，不再发送旧的随机 nonce/session 请求头；Cookie 提取器、导入解析与账号存储同步支持 Express 登录会话。
+- **视频生成协议完整对齐**:按 Sora 2/Sora 2 Pro、Veo 3.1 Standard/Reference/Fast、Kling O3/Kling 3 分别构造上游 payload，修正 Sora JSON prompt、Veo `modelSpecificPayload.parameters`、参考图 usage/数量限制及 Kling 帧序号；输入图上传前按目标尺寸等比放大、居中裁剪并转为 RGB PNG。
+- **视频轮询 URL 兼容**:将部分任务返回的 `firefly-epo...` 轮询地址转换为对应 `bks-epo...adobe.io/v2/jobs/result/...` 地址，避免这类视频任务无法继续查询结果。
+
 ### 修复
 
 - **生图错误归因订正**:所有后端的 20 分钟运行超时统一归为平台错误，不再把 ChatGPT Web 超时猜测为上游审核拒绝；`Invalid image file or mode` 等无法解码或模式不支持的输入图错误统一归为用户错误，不计入平台 SLA，也不触发换号或换后端重试。
