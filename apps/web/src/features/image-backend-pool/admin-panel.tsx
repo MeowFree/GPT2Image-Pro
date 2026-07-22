@@ -59,26 +59,34 @@ import {
   UserRound,
 } from "lucide-react";
 import { useAction } from "next-safe-action/hooks";
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import {
   bulkDeleteImageBackendAccountsAction,
   bulkUpdateImageBackendAccountsAction,
+  deleteAdobeAccountAction,
   deleteImageBackendGroupAction,
   deleteImageBackendMemberAction,
   deleteSub2ApiAutoSyncTaskAction,
+  getAdminImageBackendAccountsAction,
   getAdminImageBackendPoolAction,
   getAdobeModelMultipliersAction,
   getSub2ApiAutoSyncTasksAction,
   getSub2ApiSourceGroupsAction,
   getSub2ApiSyncProgressAction,
   getSub2ApiSyncStatusAction,
-  importImageBackendAccountsFromRefreshTokensAction,
-  importImageBackendWebAccountsFromAccessTokensAction,
-  deleteAdobeAccountAction,
   importAdobeAccountAction,
   importAdobeAccountsAction,
+  importImageBackendAccountsFromRefreshTokensAction,
+  importImageBackendWebAccountsFromAccessTokensAction,
   listAdobeAccountsAction,
   refreshImageBackendAccountInfoAction,
   refreshImageBackendAccountsInfoAction,
@@ -87,9 +95,9 @@ import {
   saveImageBackendAccountAction,
   saveImageBackendAdobeAction,
   saveImageBackendApiAction,
-  setAdobeModelMultipliersAction,
   saveImageBackendGroupAction,
   setAdobeAccountEnabledAction,
+  setAdobeModelMultipliersAction,
   setImageBackendAccountAlwaysActiveAction,
   setImageBackendAdobeAlwaysActiveAction,
   setImageBackendAdobeEnabledAction,
@@ -103,6 +111,7 @@ import {
 import { ChatgptRegisterTab } from "./chatgpt-register-tab";
 import { parseImportTokensText } from "./import-token-parser";
 import type {
+  AdminImageBackendAccountSummary,
   ImageBackendApiInterfaceMode,
   ImageBackendGroupBackendType,
   ImagesUpstreamMode,
@@ -518,8 +527,6 @@ const ACCOUNT_METRIC_CARDS = [
   },
 ] as const;
 
-type AccountMetricKey = (typeof ACCOUNT_METRIC_CARDS)[number]["key"];
-
 function groupName(groups: Group[], groupId: string | null) {
   return groups.find((group) => group.id === groupId)?.name || "未分组";
 }
@@ -655,83 +662,6 @@ function formatWebStatus(account: Account) {
   return info.status === "limited" ? "额度受限" : "额度正常";
 }
 
-function accountMatchesStatusFilter(
-  account: Account,
-  statusFilter: BulkAccountForm["statusFilter"]
-) {
-  if (statusFilter === "all") return true;
-  if (statusFilter === "disabled") return !account.isEnabled;
-  if (statusFilter === "cooling") return isCoolingDown(account.cooldownUntil);
-  if (!account.isEnabled) return false;
-  if (statusFilter === "limited") {
-    return (
-      account.status === "limited" ||
-      getWebAccountInfo(account)?.status === "limited"
-    );
-  }
-  if (statusFilter === "error") return account.status === "error";
-  return (
-    statusFilter === "active" &&
-    account.status === "active" &&
-    !isCoolingDown(account.cooldownUntil) &&
-    getWebAccountInfo(account)?.status !== "limited"
-  );
-}
-
-function accountSearchText(account: Account, groups: Group[]) {
-  return [
-    account.name,
-    account.email,
-    account.implementationMode,
-    account.model,
-    account.status,
-    groupNames(groups, accountGroupIds(account)),
-    accountSourceLabel(account),
-    account.metadata?.source,
-    account.metadata?.sourceAccountId,
-    account.metadata?.tokenSource,
-    getWebAccountInfo(account)?.email,
-    getWebAccountInfo(account)?.userId,
-    getWebAccountInfo(account)?.type,
-    getWebAccountInfo(account)?.defaultModelSlug,
-    account.lastError,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
-function summarizeAccounts(
-  accounts: Account[]
-): Record<AccountMetricKey, string | number> {
-  const total = accounts.length;
-  const disabled = accounts.filter((account) => !account.isEnabled).length;
-  const error = accounts.filter((account) => account.status === "error").length;
-  const limited = accounts.filter(
-    (account) =>
-      account.status === "limited" ||
-      getWebAccountInfo(account)?.status === "limited"
-  ).length;
-  const cooling = accounts.filter((account) =>
-    isCoolingDown(account.cooldownUntil)
-  ).length;
-  const active = accounts.filter((account) =>
-    accountMatchesStatusFilter(account, "active")
-  ).length;
-  const webAccounts = accounts.filter(
-    (account) => account.implementationMode === "web"
-  );
-  const quota = formatCompactNumber(
-    webAccounts.reduce(
-      (sum, account) =>
-        sum + Math.max(0, Number(getWebAccountInfo(account)?.quota || 0)),
-      0
-    )
-  );
-
-  return { total, active, limited, cooling, error, disabled, quota };
-}
-
 function safetyValue(value: boolean | null): ContentSafetyFormValue {
   if (value === true) return "enabled";
   if (value === false) return "disabled";
@@ -798,6 +728,20 @@ export function ImageBackendPoolAdminPanel({
     Sub2ApiAutoSyncTask[]
   >([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accountSummary, setAccountSummary] =
+    useState<AdminImageBackendAccountSummary>({
+      total: 0,
+      active: 0,
+      limited: 0,
+      cooling: 0,
+      error: 0,
+      disabled: 0,
+      quota: 0,
+    });
+  const [accountTotal, setAccountTotal] = useState(0);
+  const [accountTotalPages, setAccountTotalPages] = useState(1);
+  const accountRequestKeyRef = useRef<string | null>(null);
+  const loadedAccountQueryKeyRef = useRef<string | null>(null);
   const [apis, setApis] = useState<Api[]>([]);
   const [adobes, setAdobes] = useState<Adobe[]>([]);
   const [groupForm, setGroupForm] = useState({
@@ -993,69 +937,37 @@ export function ImageBackendPoolAdminPanel({
     () => accounts.filter((account) => selectedAccountIdSet.has(account.id)),
     [accounts, selectedAccountIdSet]
   );
-  const accountSummary = useMemo(() => summarizeAccounts(accounts), [accounts]);
-  // 预建搜索索引:每个账号的可搜文本只在 [accounts, groups] 变化时构建一次,避免每次按键都对
-  // 全部账号重建 ~15 字段拼接串 + groupNames 查找(原为每次按键 O(accounts × groups))。
-  const accountSearchIndex = useMemo(
-    () =>
-      new Map(
-        accounts.map((account) => [
-          account.id,
-          accountSearchText(account, groups),
-        ])
-      ),
-    [accounts, groups]
-  );
-  // 输入即时响应,过滤用延迟值降优先级(React 并发,天然防抖):大量账号下连续输入不再每个
-  // 字符都重算整张过滤表。
   const deferredSearch = useDeferredValue(bulkAccountForm.search);
-  const filteredAccounts = useMemo(() => {
-    const query = deferredSearch.trim().toLowerCase();
-    return accounts.filter((account) => {
-      const groupMatches =
-        bulkAccountForm.selectionGroupId === "all" ||
-        (bulkAccountForm.selectionGroupId === "default"
-          ? accountGroupIds(account).length === 0
-          : accountGroupIds(account).includes(
-              bulkAccountForm.selectionGroupId
-            ));
-      const modeMatches =
-        bulkAccountForm.selectionMode === "all" ||
-        account.implementationMode === bulkAccountForm.selectionMode;
-      const statusMatches = accountMatchesStatusFilter(
-        account,
-        bulkAccountForm.statusFilter
-      );
-      const searchMatches =
-        !query || (accountSearchIndex.get(account.id) ?? "").includes(query);
-      return groupMatches && modeMatches && statusMatches && searchMatches;
-    });
-  }, [
-    accounts,
-    bulkAccountForm.selectionGroupId,
-    bulkAccountForm.selectionMode,
-    bulkAccountForm.statusFilter,
-    deferredSearch,
-    accountSearchIndex,
-  ]);
   const accountPageSize = Math.max(10, bulkAccountForm.pageSize || 20);
   const accountFilterKey = [
     bulkAccountForm.selectionGroupId,
     bulkAccountForm.selectionMode,
     bulkAccountForm.statusFilter,
-    bulkAccountForm.search,
+    deferredSearch,
     bulkAccountForm.pageSize,
   ].join("|");
-  const accountTotalPages = Math.max(
-    1,
-    Math.ceil(filteredAccounts.length / accountPageSize)
+  const previousAccountFilterKeyRef = useRef(accountFilterKey);
+  const accountQuery = useMemo(
+    () => ({
+      page: accountPage,
+      pageSize: accountPageSize,
+      groupId: bulkAccountForm.selectionGroupId,
+      implementationMode: bulkAccountForm.selectionMode,
+      status: bulkAccountForm.statusFilter,
+      search: deferredSearch.trim(),
+    }),
+    [
+      accountPage,
+      accountPageSize,
+      bulkAccountForm.selectionGroupId,
+      bulkAccountForm.selectionMode,
+      bulkAccountForm.statusFilter,
+      deferredSearch,
+    ]
   );
-  const safeAccountPage = Math.min(accountPage, accountTotalPages);
-  const accountPageStart = (safeAccountPage - 1) * accountPageSize;
-  const pagedAccounts = filteredAccounts.slice(
-    accountPageStart,
-    accountPageStart + accountPageSize
-  );
+  const accountQueryKey = JSON.stringify(accountQuery);
+  const pagedAccounts = accounts;
+  const safeAccountPage = accountPage;
   const pagedAccountIds = pagedAccounts.map((account) => account.id);
   const selectedSub2ApiAccountCount = selectedAccounts.filter((account) =>
     isSub2ApiAccount(account)
@@ -1070,19 +982,19 @@ export function ImageBackendPoolAdminPanel({
         .map((account) => account.id),
     [selectedAccounts]
   );
-  const filteredWebAccountIds = useMemo(
+  const currentPageWebAccountIds = useMemo(
     () =>
-      filteredAccounts
+      accounts
         .filter((account) => account.implementationMode === "web")
         .map((account) => account.id),
-    [filteredAccounts]
+    [accounts]
   );
   const errorAccountIds = useMemo(
     () =>
-      filteredAccounts
+      accounts
         .filter((account) => account.status === "error")
         .map((account) => account.id),
-    [filteredAccounts]
+    [accounts]
   );
   const allAccountsSelected =
     pagedAccountIds.length > 0 &&
@@ -1398,22 +1310,48 @@ export function ImageBackendPoolAdminPanel({
     {
       onSuccess: ({ data }) => {
         setGroups((data?.groups || []) as Group[]);
-        setAccounts((data?.accounts || []) as Account[]);
         setApis((data?.apis || []) as Api[]);
         setAdobes((data?.adobes || []) as Adobe[]);
-        setSelectedAccountIds((current) => {
-          const availableIds = new Set(
-            (data?.accounts || []).map((account) => account.id)
-          );
-          return current.filter((id) => availableIds.has(id));
-        });
       },
       onError: ({ error }) =>
         toast.error(error.serverError || "加载生图后端池失败"),
     }
   );
 
-  const reload = () => loadPool();
+  const { executeAsync: loadAccounts, isPending: isLoadingAccounts } =
+    useAction(getAdminImageBackendAccountsAction);
+
+  const requestAccountPage = useCallback(async () => {
+    const requestKey = accountQueryKey;
+    accountRequestKeyRef.current = requestKey;
+    const result = await loadAccounts(accountQuery);
+    if (accountRequestKeyRef.current !== requestKey) return;
+    const data = result?.data;
+    if (!data) {
+      toast.error(result?.serverError || "加载账号列表失败");
+      return;
+    }
+
+    const nextAccounts = (data.accounts || []) as Account[];
+    setAccounts(nextAccounts);
+    setAccountPage(data.accountPage.page);
+    setAccountTotal(data.accountPage.total);
+    setAccountTotalPages(data.accountPage.totalPages);
+    setAccountSummary(data.accountSummary);
+    setSelectedAccountIds((current) => {
+      const availableIds = new Set(nextAccounts.map((account) => account.id));
+      return current.filter((id) => availableIds.has(id));
+    });
+    loadedAccountQueryKeyRef.current = requestKey;
+  }, [accountQuery, accountQueryKey, loadAccounts]);
+
+  const reload = () => {
+    loadPool();
+    if (activeTab === "accounts") {
+      loadedAccountQueryKeyRef.current = null;
+      void requestAccountPage();
+    }
+  };
 
   const { execute: loadSub2ApiSyncStatus } = useAction(
     getSub2ApiSyncStatusAction,
@@ -2235,12 +2173,12 @@ export function ImageBackendPoolAdminPanel({
 
   const runDeleteErrorAccounts = () => {
     if (!errorAccountIds.length) {
-      toast.error("当前筛选结果中没有错误账号");
+      toast.error("当前页没有错误账号");
       return;
     }
     if (
       !window.confirm(
-        `确定删除当前筛选结果中的 ${errorAccountIds.length} 个错误账号？这只会删除本站后端池记录，不会删除 Sub2API 源库账号。`
+        `确定删除当前页的 ${errorAccountIds.length} 个错误账号？这只会删除本站后端池记录，不会删除 Sub2API 源库账号。`
       )
     ) {
       return;
@@ -2291,14 +2229,20 @@ export function ImageBackendPoolAdminPanel({
   }, [loadSub2ApiSourceGroups, sub2ApiConfigured]);
 
   useEffect(() => {
-    setAccountPage(1);
-  }, [accountFilterKey]);
+    if (
+      activeTab !== "accounts" ||
+      loadedAccountQueryKeyRef.current === accountQueryKey
+    ) {
+      return;
+    }
+    void requestAccountPage();
+  }, [accountQueryKey, activeTab, requestAccountPage]);
 
   useEffect(() => {
-    if (accountPage > accountTotalPages) {
-      setAccountPage(accountTotalPages);
-    }
-  }, [accountPage, accountTotalPages]);
+    if (previousAccountFilterKeyRef.current === accountFilterKey) return;
+    previousAccountFilterKeyRef.current = accountFilterKey;
+    setAccountPage(1);
+  }, [accountFilterKey]);
 
   return (
     <div className="space-y-6">
@@ -2949,7 +2893,11 @@ export function ImageBackendPoolAdminPanel({
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
               {ACCOUNT_METRIC_CARDS.map((item, index) => {
                 const Icon = item.icon;
-                const value = accountSummary[item.key];
+                const rawValue = accountSummary[item.key];
+                const value =
+                  item.key === "quota"
+                    ? formatCompactNumber(Number(rawValue))
+                    : rawValue;
                 return (
                   // 入场错峰放外层包裹,hover 过渡放卡片:两者 duration 工具类
                   // 共享同一 CSS 变量,同元素叠加会互相覆盖。
@@ -3005,8 +2953,11 @@ export function ImageBackendPoolAdminPanel({
                       />
                     )}
                     {readOnly
-                      ? `账号 ${filteredAccounts.length} / ${accounts.length} 个`
+                      ? `账号 ${accounts.length} / ${accountTotal} 个`
                       : `已选 ${selectedAccountCount} 个账号`}
+                    {isLoadingAccounts && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
                     {!readOnly && selectedAccountCount > 0 && (
                       <span className="text-muted-foreground">
                         Sub2API {selectedSub2ApiAccountCount} · 手工/本站{" "}
@@ -3129,8 +3080,8 @@ export function ImageBackendPoolAdminPanel({
                 </div>
                 <div className="flex flex-col gap-2 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
                   <span>
-                    当前显示 {pagedAccounts.length} 个，匹配{" "}
-                    {filteredAccounts.length} / 全部 {accounts.length} 个
+                    当前显示 {pagedAccounts.length} 个，匹配 {accountTotal} /
+                    全部 {accountSummary.total} 个
                   </span>
                   <div className="flex flex-wrap items-center gap-2">
                     {!readOnly && (
@@ -3164,12 +3115,12 @@ export function ImageBackendPoolAdminPanel({
                         size="sm"
                         onClick={() =>
                           runBulkRefreshAccountInfo(
-                            filteredWebAccountIds,
-                            "当前筛选结果中没有 Web 账号"
+                            currentPageWebAccountIds,
+                            "当前页没有 Web 账号"
                           )
                         }
                         disabled={
-                          filteredWebAccountIds.length === 0 ||
+                          currentPageWebAccountIds.length === 0 ||
                           isRefreshingAccounts
                         }
                       >
@@ -3178,7 +3129,7 @@ export function ImageBackendPoolAdminPanel({
                         ) : (
                           <RefreshCw className="mr-1 h-4 w-4" />
                         )}
-                        刷新当前筛选 Web
+                        刷新当前页 Web
                       </Button>
                     )}
                     {!readOnly && (
@@ -3197,7 +3148,7 @@ export function ImageBackendPoolAdminPanel({
                         ) : (
                           <Trash2 className="mr-1 h-4 w-4" />
                         )}
-                        移除错误账号
+                        移除当前页错误账号
                       </Button>
                     )}
                     {!readOnly && (
@@ -3234,7 +3185,7 @@ export function ImageBackendPoolAdminPanel({
                       variant="outline"
                       size="sm"
                       onClick={() => setAccountPage((page) => page - 1)}
-                      disabled={safeAccountPage <= 1}
+                      disabled={safeAccountPage <= 1 || isLoadingAccounts}
                     >
                       <ChevronLeft className="mr-1 h-4 w-4" />
                       上一页
@@ -3247,7 +3198,10 @@ export function ImageBackendPoolAdminPanel({
                       variant="outline"
                       size="sm"
                       onClick={() => setAccountPage((page) => page + 1)}
-                      disabled={safeAccountPage >= accountTotalPages}
+                      disabled={
+                        safeAccountPage >= accountTotalPages ||
+                        isLoadingAccounts
+                      }
                     >
                       下一页
                       <ChevronRight className="ml-1 h-4 w-4" />
@@ -3513,6 +3467,17 @@ export function ImageBackendPoolAdminPanel({
                 )}
               </CardContent>
             </Card>
+            {isLoadingAccounts && pagedAccounts.length === 0 && (
+              <div className="flex min-h-24 items-center justify-center rounded-md border text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                加载当前页账号
+              </div>
+            )}
+            {!isLoadingAccounts && pagedAccounts.length === 0 && (
+              <div className="flex min-h-24 items-center justify-center rounded-md border text-sm text-muted-foreground">
+                没有匹配的账号
+              </div>
+            )}
             {pagedAccounts.map((account) => (
               <Card key={account.id}>
                 <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">

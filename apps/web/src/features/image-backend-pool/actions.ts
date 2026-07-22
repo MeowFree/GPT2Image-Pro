@@ -30,8 +30,8 @@ import {
 
 import {
   bulkUpdateImageBackendAccounts,
-  deleteImageBackendGroup,
   countAvailableWebAccountsInGroup,
+  deleteImageBackendGroup,
   deleteImageBackendMembers,
   deleteSub2ApiAutoSyncTask,
   fromSafetyOverride,
@@ -39,6 +39,7 @@ import {
   importImageBackendAccountsFromRefreshTokens,
   importImageBackendWebAccountsFromAccessTokens,
   isSub2ApiPostgresConfigured,
+  listAdminImageBackendAccounts,
   listAdminImageBackendPool,
   listImageBackendGroupOptions,
   listSelectableImageBackendGroups,
@@ -109,6 +110,17 @@ const subscriptionPlanSchema = z
     (value): SubscriptionPlan => (isSubscriptionPlan(value) ? value : "free")
   );
 
+const adminAccountListSchema = z.object({
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(10).max(100).default(20),
+  groupId: z.string().trim().max(128).default("all"),
+  implementationMode: z.enum(["all", "web", "responses"]).default("all"),
+  status: z
+    .enum(["all", "active", "limited", "error", "disabled", "cooling"])
+    .default("all"),
+  search: z.string().trim().max(256).default(""),
+});
+
 const withImageBackendPoolAdminAction = (name: string) =>
   adminAction.metadata({ action: `imageBackendPool.${name}` });
 
@@ -146,9 +158,15 @@ export const setUserImageBackendPreferenceAction = protectedAction
 export const getAdminImageBackendPoolAction = withImageBackendPoolViewerAction(
   "list"
 ).action(async () => {
-  const pool = await listAdminImageBackendPool();
-  return pool;
+  return listAdminImageBackendPool();
 });
+
+export const getAdminImageBackendAccountsAction =
+  withImageBackendPoolViewerAction("listAccounts")
+    .schema(adminAccountListSchema)
+    .action(async ({ parsedInput }) => {
+      return listAdminImageBackendAccounts(parsedInput);
+    });
 
 export const getSub2ApiSyncStatusAction = withImageBackendPoolAdminAction(
   "sub2ApiSyncStatus"

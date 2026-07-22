@@ -37,6 +37,7 @@ import {
   desc,
   eq,
   gt,
+  ilike,
   inArray,
   isNull,
   lt,
@@ -73,6 +74,9 @@ import {
 } from "./health-check";
 import { parseImportTokensText } from "./import-token-parser";
 import type {
+  AdminImageBackendAccountListOptions,
+  AdminImageBackendAccountStatusFilter,
+  AdminImageBackendAccountSummary,
   ChatCompletionsUpstreamMode,
   ContentSafetyOverride,
   ImageBackendAccountBackend,
@@ -7594,6 +7598,257 @@ export async function deleteImageBackendMembers(input: {
   return { deletedAccountCount, deletedApiCount, deletedAdobeCount };
 }
 
+function adminAccountStatusCondition(
+  status: AdminImageBackendAccountStatusFilter,
+  now: Date
+) {
+  if (status === "disabled") return eq(imageBackendAccount.isEnabled, false);
+  if (status === "cooling") return gt(imageBackendAccount.cooldownUntil, now);
+  if (status === "limited") {
+    return and(
+      eq(imageBackendAccount.isEnabled, true),
+      or(
+        eq(imageBackendAccount.status, "limited"),
+        sql`${imageBackendAccount.metadata}->'webAccount'->>'status' = 'limited'`
+      )
+    );
+  }
+  if (status === "error") {
+    return and(
+      eq(imageBackendAccount.isEnabled, true),
+      eq(imageBackendAccount.status, "error")
+    );
+  }
+  if (status === "active") {
+    return and(
+      eq(imageBackendAccount.isEnabled, true),
+      eq(imageBackendAccount.status, "active"),
+      sql`(${imageBackendAccount.cooldownUntil} IS NULL OR ${imageBackendAccount.cooldownUntil} <= ${now})`,
+      sql`COALESCE(${imageBackendAccount.metadata}->'webAccount'->>'status', '') <> 'limited'`
+    );
+  }
+  return undefined;
+}
+
+function adminAccountFilterConditions(
+  options: AdminImageBackendAccountListOptions
+) {
+  const conditions = [];
+  const groupId = options.groupId?.trim() || "all";
+  if (groupId === "default") {
+    conditions.push(
+      and(
+        isNull(imageBackendAccount.groupId),
+        sql`NOT EXISTS (
+          SELECT 1 FROM ${imageBackendAccountGroup}
+          WHERE ${imageBackendAccountGroup.accountId} = ${imageBackendAccount.id}
+        )`
+      )
+    );
+  } else if (groupId !== "all") {
+    conditions.push(
+      or(
+        sql`EXISTS (
+          SELECT 1 FROM ${imageBackendAccountGroup}
+          WHERE ${imageBackendAccountGroup.accountId} = ${imageBackendAccount.id}
+            AND ${imageBackendAccountGroup.groupId} = ${groupId}
+        )`,
+        and(
+          eq(imageBackendAccount.groupId, groupId),
+          sql`NOT EXISTS (
+            SELECT 1 FROM ${imageBackendAccountGroup}
+            WHERE ${imageBackendAccountGroup.accountId} = ${imageBackendAccount.id}
+          )`
+        )
+      )
+    );
+  }
+
+  if (
+    options.implementationMode === "web" ||
+    options.implementationMode === "responses"
+  ) {
+    conditions.push(
+      eq(imageBackendAccount.implementationMode, options.implementationMode)
+    );
+  }
+
+  const statusCondition = adminAccountStatusCondition(
+    options.status || "all",
+    new Date()
+  );
+  if (statusCondition) conditions.push(statusCondition);
+
+  const search = options.search?.trim();
+  if (search) {
+    const pattern = `%${search}%`;
+    conditions.push(
+      or(
+        ilike(imageBackendAccount.name, pattern),
+        ilike(imageBackendAccount.email, pattern),
+        ilike(imageBackendAccount.implementationMode, pattern),
+        ilike(imageBackendAccount.model, pattern),
+        ilike(imageBackendAccount.status, pattern),
+        ilike(imageBackendAccount.lastError, pattern),
+        sql`CAST(${imageBackendAccount.metadata} AS TEXT) ILIKE ${pattern}`,
+        sql`CASE
+          WHEN ${imageBackendAccount.metadata}->>'source' = 'sub2api_postgres' THEN 'Sub2API'
+          WHEN ${imageBackendAccount.metadata}->>'source' = 'manual_refresh_token' THEN '手工 RT'
+          WHEN ${imageBackendAccount.metadata}->>'source' IN (
+            'manual_web_access_token',
+            'manual_auth_session_access_token'
+          ) THEN 'Web AT'
+          ELSE '本站'
+        END ILIKE ${pattern}`,
+        sql`EXISTS (
+          SELECT 1
+          FROM ${imageBackendGroup}
+          WHERE ${imageBackendGroup.name} ILIKE ${pattern}
+            AND (
+              EXISTS (
+                SELECT 1 FROM ${imageBackendAccountGroup}
+                WHERE ${imageBackendAccountGroup.accountId} = ${imageBackendAccount.id}
+                  AND ${imageBackendAccountGroup.groupId} = ${imageBackendGroup.id}
+              )
+              OR (
+                ${imageBackendGroup.id} = ${imageBackendAccount.groupId}
+                AND NOT EXISTS (
+                  SELECT 1 FROM ${imageBackendAccountGroup}
+                  WHERE ${imageBackendAccountGroup.accountId} = ${imageBackendAccount.id}
+                )
+              )
+            )
+        )`
+      )
+    );
+  }
+
+  return conditions.filter((condition) => condition !== undefined);
+}
+
+export async function listAdminImageBackendAccounts(
+  options: AdminImageBackendAccountListOptions = {}
+) {
+  const pageSize = Math.min(100, Math.max(10, options.pageSize || 20));
+  const requestedPage = Math.max(1, options.page || 1);
+  const conditions = adminAccountFilterConditions(options);
+  const where = conditions.length ? and(...conditions) : undefined;
+  const now = new Date();
+
+  const [countRows, summaryRows] = await Promise.all([
+    db.select({ value: count() }).from(imageBackendAccount).where(where),
+    db
+      .select({
+        total: count(),
+        active: sql<number>`COUNT(*) FILTER (
+          WHERE ${imageBackendAccount.isEnabled} = TRUE
+            AND ${imageBackendAccount.status} = 'active'
+            AND (${imageBackendAccount.cooldownUntil} IS NULL OR ${imageBackendAccount.cooldownUntil} <= ${now})
+            AND COALESCE(${imageBackendAccount.metadata}->'webAccount'->>'status', '') <> 'limited'
+        )`,
+        limited: sql<number>`COUNT(*) FILTER (
+          WHERE ${imageBackendAccount.status} = 'limited'
+            OR ${imageBackendAccount.metadata}->'webAccount'->>'status' = 'limited'
+        )`,
+        cooling: sql<number>`COUNT(*) FILTER (
+          WHERE ${imageBackendAccount.cooldownUntil} > ${now}
+        )`,
+        error: sql<number>`COUNT(*) FILTER (
+          WHERE ${imageBackendAccount.status} = 'error'
+        )`,
+        disabled: sql<number>`COUNT(*) FILTER (
+          WHERE ${imageBackendAccount.isEnabled} = FALSE
+        )`,
+        quota: sql<number>`COALESCE(SUM(
+          CASE
+            WHEN ${imageBackendAccount.implementationMode} = 'web'
+              AND COALESCE(${imageBackendAccount.metadata}->'webAccount'->>'quota', '') ~ '^[0-9]+(\\.[0-9]+)?$'
+            THEN (${imageBackendAccount.metadata}->'webAccount'->>'quota')::numeric
+            ELSE 0
+          END
+        ), 0)`,
+      })
+      .from(imageBackendAccount),
+  ]);
+
+  const total = Number(countRows[0]?.value || 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const accounts = await db
+    .select({
+      id: imageBackendAccount.id,
+      groupId: imageBackendAccount.groupId,
+      name: imageBackendAccount.name,
+      email: imageBackendAccount.email,
+      implementationMode: imageBackendAccount.implementationMode,
+      model: imageBackendAccount.model,
+      contentSafetyEnabled: imageBackendAccount.contentSafetyEnabled,
+      isEnabled: imageBackendAccount.isEnabled,
+      alwaysActive: imageBackendAccount.alwaysActive,
+      priority: imageBackendAccount.priority,
+      concurrency: imageBackendAccount.concurrency,
+      status: imageBackendAccount.status,
+      successCount: imageBackendAccount.successCount,
+      failCount: imageBackendAccount.failCount,
+      lastUsedAt: imageBackendAccount.lastUsedAt,
+      cooldownUntil: imageBackendAccount.cooldownUntil,
+      lastError: imageBackendAccount.lastError,
+      lastErrorAt: imageBackendAccount.lastErrorAt,
+      metadata: imageBackendAccount.metadata,
+      createdAt: imageBackendAccount.createdAt,
+    })
+    .from(imageBackendAccount)
+    .where(where)
+    .orderBy(
+      asc(imageBackendAccount.priority),
+      desc(imageBackendAccount.createdAt),
+      asc(imageBackendAccount.id)
+    )
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+  const accountGroupRows = accounts.length
+    ? await db
+        .select({
+          accountId: imageBackendAccountGroup.accountId,
+          groupId: imageBackendAccountGroup.groupId,
+        })
+        .from(imageBackendAccountGroup)
+        .where(
+          inArray(
+            imageBackendAccountGroup.accountId,
+            accounts.map((account) => account.id)
+          )
+        )
+    : [];
+  const accountGroupIdMap = new Map<string, string[]>();
+  for (const row of accountGroupRows) {
+    const current = accountGroupIdMap.get(row.accountId) || [];
+    current.push(row.groupId);
+    accountGroupIdMap.set(row.accountId, current);
+  }
+  const rawSummary = summaryRows[0];
+  const summary: AdminImageBackendAccountSummary = {
+    total: Number(rawSummary?.total || 0),
+    active: Number(rawSummary?.active || 0),
+    limited: Number(rawSummary?.limited || 0),
+    cooling: Number(rawSummary?.cooling || 0),
+    error: Number(rawSummary?.error || 0),
+    disabled: Number(rawSummary?.disabled || 0),
+    quota: Number(rawSummary?.quota || 0),
+  };
+
+  return {
+    accounts: accounts.map((account) => ({
+      ...account,
+      groupIds:
+        accountGroupIdMap.get(account.id) ||
+        normalizeAccountGroupIds(account.groupId ? [account.groupId] : []),
+    })),
+    accountPage: { page, pageSize, total, totalPages },
+    accountSummary: summary,
+  };
+}
+
 export async function listAdminImageBackendPool() {
   const groups = await db
     .select()
@@ -7630,55 +7885,6 @@ export async function listAdminImageBackendPool() {
     apiCount: apiCountMap.get(group.id) ?? 0,
     accountCount: accountCountMap.get(group.id) ?? 0,
   }));
-
-  const accounts = await db
-    .select({
-      id: imageBackendAccount.id,
-      groupId: imageBackendAccount.groupId,
-      name: imageBackendAccount.name,
-      email: imageBackendAccount.email,
-      implementationMode: imageBackendAccount.implementationMode,
-      model: imageBackendAccount.model,
-      contentSafetyEnabled: imageBackendAccount.contentSafetyEnabled,
-      isEnabled: imageBackendAccount.isEnabled,
-      alwaysActive: imageBackendAccount.alwaysActive,
-      priority: imageBackendAccount.priority,
-      concurrency: imageBackendAccount.concurrency,
-      status: imageBackendAccount.status,
-      successCount: imageBackendAccount.successCount,
-      failCount: imageBackendAccount.failCount,
-      lastUsedAt: imageBackendAccount.lastUsedAt,
-      cooldownUntil: imageBackendAccount.cooldownUntil,
-      lastError: imageBackendAccount.lastError,
-      lastErrorAt: imageBackendAccount.lastErrorAt,
-      metadata: imageBackendAccount.metadata,
-      createdAt: imageBackendAccount.createdAt,
-    })
-    .from(imageBackendAccount)
-    .orderBy(
-      asc(imageBackendAccount.priority),
-      desc(imageBackendAccount.createdAt)
-    );
-  const accountGroupRows = accounts.length
-    ? await db
-        .select({
-          accountId: imageBackendAccountGroup.accountId,
-          groupId: imageBackendAccountGroup.groupId,
-        })
-        .from(imageBackendAccountGroup)
-        .where(
-          inArray(
-            imageBackendAccountGroup.accountId,
-            accounts.map((account) => account.id)
-          )
-        )
-    : [];
-  const accountGroupIdMap = new Map<string, string[]>();
-  for (const row of accountGroupRows) {
-    const current = accountGroupIdMap.get(row.accountId) || [];
-    current.push(row.groupId);
-    accountGroupIdMap.set(row.accountId, current);
-  }
 
   const apis = await db
     .select({
@@ -7787,12 +7993,6 @@ export async function listAdminImageBackendPool() {
 
   return {
     groups: summaries,
-    accounts: accounts.map((account) => ({
-      ...account,
-      groupIds:
-        accountGroupIdMap.get(account.id) ||
-        normalizeAccountGroupIds(account.groupId ? [account.groupId] : []),
-    })),
     apis: apis.map((api) => ({
       ...api,
       // numeric 列回库为字符串，转成数值供前端展示/编辑。

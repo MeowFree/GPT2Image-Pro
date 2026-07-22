@@ -18,6 +18,33 @@ export type ImageBackendAccountPlanFilter = "any" | "paid";
 export type ImageBackendMemberType = "api" | "account";
 export type ContentSafetyOverride = "inherit" | "enabled" | "disabled";
 
+export type AdminImageBackendAccountStatusFilter =
+  | "all"
+  | "active"
+  | "limited"
+  | "error"
+  | "disabled"
+  | "cooling";
+
+export type AdminImageBackendAccountListOptions = {
+  page?: number;
+  pageSize?: number;
+  groupId?: string;
+  implementationMode?: "all" | ImageBackendAccountBackend;
+  status?: AdminImageBackendAccountStatusFilter;
+  search?: string;
+};
+
+export type AdminImageBackendAccountSummary = {
+  total: number;
+  active: number;
+  limited: number;
+  cooling: number;
+  error: number;
+  disabled: number;
+  quota: number;
+};
+
 export type ImageBackendGroupSummary = {
   id: string;
   name: string;
