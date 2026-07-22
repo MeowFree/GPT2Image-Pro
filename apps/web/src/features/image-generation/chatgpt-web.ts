@@ -23,8 +23,8 @@ import type {
 const CHATGPT_BASE_URL = "https://chatgpt.com";
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0";
-const DEFAULT_CLIENT_VERSION = "prod-be885abbfcfe7b1f511e88b3003d9ee44757fbad";
-const DEFAULT_CLIENT_BUILD_NUMBER = "5955942";
+const DEFAULT_CLIENT_VERSION = "prod-a194cd50d4416d3c0b47c740f206b12ce60f5887";
+const DEFAULT_CLIENT_BUILD_NUMBER = "6708908";
 const DEFAULT_POW_SCRIPT = "https://chatgpt.com/backend-api/sentinel/sdk.js";
 const IMAGE_POLL_TIMEOUT_MS = 120_000;
 const IMAGE_POLL_INTERVAL_MS = 6_000;
@@ -66,7 +66,6 @@ export type ChatGptWebAccountInfo = {
   userId: string | null;
   type: string;
   quota: number;
-  imageQuotaUnknown: boolean;
   limitsProgress: unknown[];
   defaultModelSlug: string | null;
   restoreAt: string | null;
@@ -518,11 +517,10 @@ function extractQuotaAndRestoreAt(limitsProgress: unknown[]) {
       return {
         quota: numberOrZero(row.remaining),
         restoreAt: stringOrNull(row.reset_after),
-        imageQuotaUnknown: false,
       };
     }
   }
-  return { quota: 0, restoreAt: null, imageQuotaUnknown: true };
+  return { quota: 0, restoreAt: null };
 }
 
 async function fetchWebJson<T>(
@@ -588,24 +586,17 @@ export async function getChatGptWebAccountInfo(
   const limitsProgress = Array.isArray(initPayload.limits_progress)
     ? initPayload.limits_progress
     : [];
-  const { quota, restoreAt, imageQuotaUnknown } =
-    extractQuotaAndRestoreAt(limitsProgress);
+  const { quota, restoreAt } = extractQuotaAndRestoreAt(limitsProgress);
 
   return {
     email: stringOrNull(mePayload.email),
     userId: stringOrNull(mePayload.id),
     type: planType,
     quota,
-    imageQuotaUnknown,
     limitsProgress,
     defaultModelSlug: stringOrNull(initPayload.default_model_slug),
     restoreAt,
-    status:
-      imageQuotaUnknown && planType.toLowerCase() !== "free"
-        ? "active"
-        : quota === 0
-          ? "limited"
-          : "active",
+    status: quota === 0 ? "limited" : "active",
   };
 }
 
@@ -3016,6 +3007,7 @@ export async function generateFileWithChatGptWeb(params: {
 }
 
 export const __testing__ = {
+  extractQuotaAndRestoreAt,
   extractWebErrorPayloadMessage,
   extractWebStreamError,
   extractWebSystemError,

@@ -154,7 +154,6 @@ type Account = {
       userId?: string | null;
       type?: string;
       quota?: number;
-      imageQuotaUnknown?: boolean;
       defaultModelSlug?: string | null;
       restoreAt?: string | null;
       status?: "active" | "limited";
@@ -647,14 +646,7 @@ function getWebAccountInfo(account: Account) {
 function formatWebQuota(account: Account) {
   const info = getWebAccountInfo(account);
   if (!info) return "未刷新";
-  if (info.type === "pro" || info.type === "prolite") return "∞";
-  if (info.imageQuotaUnknown) return "未知";
   return String(Math.max(0, Number(info.quota || 0)));
-}
-
-function isUnlimitedWebQuota(account: Account) {
-  const type = getWebAccountInfo(account)?.type?.toLowerCase();
-  return type === "pro" || type === "prolite";
 }
 
 function formatWebStatus(account: Account) {
@@ -729,28 +721,13 @@ function summarizeAccounts(
   const webAccounts = accounts.filter(
     (account) => account.implementationMode === "web"
   );
-  const quota = webAccounts.some(isUnlimitedWebQuota)
-    ? "∞"
-    : webAccounts.some(
-          (account) => getWebAccountInfo(account)?.imageQuotaUnknown
-        )
-      ? `未知 + ${formatCompactNumber(
-          webAccounts.reduce(
-            (sum, account) =>
-              sum +
-              (getWebAccountInfo(account)?.imageQuotaUnknown
-                ? 0
-                : Math.max(0, Number(getWebAccountInfo(account)?.quota || 0))),
-            0
-          )
-        )}`
-      : formatCompactNumber(
-          webAccounts.reduce(
-            (sum, account) =>
-              sum + Math.max(0, Number(getWebAccountInfo(account)?.quota || 0)),
-            0
-          )
-        );
+  const quota = formatCompactNumber(
+    webAccounts.reduce(
+      (sum, account) =>
+        sum + Math.max(0, Number(getWebAccountInfo(account)?.quota || 0)),
+      0
+    )
+  );
 
   return { total, active, limited, cooling, error, disabled, quota };
 }
@@ -1898,9 +1875,7 @@ export function ImageBackendPoolAdminPanel({
   const { execute: refreshAccountInfo, isPending: isRefreshingAccount } =
     useAction(refreshImageBackendAccountInfoAction, {
       onSuccess: ({ data }) => {
-        const quota = data?.info?.imageQuotaUnknown
-          ? "未知"
-          : String(data?.info?.quota ?? 0);
+        const quota = String(data?.info?.quota ?? 0);
         toast.success(`账号信息已刷新，图片额度 ${quota}`);
         reload();
       },

@@ -6,6 +6,29 @@ vi.mock("@repo/shared/system-settings", () => ({
 }));
 
 describe("ChatGPT Web image choices", () => {
+  it("treats a missing image_gen limit as zero quota", () => {
+    expect(
+      __testing__.extractQuotaAndRestoreAt([
+        { feature_name: "deep_research", remaining: 20 },
+      ])
+    ).toEqual({ quota: 0, restoreAt: null });
+  });
+
+  it("extracts image_gen quota and reset time", () => {
+    expect(
+      __testing__.extractQuotaAndRestoreAt([
+        {
+          feature_name: "image_gen",
+          remaining: 12.8,
+          reset_after: "2026-07-23T00:00:00Z",
+        },
+      ])
+    ).toEqual({
+      quota: 12,
+      restoreAt: "2026-07-23T00:00:00Z",
+    });
+  });
+
   it("extracts too many requests from Web JSON error payloads", () => {
     expect(
       __testing__.extractWebErrorPayloadMessage(

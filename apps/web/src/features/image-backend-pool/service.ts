@@ -2069,7 +2069,6 @@ function normalizeWebAccountMetadata(
     userId: typeof raw.userId === "string" ? raw.userId : null,
     type,
     quota: Number.isFinite(quota) ? Math.max(0, Math.trunc(quota)) : 0,
-    imageQuotaUnknown: Boolean(raw.imageQuotaUnknown),
     limitsProgress: Array.isArray(raw.limitsProgress) ? raw.limitsProgress : [],
     defaultModelSlug:
       typeof raw.defaultModelSlug === "string" ? raw.defaultModelSlug : null,
@@ -2107,7 +2106,6 @@ function isWebAccountQuotaAvailable(
   if (backend !== "web") return true;
   const webAccount = normalizeWebAccountMetadata(metadata);
   if (!webAccount) return true;
-  if (webAccount.imageQuotaUnknown) return true;
   if (webAccount.quota > 0) return true;
   const restoreAt = parseMetadataDate(webAccount.restoreAt);
   return Boolean(restoreAt && restoreAt <= now);
@@ -2117,7 +2115,7 @@ function nextWebAccountMetadataAfterSuccess(
   metadata: Record<string, unknown> | null | undefined
 ) {
   const webAccount = normalizeWebAccountMetadata(metadata);
-  if (!webAccount || webAccount.imageQuotaUnknown) {
+  if (!webAccount) {
     return {
       metadata: metadata ?? null,
       status: "active",
@@ -3726,9 +3724,7 @@ export async function refreshImageBackendAccountInfo(accountId: string) {
         metadata: mergeWebAccountMetadata(account.metadata, info),
         status: "active",
         cooldownUntil:
-          !info.imageQuotaUnknown && info.quota === 0
-            ? parseMetadataDate(info.restoreAt)
-            : null,
+          info.quota === 0 ? parseMetadataDate(info.restoreAt) : null,
         lastError: null,
         lastErrorAt: null,
         updatedAt: now,
@@ -3785,7 +3781,6 @@ export async function refreshImageBackendAccountsInfo(accountIds: string[]) {
     id: string;
     success: boolean;
     quota?: number;
-    imageQuotaUnknown?: boolean;
     error?: string;
   }> = [];
 
@@ -3805,7 +3800,6 @@ export async function refreshImageBackendAccountsInfo(accountIds: string[]) {
             id,
             success: true,
             quota: info.quota,
-            imageQuotaUnknown: info.imageQuotaUnknown,
           });
         } catch (error) {
           failedCount++;
@@ -7065,7 +7059,6 @@ export async function refreshStaleWebBackendAccounts(options?: {
         id: account.id,
         success: true,
         quota: info.quota,
-        imageQuotaUnknown: info.imageQuotaUnknown,
       });
     } catch (error) {
       results.push({
