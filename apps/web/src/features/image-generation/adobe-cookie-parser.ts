@@ -6,7 +6,7 @@
 // 支持三种粘贴形态(尽量对人省事):
 // 1) 每行一个 cookie 字符串。注意 cookie 本身含 `;`/`=`/空格,所以只按换行切分,绝不
 //    按这些字符切——否则会把一个 cookie 拆碎。
-// 2) JSON 数组:元素是字符串(cookie),或对象 { cookie, name?, scope? }。
+// 2) JSON 数组:元素是字符串(cookie),或对象 { cookie, name?, scope?, headers? }。
 // 3) JSON 对象 { cookies: [...] },元素同上。
 // 解析时去掉空行、`#` 注释行、行尾逗号与成对的首尾引号,并按 cookie 文本去重(防止同一
 // 行被重复粘贴;同一 Adobe 账号但不同 cookie 的去重在服务层按稳定身份做)。
@@ -15,7 +15,24 @@ export type AdobeCookieEntry = {
   cookie: string;
   name?: string;
   scope?: string;
+  headers?: { "x-arp-session-id": string };
 };
+
+function normalizeFireflyHeaders(
+  input: unknown
+): AdobeCookieEntry["headers"] | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return undefined;
+  }
+  for (const [key, rawValue] of Object.entries(
+    input as Record<string, unknown>
+  )) {
+    if (key.trim().toLowerCase() !== "x-arp-session-id") continue;
+    const value = typeof rawValue === "string" ? rawValue.trim() : "";
+    return value ? { "x-arp-session-id": value } : undefined;
+  }
+  return undefined;
+}
 
 // 清洗一行:去首尾空白、行尾逗号、成对引号。返回空串表示该行应跳过。
 function cleanLine(raw: string): string {
@@ -44,18 +61,22 @@ function entryFromUnknown(item: unknown): AdobeCookieEntry | null {
       record.cookie ?? record.cookieString ?? record.value ?? record.cookies;
     const cookie = typeof cookieRaw === "string" ? cookieRaw.trim() : "";
     if (!cookie) return null;
-    const name =
-      typeof record.name === "string" && record.name.trim()
-        ? record.name.trim()
-        : undefined;
+    const name = [record.name, record.display_name, record.email]
+      .find((value) => typeof value === "string" && value.trim())
+      ?.toString()
+      .trim();
     const scope =
       typeof record.scope === "string" && record.scope.trim()
         ? record.scope.trim()
         : undefined;
+    const headers = normalizeFireflyHeaders(
+      record.headers ?? record.firefly_headers
+    );
     return {
       cookie,
       ...(name ? { name } : {}),
       ...(scope ? { scope } : {}),
+      ...(headers ? { headers } : {}),
     };
   }
   return null;

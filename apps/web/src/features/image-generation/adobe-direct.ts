@@ -27,9 +27,9 @@ import {
   type FireflyTransport,
   fetchAccountInfo,
   fetchCreditsBalance,
+  fireflyVideoSize,
   isAdobeRotatableError,
   isTokenExpired,
-  fireflyVideoSize,
   ProxyFireflyTransport,
   QuotaExhaustedError,
   refreshAccessTokenFromCookie,
@@ -39,9 +39,8 @@ import {
 import { logError, logWarn } from "@repo/shared/logger";
 import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { and, asc, eq, sql } from "drizzle-orm";
-
-import { parseAdobeCookieEntries } from "./adobe-cookie-parser";
 import { nanoid } from "nanoid";
+import { parseAdobeCookieEntries } from "./adobe-cookie-parser";
 import type { ApiConfig, GenerateImageResult } from "./types";
 
 // IMS access_token 距过期多久内视为需要刷新（秒）。
@@ -330,7 +329,11 @@ async function acquireToken(
         .update(adobeToken)
         .set({ lastUsedAt: new Date() })
         .where(eq(adobeToken.id, refreshed.id));
-      return { id: refreshed.id, value: refreshed.value, accountId: account.id };
+      return {
+        id: refreshed.id,
+        value: refreshed.value,
+        accountId: account.id,
+      };
     }
   }
   return null;
@@ -656,7 +659,13 @@ async function validateAdobeCookie(
 // 持久化一个已验证的 Adobe 账号：写 adobeAccount + 初始 auto_refresh adobeToken。
 // 额外回传 accountUserId（IMS 稳定身份），供批量导入去重使用。
 async function persistAdobeAccount(
-  input: { adobeId: string; name?: string; cookie: string; scope?: string | null },
+  input: {
+    adobeId: string;
+    name?: string;
+    cookie: string;
+    scope?: string | null;
+    headers?: { "x-arp-session-id": string };
+  },
   validated: AdobeCookieValidation
 ): Promise<{
   id: string;
@@ -680,6 +689,7 @@ async function persistAdobeAccount(
     accountUserId: account?.userId || null,
     status: "active",
     lastRefreshAt: now,
+    ...(input.headers ? { metadata: { fireflyHeaders: input.headers } } : {}),
   });
 
   await db.insert(adobeToken).values({
@@ -707,12 +717,26 @@ export async function importAdobeAccount(input: {
   cookie: string;
   scope?: string | null;
 }): Promise<{ id: string; displayName: string; email: string }> {
+  const parsedEntries = parseAdobeCookieEntries(input.cookie);
+  const [entry] = parsedEntries;
+  if (!entry || parsedEntries.length !== 1) {
+    throw new Error("单条导入需要且只能包含一个 Adobe cookie");
+  }
   const validated = await validateAdobeCookie(
     input.adobeId,
-    input.cookie,
-    input.scope
+    entry.cookie,
+    entry.scope ?? input.scope
   );
-  const { id, displayName, email } = await persistAdobeAccount(input, validated);
+  const { id, displayName, email } = await persistAdobeAccount(
+    {
+      ...input,
+      cookie: entry.cookie,
+      name: input.name ?? entry.name,
+      scope: entry.scope ?? input.scope,
+      headers: entry.headers,
+    },
+    validated
+  );
   return { id, displayName, email };
 }
 
@@ -804,7 +828,13 @@ export async function importAdobeAccountsBatch(input: {
         continue;
       }
       const persisted = await persistAdobeAccount(
-        { adobeId: input.adobeId, name, cookie: entry.cookie, scope },
+        {
+          adobeId: input.adobeId,
+          name,
+          cookie: entry.cookie,
+          scope,
+          headers: entry.headers,
+        },
         validated
       );
       if (userId) seenUserIds.add(userId);

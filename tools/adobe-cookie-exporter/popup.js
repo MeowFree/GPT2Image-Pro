@@ -26,7 +26,7 @@ function getCurrentTab() {
         reject(new Error(chrome.runtime.lastError.message));
         return;
       }
-      resolve(tabs && tabs[0] ? tabs[0] : null);
+      resolve(tabs?.[0] ? tabs[0] : null);
     });
   });
 }
@@ -50,17 +50,17 @@ async function getCurrentContext() {
   }
 
   const stores = await getAllCookieStores();
-  const matchedStore = stores.find((store) =>
-    Array.isArray(store.tabIds) && store.tabIds.includes(tab.id)
+  const matchedStore = stores.find(
+    (store) => Array.isArray(store.tabIds) && store.tabIds.includes(tab.id)
   );
-  if (!matchedStore || !matchedStore.id) {
+  if (!matchedStore?.id) {
     throw new Error("Unable to resolve the cookie store for the active tab.");
   }
 
   return {
     tab,
     storeId: matchedStore.id,
-    incognito: Boolean(tab.incognito || chrome.extension.inIncognitoContext)
+    incognito: Boolean(tab.incognito || chrome.extension.inIncognitoContext),
   };
 }
 
@@ -80,12 +80,57 @@ function getCookies(filter, storeId) {
   });
 }
 
+function getFireflyArpSessionId(tabId) {
+  return new Promise((resolve) => {
+    if (typeof tabId !== "number" || !chrome.scripting) {
+      resolve("");
+      return;
+    }
+
+    chrome.scripting.executeScript(
+      {
+        target: { tabId },
+        func: () => {
+          const readCookie = (name) => {
+            const prefix = `${name}=`;
+            const item = document.cookie
+              .split(";")
+              .map((value) => value.trim())
+              .find((value) => value.startsWith(prefix));
+            return item ? item.slice(prefix.length) : "";
+          };
+
+          const sid = String(
+            sessionStorage.getItem("ff_session_guid") || ""
+          ).trim();
+          const ftr = String(
+            localStorage.getItem("forterToken") ||
+              readCookie("forterToken") ||
+              readCookie("forter") ||
+              ""
+          ).trim();
+          return sid && ftr ? btoa(JSON.stringify({ sid, ftr })) : "";
+        },
+      },
+      (results) => {
+        if (chrome.runtime.lastError) {
+          resolve("");
+          return;
+        }
+        const value =
+          Array.isArray(results) && results[0] ? results[0].result : "";
+        resolve(typeof value === "string" ? value : "");
+      }
+    );
+  });
+}
+
 async function collectCookiesByScope(scope) {
   const context = await getCurrentContext();
   const { tab, storeId, incognito } = context;
 
   if (scope === "current") {
-    const url = tab && tab.url ? tab.url : "";
+    const url = tab?.url ? tab.url : "";
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       throw new Error("The current tab is not a regular web page.");
     }
@@ -113,7 +158,7 @@ async function collectCookiesByScope(scope) {
     cookies: unique,
     sourceUrl: "https://firefly.adobe.com/",
     storeId,
-    incognito
+    incognito,
   };
 }
 
@@ -126,7 +171,7 @@ function toPlaywrightLikeCookies(cookies) {
     expires: typeof item.expirationDate === "number" ? item.expirationDate : -1,
     httpOnly: Boolean(item.httpOnly),
     secure: Boolean(item.secure),
-    sameSite: mapSameSite(item.sameSite)
+    sameSite: mapSameSite(item.sameSite),
   }));
 }
 
@@ -141,32 +186,42 @@ function buildCookieHeader(cookies) {
 }
 
 function downloadJson(filename, data) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
   const url = URL.createObjectURL(blob);
   chrome.downloads.download({
     url,
     filename,
-    saveAs: true
+    saveAs: true,
   });
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
 async function generatePayload() {
   const scope = scopeSelect.value;
+  const { tab } = await getCurrentContext();
   const { cookies, incognito, storeId } = await collectCookiesByScope(scope);
   const normalizedCookies = toPlaywrightLikeCookies(cookies);
   const cookieHeader = buildCookieHeader(normalizedCookies);
+  const arpSessionId =
+    tab && String(tab.url || "").startsWith("https://firefly.adobe.com/")
+      ? await getFireflyArpSessionId(tab.id)
+      : "";
   const now = new Date();
   const fileTs = toTimestampParts(now);
 
   const payload = { cookie: cookieHeader };
+  if (arpSessionId) {
+    payload.headers = { "x-arp-session-id": arpSessionId };
+  }
   const fileName = `cookie_${fileTs}.json`;
   return {
     payload,
     fileName,
     cookieCount: normalizedCookies.length,
     incognito,
-    storeId
+    storeId,
   };
 }
 
@@ -174,7 +229,9 @@ function renderContext(context) {
   const modeText = context.incognito ? "Incognito" : "Regular";
   contextText.textContent = `Browser context: ${modeText} window | store: ${context.storeId}`;
   if (context.incognito) {
-    setStatus("Incognito cookie store detected. Export will use the isolated incognito cookie jar.");
+    setStatus(
+      "Incognito cookie store detected. Export will use the isolated incognito cookie jar."
+    );
   } else {
     setStatus("Regular browser context detected.");
   }
@@ -194,14 +251,17 @@ async function initContext() {
 exportJsonBtn.addEventListener("click", async () => {
   try {
     setStatus("Reading cookies...");
-    const { payload, fileName, cookieCount, incognito } = await generatePayload();
+    const { payload, fileName, cookieCount, incognito } =
+      await generatePayload();
     if (!cookieCount) {
       setStatus("No cookies were found. Log in to Adobe or Firefly first.");
       return;
     }
     downloadJson(fileName, payload);
     const modeText = incognito ? "incognito" : "regular";
-    setStatus(`Exported ${cookieCount} cookies from the ${modeText} browser store.`);
+    setStatus(
+      `Exported ${cookieCount} cookies from the ${modeText} browser store.`
+    );
   } catch (error) {
     setStatus(`Export failed: ${error.message || error}`);
   }

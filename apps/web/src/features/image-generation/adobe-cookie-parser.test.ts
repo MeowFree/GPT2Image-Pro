@@ -19,17 +19,16 @@ describe("parseAdobeCookieEntries", () => {
 
   it("skips blank lines and `#` comments", () => {
     const a = "aux_sid=AAA; x=1";
-    expect(parseAdobeCookieEntries(`# 第一个账号\n${a}\n\n  # 注释\n`)).toEqual([
-      { cookie: a },
-    ]);
+    expect(parseAdobeCookieEntries(`# 第一个账号\n${a}\n\n  # 注释\n`)).toEqual(
+      [{ cookie: a }]
+    );
   });
 
   it("strips surrounding quotes and trailing commas", () => {
     const a = "aux_sid=AAA; x=1";
-    expect(parseAdobeCookieEntries(`"${a}",\n'${a.replace("AAA", "BBB")}'`)).toEqual([
-      { cookie: a },
-      { cookie: "aux_sid=BBB; x=1" },
-    ]);
+    expect(
+      parseAdobeCookieEntries(`"${a}",\n'${a.replace("AAA", "BBB")}'`)
+    ).toEqual([{ cookie: a }, { cookie: "aux_sid=BBB; x=1" }]);
   });
 
   it("dedupes identical cookie strings, preserving order", () => {
@@ -64,11 +63,57 @@ describe("parseAdobeCookieEntries", () => {
     ]);
   });
 
+  it("preserves only the extracted Firefly session header", () => {
+    expect(
+      parseAdobeCookieEntries(
+        JSON.stringify({
+          cookie: "aux_sid=AAA",
+          headers: {
+            "X-Arp-Session-Id": " session-value ",
+            Authorization: "must-not-be-imported",
+          },
+        })
+      )
+    ).toEqual([
+      {
+        cookie: "aux_sid=AAA",
+        headers: { "x-arp-session-id": "session-value" },
+      },
+    ]);
+  });
+
+  it("accepts the upstream firefly_headers alias", () => {
+    expect(
+      parseAdobeCookieEntries(
+        JSON.stringify({
+          cookie: "aux_sid=AAA",
+          firefly_headers: { "x-arp-session-id": "session-value" },
+        })
+      )
+    ).toEqual([
+      {
+        cookie: "aux_sid=AAA",
+        headers: { "x-arp-session-id": "session-value" },
+      },
+    ]);
+  });
+
+  it("uses imported email metadata as the account name fallback", () => {
+    expect(
+      parseAdobeCookieEntries(
+        JSON.stringify({ cookie: "aux_sid=AAA", email: " user@example.com " })
+      )
+    ).toEqual([{ cookie: "aux_sid=AAA", name: "user@example.com" }]);
+  });
+
   it("parses a { cookies: [...] } wrapper object", () => {
     const result = parseAdobeCookieEntries(
       JSON.stringify({ cookies: ["aux_sid=AAA", { cookie: "aux_sid=BBB" }] })
     );
-    expect(result).toEqual([{ cookie: "aux_sid=AAA" }, { cookie: "aux_sid=BBB" }]);
+    expect(result).toEqual([
+      { cookie: "aux_sid=AAA" },
+      { cookie: "aux_sid=BBB" },
+    ]);
   });
 
   it("keeps a raw cookie containing braces (does not mistake it for JSON)", () => {

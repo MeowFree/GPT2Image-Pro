@@ -24,7 +24,6 @@ import {
   type FireflyImagePayload,
   type FireflyVideoPayload,
 } from "./payloads";
-import { buildArpSessionId, buildSubmitNonce } from "./signing";
 import {
   FetchFireflyTransport,
   type FireflyTransport,
@@ -36,7 +35,7 @@ const VIDEO_SUBMIT_URL =
   "https://firefly-3p.ff.adobe.io/v2/3p-videos/generate-async";
 const UPLOAD_URL = "https://firefly-3p.ff.adobe.io/v2/storage/image";
 
-const DEFAULT_API_KEY = "clio-playground-web";
+const DEFAULT_API_KEY = "projectx_webapp";
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
 const DEFAULT_SEC_CH_UA =
@@ -137,39 +136,37 @@ export class AdobeFireflyClient {
   private browserHeaders(): Record<string, string> {
     return {
       "user-agent": this.userAgent,
-      origin: "https://firefly.adobe.com",
-      referer: "https://firefly.adobe.com/",
+      origin: "https://new.express.adobe.com",
+      referer: "https://new.express.adobe.com/",
       "accept-language": "en-US,en;q=0.9",
       "sec-ch-ua": this.secChUa,
       "sec-ch-ua-mobile": "?0",
       "sec-ch-ua-platform": '"Windows"',
-      "sec-fetch-site": "same-site",
+      "sec-fetch-site": "cross-site",
       "sec-fetch-mode": "cors",
       "sec-fetch-dest": "empty",
     };
   }
 
-  private submitHeaders(token: string, prompt: string): Record<string, string> {
-    const headers: Record<string, string> = {
+  private submitHeaders(token: string): Record<string, string> {
+    return {
       ...this.browserHeaders(),
       Authorization: `Bearer ${token}`,
       "x-api-key": this.apiKey,
       "content-type": "application/json",
       accept: "*/*",
     };
-    const nonce = buildSubmitNonce(token, prompt);
-    if (nonce) headers["x-nonce"] = nonce;
-    headers["x-arp-session-id"] = buildArpSessionId();
-    return headers;
   }
 
   private pollHeaders(token: string): Record<string, string> {
     return {
       Authorization: `Bearer ${token}`,
       accept: "*/*",
-      referer: "https://firefly.adobe.com/",
-      origin: "https://firefly.adobe.com",
+      referer: "https://new.express.adobe.com/",
+      origin: "https://new.express.adobe.com",
       "user-agent": this.userAgent,
+      "x-api-key": this.apiKey,
+      "content-type": "application/json",
     };
   }
 
@@ -230,7 +227,7 @@ export class AdobeFireflyClient {
       submitResp = await this.transport.request({
         method: "POST",
         url: SUBMIT_URL,
-        headers: this.submitHeaders(input.token, input.prompt),
+        headers: this.submitHeaders(input.token),
         body: JSON.stringify(payload as FireflyImagePayload),
         signal: input.signal,
         timeoutMs: 60_000,
@@ -356,15 +353,13 @@ export class AdobeFireflyClient {
       ...(input.negativePrompt != null
         ? { negativePrompt: input.negativePrompt }
         : {}),
-      ...(input.sourceImageIds
-        ? { sourceImageIds: input.sourceImageIds }
-        : {}),
+      ...(input.sourceImageIds ? { sourceImageIds: input.sourceImageIds } : {}),
     });
 
     const submitResp = await this.transport.request({
       method: "POST",
       url: VIDEO_SUBMIT_URL,
-      headers: this.submitHeaders(input.token, input.prompt),
+      headers: this.submitHeaders(input.token),
       body: JSON.stringify(payload),
       signal: input.signal,
       timeoutMs: 60_000,

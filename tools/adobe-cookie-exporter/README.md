@@ -6,9 +6,16 @@ Chrome / Edge 浏览器扩展，用于导出 Adobe / Firefly 登录 cookie，供
 
 ```json
 {
-  "cookie": "k1=v1; k2=v2"
+  "cookie": "k1=v1; k2=v2",
+  "headers": {
+    "x-arp-session-id": "base64-json-value"
+  }
 }
 ```
+
+`headers.x-arp-session-id` 仅在当前活动标签为已加载的 Firefly 页面、且页面中存在
+Firefly session 数据时导出。GPT2Image Pro 导入后会将其保存在账号元数据中；当前
+Express 生成请求与上游一致，不主动发送该字段。
 
 ## 安装
 
@@ -19,7 +26,7 @@ Chrome / Edge 浏览器扩展，用于导出 Adobe / Firefly 登录 cookie，供
 
 ## 使用
 
-1. 在浏览器登录 `https://firefly.adobe.com`（或任意 Adobe 站点）
+1. 在浏览器登录 Adobe，并打开 `https://firefly.adobe.com/generate/image`
 2. 点击扩展图标
 3. 选择导出范围：
    - `Adobe domains (recommended)`（推荐）

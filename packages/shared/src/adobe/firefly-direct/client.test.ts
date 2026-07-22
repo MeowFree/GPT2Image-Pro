@@ -82,8 +82,12 @@ describe("AdobeFireflyClient.generateImage", () => {
       if (index === 0) {
         // submit
         expect(req.url).toContain("/v2/3p-images/generate-async");
-        expect(req.headers["x-arp-session-id"]).toBeTruthy();
-        expect(req.headers["x-nonce"]).toBeTruthy();
+        expect(req.headers["x-api-key"]).toBe("projectx_webapp");
+        expect(req.headers.origin).toBe("https://new.express.adobe.com");
+        expect(req.headers.referer).toBe("https://new.express.adobe.com/");
+        expect(req.headers["sec-fetch-site"]).toBe("cross-site");
+        expect(req.headers["x-arp-session-id"]).toBeUndefined();
+        expect(req.headers["x-nonce"]).toBeUndefined();
         return jsonResponse(
           200,
           { links: { result: "https://poll/abc" } },
@@ -91,6 +95,9 @@ describe("AdobeFireflyClient.generateImage", () => {
         );
       }
       // poll
+      expect(req.headers["x-api-key"]).toBe("projectx_webapp");
+      expect(req.headers["content-type"]).toBe("application/json");
+      expect(req.headers.origin).toBe("https://new.express.adobe.com");
       return jsonResponse(200, {
         status: "COMPLETED",
         outputs: [{ image: { presignedUrl: "https://cdn/img.png" } }],
