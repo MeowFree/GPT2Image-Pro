@@ -16,7 +16,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useTranslations } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
-import { useEffect, useState } from "react";
+import { type MouseEvent, useEffect, useRef, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@repo/ui/components/avatar";
 import {
@@ -79,6 +79,14 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
 
   // Popover 开关状态
   const [open, setOpen] = useState(false);
+  const committedPathRef = useRef(pathname);
+  const pendingNavigationRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (committedPathRef.current === pathname) return;
+    committedPathRef.current = pathname;
+    pendingNavigationRef.current = null;
+  }, [pathname]);
 
   // 获取用户订阅计划
   const { execute: fetchPlan, result: planResult } = useAction(getMyPlanAction);
@@ -175,6 +183,38 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
 
   const localizedHref = (href: string) =>
     href.startsWith("/") ? `/${locale}${href}` : href;
+
+  const handleNavigationClick = (
+    event: MouseEvent<HTMLAnchorElement>,
+    href: string,
+    mobile: boolean
+  ) => {
+    if (mobile) setMobileOpen(false);
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    const target = localizedHref(href);
+    if (target === pathname) return;
+
+    if (
+      pendingNavigationRef.current &&
+      pendingNavigationRef.current !== target
+    ) {
+      // Cancel the older RSC navigation so a slow first click cannot win later.
+      event.preventDefault();
+      window.location.assign(target);
+      return;
+    }
+
+    pendingNavigationRef.current = target;
+  };
 
   /**
    * 渲染侧边栏内容（桌面和移动端共用）
@@ -294,7 +334,9 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
                       href={localizedHref(item.href)}
                       prefetch={false}
                       title={collapsed ? translatedTitle : undefined}
-                      onClick={() => mobile && setMobileOpen(false)}
+                      onClick={(event) =>
+                        handleNavigationClick(event, item.href, mobile)
+                      }
                       className={cn(
                         // 激活/hover 均取 sidebar 专属 token:侧栏底色与 secondary/muted
                         // 同值,通用灰阶在此不可见,sidebar-accent 才能在明暗两态浮出
