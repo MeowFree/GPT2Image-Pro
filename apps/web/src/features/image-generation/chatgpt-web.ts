@@ -2021,6 +2021,12 @@ async function runWebImage(
 ): Promise<GenerateImageResult> {
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), 20 * 60 * 1000);
+  const abortFromParent = () => abortController.abort(params.signal?.reason);
+  if (params.signal?.aborted) {
+    abortFromParent();
+  } else {
+    params.signal?.addEventListener("abort", abortFromParent, { once: true });
+  }
   // 本次若成功占用某会话续接,记下其 id,在 finally 释放。
   let claimedWebConversationId: string | null = null;
   try {
@@ -2222,6 +2228,7 @@ async function runWebImage(
     };
   } finally {
     clearTimeout(timeout);
+    params.signal?.removeEventListener("abort", abortFromParent);
     if (claimedWebConversationId) {
       inflightWebContinuations.delete(claimedWebConversationId);
     }
@@ -2321,6 +2328,12 @@ async function runWebChat(
 ): Promise<GenerateImageResult> {
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), 20 * 60 * 1000);
+  const abortFromParent = () => abortController.abort(params.signal?.reason);
+  if (params.signal?.aborted) {
+    abortFromParent();
+  } else {
+    params.signal?.addEventListener("abort", abortFromParent, { once: true });
+  }
   let claimedWebConversationId: string | null = null;
   try {
     const configWithSignal = { ...config, signal: abortController.signal };
@@ -2486,6 +2499,7 @@ async function runWebChat(
     };
   } finally {
     clearTimeout(timeout);
+    params.signal?.removeEventListener("abort", abortFromParent);
     if (claimedWebConversationId) {
       inflightWebContinuations.delete(claimedWebConversationId);
     }

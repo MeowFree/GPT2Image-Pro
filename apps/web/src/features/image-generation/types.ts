@@ -54,6 +54,16 @@ export interface GenerateImageResult {
   error?: string;
   upstreamResetAt?: string;
   retryAfterSeconds?: number;
+  backendAttempts?: BackendAttemptDiagnostic[];
+}
+
+export interface BackendAttemptDiagnostic {
+  attempt: number;
+  backendType?: string;
+  backendId?: string;
+  accountBackend?: string;
+  durationMs: number;
+  error?: string;
 }
 
 export interface ResponsesTokenUsage {

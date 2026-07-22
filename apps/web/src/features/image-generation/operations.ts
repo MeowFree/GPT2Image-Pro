@@ -701,6 +701,7 @@ function buildResponseOutputMetadata(result: GenerateImageResult) {
       webConversation: result.webConversation,
       backendMember: result.backendMember,
       responsesPreviousResponse: result.responsesPreviousResponse,
+      backendAttempts: result.backendAttempts,
     },
   };
 }
@@ -1866,6 +1867,7 @@ async function runQueuedImageGenerationForUser({
   }
 
   const repairAttempts: ModerationPromptRepairAttempt[] = [];
+  let backendAttemptsForTimeout: GenerateImageResult["backendAttempts"];
   const isTimedOut = () =>
     Date.now() - startedAt > IMAGE_GENERATION_PENDING_TIMEOUT_MS;
   const failTimedOutGeneration =
@@ -1889,6 +1891,13 @@ async function runQueuedImageGenerationForUser({
             withPromptRepairMetadata(
               {
                 ...buildStreamTelemetryMetadata(),
+                ...(backendAttemptsForTimeout
+                  ? {
+                      responseOutput: {
+                        backendAttempts: backendAttemptsForTimeout,
+                      },
+                    }
+                  : {}),
                 timeout: {
                   reason: "runtime_timeout",
                   timeoutMs: IMAGE_GENERATION_PENDING_TIMEOUT_MS,
@@ -1964,6 +1973,9 @@ async function runQueuedImageGenerationForUser({
         Math.floor(configuredRepairRetries)
       )
     : 0;
+  const generationSignal = AbortSignal.timeout(
+    Math.max(1, IMAGE_GENERATION_PENDING_TIMEOUT_MS - (Date.now() - startedAt))
+  );
   let currentPrompt = input.prompt;
   let currentApiPrompt = apiPrompt;
   let currentModerationPrompt = moderationPrompt;
@@ -2003,7 +2015,7 @@ async function runQueuedImageGenerationForUser({
           failureReason: reason,
           mode: input.mode,
           size,
-          signal: AbortSignal.timeout(IMAGE_GENERATION_PENDING_TIMEOUT_MS),
+          signal: generationSignal,
         }
       );
       if (repaired.error || !repaired.prompt?.trim()) {
@@ -2039,9 +2051,7 @@ async function runQueuedImageGenerationForUser({
   };
 
   const attemptGeneration = async (background: typeof input.background) => {
-    const commonSignal = AbortSignal.timeout(
-      IMAGE_GENERATION_PENDING_TIMEOUT_MS
-    );
+    const commonSignal = generationSignal;
     return input.mode === "edit"
       ? await editImage(
           config,
@@ -2244,6 +2254,7 @@ async function runQueuedImageGenerationForUser({
 
     try {
       result = await runGenerationAttempt();
+      backendAttemptsForTimeout = result.backendAttempts;
     } catch (error) {
       // 同上:生成尝试阶段的 DB/内部异常也脱敏,避免裸 SQL 漏到前端。
       const message = toClientErrorMessage(
@@ -2377,7 +2388,7 @@ async function runQueuedImageGenerationForUser({
         error: result.error,
         creditsConsumed: chargedCredits,
         metadata: sql`COALESCE(${generation.metadata}, '{}'::json)::jsonb || ${JSON.stringify(
-          metadataWithPromptRepair({})
+          metadataWithPromptRepair(buildResponseOutputMetadata(result))
         )}::jsonb`,
       })
       .where(isPendingGeneration(generationId));

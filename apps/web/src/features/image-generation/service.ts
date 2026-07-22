@@ -1048,6 +1048,17 @@ async function fetchResponsesWithPreviousResponseFallback(
 // 未知(未被任何分类记录)错误允许的最大切换次数：这类错误疑似平台问题，给
 // 有限次换后端机会兜底新形态错误，同时防止真终态错误在大池子里无限放大。
 const MAX_UNCLASSIFIED_ERROR_SWITCHES = 3;
+const DEFAULT_MAX_POOL_BACKEND_ATTEMPTS = 8;
+const DEFAULT_MAX_NO_IMAGE_OUTPUT_ATTEMPTS = 3;
+
+function isNoImageOutputError(error?: string | null) {
+  const normalized = (error || "").toLowerCase();
+  return (
+    normalized.includes("no image output") ||
+    normalized.includes("no image data") ||
+    normalized.includes("no downloadable image")
+  );
+}
 
 // firefly-* / force_firefly 请求只允许落 Adobe：pool-adobe 直连,或上游即 Adobe 的
 // adobe_sourced pool-api。换号重试时据此约束目标,防止按 Adobe 计费的请求漂到非 Adobe。
@@ -1089,6 +1100,31 @@ async function retryPoolBackendResult(
   let lastResult: GenerateImageResult | null = null;
   let attempt = 0;
   let unclassifiedErrorSwitches = 0;
+  let noImageOutputAttempts = 0;
+  const backendAttempts: NonNullable<GenerateImageResult["backendAttempts"]> =
+    [];
+  const [configuredMaxAttempts, configuredMaxNoImageOutputAttempts] =
+    await Promise.all([
+      getRuntimeSettingNumber(
+        "IMAGE_BACKEND_MAX_ATTEMPTS",
+        DEFAULT_MAX_POOL_BACKEND_ATTEMPTS,
+        { positive: true }
+      ),
+      getRuntimeSettingNumber(
+        "IMAGE_BACKEND_MAX_NO_IMAGE_OUTPUT_ATTEMPTS",
+        DEFAULT_MAX_NO_IMAGE_OUTPUT_ATTEMPTS,
+        { positive: true }
+      ),
+    ]);
+  const maxAttempts = Math.max(1, Math.floor(configuredMaxAttempts));
+  const maxNoImageOutputAttempts = Math.max(
+    1,
+    Math.floor(configuredMaxNoImageOutputAttempts)
+  );
+  const withAttemptDiagnostics = (result: GenerateImageResult) => ({
+    ...result,
+    backendAttempts,
+  });
   const shouldFallbackFromWebPreference = () =>
     accountBackendPreference === "web" &&
     (options?.mixWebFirst || options?.accountBackendPreference === "web") &&
@@ -1158,11 +1194,21 @@ async function retryPoolBackendResult(
         currentBackend.inflightLease = false;
       }
     }
+    const durationMs = Date.now() - startedAt;
     const shouldRetry = await reportPoolBackendResult(
       candidate,
       result,
-      Date.now() - startedAt
+      durationMs
     );
+    backendAttempts.push({
+      attempt,
+      backendType: currentBackend?.type,
+      backendId: currentBackend?.id,
+      accountBackend: currentBackend?.accountBackend,
+      durationMs,
+      ...(result.error ? { error: result.error.slice(0, 500) } : {}),
+    });
+    if (isNoImageOutputError(result.error)) noImageOutputAttempts += 1;
     lastResult = result;
 
     // 未被任何分类记录的未知错误：白名单制下默认不可切换，但首次出现的新
@@ -1179,9 +1225,34 @@ async function retryPoolBackendResult(
         unclassifiedRetry
       )
     ) {
-      return attachStickyBackendMember(candidate, result);
+      return withAttemptDiagnostics(
+        attachStickyBackendMember(candidate, result)
+      );
     }
     if (unclassifiedRetry) unclassifiedErrorSwitches += 1;
+
+    const retryLimitReason =
+      attempt >= maxAttempts
+        ? "max_attempts"
+        : noImageOutputAttempts >= maxNoImageOutputAttempts
+          ? "max_no_image_output_attempts"
+          : null;
+    if (retryLimitReason) {
+      logWarn("生图后端重试达到上限，停止切换账号池成员", {
+        attempt,
+        requestKind,
+        backendType: currentBackend?.type,
+        backendId: currentBackend?.id,
+        error: result.error,
+        retryLimitReason,
+        maxAttempts,
+        noImageOutputAttempts,
+        maxNoImageOutputAttempts,
+      });
+      return withAttemptDiagnostics(
+        attachStickyBackendMember(candidate, result)
+      );
+    }
 
     const memberKey = poolBackendMemberKey(candidate);
     if (memberKey) excluded.add(memberKey);
@@ -1292,7 +1363,7 @@ async function retryPoolBackendResult(
     candidate = next.config;
   }
 
-  if (lastResult) return lastResult;
+  if (lastResult) return withAttemptDiagnostics(lastResult);
   return attachStickyBackendMember(
     config,
     await run(withoutPoolBackendReport(config))

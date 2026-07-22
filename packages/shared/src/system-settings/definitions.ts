@@ -109,6 +109,8 @@ export type SettingKey =
   | "CHATGPT_WEB_PROXY_SECRET"
   | "CHATGPT_WEB_ACCOUNT_REFRESH_STALE_MINUTES"
   | "CHATGPT_WEB_ACCOUNT_REFRESH_LIMIT"
+  | "IMAGE_BACKEND_MAX_ATTEMPTS"
+  | "IMAGE_BACKEND_MAX_NO_IMAGE_OUTPUT_ATTEMPTS"
   | "IMAGE_BACKEND_DEFAULT_COOLDOWN_MINUTES"
   | "IMAGE_BACKEND_RATE_LIMIT_COOLDOWN_MINUTES"
   | "IMAGE_BACKEND_TOOL_RATE_LIMIT_COOLDOWN_MINUTES"
@@ -1027,6 +1029,28 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     category: "models",
     valueType: "number",
     defaultValue: 20,
+  },
+  {
+    key: "IMAGE_BACKEND_MAX_ATTEMPTS",
+    label: "单次生图后端最大尝试数",
+    description:
+      "一次生成请求最多尝试多少个账号/API 后端。达到上限后返回最后一次真实错误，避免遍历大池直至 20 分钟超时。",
+    category: "models",
+    valueType: "number",
+    min: 1,
+    max: 100,
+    defaultValue: 8,
+  },
+  {
+    key: "IMAGE_BACKEND_MAX_NO_IMAGE_OUTPUT_ATTEMPTS",
+    label: "无图输出最大尝试数",
+    description:
+      "同一次生成出现 no image output/no image data 时最多尝试的后端数量。此类失败通常与请求或上游任务相关，继续遍历账号收益很低。",
+    category: "models",
+    valueType: "number",
+    min: 1,
+    max: 20,
+    defaultValue: 3,
   },
   {
     key: "IMAGE_BACKEND_DEFAULT_COOLDOWN_MINUTES",

@@ -258,5 +258,141 @@ describe("image service Web-first fallback", () => {
         excludedMemberKeys: ["account:codex-1"],
       })
     );
+    expect(result.backendAttempts).toEqual([
+      expect.objectContaining({
+        attempt: 1,
+        backendId: "codex-1",
+        error: expect.stringContaining("API returned no image data"),
+      }),
+      expect.objectContaining({
+        attempt: 2,
+        backendId: "codex-2",
+      }),
+    ]);
+  });
+
+  it("stops switching after three consecutive no-image results", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateImage } = await import("./service");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ data: [] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+      )
+    );
+
+    backendPoolMock.resolveImageBackendPoolConfig.mockImplementation(
+      async () => {
+        const index =
+          backendPoolMock.resolveImageBackendPoolConfig.mock.calls.length;
+        return {
+          config: {
+            baseUrl: "https://api.example.test/v1",
+            apiKey: `codex-key-${index + 1}`,
+            model: "gpt-5.4",
+            backend: {
+              type: "pool-account",
+              id: `codex-${index + 1}`,
+              groupId: "group-1",
+              userId: "user-1",
+              requestKind: "image_generation",
+              accountBackend: "responses",
+              reportResult: true,
+            },
+          },
+        };
+      }
+    );
+
+    const result = await generateImage(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "codex-key-1",
+        model: "gpt-5.4",
+        backend: {
+          type: "pool-account",
+          id: "codex-1",
+          groupId: "group-1",
+          userId: "user-1",
+          requestKind: "image_generation",
+          accountBackend: "responses",
+          reportResult: true,
+        },
+      },
+      {
+        prompt: "make an icon",
+        model: "gpt-image-2",
+        size: "1024x1024",
+      }
+    );
+
+    expect(result.error).toContain("API returned no image data");
+    expect(result.backendAttempts).toHaveLength(3);
+    expect(backendPoolMock.resolveImageBackendPoolConfig).toHaveBeenCalledTimes(
+      2
+    );
+  });
+
+  it("caps general switchable backend failures at eight attempts", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateImage } = await import("./service");
+
+    backendPoolMock.resolveImageBackendPoolConfig.mockImplementation(
+      async () => {
+        const index =
+          backendPoolMock.resolveImageBackendPoolConfig.mock.calls.length;
+        return {
+          config: {
+            baseUrl: "https://chatgpt.com",
+            apiKey: `web-key-${index + 1}`,
+            backend: {
+              type: "pool-account",
+              id: `web-${index + 1}`,
+              groupId: "group-web",
+              groupBackendType: "web",
+              userId: "user-1",
+              requestKind: "image_generation",
+              accountBackend: "web",
+              reportResult: true,
+            },
+          },
+        };
+      }
+    );
+
+    const result = await generateImage(
+      {
+        baseUrl: "https://chatgpt.com",
+        apiKey: "web-key-1",
+        backend: {
+          type: "pool-account",
+          id: "web-1",
+          groupId: "group-web",
+          groupBackendType: "web",
+          userId: "user-1",
+          requestKind: "image_generation",
+          accountBackend: "web",
+          reportResult: true,
+        },
+      },
+      {
+        prompt: "make an icon",
+        model: "gpt-image-2",
+        size: "1024x1024",
+        forceWebBackend: true,
+      }
+    );
+
+    expect(result.error).toBe("terminated");
+    expect(result.backendAttempts).toHaveLength(8);
+    expect(backendPoolMock.resolveImageBackendPoolConfig).toHaveBeenCalledTimes(
+      7
+    );
   });
 });
