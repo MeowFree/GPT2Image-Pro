@@ -1,6 +1,7 @@
 import {
   IMAGE_GENERATION_TIMEOUT_ERROR,
   IMAGE_GENERATION_WEB_TIMEOUT_ERROR,
+  resolveImageGenerationTimeoutError,
 } from "@repo/shared/generation-timeout";
 import { describe, expect, it } from "vitest";
 import {
@@ -69,6 +70,14 @@ describe("generation SLA error classification", () => {
     expect(
       classifyGenerationError(
         "Upstream Images API returned HTTP 400: Unsupported image format: avif. | invalid_image_format | image_generation_user_error"
+      )
+    ).toBe("user_request");
+  });
+
+  it("classifies invalid image file or mode as a user error", () => {
+    expect(
+      classifyGenerationError(
+        "Upstream Images API returned HTTP 400: Bad request to openai: Invalid image file or mode for image 1, please check your image file."
       )
     ).toBe("user_request");
   });
@@ -148,12 +157,25 @@ describe("generation SLA error classification", () => {
     }
   });
 
-  it("attributes Web backend timeouts to moderation (suspected silent refusal)", () => {
-    // Web 上游对违规内容常静默挂住直至超时（无审核码/拒绝文本），补"疑似审核"标记后归
-    // moderation，避免隐性审核淹没在平台超时里。
+  it("classifies Web backend timeouts as platform errors", () => {
     expect(classifyGenerationError(IMAGE_GENERATION_WEB_TIMEOUT_ERROR)).toBe(
-      "moderation"
+      "platform"
     );
+    // 历史行保留旧文案时也应按平台错误重新归类。
+    expect(
+      classifyGenerationError(
+        "Image generation timed out after 20 minutes (suspected upstream content moderation rejection; 可能为上游内容审核拒绝). The image generation fee was refunded."
+      )
+    ).toBe("platform");
+    expect(IMAGE_GENERATION_WEB_TIMEOUT_ERROR).toBe(
+      IMAGE_GENERATION_TIMEOUT_ERROR
+    );
+    expect(
+      resolveImageGenerationTimeoutError({
+        type: "pool-account",
+        accountBackend: "web",
+      })
+    ).toBe(IMAGE_GENERATION_TIMEOUT_ERROR);
   });
 
   it("keeps non-Web (generic) timeouts as platform errors", () => {

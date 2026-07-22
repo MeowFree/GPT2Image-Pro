@@ -55,6 +55,7 @@ import {
 import {
   isContentSafetyRejection,
   USER_INPUT_LIMIT_PATTERNS,
+  USER_INVALID_IMAGE_PATTERNS,
 } from "@/features/image-generation/sla-classification";
 import type { ApiConfig } from "@/features/image-generation/types";
 
@@ -1483,9 +1484,6 @@ function isUserRequestBackendError(error?: string | null) {
     // 与 SLA 侧共用 USER_INPUT_LIMIT_PATTERNS(sla-classification.ts),码 + 中英文案兜底,避免
     // 两处分类器漂移;限流类(rate limit/concurrency/too many requests)不在表内,仍可切换。
     USER_INPUT_LIMIT_PATTERNS.some((pattern) => normalized.includes(pattern)) ||
-    normalized.includes(
-      "the image data you provided does not represent a valid image"
-    ) ||
     normalized.includes("error while downloading file") ||
     normalized.includes("unable to download content from the provided url") ||
     normalized.includes("file urls cannot be larger than") ||
@@ -1501,12 +1499,10 @@ function isUserRequestBackendError(error?: string | null) {
     normalized.includes("invalid dimensions") ||
     normalized.includes("unsupported dimensions") ||
     normalized.includes("does not match image size") ||
-    normalized.includes("invalid_mask_image_format") ||
     // 无效图像（用户提供的图片本身无法识别/格式不对）：同理算用户错。
-    normalized.includes("not a valid image") ||
-    normalized.includes("invalid image data") ||
-    normalized.includes("invalid image format") ||
-    normalized.includes("unsupported image format") ||
+    USER_INVALID_IMAGE_PATTERNS.some((pattern) =>
+      normalized.includes(pattern)
+    ) ||
     // 我方为算 token 下载图片失败（failed to download file）默认算用户错（坏链接/非图片/403/404），
     // 但若是 429/限流/超时/5xx 等瞬时原因（典型：上游为算 token 下载我方图片被限流），
     // 不算用户错，放行给 isRecoverableBackendError 走"切后端 + 冷却"。

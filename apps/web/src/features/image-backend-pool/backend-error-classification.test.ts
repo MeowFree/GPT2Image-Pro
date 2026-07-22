@@ -130,6 +130,7 @@ describe("image backend error classification", () => {
       "Upstream Responses API returned HTTP 400: invalid resolution",
       "Upstream Images API returned HTTP 400: not a valid image",
       "Upstream Images API returned HTTP 400: unsupported image format",
+      "Upstream Images API returned HTTP 400: Bad request to openai: Invalid image file or mode for image 1, please check your image file.",
     ]) {
       expect(isImageBackendSwitchableError(err)).toBe(false);
     }

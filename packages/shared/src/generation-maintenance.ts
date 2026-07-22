@@ -9,7 +9,7 @@ import { getStorageProvider } from "./storage/providers";
 import { getRuntimeSettingNumber } from "./system-settings";
 
 export const IMAGE_GENERATION_PENDING_TIMEOUT_MS = 20 * 60 * 1000;
-// 超时文案/标记/选择器抽到 db-free 的 ./generation-timeout（纯分类器 sla-classification
+// 超时文案/选择器抽到 db-free 的 ./generation-timeout（纯分类器 sla-classification
 // 也要用，不能经本模块的 `import { db }` 把数据库连接拖进纯路径）。本模块 pending 清扫
 // 用 resolveImageGenerationTimeoutError，同时重导出以保持
 // `@repo/shared/generation-maintenance` 的既有公开面不变。
@@ -17,7 +17,6 @@ import { resolveImageGenerationTimeoutError } from "./generation-timeout";
 export {
   IMAGE_GENERATION_TIMEOUT_ERROR,
   IMAGE_GENERATION_WEB_TIMEOUT_ERROR,
-  IMAGE_GENERATION_WEB_TIMEOUT_MODERATION_MARKER,
   resolveImageGenerationTimeoutError,
 } from "./generation-timeout";
 export const GENERATION_IMAGE_RETENTION_HOURS_SETTING_KEY =
