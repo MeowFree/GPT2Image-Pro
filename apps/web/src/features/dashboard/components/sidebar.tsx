@@ -79,13 +79,18 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
 
   // Popover 开关状态
   const [open, setOpen] = useState(false);
-  const committedPathRef = useRef(pathname);
   const pendingNavigationRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (committedPathRef.current === pathname) return;
-    committedPathRef.current = pathname;
-    pendingNavigationRef.current = null;
+    const target = pendingNavigationRef.current;
+    if (!target) return;
+    if (target === pathname) {
+      pendingNavigationRef.current = null;
+      return;
+    }
+
+    // An older RSC request committed after a newer sidebar click.
+    window.location.replace(target);
   }, [pathname]);
 
   // 获取用户订阅计划
@@ -203,17 +208,14 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
     const target = localizedHref(href);
     if (target === pathname) return;
 
-    if (
-      pendingNavigationRef.current &&
-      pendingNavigationRef.current !== target
-    ) {
+    const previousTarget = pendingNavigationRef.current;
+    pendingNavigationRef.current = target;
+    if (previousTarget && previousTarget !== target) {
       // Cancel the older RSC navigation so a slow first click cannot win later.
       event.preventDefault();
       window.location.assign(target);
       return;
     }
-
-    pendingNavigationRef.current = target;
   };
 
   /**
