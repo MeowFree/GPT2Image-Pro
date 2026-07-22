@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FIREFLY_VIDEO_FAMILIES,
+  fireflyVideoMaxInputImages,
   fireflyVideoSize,
   isFireflyVideoModelId,
   resolveFireflyVideoModel,
@@ -81,5 +82,16 @@ describe("firefly video catalog", () => {
       height: 1920,
     });
     expect(fireflyVideoSize("720p", "1:1")).toBeNull();
+  });
+
+  it("按模型限制输入图数量", () => {
+    const sora = resolveFireflyVideoModel("firefly-sora2-8s-16x9");
+    const veo = resolveFireflyVideoModel("firefly-veo31-6s-16x9-1080p");
+    const veoRef = resolveFireflyVideoModel("firefly-veo31-ref-6s-16x9-1080p");
+    const kling = resolveFireflyVideoModel("firefly-kling3-10s-16x9");
+    expect(sora && fireflyVideoMaxInputImages(sora)).toBe(1);
+    expect(veo && fireflyVideoMaxInputImages(veo)).toBe(2);
+    expect(veoRef && fireflyVideoMaxInputImages(veoRef)).toBe(3);
+    expect(kling && fireflyVideoMaxInputImages(kling)).toBe(2);
   });
 });

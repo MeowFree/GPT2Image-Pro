@@ -18,7 +18,10 @@ import {
   getVideoCreditCost,
   resolveVideoModelMultiplier,
 } from "@repo/shared/adobe";
-import { resolveFireflyVideoModel } from "@repo/shared/adobe/firefly-direct";
+import {
+  fireflyVideoMaxInputImages,
+  resolveFireflyVideoModel,
+} from "@repo/shared/adobe/firefly-direct";
 import { consumeCredits } from "@repo/shared/credits/core";
 import { refundGenerationCredits } from "@repo/shared/generation-maintenance";
 import { logError } from "@repo/shared/logger";
@@ -156,6 +159,10 @@ export async function runAdobeVideoGenerationForUser(
   const conf = resolveFireflyVideoModel(input.model);
   if (!conf) {
     return { error: `不支持的视频模型: ${input.model}` };
+  }
+  const maxInputImages = fireflyVideoMaxInputImages(conf);
+  if ((input.inputImages?.length ?? 0) > maxInputImages) {
+    return { error: `该视频模型最多支持 ${maxInputImages} 张输入图` };
   }
 
   // 算价：每秒基价 × 时长 × 模型族倍率（从系统设置取）。

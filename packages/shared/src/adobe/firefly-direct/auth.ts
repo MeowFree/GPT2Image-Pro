@@ -85,7 +85,8 @@ export async function refreshAccessTokenFromCookie(
 ): Promise<RefreshResult> {
   const cookie = normalizeCookieString(cookieInput);
   if (!cookie) throw new Error("cookie is required");
-  const scope = opts?.scope || IMS_DEFAULT_SCOPE;
+  // Express 身份只使用上游固定 scope；保留 opts.scope 字段仅兼容已有调用方。
+  const scope = IMS_DEFAULT_SCOPE;
 
   const resp = await transport.request({
     method: "POST",

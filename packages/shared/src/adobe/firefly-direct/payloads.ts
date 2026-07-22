@@ -289,11 +289,7 @@ export type FireflyVideoPayload = Record<string, unknown>;
  * 构造 Firefly 视频提交体（/v2/3p-videos/generate-async），依据视频协议规格
  * （docs/plan/2026-06-20-adobe-firefly-video-spec.md）。
  *
- * 文生视频只传 prompt；图生视频先在调用方上传输入图拿 id，再按引擎挂参考：
- * - kling：referenceBlobs[{id, usage:"frame", order}]；
- * - sora2/veo31：referenceBlobs[{id, usage:"general", promptReference:1}] +
- *   referenceFrames[首帧, 尾帧|null]。
- * engine / reference_mode 的精确位置属规格待核点（见 spec §5），先按 best-effort 放顶层。
+ * 不同供应商的视频协议并不共用同一种 payload，按上游实现分别构造。
  */
 export function buildFireflyVideoPayload(params: {
   prompt: string;
@@ -302,6 +298,7 @@ export function buildFireflyVideoPayload(params: {
   upstreamModelVersion: string;
   engine: string;
   duration: number;
+  aspectRatio: string;
   size: FireflySize;
   generateAudio: boolean;
   referenceMode?: "image";
@@ -311,47 +308,108 @@ export function buildFireflyVideoPayload(params: {
   const seed = seedNow();
   const ids = (params.sourceImageIds ?? []).filter(Boolean);
   const hasFrames = ids.length > 0;
+  const size = { width: params.size.width, height: params.size.height };
 
-  const payload: FireflyVideoPayload = {
-    n: 1,
-    seeds: [seed],
-    seed: String(seed),
-    modelId: params.upstreamModelId,
-    model: params.upstreamModel,
-    modelVersion: params.upstreamModelVersion,
-    engine: params.engine,
-    size: { width: params.size.width, height: params.size.height },
-    duration: params.duration,
-    fps: 24,
-    prompt: params.prompt,
-    negativePrompt: params.negativePrompt || "",
-    generateAudio: params.generateAudio,
-    jobMode: "standard",
-    generationMetadata: {
-      module: hasFrames ? "image2video" : "text2video",
-    },
-    ...(params.referenceMode ? { reference_mode: params.referenceMode } : {}),
-  };
-
-  if (hasFrames) {
-    if (params.upstreamModelId === "kling") {
-      payload.referenceBlobs = ids.map((id, index) => ({
-        id,
-        usage: "frame",
-        order: index,
-      }));
-    } else {
-      const first = ids[0];
-      const last = ids[1];
-      payload.referenceBlobs = [
-        { id: first, usage: "general", promptReference: 1 },
-      ];
-      payload.referenceFrames = [
-        { localBlobRef: first },
-        last ? { localBlobRef: last } : null,
-      ];
-    }
+  if (params.engine === "veo31-fast" || params.engine === "veo31-standard") {
+    const payload: FireflyVideoPayload = {
+      n: 1,
+      seeds: [seed],
+      modelId: "veo",
+      modelVersion:
+        params.engine === "veo31-fast" ? "3.1-fast-generate" : "3.1-generate",
+      output: { storeInputs: true },
+      prompt: params.prompt,
+      size,
+      generateAudio: params.generateAudio,
+      referenceBlobs: [],
+      generationMetadata: { module: "text2video" },
+      modelSpecificPayload: {
+        parameters: {
+          durationSeconds: params.duration,
+          aspectRatio: params.aspectRatio,
+          addWaterMark: false,
+        },
+      },
+    };
+    payload.referenceBlobs =
+      params.engine === "veo31-standard" && params.referenceMode === "image"
+        ? ids.slice(0, 3).map((id) => ({ id, usage: "asset" }))
+        : ids.slice(0, 2).map((id, index) => ({
+            id,
+            usage: "general",
+            promptReference: index + 1,
+          }));
+    return payload;
   }
 
-  return payload;
+  if (params.engine === "kling-o3" || params.engine === "kling3") {
+    return {
+      n: 1,
+      seeds: [seed],
+      modelId: "kling",
+      modelVersion:
+        params.engine === "kling-o3"
+          ? "kling_o3_pro_reference_to_video"
+          : "kling_v3_standard_i2v",
+      output: { storeInputs: true },
+      prompt: params.prompt,
+      size,
+      generateAudio: params.generateAudio,
+      generationMetadata: {
+        module: hasFrames ? "image2video" : "text2video",
+      },
+      duration: params.duration,
+      generationSettings: { aspectRatio: params.aspectRatio },
+      referenceBlobs: ids.slice(0, 2).map((id, index) => ({
+        id,
+        usage: "frame",
+        order: index + 1,
+      })),
+    };
+  }
+
+  const promptPayload: Record<string, unknown> = {
+    id: 1,
+    duration_sec: params.duration,
+    prompt_text: params.prompt,
+  };
+  if (params.negativePrompt) {
+    promptPayload.negative_prompt = params.negativePrompt;
+  }
+  const firstId = ids[0];
+  return {
+    n: 1,
+    seeds: [seed],
+    modelId: "sora",
+    modelVersion: "sora-2",
+    size,
+    duration: params.duration,
+    fps: 24,
+    prompt: JSON.stringify(promptPayload),
+    generationMetadata: { module: "text2video" },
+    model: params.upstreamModel,
+    generateAudio: params.generateAudio,
+    generateLoop: false,
+    transparentBackground: false,
+    seed: String(seed),
+    locale: "en-US",
+    camera: {
+      angle: "none",
+      shotSize: "none",
+      motion: null,
+      promptStyle: null,
+    },
+    negativePrompt: params.negativePrompt || "",
+    jobMode: "standard",
+    debugGenerationEndpoint: "",
+    referenceBlobs: firstId
+      ? [{ id: firstId, usage: "general", promptReference: 1 }]
+      : [],
+    referenceFrames: firstId ? [{ localBlobRef: firstId }, null] : [],
+    referenceVideo: null,
+    cameraMotionReferenceVideo: null,
+    characterReference: null,
+    editReferenceVideo: null,
+    output: { storeInputs: true },
+  };
 }

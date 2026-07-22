@@ -49,6 +49,7 @@ describe("Adobe IMS Express identity", () => {
 
     await refreshAccessTokenFromCookie(transport, "aux_sid=abc", {
       fetchAccount: false,
+      scope: "legacy,profile",
     });
 
     const request = transport.calls[0];

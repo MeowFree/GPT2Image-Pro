@@ -254,6 +254,7 @@ describe("AdobeFireflyClient.generateVideo", () => {
       upstreamModelVersion: "sora-2",
       engine: "sora2",
       duration: 4,
+      aspectRatio: "16:9",
       size: { width: 1280, height: 720 },
       generateAudio: false,
       pollIntervalMs: 1,

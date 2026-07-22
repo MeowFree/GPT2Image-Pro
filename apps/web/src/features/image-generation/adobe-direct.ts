@@ -27,6 +27,7 @@ import {
   type FireflyTransport,
   fetchAccountInfo,
   fetchCreditsBalance,
+  fireflyVideoMaxInputImages,
   fireflyVideoSize,
   isAdobeRotatableError,
   isTokenExpired,
@@ -41,6 +42,7 @@ import { getRuntimeSettingString } from "@repo/shared/system-settings";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { parseAdobeCookieEntries } from "./adobe-cookie-parser";
+import { prepareAdobeVideoSourceImage } from "./adobe-video-source";
 import type { ApiConfig, GenerateImageResult } from "./types";
 
 // IMS access_token 距过期多久内视为需要刷新（秒）。
@@ -592,12 +594,14 @@ export async function runAdobeDirectVideoRequest(
       let sourceImageIds: string[] | undefined;
       if (params.inputImages && params.inputImages.length > 0) {
         sourceImageIds = [];
-        for (const image of params.inputImages) {
+        const maxInputs = fireflyVideoMaxInputImages(conf);
+        for (const image of params.inputImages.slice(0, maxInputs)) {
+          const prepared = await prepareAdobeVideoSourceImage(image.data, size);
           sourceImageIds.push(
             await client.uploadImage(
               token,
-              image.data,
-              image.type || "image/png",
+              prepared.data,
+              prepared.type,
               params.signal
             )
           );
@@ -612,6 +616,7 @@ export async function runAdobeDirectVideoRequest(
         upstreamModelVersion: conf.upstreamModelVersion,
         engine: conf.engine,
         duration: conf.duration,
+        aspectRatio: conf.aspectRatio,
         size,
         generateAudio: conf.generateAudio,
         ...(conf.referenceMode ? { referenceMode: conf.referenceMode } : {}),

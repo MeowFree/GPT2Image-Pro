@@ -5,7 +5,7 @@
  *   1. 用多候选 payload 依次 POST /v2/3p-images/generate-async（命中 200 即停）。
  *   2. 从响应头 x-override-status-link 或 body.links.result 取轮询 URL。
  *   3. 轮询直到 outputs[0].image.presignedUrl 出现 → 下载字节返回。
- * 图生图：先 uploadImage 拿 image id，放进 payload 的 referenceBlobs/referenceImages。
+ * 图生图：先 uploadImage 拿 image id，放进 payload 的 referenceBlobs。
  *
  * API 调用（提交/轮询/上传）走可插拔传输（生产走 Go TLS 旁路）；产物下载用直连
  * （presigned URL 无需 TLS 伪装）。
@@ -79,6 +79,7 @@ export type GenerateVideoInput = {
   upstreamModelVersion: string;
   engine: string;
   duration: number;
+  aspectRatio: string;
   size: { width: number; height: number };
   generateAudio: boolean;
   referenceMode?: "image";
@@ -347,6 +348,7 @@ export class AdobeFireflyClient {
       upstreamModelVersion: input.upstreamModelVersion,
       engine: input.engine,
       duration: input.duration,
+      aspectRatio: input.aspectRatio,
       size: input.size,
       generateAudio: input.generateAudio,
       ...(input.referenceMode ? { referenceMode: input.referenceMode } : {}),

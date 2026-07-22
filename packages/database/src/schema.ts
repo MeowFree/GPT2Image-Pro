@@ -1032,7 +1032,7 @@ export const adobeAccount = pgTable(
     name: text("name").notNull(),
     // Adobe 浏览器 cookie（IMS 刷新凭据）。无加密基建，按明文存（与 apiKey 一致）。
     cookie: text("cookie").notNull(),
-    // 覆盖默认 IMS scope（为空用默认）。
+    // 历史 IMS scope 配置；Express 协议固定使用上游默认值，保留列用于兼容旧数据。
     scope: text("scope"),
     isEnabled: boolean("is_enabled").notNull().default(true),
     // IMS profile 拉到的账号信息。

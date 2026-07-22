@@ -29,16 +29,17 @@ model-id 格式：`firefly-{family}-{dur}s-{ratio}[-{res}]`；ratio 后缀 `1:1�
 - **结果**：视频 URL = `outputs[0].video.presignedUrl`；`GET {presignedUrl}`（`accept: */*`）取字节。
 - **图片上传（i2v 首帧/尾帧/参考）**：`POST /v2/storage/image`（原始字节 + mime）→ id 取 `data.images[0].id`。
 
-### 鉴权头（提交）
+### 鉴权头（提交，2026-06-30 上游更新）
 ```
 Authorization: Bearer {ims_token}
 x-api-key: {api_key}            # 生成用的 api_key（与 credits 调用的 SunbreakWebUI1 是否同值待核）
 content-type: application/json
 accept: */*
-x-arp-session-id: {generated}
 ```
-+ 浏览器伪装头（user-agent、sec-ch-ua、origin/referer = `https://firefly.adobe.com/`）。无请求签名。
-IMS token 与图像路径同源（`ims/check/v6/token`，`client_id=clio-playground-web`）。
++ 浏览器伪装头（user-agent、sec-ch-ua、origin/referer = `https://new.express.adobe.com/`）。
+不再发送 `x-nonce` 或生成的 `x-arp-session-id`。IMS token 与图像路径同源
+（`ims/check/v6/token`，`client_id=projectx_webapp`，scope 固定为
+`AdobeID,firefly_api,openid`）。
 
 ### 提交体（关键字段）
 `n`、`seeds:[seed]`、`seed:str`、`modelId`、`model`(upstream)、`modelVersion`、`size:{width,height}`、
@@ -53,10 +54,11 @@ IMS token 与图像路径同源（`ims/check/v6/token`，`client_id=clio-playgro
 图像 `POST /v2/3p-images/generate-async`，视频 `POST /v2/3p-videos/generate-async`——**同构**（submit→poll→download、`x-override-status-link` 轮询、`/v2/storage/image` 上传、referenceBlobs）。视频增加 `duration/fps/generateAudio/referenceFrames` 与视频专属 `modelId/modelVersion/engine`，结果读 `outputs[0].video.presignedUrl`。
 
 ## 4. 图生视频输入挂载（先上传 /v2/storage/image 拿 id）
-- **Sora2**：`referenceBlobs:[{id, usage:"general", promptReference:1}]`；`referenceFrames:[{localBlobRef:first}, null]`，首+尾帧时第二槽 `{localBlobRef:last}`。
-- **Veo31/veo31-ref**：同 referenceBlobs/frames；veo31-ref 加 `reference_mode:"image"`。
-- **Kling(o3/3.0)**：帧 `referenceBlobs:[{id, usage:"frame", order:idx}]`；kling-o3 实体引用 `{usage:"element", creativeCloudFileId:urn, mention:{id}}`。
-- 上传前按目标比例+分辨率 letterbox 缩放。
+- **Sora2**：只使用第一张输入图，`referenceBlobs:[{id, usage:"general", promptReference:1}]`；`referenceFrames:[{localBlobRef:first}, null]`。
+- **Veo31/fast**：最多两张 `referenceBlobs[{id, usage:"general", promptReference:1..2}]`。
+- **Veo31-ref**：最多三张 `referenceBlobs[{id, usage:"asset"}]`。
+- **Kling(o3/3.0)**：最多两帧 `referenceBlobs:[{id, usage:"frame", order:1..2}]`；kling-o3 实体引用 `{usage:"element", creativeCloudFileId:urn, mention:{id}}`。
+- 上传前按目标比例+分辨率等比放大、居中裁剪，并统一输出 RGB PNG。
 
 ## 5. 待核校点（移植时验证）
 - base-sora2 vs sora2-pro 的 upstream `model` 串；
