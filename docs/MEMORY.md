@@ -23,6 +23,7 @@
 ## 功能
 
 - [纯中转 API Key](plan/2026-05-30-relay-only-api-key.md) — relay_only key：不记录/不存储/仍扣费仍审核；附带修复 consumeCredits 幂等（dev: 7c6da21→e957f48）
+- **首页影片化 v1.2（2026-07-23/24，已落地 main）**：自研水墨 NPR 管线（gl/ink 共享 GLSL 库）+ 三大奇观（dive 入画千里江山/展墙墨池真倒影焦散/macro 浮雕迎光）+ 光标抚墨三路分发 + 镜头签名 + 单项熔断（最贵 pass 先行牺牲，breakerListener→context 通知 DOM 兜底恢复）；落地记录与九条实施勘误见 [设计稿十一节](plan/2026-07-23-homepage-cinema-v12-design.md)
 - **Issue #1/#15/#16 修复**（dev: a2dd4dc/10d0bc8/c8e9118，详见 [TODO.md](TODO.md)）— #1 管理员建号/改密改邮箱(superAdminAction+better-auth hashPassword)；#15 瀑布流 tier/参数/3警告对齐原项目；#16 数量控件改数字输入+滚轮、上限与服务端 count 校验统一挂 `imageGenerationConcurrency`（**语义变化**：单次张数上限不再用 maxBatchCount）。待 UI 实测。
 
 ## 工程 / CI
