@@ -28,6 +28,7 @@ import { createFluidPass } from "./gl/passes/fluid";
 import { createLandscapePass } from "./gl/passes/landscape";
 import { createParticlesPass } from "./gl/passes/particles";
 import { createPoolPass } from "./gl/passes/pool";
+import { createReliefPass } from "./gl/passes/relief";
 import { renderTextTexture } from "./gl/text-texture";
 import { ArchiveChest } from "./scene-archive";
 import { GenerateScene, ReviseMarkLayer } from "./scene-generate";
@@ -103,9 +104,9 @@ const REVISE_BIAS_STRENGTH = 0.7;
 /**
  * GL pass 一次性装载:样张(定稿/初稿)/深度图/山水飞越资产/展墙图集
  * 解码与标题纹理就绪后按绘制序注册(初稿 denoise -> 定稿 revise
- * overlay -> dolly -> landscape -> fluid -> particles -> pool 墨池 ->
- * 标题 denoise;post 已由 provider 先行注册,终幕实例由 FinaleStage
- * 自行注册)。个别资产失败或单个 pass init
+ * overlay -> macro 浮雕 relief -> dolly -> landscape -> fluid ->
+ * particles -> pool 墨池 -> 标题 denoise;post 已由 provider 先行
+ * 注册,终幕实例由 FinaleStage 自行注册)。个别资产失败或单个 pass init
  * 抛错(着色器编译等)仅跳过对应 pass(safeAdd 隔离),其余演出不受
  * 影响(初稿缺失时降级用定稿,revise 幕退化为无覆盖变化;
  * 山水资产缺失时 dive 由 dolly 全程兜底,见 transitions 的 landscapeOff
@@ -193,6 +194,8 @@ function FilmPasses() {
           })
         );
       }
+      // macro 凝视段画布物质化(v1.2):与 denoise 互斥,复用定稿与深度图
+      safeAdd(art && dep ? createReliefPass(art, dep) : null);
       if (art && dep) safeAdd(createDollyPass(art, dep));
       if (lp && lh) safeAdd(createLandscapePass(lp, lh));
       // 浮点色缓冲不可用时工厂返回 null(由 safeAdd 接住),反转由

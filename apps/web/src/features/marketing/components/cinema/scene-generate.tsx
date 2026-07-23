@@ -9,6 +9,9 @@
  * shot);页边 EXIF 式采样 HUD;卖点解说词为视口右缘浮注;prompt 字幕
  * 常驻画布下方——打出的那句话与显影结果同框互证。
  * macro(v0.9):取景窗推近笔触局部(收锋飞白处)凝视->驻留漂移->拉回。
+ * v1.2:驻留段(幕内 0.3-0.95)画布由 relief 浮雕接管——深度图法线
+ * 光照,掠射光角随滚动缓转,驻留中段迎光透纸;与 denoise 互斥绘制
+ * 同一矩形,两端同帧切换零跳变。
  * revise(v1.0,对话式编辑的剧情):prompt 在原句上接续打字("起笔再重
  * 一些,墨色更沉")->朱笔手绘圈住起笔区(传统朱笔批改)->定稿从圈心
  * 向外生长覆盖初稿(denoise overlay 实例)->revision 落幅一拍->画布
@@ -116,11 +119,22 @@ export function GenerateScene() {
       const dev = seg(g, 0, DEVELOP_END);
       engine?.setProgress("denoiseP", dev);
       engine?.setProgress("denoiseGlow", bell(dev) * 0.6);
-      engine?.setProgress("denoiseVisible", g > 0 && d < 0.05 ? 1 : 0);
+      engine?.setProgress(
+        "denoiseVisible",
+        g > 0 && d < 0.05 && !(mac > 0.3 && mac < 0.95) ? 1 : 0
+      );
       const crop = macroCrop(mac);
       engine?.setProgress("canvasCrop.x", crop.x);
       engine?.setProgress("canvasCrop.y", crop.y);
       engine?.setProgress("canvasCrop.z", crop.z);
+      // 浮雕接管:macro 推近完成后(0.3)到拉回交棒 dive(0.95)之间,
+      // relief 替代 denoise 绘制同一画布矩形(互斥,零交接跳变)
+      const reliefOn = mac > 0.3 && mac < 0.95;
+      engine?.setProgress("reliefVisible", reliefOn ? 1 : 0);
+      engine?.setProgress("reliefLight", 0.8 + mac * 1.9);
+      // 迎光一拍:驻留段中光源移到画后,薄处透光
+      const back = bell(Math.max(0, Math.min(1, (mac - 0.5) / 0.3)));
+      engine?.setProgress("reliefBack", back * 0.8);
       // 定稿覆盖实例:朱笔圈定后自圈心生长,常驻到 dive 交棒
       // (初稿实例在下层保持,overlay 未显影区透明,重叠无跳变)
       const growth = reviseGrowth(rev);
