@@ -184,9 +184,11 @@ function seg01(p: number, a: number, b: number): number {
 }
 
 /**
- * 活墨编排:序幕淡墨云的显示强度与向心聚拢,跨 opening/generate 两幕
- * 单点决策(fluid pass 的 inkFade/inkGather 单一事实源;inkP 生命进度
- * 由 OpeningScene 喂——它属于序幕自身的时间轴)。
+ * 活墨编排:序幕淡墨云的显示强度与向心聚拢,负责 opening/generate
+ * 两幕(fluid pass 的 inkFade/inkGather 按键生命期分段:本组件管
+ * opening/generate,dive 幕的墨坠由 ZoomThroughTransition 接管,
+ * 两段时间轴互不重叠,无竞争;inkP 生命进度由 OpeningScene 喂——
+ * 它属于序幕自身的时间轴)。
  * fade 是叙事包络而非开关:滴落初洇较显(0.55),标题显影期退成底衬
  * (0.26,字从墨里显出来、墨不压字),打字聚拢段转浓活跃(0.75,
  * 墨流被吸向画布),显影开始被画布吸尽(generate 前 28% 归零)。

@@ -64,6 +64,9 @@ export function ZoomThroughTransition() {
       engine?.setProgress("landscapeVisible", 0);
       engine?.setProgress("inkFade", 0);
       engine?.setProgress("inkGather", 0);
+      // 聚拢目标同步复位缺省(同 else 分支的窗外复位语义)
+      engine?.setProgress("inkGatherX", 0.5);
+      engine?.setProgress("inkGatherY", 0.5);
     } else {
       const seg = (a: number, b: number) =>
         Math.max(0, Math.min(1, (v - a) / (b - a)));
@@ -76,9 +79,13 @@ export function ZoomThroughTransition() {
       // 墨坠成山:活墨向谷底聚拢,山形自白雾中隆起
       const inkBell = seg(0.25, 0.36) * (1 - seg(0.44, 0.55));
       engine?.setProgress("inkFade", inkBell * 0.85);
-      engine?.setProgress("inkGather", v > 0.25 && v < 0.5 ? 1 : 0);
-      engine?.setProgress("inkGatherX", 0.5);
-      engine?.setProgress("inkGatherY", 0.9);
+      // 聚拢目标按窗口写入,窗外复位缺省 [0.5, 0.5]:滚过 dive 再回滚
+      // 到序幕时,InkMistDirector 的聚拢段读键须拿到画布中心而非谷底
+      // 残留(X 两态同为 0.5 是巧合,照写保持对称可读)
+      const gathering = v > 0.25 && v < 0.5;
+      engine?.setProgress("inkGather", gathering ? 1 : 0);
+      engine?.setProgress("inkGatherX", gathering ? 0.5 : 0.5);
+      engine?.setProgress("inkGatherY", gathering ? 0.9 : 0.5);
       // 飞越与雾:自全白显形,中段雾退,末端白场
       const on = v > 0.28 && v < 0.97;
       engine?.setProgress("landscapeVisible", on ? 1 : 0);
