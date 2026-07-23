@@ -41,7 +41,7 @@ void main() {
   vec4 texel = texture(uImage, sampleUv);
   float texLum = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
   float depth = texture(uDepth, sampleUv).r;
-  // hero 深度图为 1024x1024;Sobel 步长随取景窗缩放(微距下仍跨 texel)
+  // hero 深度图为 1024x1024;Sobel 步长随取景窗缩放(亚 texel 时靠 LINEAR 插值保持梯度连续)
   vec2 texelSize = vec2(uCrop.z / 1024.0);
   vec3 n = heightNormal(uDepth, sampleUv, texelSize, 6.0);
   // 掠射光:低角度扫过纸面,墨的堆叠感来自长影

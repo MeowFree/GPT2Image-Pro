@@ -8,6 +8,9 @@
  * 常量表定义(半确定性,倒放重进可复现)。
  * 需要 EXT_color_buffer_float(RGBA16F 可渲染);不可用时工厂返回 null,
  * 反转由 dolly 末端压暗与宣言章 DOM 底色兜底,活墨直接缺席(纯质感层)。
+ * 光标抚墨(v1.2):pointer.x|y|angle|speed 键把指针速度注入速度场
+ * (两模式皆响应),活墨模式附带淡墨拖尾;指针键为视口分数(y 自顶
+ * 向下),本 pass 读入时翻转到模拟场系(y 向上,与 INK_CENTER 同系)。
  */
 import {
   type CinemaPass,
@@ -386,7 +389,9 @@ function swap(pp: PingPong): void {
  * 生命进度,驱动脉冲注入与清场)/inkGather(0-1 向心聚拢强度)/
  * inkGatherX/inkGatherY(聚拢目标,缺省画布中心 GATHER_TARGET;
  * dive 墨坠段喂 [0.5, 0.9] 聚向谷底)/inkFade(0-1 显示强度,
- * > 0.001 激活)。模式切换必清场(共享模拟场,残留跨用途无意义)。
+ * > 0.001 激活)/pointer.x|y|angle|speed(光标抚墨注入,视口分数
+ * y 自顶向下,读入翻转到模拟场系)。模式切换必清场(共享模拟场,
+ * 残留跨用途无意义)。
  * 每帧序列:advect(velocity) -> 检查点 splat -> [活墨向心 gather] ->
  * divergence -> pressure Jacobi(满档 14 次,降档 8 次) ->
  * subtractGradient -> advect(dye, 耗散 0.985) -> 全屏合成(alpha 混合,
@@ -573,7 +578,7 @@ export function createFluidPass(): CinemaPass | null {
     swap(velocity);
   };
 
-  /** 一帧完整模拟步:平流 -> 脉冲 -> [活墨向心] -> 投影 -> 墨平流 */
+  /** 一帧完整模拟步:平流 -> 脉冲 -> [光标抚墨] -> [活墨向心] -> 投影 -> 墨平流 */
   const step = (
     gl: WebGL2RenderingContext,
     p: number,
@@ -581,7 +586,8 @@ export function createFluidPass(): CinemaPass | null {
     tier: number,
     mode: FluidMode,
     gather: number,
-    gatherTarget: readonly [number, number]
+    gatherTarget: readonly [number, number],
+    pointer: { x: number; y: number; angle: number; speed: number }
   ): void => {
     if (!programs || !velocity || !dye || !pressure || !divergence) return;
     gl.disable(gl.BLEND);
@@ -608,6 +614,21 @@ export function createFluidPass(): CinemaPass | null {
       const prev = pulses[injected - 1];
       if (!prev || p >= prev.at) break;
       injected -= 1;
+    }
+    // 光标抚墨:指针速度注入速度场(两模式皆响应),活墨模式附带
+    // 淡墨拖尾;dt 定标与 seep 同纲,能量下限保持出帧
+    if (pointer.speed > 0.03) {
+      const pp: PulseDef = {
+        at: 0,
+        angle0: pointer.angle,
+        strength: pointer.speed * 0.5 * dt,
+        dye: mode === 2 ? pointer.speed * 0.2 * dt : 0,
+        radius: 0.0032,
+      };
+      const center: readonly [number, number] = [pointer.x, pointer.y];
+      splat(gl, velocity, 0, pp, center, 0.02);
+      if (mode === 2) splat(gl, dye, 1, pp, center, 0.02);
+      energy = Math.max(energy, 0.25);
     }
     // 活墨持续渗出:浓度为注入率与耗散率的动态平衡——快滚过脉冲点
     // 或长停留后墨云依旧在场(一次性脉冲会在数秒内耗散殆尽,走查实证);
@@ -783,11 +804,28 @@ export function createFluidPass(): CinemaPass | null {
           ? Math.min(Math.max(ctx.timeMs - lastTimeMs, 0), 33)
           : 16;
       lastTimeMs = ctx.timeMs;
+      // 指针键为视口分数(y 自顶向下,与 pool/particles 同一约定);
+      // 模拟场系 y 向上(见 INK_CENTER),读入时翻转,角度随 y 镜像
+      const pointer = {
+        x: progress.get("pointer.x") ?? 0.5,
+        y: 1 - (progress.get("pointer.y") ?? 0.5),
+        angle: -(progress.get("pointer.angle") ?? 0),
+        speed: progress.get("pointer.speed") ?? 0,
+      };
       if (simReady) {
         ensureTargets(gl, ctx.width, ctx.height, ctx.tier);
       }
       if (simReady && velocity && dye && pressure && divergence) {
-        step(gl, p, dtMs / 1000, ctx.tier, mode, lastGather, gatherTarget);
+        step(
+          gl,
+          p,
+          dtMs / 1000,
+          ctx.tier,
+          mode,
+          lastGather,
+          gatherTarget,
+          pointer
+        );
       }
       // 合成到画布:dive 遮罩兜底保证布局,活墨为纯质感层
       const cmp = programs.composite;

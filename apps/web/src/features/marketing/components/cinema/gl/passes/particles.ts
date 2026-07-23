@@ -6,6 +6,8 @@
  * 替换正弦 wander),颜色在顶点阶段采样图像纹理(WebGL2 VS 纹理拾取)。
  * morph 按墨键控:纸底像素几乎不成粒,飞散重组的是笔画本体;
  * 暗底段粒子显作淡墨雾(负片),随底色回纸转为真实墨色。
+ * 光标趋避(v1.2):pointer.x|y|speed 键在 morph 途中段施加温柔斥力
+ * (bellP 加权,轮廓段为零),缺省屏外即归零。
  */
 import {
   type CinemaPass,
@@ -22,6 +24,7 @@ uniform float uMode;
 uniform float uP;
 uniform vec2 uOrigin;
 uniform vec4 uRectA;
+uniform vec3 uPointer;
 uniform sampler2D uImage;
 out vec3 vColor;
 out float vAlpha;
@@ -106,6 +109,13 @@ void main() {
     vec2 flow = curl(base * 2.6 + vec2(uP * 0.7, -uP * 0.5));
     vec2 wander = flow * 0.014 * bellP * smoothstep(0.1, 0.35, uP);
     pos = base + wander;
+    // 光标趋避:温柔斥力,只作用途中粒子(bellP 加权,轮廓段为零);
+    // pos 与 uPointer 同为视口分数(y 自顶向下,toClip 翻转前)
+    vec2 away = pos - uPointer.xy;
+    float pd = length(away);
+    // WHY 1.0-smoothstep 而非反序边界:GLSL 规定 edge0>=edge1 未定义
+    float push = (1.0 - smoothstep(0.0, 0.09, pd)) * uPointer.z * bellP;
+    pos += (away / max(pd, 1e-3)) * push * 0.03;
     vec3 texel = texture(uImage, srcLocal).rgb;
     float srcLum = dot(texel, vec3(0.299, 0.587, 0.114));
     // 墨键控:纸底像素完全不显(alpha 与 size 双键控——数万个微透明
@@ -138,7 +148,8 @@ void main() {
  * 创建粒子 pass。
  * 读 progress 键:splashMode(0 墨溅 / 1 布局 morph)、splashP(墨溅进度)、
  * splashOx/splashOy(墨溅原点视口分数)、morphP(morph 进度)、
- * morphRectA.x|y|w|h(morph 源矩形)。进度在 (0,1) 开区间外跳绘。
+ * morphRectA.x|y|w|h(morph 源矩形)、pointer.x|y|speed(光标趋避,
+ * 缺省屏外归零)。进度在 (0,1) 开区间外跳绘。
  * image 供 morph 模式顶点取色;墨溅模式可传 null。
  * 粒子数按质量档:2 档 24000 / 其余 6000。
  */
@@ -153,6 +164,7 @@ export function createParticlesPass(image: TexImageSource | null): CinemaPass {
     "uP",
     "uOrigin",
     "uRectA",
+    "uPointer",
     "uImage",
   ] as const;
   return {
@@ -214,6 +226,13 @@ export function createParticlesPass(image: TexImageSource | null): CinemaPass {
         progress.get("morphRectA.y") ?? 0.25,
         progress.get("morphRectA.w") ?? 0.4,
         progress.get("morphRectA.h") ?? 0.5
+      );
+      // 光标趋避:缺省 (-2,-2) 屏外且速度为零,未接线/无指针时斥力归零
+      gl.uniform3f(
+        loc.uPointer ?? null,
+        progress.get("pointer.x") ?? -2,
+        progress.get("pointer.y") ?? -2,
+        progress.get("pointer.speed") ?? 0
       );
       gl.drawArrays(gl.POINTS, 0, count);
       gl.disable(gl.BLEND);

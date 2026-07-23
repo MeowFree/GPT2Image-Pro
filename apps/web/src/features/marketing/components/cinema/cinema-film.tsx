@@ -30,6 +30,7 @@ import { createParticlesPass } from "./gl/passes/particles";
 import { createPoolPass } from "./gl/passes/pool";
 import { createReliefPass } from "./gl/passes/relief";
 import { renderTextTexture } from "./gl/text-texture";
+import { PointerFeed } from "./interaction/pointer";
 import { ArchiveChest } from "./scene-archive";
 import { GenerateScene, ReviseMarkLayer } from "./scene-generate";
 import { InvokeScene } from "./scene-invoke";
@@ -306,8 +307,10 @@ function FilmBody() {
         <ZoomThroughTransition />
         <MultiplyTransition />
         <PickAndReturnTransition />
-        {/* 章节导轨/页头暗场/活墨/朱笔圈:全片常驻编排件 */}
+        {/* 章节导轨/页头暗场/活墨/朱笔圈/指针注入:全片常驻编排件 */}
         <ChapterRail />
+        <HeaderDimmer />
+        <PointerFeed />
         <InkMistDirector />
         <ReviseMarkLayer />
       </CinemaStage>
