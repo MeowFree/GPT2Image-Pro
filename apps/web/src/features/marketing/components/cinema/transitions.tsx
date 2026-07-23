@@ -57,7 +57,10 @@ export function ZoomThroughTransition() {
     if (landscapeOff) {
       // 回退:2.5D dolly 全程(landscape 缺失/被熔断/无引擎)
       const dv = Math.min(1, v / 0.92);
-      engine?.setProgress("dollyVisible", v > 0.001 && v < 0.92 ? 1 : 0);
+      // dolly 暗场撑到幕尾(0.999):墨潮自 0.92 起扩,fluidP<=0.001 时
+      // fluid 整体跳绘,若 dolly 在 0.92 先灭会出现"全暗硬切到裸页面"
+      // 的断口——dolly 压暗必须撑到墨潮接管,暗接暗无断口
+      engine?.setProgress("dollyVisible", v > 0.001 && v < 0.999 ? 1 : 0);
       engine?.setProgress("dollyZoom", 1 + easeIn(dv) * 17);
       engine?.setProgress("dollySmear", 1 - Math.abs(dv * 2 - 1));
       engine?.setProgress("dollyDark", Math.max(0, (v - 0.7) / 0.22));

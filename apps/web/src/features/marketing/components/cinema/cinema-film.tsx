@@ -19,7 +19,7 @@ import {
   SceneLayer,
   useSceneProgress,
 } from "./cinema-stage";
-import type { CinemaEngine } from "./gl/engine";
+import type { CinemaEngine, CinemaPass } from "./gl/engine";
 import { createDenoisePass } from "./gl/passes/denoise";
 import { createDollyPass } from "./gl/passes/dolly";
 import { createFluidPass } from "./gl/passes/fluid";
@@ -101,8 +101,9 @@ const REVISE_BIAS_STRENGTH = 0.7;
  * GL pass 一次性装载:样张(定稿/初稿)/深度图/山水飞越资产解码与标题
  * 纹理就绪后按绘制序注册(初稿 denoise -> 定稿 revise overlay -> dolly ->
  * landscape -> fluid -> particles -> 标题 denoise;post 已由 provider 先行
- * 注册,终幕实例由 FinaleStage 自行注册)。个别资产失败仅跳过对应 pass,
- * 其余演出不受影响(初稿缺失时降级用定稿,revise 幕退化为无覆盖变化;
+ * 注册,终幕实例由 FinaleStage 自行注册)。个别资产失败或单个 pass init
+ * 抛错(着色器编译等)仅跳过对应 pass(safeAdd 隔离),其余演出不受
+ * 影响(初稿缺失时降级用定稿,revise 幕退化为无覆盖变化;
  * 山水资产缺失时 dive 由 dolly 全程兜底,见 transitions 的 landscapeOff
  * 分支);卸载由 provider dispose 兜底。
  */
@@ -144,12 +145,22 @@ function FilmPasses() {
       landscapeHeightReady,
     ]).then(([art, draft, dep, title, lp, lh]) => {
       if (disposed) return;
+      /** pass 装载隔离:单个 pass init 失败(着色器编译/纹理)只跳过自身,
+       * 不拖垮整条 pass 链;失败在 console 留证(生产静默但可排查) */
+      const safeAdd = (pass: CinemaPass | null) => {
+        if (!pass || !engine) return;
+        try {
+          engine.addPass(pass);
+        } catch (err) {
+          console.error(`cinema pass 装载失败已跳过: ${pass.key}`, err);
+        }
+      };
       // 画布显影画初稿(generate/macro 幕的对象);revise overlay 画
       // 定稿,从朱笔圈心生长覆盖;dive 及以后全部沿用定稿
       const draftOrFinal = draft ?? art;
-      if (draftOrFinal) engine.addPass(createDenoisePass(draftOrFinal));
+      if (draftOrFinal) safeAdd(createDenoisePass(draftOrFinal));
       if (art) {
-        engine.addPass(
+        safeAdd(
           createDenoisePass(art, REVISE_KEYS, {
             mode: "overlay",
             centerBias: [
@@ -160,15 +171,15 @@ function FilmPasses() {
           })
         );
       }
-      if (art && dep) engine.addPass(createDollyPass(art, dep));
-      if (lp && lh) engine.addPass(createLandscapePass(lp, lh));
-      // 浮点色缓冲不可用时工厂返回 null,反转由 dolly 压暗与墨章底色兜底
-      const fluid = createFluidPass();
-      if (fluid) engine.addPass(fluid);
+      if (art && dep) safeAdd(createDollyPass(art, dep));
+      if (lp && lh) safeAdd(createLandscapePass(lp, lh));
+      // 浮点色缓冲不可用时工厂返回 null(由 safeAdd 接住),反转由
+      // dolly 压暗与墨章底色兜底
+      safeAdd(createFluidPass());
       // 样张缺失时 morph 粒子退化为墨点,序幕墨溅(纯墨色)不受影响
-      engine.addPass(createParticlesPass(art));
+      safeAdd(createParticlesPass(art));
       if (title) {
-        engine.addPass(createDenoisePass(title, TITLE_KEYS, { mode: "text" }));
+        safeAdd(createDenoisePass(title, TITLE_KEYS, { mode: "text" }));
       }
     });
     return () => {
