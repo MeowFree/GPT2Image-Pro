@@ -84,11 +84,12 @@ export function ZoomThroughTransition() {
       engine?.setProgress("inkFade", inkBell * 0.85);
       // 聚拢目标按窗口写入,窗外复位缺省 [0.5, 0.5]:滚过 dive 再回滚
       // 到序幕时,InkMistDirector 的聚拢段读键须拿到画布中心而非谷底
-      // 残留(X 两态同为 0.5 是巧合,照写保持对称可读)
+      // 残留(X 两态同为 0.5 是巧合,照写保持对称可读);
+      // 谷底 = 模拟场系 y 向上 0.1(视口自顶向下 0.9),墨坠积成山麓
       const gathering = v > 0.25 && v < 0.5;
       engine?.setProgress("inkGather", gathering ? 1 : 0);
       engine?.setProgress("inkGatherX", gathering ? 0.5 : 0.5);
-      engine?.setProgress("inkGatherY", gathering ? 0.9 : 0.5);
+      engine?.setProgress("inkGatherY", gathering ? 0.1 : 0.5);
       // 飞越与雾:自全白显形,中段雾退,末端白场
       const on = v > 0.28 && v < 0.97;
       engine?.setProgress("landscapeVisible", on ? 1 : 0);

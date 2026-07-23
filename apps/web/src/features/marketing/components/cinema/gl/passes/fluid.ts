@@ -214,7 +214,8 @@ const INK_PULSES: readonly PulseDef[] = [
 const INK_CENTER: readonly [number, number] = [0.5, 0.7];
 
 /** 活墨聚拢目标缺省值:画布主角中心(与 centerSquareRect 构图对应);
- * 可被 inkGatherX/inkGatherY 键覆盖(dive 墨坠段聚拢到谷底) */
+ * 可被 inkGatherX/inkGatherY 键覆盖(模拟场系,y 向上 GL 系;
+ * dive 墨坠段聚拢到谷底 y=0.1) */
 const GATHER_TARGET: readonly [number, number] = [0.5, 0.5];
 
 /** 8 向 splat 散布半径:dive 宽散吞屏,活墨集中成团 */
@@ -387,8 +388,8 @@ function swap(pp: PingPong): void {
  * 读 progress 键——用途一(dive):fluidP(0-1 反转覆盖进度)/
  * fluidVisible(>= 0.5 激活,优先);用途二(序幕活墨):inkP(0-1 活墨
  * 生命进度,驱动脉冲注入与清场)/inkGather(0-1 向心聚拢强度)/
- * inkGatherX/inkGatherY(聚拢目标,缺省画布中心 GATHER_TARGET;
- * dive 墨坠段喂 [0.5, 0.9] 聚向谷底)/inkFade(0-1 显示强度,
+ * inkGatherX/inkGatherY(聚拢目标,缺省画布中心 GATHER_TARGET,
+ * 模拟场系 y 向上 GL 系;dive 墨坠段喂 [0.5, 0.1] 聚向谷底)/inkFade(0-1 显示强度,
  * > 0.001 激活)/pointer.x|y|angle|speed(光标抚墨注入,视口分数
  * y 自顶向下,读入翻转到模拟场系)。模式切换必清场(共享模拟场,
  * 残留跨用途无意义)。
@@ -793,7 +794,7 @@ export function createFluidPass(): CinemaPass | null {
       }
       lastGather = mode === 2 ? (progress.get("inkGather") ?? 0) : 0;
       // 聚拢目标键驱动:缺省画布中心(序幕行为不变);dive 墨坠段
-      // 编排层喂 [0.5, 0.9](谷底,墨聚成山麓)
+      // 编排层喂 [0.5, 0.1](模拟场系 y 向上的谷底,墨聚成山麓)
       const gatherTarget: readonly [number, number] = [
         progress.get("inkGatherX") ?? GATHER_TARGET[0],
         progress.get("inkGatherY") ?? GATHER_TARGET[1],
