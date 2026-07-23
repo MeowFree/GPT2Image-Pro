@@ -237,8 +237,8 @@ export function WallScene() {
 }
 
 /**
- * 墨池 GL 编排:展墙推轨进度 -> pool pass 键(水线/推轨/相位/可见门)。
- * full 态由 GL 真倒影接管,DOM 镜像退场(见 WallFigure);
+ * 墨池 GL 编排:展墙推轨进度 -> pool pass 键(水线/推轨/相位/渐显/
+ * 可见门)。full 态由 GL 真倒影接管,DOM 镜像退场(见 WallFigure);
  * pool 被熔断时 DOM 镜像恢复(双轨兜底)。
  */
 function PoolDirector({ vw, vh }: { vw: number; vh: number }) {
@@ -257,6 +257,9 @@ function PoolDirector({ vw, vh }: { vw: number; vh: number }) {
         "poolVisible",
         vis > 0.02 && !engine.isDisabled("pool") ? 1 : 0
       );
+      // 渐显与可见门分离:vis 经 poolAlpha 平滑淡入(展开期不作硬切),
+      // 0.02 以下由 poolVisible 整体跳绘
+      engine.setProgress("poolAlpha", vis);
       engine.setProgress("poolWaterY", strip.y + strip.h);
       engine.setProgress("poolGlide", glide);
       engine.setProgress("poolTrackW", trackW);

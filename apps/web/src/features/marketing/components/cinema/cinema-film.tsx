@@ -145,7 +145,7 @@ function FilmPasses() {
     const atlasReady = Promise.all(WALL_CELL_SRCS.map(loadImage)).then(
       (imgs) => {
         const ok = imgs.filter((i): i is HTMLImageElement => i !== null);
-        if (ok.length < 16) return null;
+        if (ok.length < WALL_CELL_SRCS.length) return null;
         const canvas = document.createElement("canvas");
         canvas.width = 2048;
         canvas.height = 2048;

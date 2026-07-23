@@ -1,13 +1,22 @@
 /**
  * 墨池 pass(v1.2 奇观二):展墙画作映上真水面。
  * 倒影 = 图集垂直镜像重采样 + 解析波面扭曲(波幅随滚动速度)+
- * 光标涟漪;焦散 = 迭代式程序化光网(单色,<=0.08,tier>=2 才绘)。
+ * 光标涟漪;焦散 = 迭代式程序化光网(单色,缩放系数 0.08——
+ * 亮网观感来自 pow 峰值,非强度上界;tier>=2 才绘)。
  * 轨道映射 GLSL 与 pool-cell.ts 双同步(改动必须两边一起)。
  * 读 progress 键:poolVisible(< 0.5 跳绘)/poolWaterY(地面线视口分数)/
  * poolGlide(展墙推轨 0-1)/poolTrackW(轨道总宽)/poolPhase(波动相位)/
+ * poolAlpha(整体渐显 0-1,spread 展开期随 vis 淡入,缺省 1)/
  * scrollVel(速度加波幅,Task 9 喂)/pointer.x|y|speed(光标涟漪,Task 8 喂)。
  * cost: 2(熔断候选;被熔断时 scene-wall 恢复 DOM 倒影兜底)。
  */
+import {
+  STRIP_GAP,
+  STRIP_H,
+  STRIP_STAGGER,
+  STRIP_W,
+  STRIP_WHISPER_W,
+} from "../../cinema-geometry";
 import {
   type CinemaPass,
   compileProgram,
@@ -15,7 +24,6 @@ import {
   FULLSCREEN_VS,
   type PassContext,
 } from "../engine";
-import { INK_NOISE } from "../ink/chunks";
 
 const FS = `#version 300 es
 precision highp float;
@@ -28,15 +36,17 @@ uniform float uPhase;
 uniform float uVel;
 uniform vec3 uPointer;
 uniform float uTier;
+uniform float uAlpha;
 out vec4 outColor;
-${INK_NOISE}
 
-const float STRIP_W = 0.36;
-const float STRIP_GAP = 0.06;
-const float STRIP_H = 0.52;
-const float STAGGER = 0.045;
-const float WHISPER_W = 0.16;
-// WHISPER_AFTER = [3, 8, 12],与 scene-wall 同一事实
+// 形制常量自 cinema-geometry 模板插值注入(与 pool-cell.ts 同一事实源,
+// 消除第三副本);WHISPER 数组保留硬编码(scene-wall 的 WHISPER_AFTER
+// 未导出,与 scene-wall 同一事实)
+const float STRIP_W = ${STRIP_W};
+const float STRIP_GAP = ${STRIP_GAP};
+const float STRIP_H = ${STRIP_H};
+const float STAGGER = ${STRIP_STAGGER};
+const float WHISPER_W = ${STRIP_WHISPER_W};
 const int WHISPER[3] = int[3](3, 8, 12);
 
 float caustic(vec2 p, float t) {
@@ -56,7 +66,9 @@ float caustic(vec2 p, float t) {
 void main() {
   vec2 frag = gl_FragCoord.xy / uSize;
   float sy = 1.0 - frag.y; // 视口分数,y 自顶向下
-  if (sy < uWaterY || sy > uWaterY + STRIP_H * 0.5) {
+  // 水位带早退:上界地面线,下界 = 奇格水线(+2*STAGGER)加倒影渐隐长
+  // (STRIP_H*0.42);下界收不足会裁掉奇格倒影尾
+  if (sy < uWaterY || sy > uWaterY + 2.0 * STAGGER + STRIP_H * 0.42) {
     outColor = vec4(0.0);
     return;
   }
@@ -80,6 +92,7 @@ void main() {
   float d = sy - cellWaterY; // 入水深度(视口高分数)
   vec3 col = vec3(0.05, 0.05, 0.048); // 墨池本色
   float alpha = 0.0;
+  // 格数 16 硬编码:与 WALL_CELL_SRCS.length(图集 4x4)耦合
   if (d > 0.0 && index >= 0 && index < 16) {
     int wh = 0;
     for (int q = 0; q < 3; q++) {
@@ -114,7 +127,8 @@ void main() {
       float fade = pow(max(0.0, 1.0 - d / (STRIP_H * 0.42)), 1.6);
       col = mix(col, refl * 0.62, fade * 0.55);
       alpha = fade * 0.5;
-      // 焦散:水下光网(单色,克制 <=0.08;低档位不绘)
+      // 焦散:水下光网(单色,缩放系数 0.08——亮网观感来自 pow 峰值,
+      // 非强度上界;低档位不绘)
       if (uTier >= 2.0) {
         float ca = caustic(vec2(trackX * 4.0, d * 4.0), uPhase * 2.0);
         col += vec3(ca * 0.08) * fade;
@@ -122,7 +136,8 @@ void main() {
       }
     }
   }
-  outColor = vec4(col, alpha);
+  // uAlpha 整体渐显:spread 展开期倒影随 vis 淡入,不作硬切
+  outColor = vec4(col, alpha * uAlpha);
 }`;
 
 export function createPoolPass(atlas: TexImageSource): CinemaPass {
@@ -139,6 +154,7 @@ export function createPoolPass(atlas: TexImageSource): CinemaPass {
     "uVel",
     "uPointer",
     "uTier",
+    "uAlpha",
   ] as const;
   return {
     key: "pool",
@@ -181,6 +197,7 @@ export function createPoolPass(atlas: TexImageSource): CinemaPass {
         progress.get("pointer.speed") ?? 0
       );
       gl.uniform1f(loc.uTier ?? null, ctx.tier);
+      gl.uniform1f(loc.uAlpha ?? null, progress.get("poolAlpha") ?? 1);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.disable(gl.BLEND);
     },
