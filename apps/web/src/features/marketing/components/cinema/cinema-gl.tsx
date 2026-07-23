@@ -35,6 +35,8 @@ interface CinemaContextValue {
   probed: boolean;
   engine: CinemaEngine | null;
   setTakeover: (on: boolean) => void;
+  /** 单项熔断状态版本号:变化即触发消费方重渲染(DOM 兜底随熔断恢复) */
+  breakerVersion: number;
 }
 
 const CinemaContext = createContext<CinemaContextValue>({
@@ -42,6 +44,7 @@ const CinemaContext = createContext<CinemaContextValue>({
   probed: false,
   engine: null,
   setTakeover: () => {},
+  breakerVersion: 0,
 });
 
 export function useCinema(): CinemaContextValue {
@@ -69,6 +72,7 @@ export function CinemaGLProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<GLStatus>("static");
   const [probed, setProbed] = useState(false);
   const [takeover, setTakeover] = useState(false);
+  const [breakerVersion, setBreakerVersion] = useState(0);
 
   // 先探测决定是否渲染 canvas,再在 canvas 就绪后建引擎(两段 effect)。
   // WHY layout effect:探测在 hydration 后、首帧 paint 前同步收敛,
@@ -90,6 +94,9 @@ export function CinemaGLProvider({ children }: { children: ReactNode }) {
     }
     created.addPass(createPostPass());
     created.resize();
+    // 熔断状态变化经 context 版本号通知消费方重渲染
+    // (scene-wall 的 DOM 墨池镜像随熔断/恢复切换)
+    created.setBreakerListener(() => setBreakerVersion((v) => v + 1));
     const onResize = () => created.resize();
     window.addEventListener("resize", onResize);
     setEngine(created);
@@ -106,13 +113,16 @@ export function CinemaGLProvider({ children }: { children: ReactNode }) {
     return () => {
       window.clearInterval(watchdog);
       window.removeEventListener("resize", onResize);
+      created.setBreakerListener(null);
       created.dispose();
       setEngine(null);
     };
   }, [probed, status]);
 
   return (
-    <CinemaContext.Provider value={{ status, probed, engine, setTakeover }}>
+    <CinemaContext.Provider
+      value={{ status, probed, engine, setTakeover, breakerVersion }}
+    >
       {status === "full" ? (
         <canvas
           ref={canvasRef}

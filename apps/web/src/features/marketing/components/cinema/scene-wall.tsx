@@ -313,7 +313,10 @@ function WallFigure({
   vh: number;
 }) {
   const master = useMaster();
-  const { engine, status } = useCinema();
+  const { engine, status, breakerVersion } = useCinema();
+  // 熔断状态变化经 context 触发重渲染,mirrorOpacity 重算——
+  // DOM 镜像随熔断恢复/退场(useTransform 闭包在重渲染时重订阅)
+  void breakerVersion;
   const x = useTransform(
     master,
     (m) => figureRect(cell.index, m, vw, vh).x * vw

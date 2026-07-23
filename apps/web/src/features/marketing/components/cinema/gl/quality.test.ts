@@ -1,6 +1,6 @@
 // 质量调控器:EMA 帧耗时驱动的降/升档,含滞回防抖。
 import { describe, expect, it } from "vitest";
-import { QualityGovernor } from "./quality";
+import { pickBreakerVictim, QualityGovernor } from "./quality";
 
 describe("QualityGovernor", () => {
   it("初始满档", () => {
@@ -32,5 +32,31 @@ describe("QualityGovernor", () => {
     const t1 = g.tier;
     for (let i = 0; i < 100; i++) g.sample(i % 2 === 0 ? 10 : 34);
     expect(g.tier).toBe(t1);
+  });
+});
+
+describe("pickBreakerVictim 单项熔断候选挑选", () => {
+  it("空表返回 null", () => {
+    expect(pickBreakerVictim([])).toBeNull();
+  });
+  it("全零 cost 不参与,返回 null", () => {
+    expect(pickBreakerVictim([{ key: "a", cost: 0, emaMs: 99 }])).toBeNull();
+  });
+  it("取最高 emaMs 的候选", () => {
+    expect(
+      pickBreakerVictim([
+        { key: "landscape", cost: 3, emaMs: 2 },
+        { key: "pool", cost: 2, emaMs: 8 },
+        { key: "relief", cost: 1, emaMs: 5 },
+      ])
+    ).toBe("pool");
+  });
+  it("并列取先出现者", () => {
+    expect(
+      pickBreakerVictim([
+        { key: "a", cost: 1, emaMs: 5 },
+        { key: "b", cost: 1, emaMs: 5 },
+      ])
+    ).toBe("a");
   });
 });

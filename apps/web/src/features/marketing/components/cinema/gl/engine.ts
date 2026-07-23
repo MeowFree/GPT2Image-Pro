@@ -96,6 +96,10 @@ export class CinemaEngine {
   private active = true;
   private contextLost = false;
   private lastFrameAt = 0;
+  private passEma = new Map<string, number>();
+  private breakerStack: string[] = [];
+  private lastTier: QualityTier = 2;
+  private breakerListener: ((key: string, off: boolean) => void) | null = null;
   readonly governor: import("./quality").QualityGovernor;
 
   private constructor(
@@ -137,9 +141,14 @@ export class CinemaEngine {
     return this.passes.some((p) => p.key === key);
   }
 
-  /** 占位:Task 10 接入真实熔断状态前恒 false */
-  isDisabled(_key: string): boolean {
-    return false;
+  /** 单项熔断状态:key 在熔断栈中即被熔断(由 frame 循环降/升档维护) */
+  isDisabled(key: string): boolean {
+    return this.breakerStack.includes(key);
+  }
+
+  /** 熔断状态订阅:供 React 侧同步 DOM 兜底(如墨池镜像恢复) */
+  setBreakerListener(cb: ((key: string, off: boolean) => void) | null): void {
+    this.breakerListener = cb;
   }
 
   setProgress(key: string, v: number): void {
@@ -204,9 +213,43 @@ export class CinemaEngine {
     let live = false;
     for (const p of this.passes) {
       if (!p.enabled) continue;
+      // per-pass CPU 侧耗时 EMA:GPU 异步无法直接计时,但相对贵廉
+      // 信号稳定,足够熔断决策(WHY 近似可接受)
+      const t0 = performance.now();
       p.render(ctx);
+      const dt = performance.now() - t0;
+      this.passEma.set(p.key, (this.passEma.get(p.key) ?? dt) * 0.9 + dt * 0.1);
       if (p.isLive?.()) live = true;
     }
+    // 单项熔断:降档发生时牺牲最贵候选(观感损失小于整档跳变);
+    // 升档按后进先出恢复
+    if (tier < this.lastTier) {
+      const victim = pickBreakerVictim(
+        this.passes
+          .filter((p) => p.enabled && (p.cost ?? 0) > 0)
+          .map((p) => ({
+            key: p.key,
+            cost: p.cost ?? 0,
+            emaMs: this.passEma.get(p.key) ?? 0,
+          }))
+      );
+      if (victim) {
+        const pass = this.passes.find((p) => p.key === victim);
+        if (pass) pass.enabled = false;
+        this.breakerStack.push(victim);
+        console.info(`[cinema] 单项熔断: ${victim} 已关闭(降档保帧)`);
+        this.breakerListener?.(victim, true);
+      }
+    } else if (tier > this.lastTier && this.breakerStack.length > 0) {
+      const key = this.breakerStack.pop();
+      if (key) {
+        const pass = this.passes.find((p) => p.key === key);
+        if (pass) pass.enabled = true;
+        console.info(`[cinema] 熔断恢复: ${key} 已重开(升档)`);
+        this.breakerListener?.(key, false);
+      }
+    }
+    this.lastTier = tier;
     // 模拟活跃(流体演化中)则持续出帧,否则等待下一次进度变化
     if (live) this.requestRender();
   };
@@ -228,7 +271,7 @@ export class CinemaEngine {
 
 // WHY 独立函数:engine 与 quality 同目录,静态 import 即可;
 // 包一层便于将来替换注入。保持简单。
-import { QualityGovernor as QG } from "./quality";
+import { pickBreakerVictim, QualityGovernor as QG } from "./quality";
 
 function requireQuality(): { QualityGovernor: typeof QG } {
   return { QualityGovernor: QG };
