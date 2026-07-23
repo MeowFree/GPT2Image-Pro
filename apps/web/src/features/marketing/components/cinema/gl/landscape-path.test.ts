@@ -19,7 +19,8 @@ describe("landscapeCam 相机样条", () => {
   it("相机恒在谷道走廊内且高于最低安全高度", () => {
     for (let i = 0; i <= 100; i++) {
       const { pos } = landscapeCam(i / 100);
-      expect(Math.abs(pos[0])).toBeLessThan(0.7);
+      // 上界即 CORRIDOR_X:实测 sway 峰值恰为 0.55(c≈0.714 处 sin 满幅)
+      expect(Math.abs(pos[0])).toBeLessThanOrEqual(0.55 + 1e-9);
       expect(pos[1]).toBeGreaterThan(0.25 * HEIGHT_SCALE + 0.05);
     }
   });

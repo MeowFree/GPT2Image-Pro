@@ -21,11 +21,10 @@ describe("quantizeTone（inkTone 的 JS 镜像，锁墨分五色数值契约）"
       expect(Math.abs(v - grid)).toBeLessThan(1e-9);
     }
   });
-  it("噪声项有界:|quantizeTone(lum,1) - quantizeTone(lum,0)| <= 1/levels", () => {
+  it("镜像忽略 noiseAmt(规格固有):任意强度同输出,仅锁量化网格", () => {
     for (let i = 0; i <= 100; i++) {
       const lum = i / 100;
-      const diff = Math.abs(quantizeTone(lum, 1) - quantizeTone(lum, 0));
-      expect(diff).toBeLessThanOrEqual(1 / 5 + 1e-9);
+      expect(quantizeTone(lum, 1)).toBe(quantizeTone(lum, 0));
     }
   });
 });

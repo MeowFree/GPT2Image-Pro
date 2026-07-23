@@ -7,7 +7,12 @@
 
 export const HEIGHT_SCALE = 0.42;
 
-/** 谷道走廊半宽(世界单位),ingest 掩膜中心 0.08..0.35 过渡带对应 */
+/**
+ * 谷道摆动半幅(世界单位)。出处:世界 x∈[-2.2,2.2] 映射掩膜
+ * u∈[0,1],0.55 对应 u≈0.62,即 ingest 掩膜过渡带中段(半强度处);
+ * 文件头 |x|<0.4 是掩膜全压平的走廊芯,摆幅越出芯区进入过渡带,
+ * 由巡航高度兜底(见 landscapeCam 的 y 与安全高度断言)。
+ */
 const CORRIDOR_X = 0.55;
 
 export interface CamFrame {
