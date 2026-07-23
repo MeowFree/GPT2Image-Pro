@@ -19,6 +19,8 @@ export interface PassContext {
 export interface CinemaPass {
   key: string;
   enabled: boolean;
+  /** 单项熔断候选的相对成本权重(缺省不参与熔断) */
+  cost?: number;
   /** 返回 true 表示模拟仍在演化,需要连续出帧(如流体) */
   isLive?(): boolean;
   init(gl: WebGL2RenderingContext): void;
@@ -129,6 +131,15 @@ export class CinemaEngine {
     pass.init(this.gl);
     this.passes.push(pass);
     this.requestRender();
+  }
+
+  hasPass(key: string): boolean {
+    return this.passes.some((p) => p.key === key);
+  }
+
+  /** 占位:Task 10 接入真实熔断状态前恒 false */
+  isDisabled(_key: string): boolean {
+    return false;
   }
 
   setProgress(key: string, v: number): void {

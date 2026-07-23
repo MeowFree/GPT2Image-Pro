@@ -23,6 +23,7 @@ import type { CinemaEngine } from "./gl/engine";
 import { createDenoisePass } from "./gl/passes/denoise";
 import { createDollyPass } from "./gl/passes/dolly";
 import { createFluidPass } from "./gl/passes/fluid";
+import { createLandscapePass } from "./gl/passes/landscape";
 import { createParticlesPass } from "./gl/passes/particles";
 import { renderTextTexture } from "./gl/text-texture";
 import { ArchiveChest } from "./scene-archive";
@@ -97,12 +98,13 @@ export const REVISE_CENTER = [0.3, 0.45] as const;
 const REVISE_BIAS_STRENGTH = 0.7;
 
 /**
- * GL pass 一次性装载:样张(定稿/初稿)/深度图解码与标题纹理就绪后按
- * 绘制序注册(初稿 denoise -> 定稿 revise overlay -> dolly -> fluid ->
- * particles -> 标题 denoise;post 已由 provider 先行注册,终幕实例由
- * FinaleStage 自行注册)。个别资产失败仅跳过对应 pass,其余演出不受
- * 影响(初稿缺失时降级用定稿,revise 幕退化为无覆盖变化);
- * 卸载由 provider dispose 兜底。
+ * GL pass 一次性装载:样张(定稿/初稿)/深度图/山水飞越资产解码与标题
+ * 纹理就绪后按绘制序注册(初稿 denoise -> 定稿 revise overlay -> dolly ->
+ * landscape -> fluid -> particles -> 标题 denoise;post 已由 provider 先行
+ * 注册,终幕实例由 FinaleStage 自行注册)。个别资产失败仅跳过对应 pass,
+ * 其余演出不受影响(初稿缺失时降级用定稿,revise 幕退化为无覆盖变化;
+ * 山水资产缺失时 dive 由 dolly 全程兜底,见 transitions 的 landscapeOff
+ * 分支);卸载由 provider dispose 兜底。
  */
 function FilmPasses() {
   const { engine } = useCinema();
@@ -129,36 +131,46 @@ function FilmPasses() {
       height: 512,
       color: "#1a1a1a",
     }).catch(() => null);
-    Promise.all([artworkReady, draftReady, depthReady, titleReady]).then(
-      ([art, draft, dep, title]) => {
-        if (disposed) return;
-        // 画布显影画初稿(generate/macro 幕的对象);revise overlay 画
-        // 定稿,从朱笔圈心生长覆盖;dive 及以后全部沿用定稿
-        const draftOrFinal = draft ?? art;
-        if (draftOrFinal) engine.addPass(createDenoisePass(draftOrFinal));
-        if (art) {
-          engine.addPass(
-            createDenoisePass(art, REVISE_KEYS, {
-              mode: "overlay",
-              centerBias: [
-                REVISE_CENTER[0],
-                REVISE_CENTER[1],
-                REVISE_BIAS_STRENGTH,
-              ],
-            })
-          );
-        }
-        if (art && dep) engine.addPass(createDollyPass(art, dep));
-        // 浮点色缓冲不可用时工厂返回 null,反转由 dolly 压暗与墨章底色兜底
-        const fluid = createFluidPass();
-        if (fluid) engine.addPass(fluid);
-        // 样张缺失时 morph 粒子退化为墨点,序幕墨溅(纯墨色)不受影响
-        engine.addPass(createParticlesPass(art));
-        if (title) {
-          engine.addPass(createDenoisePass(title, TITLE_KEYS, { mode: "text" }));
-        }
+    // 山水飞越资产(v1.2):文件缺失时 loadImage 返回 null,pass 跳过,
+    // dive 回退 2.5D dolly(transitions 的 landscapeOff 分支)
+    const landscapePaintReady = loadImage("/cinema/landscape-paint.webp");
+    const landscapeHeightReady = loadImage("/cinema/landscape-height.webp");
+    Promise.all([
+      artworkReady,
+      draftReady,
+      depthReady,
+      titleReady,
+      landscapePaintReady,
+      landscapeHeightReady,
+    ]).then(([art, draft, dep, title, lp, lh]) => {
+      if (disposed) return;
+      // 画布显影画初稿(generate/macro 幕的对象);revise overlay 画
+      // 定稿,从朱笔圈心生长覆盖;dive 及以后全部沿用定稿
+      const draftOrFinal = draft ?? art;
+      if (draftOrFinal) engine.addPass(createDenoisePass(draftOrFinal));
+      if (art) {
+        engine.addPass(
+          createDenoisePass(art, REVISE_KEYS, {
+            mode: "overlay",
+            centerBias: [
+              REVISE_CENTER[0],
+              REVISE_CENTER[1],
+              REVISE_BIAS_STRENGTH,
+            ],
+          })
+        );
       }
-    );
+      if (art && dep) engine.addPass(createDollyPass(art, dep));
+      if (lp && lh) engine.addPass(createLandscapePass(lp, lh));
+      // 浮点色缓冲不可用时工厂返回 null,反转由 dolly 压暗与墨章底色兜底
+      const fluid = createFluidPass();
+      if (fluid) engine.addPass(fluid);
+      // 样张缺失时 morph 粒子退化为墨点,序幕墨溅(纯墨色)不受影响
+      engine.addPass(createParticlesPass(art));
+      if (title) {
+        engine.addPass(createDenoisePass(title, TITLE_KEYS, { mode: "text" }));
+      }
+    });
     return () => {
       disposed = true;
     };
