@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bell,
+  darkWindow,
   FILM_SCENES,
   filmTotalVh,
   sceneProgress,
@@ -40,5 +41,21 @@ describe("cinema-config", () => {
     expect(bell(1)).toBe(0);
     expect(bell(0.5)).toBe(1);
     expect(bell(0.25)).toBeCloseTo(bell(0.75), 10);
+  });
+
+  it("darkWindow 起终点咬合 dive/multiply 幕内时点", () => {
+    // v1.2:暗场自墨潮回灌起(dive 内 0.92),到增殖回纸点(multiply 内
+    // 0.55)止;期望经 sceneWindow 现算,不钉魔术分数(行程改时自动跟随)
+    const dive = sceneWindow("dive");
+    const multiply = sceneWindow("multiply");
+    const w = darkWindow();
+    expect(w.start).toBeCloseTo(
+      dive.start + (dive.end - dive.start) * 0.92,
+      10
+    );
+    expect(w.end).toBeCloseTo(
+      multiply.start + (multiply.end - multiply.start) * 0.55,
+      10
+    );
   });
 });

@@ -8,6 +8,8 @@
  * landscapeP(0-1 飞行进度)/landscapeFog(0-1 雾密度,1=全白场)/
  * landscapeRise(0-1 山形隆起,墨坠成山)/focusDepth(跟焦 0-1)/
  * handX/handY(手持偏移,tier<2 忽略)/scrollVel(速度,加雾流)。
+ * handX/handY/scrollVel/focusDepth 由 Task 8/9 的编排喂入,
+ * 未接线前恒缺省(现状即安全)。
  * cost: 3(单项熔断候选,被熔断后 dive 回退 2.5D dolly)。
  */
 import {
@@ -22,8 +24,9 @@ import { HEIGHT_SCALE, landscapeCam } from "../landscape-path";
 const COLS = 128;
 const ROWS = 64;
 const WORLD_W = 4.4;
-// 纵深:近端 0.0 在相机身后半位(防近平面涂抹),远端 -13 没入雾;
-// 相机 z 自 +1 行至 -10.5(landscape-path),全程地形在前方
+// 纵深:近端 0.0 在谷口(起点相机 z=+1 前方 1 单位),远端 -13 没入雾;
+// 相机 z 自 +1 行至 -10.5(landscape-path),飞行深入网格内部,
+// 行至身后的行由透视负 w 裁剪防护(TERRA_VS)
 const WORLD_NEAR = 0.0;
 const WORLD_FAR = -13.0;
 
@@ -87,14 +90,16 @@ void main() {
   vec3 right = normalize(cross(fwd, vec3(0.0, 1.0, 0.0)));
   vec3 up = cross(right, fwd);
   vec3 rel = world - cam;
-  float vz = max(dot(rel, fwd), 0.02);
-  float px = dot(rel, right) / vz;
-  float py = dot(rel, up) / vz;
+  float vz = dot(rel, fwd);
+  float px = dot(rel, right);
+  float py = dot(rel, up);
   float focal = 1.35;
   float aspect = uSize.x / uSize.y;
-  gl_Position = vec4(px * focal / aspect, py * focal, 0.5, 1.0);
+  // 透视除法交给 w:NDC = (px*focal/aspect, py*focal, 0.5) / vz;
+  // 身后顶点 vz<0 被 GPU 近平面裁剪,不再涂抹;varyings 透视矫正插值
+  gl_Position = vec4(px * focal / aspect, py * focal, 0.5 * vz, vz);
   vUv = uv;
-  vDepth = vz;
+  vDepth = max(vz, 0.0);
   vH = h;
 }`;
 
