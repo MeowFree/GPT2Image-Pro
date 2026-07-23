@@ -12,6 +12,7 @@
 import { useMotionValueEvent } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
+import { CameraFeelDirector } from "./camera-feel";
 import { ChapterRail } from "./chapter-rail";
 import { WALL_CELL_SRCS } from "./cinema-artworks";
 import { darkWindow } from "./cinema-config";
@@ -307,10 +308,11 @@ function FilmBody() {
         <ZoomThroughTransition />
         <MultiplyTransition />
         <PickAndReturnTransition />
-        {/* 章节导轨/页头暗场/活墨/朱笔圈/指针注入:全片常驻编排件 */}
+        {/* 章节导轨/页头暗场/活墨/朱笔圈/指针注入/镜头签名:全片常驻编排件 */}
         <ChapterRail />
         <HeaderDimmer />
         <PointerFeed />
+        <CameraFeelDirector />
         <InkMistDirector />
         <ReviseMarkLayer />
       </CinemaStage>

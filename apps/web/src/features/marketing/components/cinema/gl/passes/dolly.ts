@@ -89,7 +89,8 @@ void main() {
  * 创建 2.5D 推轨 pass。
  * 读 progress 键:dollyZoom(1-18 推入倍率)/dollySmear(0-1 径向拖影强度)/
  * dollyDark(0-1 末端压暗)/dollyVisible(< 0.5 跳绘,缺省不可见——
- * 全屏 alpha 1 输出,默认可见会盖死整页)。
+ * 全屏 alpha 1 输出,默认可见会盖死整页)/scrollVel(0-1 速度键,
+ * 与 dollySmear 取大抬拖影下限,v1.2 镜头签名)。
  * image 为主样张,depth 为同构图灰度深度图(亮近暗远)。
  */
 export function createDollyPass(
@@ -135,7 +136,14 @@ export function createDollyPass(
       gl.uniform2f(loc.uSize ?? null, ctx.width, ctx.height);
       // uZoom 缺省 1(无推入);除数恒 >= 1,无除零风险
       gl.uniform1f(loc.uZoom ?? null, progress.get("dollyZoom") ?? 1);
-      gl.uniform1f(loc.uSmear ?? null, progress.get("dollySmear") ?? 0);
+      // 速度拖影:快滚时径向拖影下限被速度键抬升(镜头惯性)
+      gl.uniform1f(
+        loc.uSmear ?? null,
+        Math.max(
+          progress.get("dollySmear") ?? 0,
+          (progress.get("scrollVel") ?? 0) * 0.6
+        )
+      );
       gl.uniform1f(loc.uDark ?? null, progress.get("dollyDark") ?? 0);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       // 纹理单元复位,避免污染后续 pass 的 TEXTURE0 绑定

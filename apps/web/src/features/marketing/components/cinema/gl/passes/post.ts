@@ -6,6 +6,8 @@
  * v0.9 掠光:纸纹高度场数值梯度 x 随 master 缓转的光向——滚动时
  * 光在纸面上流动,纸从"底色"变成"受光的物质";强度极低(<=0.05)
  * 保持编辑部克制。uFlash(postFlash 键)供装裱时刻的白闪一拍。
+ * v1.2 镜头签名:速度颗粒拉丝(快滚时 IGN 纵向压缩成丝)/
+ * 片门微颤(亚像素机位抖,仅 tier>=2 喂值)/掠光亮面微提速度响应。
  */
 import {
   type CinemaPass,
@@ -22,6 +24,8 @@ uniform float uGrain;
 uniform float uVignette;
 uniform float uMaster;
 uniform float uFlash;
+uniform float uVel;
+uniform float uWeave;
 out vec4 outColor;
 float ign(vec2 p) {
   return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
@@ -44,8 +48,18 @@ float fbm(vec2 p) {
 }
 void main() {
   vec2 uv = gl_FragCoord.xy / uSize;
-  // 动颗粒:IGN 逐帧漂移(胶片粒);静纸簇:纤维簇不随时间(纸是静的)
-  float g = ign(gl_FragCoord.xy + vec2(mod(uTime * 0.06, 64.0)));
+  // 片门微颤:亚像素机位抖(仅 tier>=2 喂值;罩纹随画面同抖)
+  vec2 wob = vec2(
+    vnoise(vec2(uTime * 0.00021, 3.7)),
+    vnoise(vec2(uTime * 0.00017, 9.1))
+  ) - 0.5;
+  uv += wob * uWeave;
+  // 动颗粒:IGN 逐帧漂移(胶片粒);静纸簇:纤维簇不随时间(纸是静的)。
+  // 速度拉丝:快滚时 IGN 纵向压缩成丝——胶片速度的触觉
+  float g = ign(vec2(
+    gl_FragCoord.x,
+    gl_FragCoord.y / (1.0 + uVel * 5.0)
+  ) + vec2(mod(uTime * 0.06, 64.0)));
   float clump = fbm(gl_FragCoord.xy / 42.0);
   // 纸面掠光:高度场数值梯度 x 缓转光向,随滚动光角变化——
   // 光在纸面上流动;梯度直接定标(不归一化,平坦处自然无光)
@@ -61,7 +75,7 @@ void main() {
   float v = smoothstep(0.55, 1.05, distance(uv, vec2(0.5)) * 1.2);
   float darkA = v * uVignette + (g - 0.5) * uGrain
     + (clump - 0.5) * 0.016 + max(-sheen, 0.0) * 0.02;
-  float lightA = max(sheen, 0.0) * 0.016 + uFlash * 0.14;
+  float lightA = max(sheen, 0.0) * 0.016 + uFlash * 0.14 + uVel * 0.012;
   float net = lightA - clamp(darkA, 0.0, 1.0);
   vec3 col = net > 0.0 ? vec3(1.0, 0.99, 0.96) : vec3(0.0);
   outColor = vec4(col, clamp(abs(net), 0.0, 1.0));
@@ -77,6 +91,8 @@ export function createPostPass(): CinemaPass {
     "uVignette",
     "uMaster",
     "uFlash",
+    "uVel",
+    "uWeave",
   ] as const;
   return {
     key: "post",
@@ -112,6 +128,8 @@ export function createPostPass(): CinemaPass {
       // master 由 CinemaStage 直喂,无需专用键;缺省 0(掠光角静止)
       gl.uniform1f(loc.uMaster ?? null, ctx.progress.get("master") ?? 0);
       gl.uniform1f(loc.uFlash ?? null, ctx.progress.get("postFlash") ?? 0);
+      gl.uniform1f(loc.uVel ?? null, ctx.progress.get("scrollVel") ?? 0);
+      gl.uniform1f(loc.uWeave ?? null, ctx.tier >= 2 ? 0.0012 : 0);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.disable(gl.BLEND);
     },
