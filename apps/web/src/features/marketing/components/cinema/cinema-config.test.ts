@@ -12,8 +12,9 @@ describe("cinema-config", () => {
   it("行程总长等于各幕之和", () => {
     const sum = FILM_SCENES.reduce((a, s) => a + s.lengthVh, 0);
     expect(filmTotalVh()).toBe(sum);
-    // v1.1 十二幕行程预算:主舞台 3110vh(不含终幕独立舞台)
-    expect(filmTotalVh()).toBe(3110);
+    // v1.2 行程预算:dive 自 200 扩为 320vh(入画飞越分镜),
+    // 主舞台总行程 3110 -> 3230vh(不含终幕独立舞台)
+    expect(filmTotalVh()).toBe(3230);
   });
 
   it("窗口首尾相接且覆盖 [0,1]", () => {

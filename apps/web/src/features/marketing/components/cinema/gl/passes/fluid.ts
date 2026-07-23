@@ -210,7 +210,8 @@ const INK_PULSES: readonly PulseDef[] = [
  */
 const INK_CENTER: readonly [number, number] = [0.5, 0.7];
 
-/** 活墨聚拢目标:画布主角中心(与 centerSquareRect 构图对应) */
+/** 活墨聚拢目标缺省值:画布主角中心(与 centerSquareRect 构图对应);
+ * 可被 inkGatherX/inkGatherY 键覆盖(dive 墨坠段聚拢到谷底) */
 const GATHER_TARGET: readonly [number, number] = [0.5, 0.5];
 
 /** 8 向 splat 散布半径:dive 宽散吞屏,活墨集中成团 */
@@ -383,8 +384,9 @@ function swap(pp: PingPong): void {
  * 读 progress 键——用途一(dive):fluidP(0-1 反转覆盖进度)/
  * fluidVisible(>= 0.5 激活,优先);用途二(序幕活墨):inkP(0-1 活墨
  * 生命进度,驱动脉冲注入与清场)/inkGather(0-1 向心聚拢强度)/
- * inkFade(0-1 显示强度,> 0.001 激活)。模式切换必清场(共享模拟场,
- * 残留跨用途无意义)。
+ * inkGatherX/inkGatherY(聚拢目标,缺省画布中心 GATHER_TARGET;
+ * dive 墨坠段喂 [0.5, 0.9] 聚向谷底)/inkFade(0-1 显示强度,
+ * > 0.001 激活)。模式切换必清场(共享模拟场,残留跨用途无意义)。
  * 每帧序列:advect(velocity) -> 检查点 splat -> [活墨向心 gather] ->
  * divergence -> pressure Jacobi(满档 14 次,降档 8 次) ->
  * subtractGradient -> advect(dye, 耗散 0.985) -> 全屏合成(alpha 混合,
@@ -548,11 +550,13 @@ export function createFluidPass(): CinemaPass | null {
     swap(target);
   };
 
-  /** 向心汇聚:活墨被 prompt 召唤,全场速度加指向画布中心的分量 */
+  /** 向心汇聚:活墨被 prompt 召唤,全场速度加指向 target 的分量;
+   * target 由编排层经 inkGatherX/inkGatherY 键喂入(模拟场系,y 向上) */
   const applyGather = (
     gl: WebGL2RenderingContext,
     amount: number,
-    dt: number
+    dt: number,
+    target: readonly [number, number]
   ): void => {
     if (!programs || !velocity) return;
     const { prog, loc } = programs.gather;
@@ -561,7 +565,7 @@ export function createFluidPass(): CinemaPass | null {
     gl.bindTexture(gl.TEXTURE_2D, velocity.read.tex);
     gl.uniform1i(loc.uVelocity ?? null, 0);
     gl.uniform2f(loc.uTexel ?? null, 1 / allocW, 1 / allocH);
-    gl.uniform2f(loc.uTarget ?? null, GATHER_TARGET[0], GATHER_TARGET[1]);
+    gl.uniform2f(loc.uTarget ?? null, target[0], target[1]);
     // 幅度克制:向心流太强会把墨吸穿中心散尽(不可压缩场,墨会穿过去,
     // 静帧上呈"月牙缺口",走查实证)
     gl.uniform1f(loc.uAmount ?? null, amount * dt * 0.55);
@@ -576,7 +580,8 @@ export function createFluidPass(): CinemaPass | null {
     dt: number,
     tier: number,
     mode: FluidMode,
-    gather: number
+    gather: number,
+    gatherTarget: readonly [number, number]
   ): void => {
     if (!programs || !velocity || !dye || !pressure || !divergence) return;
     gl.disable(gl.BLEND);
@@ -621,7 +626,7 @@ export function createFluidPass(): CinemaPass | null {
     }
     // 活墨聚拢:向心力持续注入,场保持演化(能量下限同步保持)
     if (mode === 2 && gather > 0.001) {
-      applyGather(gl, gather, dt);
+      applyGather(gl, gather, dt, gatherTarget);
       energy = Math.max(energy, gather * 0.4);
     }
     const texelX = 1 / allocW;
@@ -662,8 +667,7 @@ export function createFluidPass(): CinemaPass | null {
     blit(gl, velocity.write);
     swap(velocity);
     // 墨平流(活墨长驻留/dive 快消散);能量同步衰减,静息后 isLive 停帧
-    const dyeDissipation =
-      mode === 2 ? INK_DYE_DISSIPATION : DYE_DISSIPATION;
+    const dyeDissipation = mode === 2 ? INK_DYE_DISSIPATION : DYE_DISSIPATION;
     advect(gl, dye, dyeDissipation, dt);
     energy *= dyeDissipation;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -767,6 +771,12 @@ export function createFluidPass(): CinemaPass | null {
         return;
       }
       lastGather = mode === 2 ? (progress.get("inkGather") ?? 0) : 0;
+      // 聚拢目标键驱动:缺省画布中心(序幕行为不变);dive 墨坠段
+      // 编排层喂 [0.5, 0.9](谷底,墨聚成山麓)
+      const gatherTarget: readonly [number, number] = [
+        progress.get("inkGatherX") ?? GATHER_TARGET[0],
+        progress.get("inkGatherY") ?? GATHER_TARGET[1],
+      ];
       // dt 取真实帧距并钳制:休眠恢复后的大间隔不致模拟爆步
       const dtMs =
         lastTimeMs > 0
@@ -777,7 +787,7 @@ export function createFluidPass(): CinemaPass | null {
         ensureTargets(gl, ctx.width, ctx.height, ctx.tier);
       }
       if (simReady && velocity && dye && pressure && divergence) {
-        step(gl, p, dtMs / 1000, ctx.tier, mode, lastGather);
+        step(gl, p, dtMs / 1000, ctx.tier, mode, lastGather, gatherTarget);
       }
       // 合成到画布:dive 遮罩兜底保证布局,活墨为纯质感层
       const cmp = programs.composite;

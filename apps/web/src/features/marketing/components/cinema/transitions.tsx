@@ -2,8 +2,11 @@
 
 /**
  * 三大转场的进度编排(full 态 GL uniform 驱动,自身无可见 DOM)。
- * ZoomThrough:镜头扎进画面,深度推轨+径向拖影+压暗,末端交给墨章;
- * lite 态退化为整层样张 scale 放大 + 压暗到墨色(纯 transform/opacity)。
+ * ZoomThrough(v1.2 入画):推轨扎进画面 -> 墨坠成山(活墨聚向谷底,
+ * 山形自白雾中隆起)-> 谷道飞越 -> 雾出白场 -> 墨潮回灌接墨章;
+ * landscape pass 缺失/被熔断时回退 2.5D dolly 全程推入压暗;
+ * lite 态退化为整层样张 scale 放大 + 压暗到墨色(纯 transform/opacity,
+ * 行为不变)。
  * Multiply:图像粒子云从画布主角矩形散开,重凝为 16 格网格
  * (lite 态网格直接淡入,见 scene-multiply)。
  * PickAndReturn:选中回中的胶片接触阴影(DOM 飞回由 scene-wall 承担,
@@ -25,12 +28,15 @@ import { useSceneProgress } from "./cinema-stage";
 const easeIn = (t: number) => t * t * t;
 
 /**
- * 转场 A 穿越:dive 幕进度映射 dolly pass 的 uniforms 并管理画布 takeover。
- * 窗口内画布提升 z 盖过正文(dolly 全屏输出即全世界),
- * 窗口外立即归还——正文恢复可交互。全部量为进度纯函数,倒放成立。
- * 末端并喂墨水流体键:fluidP 在 dive 后 45% 内 0->1(墨吞没视口),
- * fluidVisible 覆盖 dive 全窗与 manifesto 前 10%——墨层桥接 dolly
- * 退场与宣言章 DOM 淡入之间的交界缝隙(画布层序恒在正文之上)。
+ * 转场 A 穿越(v1.2 入画):dive 幕进度编排 dolly/fluid/landscape 三 pass
+ * 并管理画布 takeover。分镜(v 为幕内进度):
+ * [0, 0.28] dolly 推轨(暖光纤维隧道收束,不压暗——交接给白雾);
+ * [0.25, 0.5] 墨坠成山:活墨向谷底聚拢(inkGather 目标 [0.5, 0.9]),
+ * landscape 自全白雾中显形(fog 1->0.5,rise 0->1);
+ * [0.3, 0.92] 谷道飞越(landscapeP 0->1,雾续降至 0.12);
+ * [0.85, 0.95] 雾出白场(fog -> 1);[0.92, 1] 墨潮回灌接墨章。
+ * landscape pass 缺失/被熔断/无引擎时回退 2.5D dolly 全程推入压暗。
+ * 全部量为进度纯函数,倒放成立。
  */
 export function ZoomThroughTransition() {
   const p = useSceneProgress("dive");
@@ -38,19 +44,50 @@ export function ZoomThroughTransition() {
   const { engine, status, setTakeover } = useCinema();
   // 流体键由 dive 与 manifesto 双进度联合决定,任一变化都重算
   const feedFluid = (dive: number, manifesto: number) => {
-    engine?.setProgress("fluidP", Math.max(0, (dive - 0.55) / 0.45));
-    const on = dive > 0.001 && (dive < 1 || manifesto < 0.1);
+    // 墨潮回灌:dive 末 8% 内 0->1;可见窗覆盖回灌段与 manifesto 前 10%
+    engine?.setProgress("fluidP", Math.max(0, (dive - 0.92) / 0.08));
+    const on = dive > 0.92 && (dive < 1 || manifesto < 0.1);
     engine?.setProgress("fluidVisible", on ? 1 : 0);
   };
   useMotionValueEvent(p, "change", (v) => {
     // takeover 只在有画布(full)时有意义,lite 无 GL 不触发状态翻转
     if (engine) setTakeover(v > 0.001 && v < 0.999);
-    engine?.setProgress("dollyVisible", v > 0.001 && v < 0.999 ? 1 : 0);
-    engine?.setProgress("dollyZoom", 1 + easeIn(v) * 17);
-    // 拖影在中段最强,进出为零
-    engine?.setProgress("dollySmear", 1 - Math.abs(v * 2 - 1));
-    // 末端 30% 压暗到墨色,与宣言章底色 #0e0e0d 咬合
-    engine?.setProgress("dollyDark", Math.max(0, (v - 0.7) / 0.3));
+    const landscapeOff =
+      !engine || !engine.hasPass("landscape") || engine.isDisabled("landscape");
+    if (landscapeOff) {
+      // 回退:2.5D dolly 全程(landscape 缺失/被熔断/无引擎)
+      const dv = Math.min(1, v / 0.92);
+      engine?.setProgress("dollyVisible", v > 0.001 && v < 0.92 ? 1 : 0);
+      engine?.setProgress("dollyZoom", 1 + easeIn(dv) * 17);
+      engine?.setProgress("dollySmear", 1 - Math.abs(dv * 2 - 1));
+      engine?.setProgress("dollyDark", Math.max(0, (v - 0.7) / 0.22));
+      engine?.setProgress("landscapeVisible", 0);
+      engine?.setProgress("inkFade", 0);
+      engine?.setProgress("inkGather", 0);
+    } else {
+      const seg = (a: number, b: number) =>
+        Math.max(0, Math.min(1, (v - a) / (b - a)));
+      // dolly 推轨段(暖光纤维隧道收束,不压暗——交接给白雾)
+      const dv = seg(0, 0.28);
+      engine?.setProgress("dollyVisible", v > 0.001 && v < 0.3 ? 1 : 0);
+      engine?.setProgress("dollyZoom", 1 + easeIn(dv) * 17);
+      engine?.setProgress("dollySmear", 1 - Math.abs(dv * 2 - 1));
+      engine?.setProgress("dollyDark", 0);
+      // 墨坠成山:活墨向谷底聚拢,山形自白雾中隆起
+      const inkBell = seg(0.25, 0.36) * (1 - seg(0.44, 0.55));
+      engine?.setProgress("inkFade", inkBell * 0.85);
+      engine?.setProgress("inkGather", v > 0.25 && v < 0.5 ? 1 : 0);
+      engine?.setProgress("inkGatherX", 0.5);
+      engine?.setProgress("inkGatherY", 0.9);
+      // 飞越与雾:自全白显形,中段雾退,末端白场
+      const on = v > 0.28 && v < 0.97;
+      engine?.setProgress("landscapeVisible", on ? 1 : 0);
+      engine?.setProgress("landscapeP", seg(0.3, 0.92));
+      engine?.setProgress("landscapeRise", seg(0.28, 0.45));
+      const fogOut = 1 - seg(0.3, 0.55) * 0.88;
+      const fogIn = seg(0.85, 0.95);
+      engine?.setProgress("landscapeFog", Math.max(fogOut, fogIn));
+    }
     feedFluid(v, chapter.get());
   });
   useMotionValueEvent(chapter, "change", (v) => {

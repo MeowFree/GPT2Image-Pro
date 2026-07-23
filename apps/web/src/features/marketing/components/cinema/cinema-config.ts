@@ -33,13 +33,15 @@ export interface SceneDef {
  * pick 之后新增 frame「形制」(同一幅画重新装裱为横批/立轴/斗方,
  * 任意尺寸直至 4K 的物质表达)与 archive「藏」(画作收入画匣题签
  * 落幅——你的画廊,影片新收势)。
+ * v1.2:dive 自 200 扩为 320vh 容纳「入画·千里江山」飞越(推轨 ->
+ * 墨坠成山 -> 谷道穿行 -> 白场 -> 墨潮回灌),总行程 3110 -> 3230vh。
  */
 export const FILM_SCENES: readonly SceneDef[] = [
   { key: "opening", lengthVh: 260 },
   { key: "generate", lengthVh: 360 },
   { key: "macro", lengthVh: 200 },
   { key: "revise", lengthVh: 230 },
-  { key: "dive", lengthVh: 200 },
+  { key: "dive", lengthVh: 320 },
   { key: "manifesto", lengthVh: 240 },
   { key: "invoke", lengthVh: 280 },
   { key: "multiply", lengthVh: 260 },
@@ -83,14 +85,16 @@ export function bell(p: number): number {
 }
 
 /**
- * 影片暗场窗口(主进度分数):穿越压暗起点 -> 增殖回纸点。
+ * 影片暗场窗口(主进度分数):墨潮回灌起点 -> 增殖回纸点。
+ * v1.2:dive 前 92% 为亮场(推轨/墨坠/飞越/白场),暗场自墨潮
+ * 回灌(dive 末 8%)起,与白场入墨的叙事节点咬合。
  * 页头退场(HeaderDimmer)与章节导轨反色共用本窗口,单一事实。
  */
 export function darkWindow(): { start: number; end: number } {
   const dive = sceneWindow("dive");
   const multiply = sceneWindow("multiply");
   return {
-    start: dive.start + (dive.end - dive.start) * 0.6,
+    start: dive.start + (dive.end - dive.start) * 0.92,
     end: multiply.start + (multiply.end - multiply.start) * 0.55,
   };
 }
