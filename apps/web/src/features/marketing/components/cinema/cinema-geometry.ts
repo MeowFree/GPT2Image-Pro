@@ -47,12 +47,12 @@ export function gridPos(i: number, vw: number, vh: number): ViewportRect {
 }
 
 /** 展墙横条:格高 52vh、格宽 0.36 视口宽、缝 0.06、奇偶垂直交错 4.5vh */
-const STRIP_H = 0.52;
-const STRIP_W = 0.36;
-const STRIP_GAP = 0.06;
-const STRIP_STAGGER = 0.045;
+export const STRIP_H = 0.52;
+export const STRIP_W = 0.36;
+export const STRIP_GAP = 0.06;
+export const STRIP_STAGGER = 0.045;
 /** 观展低语专属栏位宽(视口宽分数):插在指定格之后,展品间的呼吸位 */
-const STRIP_WHISPER_W = 0.16;
+export const STRIP_WHISPER_W = 0.16;
 
 /**
  * 展墙横条第 i 格:自左向右等距排布,首端留一个缝宽,奇偶交错垂直偏移。

@@ -13,6 +13,8 @@ import { useMotionValueEvent } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { ChapterRail } from "./chapter-rail";
+import { WALL_CELL_SRCS } from "./cinema-artworks";
+import { darkWindow } from "./cinema-config";
 import { CinemaGLProvider, useCinema } from "./cinema-gl";
 import {
   CinemaStage,
@@ -25,6 +27,7 @@ import { createDollyPass } from "./gl/passes/dolly";
 import { createFluidPass } from "./gl/passes/fluid";
 import { createLandscapePass } from "./gl/passes/landscape";
 import { createParticlesPass } from "./gl/passes/particles";
+import { createPoolPass } from "./gl/passes/pool";
 import { renderTextTexture } from "./gl/text-texture";
 import { ArchiveChest } from "./scene-archive";
 import { GenerateScene, ReviseMarkLayer } from "./scene-generate";
@@ -98,10 +101,11 @@ export const REVISE_CENTER = [0.3, 0.45] as const;
 const REVISE_BIAS_STRENGTH = 0.7;
 
 /**
- * GL pass 一次性装载:样张(定稿/初稿)/深度图/山水飞越资产解码与标题
- * 纹理就绪后按绘制序注册(初稿 denoise -> 定稿 revise overlay -> dolly ->
- * landscape -> fluid -> particles -> 标题 denoise;post 已由 provider 先行
- * 注册,终幕实例由 FinaleStage 自行注册)。个别资产失败或单个 pass init
+ * GL pass 一次性装载:样张(定稿/初稿)/深度图/山水飞越资产/展墙图集
+ * 解码与标题纹理就绪后按绘制序注册(初稿 denoise -> 定稿 revise
+ * overlay -> dolly -> landscape -> fluid -> particles -> pool 墨池 ->
+ * 标题 denoise;post 已由 provider 先行注册,终幕实例由 FinaleStage
+ * 自行注册)。个别资产失败或单个 pass init
  * 抛错(着色器编译等)仅跳过对应 pass(safeAdd 隔离),其余演出不受
  * 影响(初稿缺失时降级用定稿,revise 幕退化为无覆盖变化;
  * 山水资产缺失时 dive 由 dolly 全程兜底,见 transitions 的 landscapeOff
@@ -136,6 +140,23 @@ function FilmPasses() {
     // dive 回退 2.5D dolly(transitions 的 landscapeOff 分支)
     const landscapePaintReady = loadImage("/cinema/landscape-paint.webp");
     const landscapeHeightReady = loadImage("/cinema/landscape-height.webp");
+    // WALL_CELL_SRCS 16 张解码后拼 2048x2048 图集(4x4,每格 512);
+    // 缺一即放弃整张图集(pool 跳过,DOM 倒影兜底),避免倒影错格
+    const atlasReady = Promise.all(WALL_CELL_SRCS.map(loadImage)).then(
+      (imgs) => {
+        const ok = imgs.filter((i): i is HTMLImageElement => i !== null);
+        if (ok.length < 16) return null;
+        const canvas = document.createElement("canvas");
+        canvas.width = 2048;
+        canvas.height = 2048;
+        const g = canvas.getContext("2d");
+        if (!g) return null;
+        ok.forEach((img, i) => {
+          g.drawImage(img, (i % 4) * 512, Math.floor(i / 4) * 512, 512, 512);
+        });
+        return canvas;
+      }
+    );
     Promise.all([
       artworkReady,
       draftReady,
@@ -143,7 +164,8 @@ function FilmPasses() {
       titleReady,
       landscapePaintReady,
       landscapeHeightReady,
-    ]).then(([art, draft, dep, title, lp, lh]) => {
+      atlasReady,
+    ]).then(([art, draft, dep, title, lp, lh, atlas]) => {
       if (disposed) return;
       /** pass 装载隔离:单个 pass init 失败(着色器编译/纹理)只跳过自身,
        * 不拖垮整条 pass 链;失败在 console 留证(生产静默但可排查) */
@@ -178,6 +200,8 @@ function FilmPasses() {
       safeAdd(createFluidPass());
       // 样张缺失时 morph 粒子退化为墨点,序幕墨溅(纯墨色)不受影响
       safeAdd(createParticlesPass(art));
+      // 墨池真倒影(v1.2):图集缺失时跳过,scene-wall 的 DOM 镜像兜底
+      safeAdd(atlas ? createPoolPass(atlas) : null);
       if (title) {
         safeAdd(createDenoisePass(title, TITLE_KEYS, { mode: "text" }));
       }

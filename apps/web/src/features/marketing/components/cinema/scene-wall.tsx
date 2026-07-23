@@ -6,7 +6,12 @@
  * 用户评价化作画框缝隙间的观展低语;pick 幕选中一幅脱墙飞回视口
  * 中央成画布主角规格(与序幕 bookend 同构图),其余项淡出微散。
  * v0.9 空间纵深:每幅画作下方墨池倒影(翻转 + mask 渐隐 + 微模糊,
- * 纯 DOM 三档通用)与展厅地面线,随拉开浮现、随选中退场;
+ * DOM 版,现为 lite/static 与熔断兜底轨)与展厅地面线,
+ * 随拉开浮现、随选中退场;
+ * v1.2 墨池真倒影:full 态由 GL pool pass 接管水面(展墙图集镜像
+ * 重采样 + 波面扭曲 + 光标涟漪 + 焦散),DOM 镜像退场;pool 未装载
+ * (图集缺失)或被熔断时 DOM 镜像恢复——双轨互备,切换点在
+ * WallFigure 的 mirrorOpacity,GL 键由 PoolDirector 喂入。
  * v0.9 装裱时刻:选中项落幅时白卡纸 matte 内衬浮现 + 画框投影加深 +
  * "你的那张"落款字(Cinema.pickCaption),交付感的物质表达。
  * v1.1 形制变换(frame 幕):同一幅画重新装裱为横批/立轴/斗方,
@@ -21,9 +26,9 @@
  * 淡出打断飞回,故本组件自管可见性(起点淡入与 SceneLayer 边缘一致)。
  * 依赖 useMaster;GL 侧接触阴影与装裱闪光由 PickAndReturnTransition 喂键。
  */
-import { motion, useTransform } from "framer-motion";
+import { motion, useMotionValueEvent, useTransform } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cellSrc, PICKED_INDEX } from "./cinema-artworks";
 import { sceneProgress } from "./cinema-config";
 import {
@@ -36,6 +41,7 @@ import {
   stripPos,
   stripWhisperSlot,
 } from "./cinema-geometry";
+import { useCinema } from "./cinema-gl";
 import { useMaster } from "./cinema-stage";
 import type { ViewportRect } from "./gl/dom-sync";
 
@@ -203,6 +209,7 @@ export function WallScene() {
       {vw > 0 && vh > 0 ? (
         <>
           <WallFloorLine vw={vw} vh={vh} />
+          <PoolDirector vw={vw} vh={vh} />
           {WALL_CELLS.map((cell) => (
             <WallFigure
               key={cell.id}
@@ -227,6 +234,43 @@ export function WallScene() {
       ) : null}
     </motion.div>
   );
+}
+
+/**
+ * 墨池 GL 编排:展墙推轨进度 -> pool pass 键(水线/推轨/相位/可见门)。
+ * full 态由 GL 真倒影接管,DOM 镜像退场(见 WallFigure);
+ * pool 被熔断时 DOM 镜像恢复(双轨兜底)。
+ */
+function PoolDirector({ vw, vh }: { vw: number; vh: number }) {
+  const master = useMaster();
+  const { engine, status } = useCinema();
+  const feed = useCallback(
+    (m: number) => {
+      if (!engine || status !== "full") return;
+      const wallP = sceneProgress(m, "wall");
+      const { spread, glide } = wallPhases(wallP);
+      const pick = pickReturn(sceneProgress(m, "pick"));
+      const vis = spread * (1 - pick);
+      const strip = wallStrip(0, vw, vh);
+      const trackW = wallStrip(15, vw, vh).trackWidth;
+      engine.setProgress(
+        "poolVisible",
+        vis > 0.02 && !engine.isDisabled("pool") ? 1 : 0
+      );
+      engine.setProgress("poolWaterY", strip.y + strip.h);
+      engine.setProgress("poolGlide", glide);
+      engine.setProgress("poolTrackW", trackW);
+      engine.setProgress("poolPhase", wallP);
+    },
+    [engine, status, vw, vh]
+  );
+  useMotionValueEvent(master, "change", feed);
+  // 初始喂键:刷新落在展墙中段时 change 未必触发,而 DOM 镜像已退场,
+  // GL 键须同步就位(与 scene-generate 的初始喂键同理)
+  useEffect(() => {
+    feed(master.get());
+  }, [feed, master]);
+  return null;
 }
 
 /**
@@ -266,6 +310,7 @@ function WallFigure({
   vh: number;
 }) {
   const master = useMaster();
+  const { engine, status } = useCinema();
   const x = useTransform(
     master,
     (m) => figureRect(cell.index, m, vw, vh).x * vw
@@ -284,17 +329,28 @@ function WallFigure({
   );
   // 非选中项随回中段退场;选中项恒亮直到终点
   const figOpacity = useTransform(master, (m) =>
-    cell.index === PICKED_INDEX
-      ? 1
-      : 1 - pickReturn(sceneProgress(m, "pick"))
+    cell.index === PICKED_INDEX ? 1 : 1 - pickReturn(sceneProgress(m, "pick"))
   );
   // 铭牌只属于展墙形态:随拉开浮现,随选中退场
   const plaqueOpacity = useTransform(master, (m) => {
     const { spread } = wallPhases(sceneProgress(m, "wall"));
     return spread * (1 - pickReturn(sceneProgress(m, "pick")));
   });
-  // 墨池倒影与铭牌同生命周期(展墙形态专属)
-  const mirrorOpacity = plaqueOpacity;
+  // 墨池倒影(v1.2 双轨):与铭牌同生命周期(展墙形态专属);
+  // full 且 pool 在役时 GL 真水面接管,DOM 镜像退场(返回 0),
+  // lite/static、pool 未装载(图集缺失)或被熔断时 DOM 假倒影兜底。
+  // hasPass 迟于装载完成才为真,交接前的空窗由 DOM 镜像覆盖
+  const mirrorOpacity = useTransform(master, (m) => {
+    if (
+      status === "full" &&
+      engine?.hasPass("pool") &&
+      !engine.isDisabled("pool")
+    ) {
+      return 0;
+    }
+    const { spread } = wallPhases(sceneProgress(m, "wall"));
+    return spread * (1 - pickReturn(sceneProgress(m, "pick")));
+  });
   // 入匣裁切(仅选中项,v1.1):匣口平面吃掉画作没入部分——
   // 可见底缘恒等于匣口线(几何联动见 archiveDrop);sink=0 时撤为
   // none,避免 clip 参考盒裁掉盒外的 matte 内衬
@@ -319,10 +375,9 @@ function WallFigure({
             className="h-full w-full object-cover"
           />
         </div>
-        {cell.index === PICKED_INDEX ? (
-          <LayersInspect src={cell.src} />
-        ) : null}
-        {/* 墨池倒影:画作映在墨面上,mask 向下渐隐 + 微模糊(水面漫反射) */}
+        {cell.index === PICKED_INDEX ? <LayersInspect src={cell.src} /> : null}
+        {/* 墨池倒影 DOM 兜底轨:画作映在墨面上,mask 向下渐隐 + 微模糊
+            (水面漫反射);full 态 pool 在役时 opacity 恒 0 让位 GL 真倒影 */}
         <motion.div
           aria-hidden="true"
           style={{ opacity: mirrorOpacity }}
