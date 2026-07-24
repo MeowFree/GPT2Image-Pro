@@ -20,6 +20,7 @@ import { CinemaGLProvider, useCinema } from "./cinema-gl";
 import {
   CinemaStage,
   SceneLayer,
+  useMaster,
   useSceneProgress,
 } from "./cinema-stage";
 import type { CinemaEngine, CinemaPass } from "./gl/engine";
