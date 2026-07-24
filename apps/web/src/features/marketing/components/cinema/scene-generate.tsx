@@ -90,7 +90,10 @@ export function GenerateScene() {
   const p = useSceneProgress("generate");
   const macroP = useSceneProgress("macro");
   const reviseP = useSceneProgress("revise");
-  const { engine, status } = useCinema();
+  const { engine, status, breakerVersion } = useCinema();
+  // 熔断状态经 context 触发重渲染,feedGL 依赖的可用性判定随之重算——
+  // relief 熔断时 denoise 即时接回(与 WallFigure 同模式)
+  void breakerVersion;
   const figureRef = useRef<HTMLDivElement | null>(null);
   const [hudStep, setHudStep] = useState(1);
   const [hudDone, setHudDone] = useState(false);
@@ -119,9 +122,16 @@ export function GenerateScene() {
       const dev = seg(g, 0, DEVELOP_END);
       engine?.setProgress("denoiseP", dev);
       engine?.setProgress("denoiseGlow", bell(dev) * 0.6);
+      // relief 可用性门控:未装载(资产/init 失败)或被熔断时回落 denoise,
+      // macro 驻留段画布不留空(与 pool/landscape 的兜底模式一致)
+      const reliefAvailable =
+        status === "full" &&
+        (engine?.hasPass("relief") ?? false) &&
+        !(engine?.isDisabled("relief") ?? false);
+      const reliefOn = reliefAvailable && mac > 0.3 && mac < 0.95;
       engine?.setProgress(
         "denoiseVisible",
-        g > 0 && d < 0.05 && !(mac > 0.3 && mac < 0.95) ? 1 : 0
+        g > 0 && d < 0.05 && !reliefOn ? 1 : 0
       );
       const crop = macroCrop(mac);
       engine?.setProgress("canvasCrop.x", crop.x);
@@ -129,7 +139,6 @@ export function GenerateScene() {
       engine?.setProgress("canvasCrop.z", crop.z);
       // 浮雕接管:macro 推近完成后(0.3)到拉回交棒 dive(0.95)之间,
       // relief 替代 denoise 绘制同一画布矩形(互斥,零交接跳变)
-      const reliefOn = mac > 0.3 && mac < 0.95;
       engine?.setProgress("reliefVisible", reliefOn ? 1 : 0);
       engine?.setProgress("reliefLight", 0.8 + mac * 1.9);
       // 迎光一拍:驻留段中光源移到画后,薄处透光
@@ -145,7 +154,7 @@ export function GenerateScene() {
       setHudDone(g >= DEVELOP_END);
       setRevisePhase(growth >= 1 ? 2 : growth > 0 ? 1 : 0);
     },
-    [engine]
+    [engine, status]
   );
   useMotionValueEvent(master, "change", feedGL);
   // 初始化:sticky 布局下 figure 矩形全片常驻,停在幕外(首屏)时
