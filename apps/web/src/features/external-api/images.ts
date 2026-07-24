@@ -404,7 +404,11 @@ export function createExternalImageStreamResponse(
           }
           if (!(closed || cancelled)) {
             closed = true;
-            controller.close();
+            try {
+              controller.close();
+            } catch {
+              // The response runtime may already have closed the stream.
+            }
           }
         }
       },
@@ -823,7 +827,11 @@ export async function createJsonKeepAliveResponse(
           }
           if (!(closed || cancelled)) {
             closed = true;
-            controller.close();
+            try {
+              controller.close();
+            } catch {
+              // The response runtime may already have closed the stream.
+            }
           }
         }
       },

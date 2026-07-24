@@ -62,6 +62,33 @@ describe("external image stream response", () => {
     expect(firstChunk).toContain(": open");
     expect(firstChunk.length).toBeGreaterThan(1024);
   });
+
+  it("finishes route work cleanly after the client cancels", async () => {
+    let releaseRun: (() => void) | undefined;
+    const runReleased = new Promise<void>((resolve) => {
+      releaseRun = resolve;
+    });
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+
+    try {
+      const response = createExternalImageStreamResponse(async () => {
+        await runReleased;
+      });
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("missing response body");
+
+      await reader.read();
+      await reader.cancel();
+      releaseRun?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(rejections).toHaveLength(0);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+  });
 });
 
 describe("external JSON keep-alive response", () => {
@@ -85,6 +112,37 @@ describe("external JSON keep-alive response", () => {
     expect(response.headers.get("x-accel-buffering")).toBe("no");
     expect(firstChunk.trim()).toBe("");
     expect(firstChunk.length).toBeGreaterThan(1024);
+  });
+
+  it("finishes route work cleanly after the client cancels", async () => {
+    let releaseRun: (() => void) | undefined;
+    const runReleased = new Promise<void>((resolve) => {
+      releaseRun = resolve;
+    });
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+
+    try {
+      const response = await createJsonKeepAliveResponse(
+        async () => {
+          await runReleased;
+          return { ok: true };
+        },
+        { initialWaitMs: 0, keepAliveMs: 1_000 }
+      );
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("missing response body");
+
+      await reader.read();
+      await reader.cancel();
+      releaseRun?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(rejections).toHaveLength(0);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
   });
 });
 
