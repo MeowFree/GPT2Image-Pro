@@ -97,6 +97,16 @@ async function loadSystemSettingsMap() {
 
 export function clearSystemSettingsCache() {
   settingsCache = undefined;
+  // 级联失效:下游缓存(如营销首页 home-data)注册同一个失效点,
+  // 任何写路径(管理面板/UOL/sla 开关)保存后即刻全站生效
+  settingsCacheInvalidator?.();
+}
+
+/** 下游缓存失效回调:单槽,由消费方(如 apps/web home-data)在模块初始化注册 */
+let settingsCacheInvalidator: (() => void) | null = null;
+
+export function setSettingsCacheInvalidator(cb: (() => void) | null): void {
+  settingsCacheInvalidator = cb;
 }
 
 export async function getSystemSettingValue(

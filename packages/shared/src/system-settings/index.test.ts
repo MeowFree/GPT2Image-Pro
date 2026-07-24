@@ -9,6 +9,7 @@ import {
   getRuntimeSettingSelect,
   getRuntimeSettingString,
   importSystemSettingsFromEnv,
+  setSettingsCacheInvalidator,
   setSystemSettings,
 } from "./index";
 
@@ -653,5 +654,29 @@ describe("loadSystemSettingsMap 查询失败兜底(空设置 + 负缓存 5s)", (
       "Asia/Shanghai"
     );
     expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("setSettingsCacheInvalidator 级联失效", () => {
+  it("clearSystemSettingsCache 触发已注册的下游失效回调", async () => {
+    const calls: number[] = [];
+    setSettingsCacheInvalidator(() => {
+      calls.push(1);
+    });
+    try {
+      // 写路径(setSystemSettings)内部会调 clearSystemSettingsCache
+      await setSystemSettings(
+        [{ key: "APP_TIME_ZONE", value: "UTC" }],
+        "tester"
+      );
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      setSettingsCacheInvalidator(null);
+    }
+  });
+
+  it("未注册回调时 clearSystemSettingsCache 不抛", () => {
+    setSettingsCacheInvalidator(null);
+    expect(() => clearSystemSettingsCache()).not.toThrow();
   });
 });

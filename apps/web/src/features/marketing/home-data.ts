@@ -1,9 +1,11 @@
 /**
- * 营销首页统一数据缓存:7 项非会话数据聚合为 60s 进程内缓存
+ * 营销首页统一数据缓存:7 项非会话数据聚合为 1h 进程内缓存
  * (单飞去重,失败用陈旧值兜底)。WHY:首页几乎全是匿名新用户,
  * 每请求逐项查库会造成无谓压力;定时统一刷新把 DB 命中降到
- * 每进程每分钟约一次。会话/角色仍在 page.tsx 按请求读取
+ * 每进程每小时约一次。会话/角色仍在 page.tsx 按请求读取
  * (匿名访客无 cookie 不触库;失败按匿名处理,营销页不可 500)。
+ * 管理端写设置后经 setSettingsCacheInvalidator 级联 reset(),
+ * 配置改动立即生效,不必等 TTL。
  */
 import "server-only";
 
@@ -14,14 +16,15 @@ import { getPlanCapabilityMatrix } from "@repo/shared/subscription/services/plan
 import {
   getRuntimeSettingBoolean,
   getRuntimeSettingNumber,
+  setSettingsCacheInvalidator,
 } from "@repo/shared/system-settings";
 import { getRuntimeImageBaseCreditPricing } from "@/features/image-generation/pricing-settings";
 import { getRecentGenerationSlaStats } from "@/features/image-generation/sla";
 
 import { createSingleFlightCache } from "./home-data-cache";
 
-/** 60s:营销数据允许分钟级滞后,换来每进程每分钟约一次 DB 命中 */
-const CACHE_TTL_MS = 60_000;
+/** 1h:营销数据允许小时级滞后;管理端写设置经级联失效立即生效 */
+const CACHE_TTL_MS = 3_600_000;
 
 export interface MarketingHomeData {
   runtimePaymentConfig: Awaited<ReturnType<typeof getRuntimePaymentConfig>>;
@@ -75,6 +78,10 @@ async function load(): Promise<MarketingHomeData> {
 }
 
 const cache = createSingleFlightCache<MarketingHomeData>(load, CACHE_TTL_MS);
+
+// 级联失效:管理端任何写设置路径(shared setSystemSettings)都会触发
+// clearSystemSettingsCache -> 本回调,配置改动立即生效,不必等 TTL
+setSettingsCacheInvalidator(() => cache.reset());
 
 export async function getMarketingHomeData(): Promise<MarketingHomeData> {
   return cache.get();
