@@ -19,6 +19,11 @@ import {
 } from "@repo/ui/components/select";
 import { Textarea } from "@repo/ui/components/textarea";
 import { createTicketAction } from "@repo/shared/support/actions/ticket";
+import {
+  discardTicketImages,
+  TicketImagePicker,
+  uploadTicketImages,
+} from "@repo/shared/support/components";
 import { ticketCategories, ticketPriorities } from "@repo/shared/support/schemas";
 
 /**
@@ -36,6 +41,7 @@ export default function NewTicketPage() {
   const [category, setCategory] = useState<string>("other");
   const [priority, setPriority] = useState<string>("medium");
   const [message, setMessage] = useState("");
+  const [images, setImages] = useState<File[]>([]);
 
   /**
    * 处理表单提交
@@ -44,7 +50,9 @@ export default function NewTicketPage() {
     e.preventDefault();
     setIsLoading(true);
 
+    let attachmentIds: string[] = [];
     try {
+      attachmentIds = await uploadTicketImages(images);
       const result = await createTicketAction({
         subject,
         category: category as
@@ -55,15 +63,18 @@ export default function NewTicketPage() {
           | "other",
         priority: priority as "low" | "medium" | "high",
         message,
+        attachmentIds,
       });
 
       if (result?.data) {
         toast.success("工单创建成功");
         router.push(`/${locale}/dashboard/support/${result.data.ticketId}`);
       } else if (result?.serverError) {
+        await discardTicketImages(attachmentIds);
         toast.error(result.serverError);
       }
     } catch (error) {
+      await discardTicketImages(attachmentIds);
       toast.error("创建工单失败，请重试");
       console.error(error);
     } finally {
@@ -184,6 +195,11 @@ export default function NewTicketPage() {
               <p className="text-xs text-muted-foreground">
                 {message.length}/5000 字符
               </p>
+              <TicketImagePicker
+                files={images}
+                onFilesChange={setImages}
+                disabled={isLoading}
+              />
             </div>
 
             {/* 提交按钮 */}

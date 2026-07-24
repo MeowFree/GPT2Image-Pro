@@ -6,6 +6,8 @@ export {
   type CreateTicketInput,
   // Schema
   createTicketSchema,
+  MAX_TICKET_ATTACHMENT_BYTES,
+  MAX_TICKET_ATTACHMENTS,
   // 选项配置
   ticketCategories,
   ticketPriorities,

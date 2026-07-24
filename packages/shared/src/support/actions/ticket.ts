@@ -1,10 +1,15 @@
 "use server";
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@repo/database";
-import { ticket, ticketMessage, user } from "@repo/database/schema";
+import {
+  ticket,
+  ticketAttachment,
+  ticketMessage,
+  user,
+} from "@repo/database/schema";
 import { getUserRoleById } from "../../auth/role-server";
 import { isAdminRole } from "../../auth/roles";
 import { sendTicketAdminNotification } from "../notifications";
@@ -35,6 +40,69 @@ const adminUnreadTicketCountSql =
     Number
   );
 
+async function assertPendingAttachments(
+  attachmentIds: string[],
+  uploaderId: string
+) {
+  if (attachmentIds.length === 0) return;
+
+  const attachments = await db
+    .select({ id: ticketAttachment.id })
+    .from(ticketAttachment)
+    .where(
+      and(
+        inArray(ticketAttachment.id, attachmentIds),
+        eq(ticketAttachment.uploaderId, uploaderId),
+        isNull(ticketAttachment.ticketId),
+        isNull(ticketAttachment.messageId)
+      )
+    );
+
+  if (attachments.length !== attachmentIds.length) {
+    throw new Error("图片附件无效、已使用或不属于当前账号");
+  }
+}
+
+async function bindPendingAttachments(params: {
+  attachmentIds: string[];
+  uploaderId: string;
+  ticketId: string;
+  messageId: string;
+}) {
+  if (params.attachmentIds.length === 0) return;
+
+  const attached = await db
+    .update(ticketAttachment)
+    .set({ ticketId: params.ticketId, messageId: params.messageId })
+    .where(
+      and(
+        inArray(ticketAttachment.id, params.attachmentIds),
+        eq(ticketAttachment.uploaderId, params.uploaderId),
+        isNull(ticketAttachment.ticketId),
+        isNull(ticketAttachment.messageId)
+      )
+    )
+    .returning({ id: ticketAttachment.id });
+
+  if (attached.length !== params.attachmentIds.length) {
+    throw new Error("图片附件绑定失败，请重新上传");
+  }
+}
+
+async function getTicketAttachments(ticketId: string) {
+  return await db
+    .select({
+      id: ticketAttachment.id,
+      messageId: ticketAttachment.messageId,
+      fileName: ticketAttachment.fileName,
+      contentType: ticketAttachment.contentType,
+      size: ticketAttachment.size,
+    })
+    .from(ticketAttachment)
+    .where(eq(ticketAttachment.ticketId, ticketId))
+    .orderBy(ticketAttachment.createdAt);
+}
+
 // ============================================
 // 用户端 Actions
 // ============================================
@@ -51,6 +119,8 @@ export const createTicketAction = withTicketAction("createTicket")
     const ticketId = crypto.randomUUID();
     const messageId = crypto.randomUUID();
     const now = new Date();
+
+    await assertPendingAttachments(data.attachmentIds, ctx.userId);
 
     // 创建工单
     await db.insert(ticket).values({
@@ -72,6 +142,13 @@ export const createTicketAction = withTicketAction("createTicket")
       userId: ctx.userId,
       content: data.message,
       isAdminResponse: false,
+    });
+
+    await bindPendingAttachments({
+      attachmentIds: data.attachmentIds,
+      uploaderId: ctx.userId,
+      ticketId,
+      messageId,
     });
 
     await sendTicketAdminNotification({
@@ -147,7 +224,8 @@ export const getTicketDetailAction = withTicketAction("getTicketDetail")
       .where(and(eq(ticket.id, ticketId), eq(ticket.userId, ctx.userId)));
 
     // 获取消息列表
-    const messages = await db
+    const [messages, attachments] = await Promise.all([
+      db
       .select({
         id: ticketMessage.id,
         content: ticketMessage.content,
@@ -162,11 +240,18 @@ export const getTicketDetailAction = withTicketAction("getTicketDetail")
       .from(ticketMessage)
       .leftJoin(user, eq(ticketMessage.userId, user.id))
       .where(eq(ticketMessage.ticketId, ticketId))
-      .orderBy(ticketMessage.createdAt);
+        .orderBy(ticketMessage.createdAt),
+      getTicketAttachments(ticketId),
+    ]);
 
     return {
       ticket: { ...ticketData, userLastSeenAt: now },
-      messages,
+      messages: messages.map((message) => ({
+        ...message,
+        attachments: attachments.filter(
+          (attachment) => attachment.messageId === message.id
+        ),
+      })),
     };
   });
 
@@ -194,14 +279,24 @@ export const addTicketMessageAction = withTicketAction("addTicketMessage")
     }
 
     const now = new Date();
+    const messageId = crypto.randomUUID();
+
+    await assertPendingAttachments(data.attachmentIds, ctx.userId);
 
     // 添加消息
     await db.insert(ticketMessage).values({
-      id: crypto.randomUUID(),
+      id: messageId,
       ticketId: data.ticketId,
       userId: ctx.userId,
       content: data.content,
       isAdminResponse: false,
+    });
+
+    await bindPendingAttachments({
+      attachmentIds: data.attachmentIds,
+      uploaderId: ctx.userId,
+      ticketId: data.ticketId,
+      messageId,
     });
 
     // 更新工单时间
@@ -349,7 +444,8 @@ export const getAdminTicketDetailAction = withAdminTicketAction(
       .where(eq(ticket.id, ticketId));
 
     // 获取消息列表
-    const messages = await db
+    const [messages, attachments] = await Promise.all([
+      db
       .select({
         id: ticketMessage.id,
         content: ticketMessage.content,
@@ -364,12 +460,19 @@ export const getAdminTicketDetailAction = withAdminTicketAction(
       .from(ticketMessage)
       .leftJoin(user, eq(ticketMessage.userId, user.id))
       .where(eq(ticketMessage.ticketId, ticketId))
-      .orderBy(ticketMessage.createdAt);
+        .orderBy(ticketMessage.createdAt),
+      getTicketAttachments(ticketId),
+    ]);
 
     return {
       ticket: { ...result.ticket, adminLastSeenAt: now },
       ticketUser: result.user,
-      messages,
+      messages: messages.map((message) => ({
+        ...message,
+        attachments: attachments.filter(
+          (attachment) => attachment.messageId === message.id
+        ),
+      })),
     };
   });
 
@@ -392,14 +495,24 @@ export const adminReplyTicketAction = withAdminTicketAction("replyTicket")
     }
 
     const now = new Date();
+    const messageId = crypto.randomUUID();
+
+    await assertPendingAttachments(data.attachmentIds, ctx.userId);
 
     // 添加管理员回复
     await db.insert(ticketMessage).values({
-      id: crypto.randomUUID(),
+      id: messageId,
       ticketId: data.ticketId,
       userId: ctx.userId,
       content: data.content,
       isAdminResponse: true,
+    });
+
+    await bindPendingAttachments({
+      attachmentIds: data.attachmentIds,
+      uploaderId: ctx.userId,
+      ticketId: data.ticketId,
+      messageId,
     });
 
     // 如果工单是 open 状态，自动更新为 in_progress

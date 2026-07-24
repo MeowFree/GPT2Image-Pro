@@ -8,6 +8,11 @@ import { Button } from "@repo/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/ui/components/card";
 import { Textarea } from "@repo/ui/components/textarea";
 import { addTicketMessageAction } from "../actions/ticket";
+import {
+  discardTicketImages,
+  TicketImagePicker,
+  uploadTicketImages,
+} from "./ticket-image-picker";
 
 interface TicketMessageFormProps {
   /** 工单 ID */
@@ -27,6 +32,7 @@ export function TicketMessageForm({
 }: TicketMessageFormProps) {
   const router = useRouter();
   const [content, setContent] = useState("");
+  const [images, setImages] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   /**
@@ -42,20 +48,26 @@ export function TicketMessageForm({
 
     setIsLoading(true);
 
+    let attachmentIds: string[] = [];
     try {
+      attachmentIds = await uploadTicketImages(images);
       const result = await addTicketMessageAction({
         ticketId,
         content: content.trim(),
+        attachmentIds,
       });
 
       if (result?.data) {
         toast.success("消息发送成功");
         setContent("");
+        setImages([]);
         router.refresh();
       } else if (result?.serverError) {
+        await discardTicketImages(attachmentIds);
         toast.error(result.serverError);
       }
     } catch (error) {
+      await discardTicketImages(attachmentIds);
       toast.error("发送失败，请重试");
       console.error(error);
     } finally {
@@ -76,6 +88,11 @@ export function TicketMessageForm({
             onChange={(e) => setContent(e.target.value)}
             rows={4}
             maxLength={5000}
+          />
+          <TicketImagePicker
+            files={images}
+            onFilesChange={setImages}
+            disabled={isLoading}
           />
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">

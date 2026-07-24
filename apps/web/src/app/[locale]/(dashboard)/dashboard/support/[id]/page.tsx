@@ -8,7 +8,12 @@ import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/ui/components/card";
 import { db } from "@repo/database";
-import { ticket, ticketMessage, user } from "@repo/database/schema";
+import {
+  ticket,
+  ticketAttachment,
+  ticketMessage,
+  user,
+} from "@repo/database/schema";
 import { AdminTicketReplyForm } from "@repo/shared/support/components/admin-ticket-reply-form";
 import { AdminTicketStatusSelect } from "@repo/shared/support/components/admin-ticket-status-select";
 import { TicketMessageForm } from "@repo/shared/support/components/ticket-message-form";
@@ -106,22 +111,39 @@ export default async function TicketDetailPage({
   }
 
   // 获取消息列表
-  const messages = await db
-    .select({
-      id: ticketMessage.id,
-      content: ticketMessage.content,
-      isAdminResponse: ticketMessage.isAdminResponse,
-      createdAt: ticketMessage.createdAt,
-      user: {
-        id: user.id,
-        name: user.name,
-        image: user.image,
-      },
-    })
-    .from(ticketMessage)
-    .leftJoin(user, eq(ticketMessage.userId, user.id))
-    .where(eq(ticketMessage.ticketId, id))
-    .orderBy(ticketMessage.createdAt);
+  const [messages, attachments] = await Promise.all([
+    db
+      .select({
+        id: ticketMessage.id,
+        content: ticketMessage.content,
+        isAdminResponse: ticketMessage.isAdminResponse,
+        createdAt: ticketMessage.createdAt,
+        user: {
+          id: user.id,
+          name: user.name,
+          image: user.image,
+        },
+      })
+      .from(ticketMessage)
+      .leftJoin(user, eq(ticketMessage.userId, user.id))
+      .where(eq(ticketMessage.ticketId, id))
+      .orderBy(ticketMessage.createdAt),
+    db
+      .select({
+        id: ticketAttachment.id,
+        messageId: ticketAttachment.messageId,
+        fileName: ticketAttachment.fileName,
+      })
+      .from(ticketAttachment)
+      .where(eq(ticketAttachment.ticketId, id))
+      .orderBy(ticketAttachment.createdAt),
+  ]);
+  const messagesWithAttachments = messages.map((message) => ({
+    ...message,
+    attachments: attachments.filter(
+      (attachment) => attachment.messageId === message.id
+    ),
+  }));
 
   /**
    * 获取状态徽章样式：单色 outline + uppercase 小字，进行中以实心前景色强调
@@ -272,7 +294,7 @@ export default async function TicketDetailPage({
           </h3>
         </div>
         <div className="space-y-4">
-          {messages.map((msg, index) => (
+          {messagesWithAttachments.map((msg, index) => (
             // 消息入场错峰：按索引 50ms 递增，封顶 8 档避免长对话等待过久；
             // fill-mode 用 backwards 保证延迟期间停留在透明首帧。
             <div
@@ -336,6 +358,28 @@ export default async function TicketDetailPage({
                   <p className="whitespace-pre-wrap text-sm leading-relaxed">
                     {msg.content}
                   </p>
+                  {msg.attachments.length > 0 && (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {msg.attachments.map((attachment) => (
+                        <a
+                          key={attachment.id}
+                          href={`/api/support/attachments/${attachment.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block w-28 overflow-hidden rounded-md border bg-muted sm:w-36"
+                          title={attachment.fileName}
+                        >
+                          {/* biome-ignore lint/performance/noImgElement: authenticated attachment URLs are not compatible with next/image optimization */}
+                          <img
+                            src={`/api/support/attachments/${attachment.id}`}
+                            alt={attachment.fileName}
+                            loading="lazy"
+                            className="aspect-square h-auto w-full object-cover"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

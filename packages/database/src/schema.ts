@@ -767,6 +767,36 @@ export const ticketMessage = pgTable("ticket_message", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+/**
+ * 工单图片附件。新上传的附件先保持 messageId/ticketId 为空，提交消息时再绑定。
+ */
+export const ticketAttachment = pgTable(
+  "ticket_attachment",
+  {
+    id: text("id").primaryKey(),
+    ticketId: text("ticket_id").references(() => ticket.id, {
+      onDelete: "cascade",
+    }),
+    messageId: text("message_id").references(() => ticketMessage.id, {
+      onDelete: "cascade",
+    }),
+    uploaderId: text("uploader_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    storageBucket: text("storage_bucket").notNull(),
+    storageKey: text("storage_key").notNull().unique(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("ticket_attachment_ticket_idx").on(table.ticketId),
+    index("ticket_attachment_message_idx").on(table.messageId),
+    index("ticket_attachment_uploader_idx").on(table.uploaderId),
+  ]
+);
+
 // ============================================
 // User API Configuration
 // ============================================
@@ -1376,6 +1406,9 @@ export type NewTicket = typeof ticket.$inferInsert;
 
 export type TicketMessage = typeof ticketMessage.$inferSelect;
 export type NewTicketMessage = typeof ticketMessage.$inferInsert;
+
+export type TicketAttachment = typeof ticketAttachment.$inferSelect;
+export type NewTicketAttachment = typeof ticketAttachment.$inferInsert;
 
 /** 用户角色类型 */
 export type UserRole = (typeof userRoleEnum.enumValues)[number];

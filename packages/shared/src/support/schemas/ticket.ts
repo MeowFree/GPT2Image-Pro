@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+export const MAX_TICKET_ATTACHMENTS = 4;
+export const MAX_TICKET_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+const ticketAttachmentIdsSchema = z
+  .array(z.string().uuid("附件ID无效"))
+  .max(MAX_TICKET_ATTACHMENTS, `每条消息最多上传${MAX_TICKET_ATTACHMENTS}张图片`)
+  .refine((ids) => new Set(ids).size === ids.length, "附件不能重复")
+  .default([]);
+
 /**
  * 工单类别选项
  */
@@ -48,6 +57,8 @@ export const createTicketSchema = z.object({
     .string()
     .min(10, "消息内容至少需要10个字符")
     .max(5000, "消息内容最多5000个字符"),
+  /** 初始消息图片附件 */
+  attachmentIds: ticketAttachmentIdsSchema,
 });
 
 /**
@@ -61,6 +72,8 @@ export const addTicketMessageSchema = z.object({
     .string()
     .min(1, "消息内容不能为空")
     .max(5000, "消息内容最多5000个字符"),
+  /** 消息图片附件 */
+  attachmentIds: ticketAttachmentIdsSchema,
 });
 
 /**
