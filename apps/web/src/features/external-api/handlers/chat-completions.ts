@@ -1,8 +1,8 @@
 import { withApiLogging } from "@repo/shared/api-logger";
 import {
-  MAX_PLAN_BATCH_COUNT,
   canUsePlanCapability,
   getPlanLimits,
+  MAX_PLAN_BATCH_COUNT,
 } from "@repo/shared/subscription/services/plan-capabilities";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
 import type { NextRequest } from "next/server";
@@ -10,21 +10,21 @@ import { z } from "zod";
 
 import { authenticateExternalApiRequest } from "@/features/external-api/auth";
 import {
-  fetchPublicImage,
-  readResponseBytesWithLimit,
-} from "@/features/external-api/safe-image-fetch";
-import {
   createExternalImageStreamResponse,
   createJsonKeepAliveResponse,
-  toExternalErrorStreamData,
   getExternalFinalImageOutputs,
   getImageBase64,
   getPublicImageUrl,
   openAIImageError,
+  toExternalErrorStreamData,
   toExternalGenerationUsage,
   toLoggedOpenAIErrorPayload,
   wantsImageStreamResponse,
 } from "@/features/external-api/images";
+import {
+  fetchPublicImage,
+  readResponseBytesWithLimit,
+} from "@/features/external-api/safe-image-fetch";
 import { runBatchImageGeneration } from "@/features/image-generation/batch-runner";
 import { runImageGenerationForUser } from "@/features/image-generation/operations";
 import {
@@ -50,8 +50,8 @@ import type {
 
 import {
   buildChatCompletionAssistantContent,
-  chatCompletionMessagesToChatParams,
   type ChatCompletionImageData,
+  chatCompletionMessagesToChatParams,
 } from "./chat-completions-utils";
 
 const chatCompletionContentPartSchema = z
@@ -206,9 +206,11 @@ async function imageUrlToInputFile(params: {
     { type }
   );
   const uploaded = params.userId
-    ? await uploadTemporaryImageUrls(params.userId, params.requestId || "chat", [
-        file,
-      ])
+    ? await uploadTemporaryImageUrls(
+        params.userId,
+        params.requestId || "chat",
+        [file]
+      )
     : undefined;
 
   return {
@@ -464,12 +466,17 @@ export const postExternalChatCompletions = withApiLogging(
       request,
       parsed.data.stream
     );
-    const input = {
-      mode: "chat" as const,
+    const requiresResponsesBackend =
+      parsed.data.requiresResponsesBackend ??
+      parsed.data.requires_responses_backend;
+    const useDirectImageCompatibility =
+      topLevelModelIsImage &&
+      history.length === 0 &&
+      requiresResponsesBackend !== true;
+    const sharedInput = {
       userId: auth.userId,
       apiKeyId: auth.apiKeyId,
       relayOnly: auth.relayOnly,
-      backendRequestKind: "chat" as const,
       prompt,
       apiPrompt,
       promptOptimization:
@@ -499,19 +506,41 @@ export const postExternalChatCompletions = withApiLogging(
       thinking: normalizeThinking(
         parsed.data.thinking || parsed.data.reasoning?.effort
       ),
-      // Downstream streaming is handled by this route. Upstream streaming is
-      // controlled by the selected backend config so external/user APIs can run
-      // in either streamed or non-streamed mode.
-      stream: undefined,
-      rawChatCompletionsBody: topLevelModelIsImage
-        ? { ...parsed.data, model: undefined }
-        : parsed.data,
       mixWebFirst: parsed.data.mixWebFirst ?? parsed.data.mix_web_first,
-      requiresResponsesBackend:
-        parsed.data.requiresResponsesBackend ??
-        parsed.data.requires_responses_backend,
-      agentMode: false,
+      requiresResponsesBackend,
     };
+    const input = useDirectImageCompatibility
+      ? images.length > 0
+        ? {
+            ...sharedInput,
+            mode: "edit" as const,
+            backendRequestKind: "image_edit" as const,
+            images,
+            model: imageModel || undefined,
+          }
+        : {
+            ...sharedInput,
+            mode: "generate" as const,
+            backendRequestKind: "image_generation" as const,
+            model: imageModel || undefined,
+          }
+      : {
+          ...sharedInput,
+          mode: "chat" as const,
+          backendRequestKind: "chat" as const,
+          history,
+          maxChatContextChars: limits.maxChatContextChars,
+          images,
+          model: topLevelModelIsImage ? undefined : parsed.data.model,
+          imageModel: imageModel || undefined,
+          // Downstream streaming is handled by this route. Upstream streaming is
+          // controlled by the selected backend config.
+          stream: undefined,
+          rawChatCompletionsBody: topLevelModelIsImage
+            ? { ...parsed.data, model: undefined }
+            : parsed.data,
+          agentMode: false,
+        };
     const created = nowSeconds();
 
     if (useStreamResponse) {

@@ -117,7 +117,7 @@ describe("external chat completions handler streaming bridge", () => {
     expect(callbacks).toBeUndefined();
   });
 
-  it("treats a top-level gpt-image model as the image model", async () => {
+  it("routes a single-turn top-level gpt-image model to image generation", async () => {
     const { postExternalChatCompletions } = await import("./chat-completions");
 
     const response = await postExternalChatCompletions(
@@ -133,12 +133,64 @@ describe("external chat completions handler streaming bridge", () => {
     const [input] = call;
     expect(input).toEqual(
       expect.objectContaining({
-        model: undefined,
-        imageModel: "gpt-image-2",
+        mode: "generate",
+        backendRequestKind: "image_generation",
+        model: "gpt-image-2",
       })
     );
-    expect(input.rawChatCompletionsBody).toEqual(
-      expect.objectContaining({ model: undefined })
+    expect(input).not.toHaveProperty("rawChatCompletionsBody");
+  });
+
+  it("keeps multi-turn top-level image requests on the chat path", async () => {
+    const { postExternalChatCompletions } = await import("./chat-completions");
+
+    const response = await postExternalChatCompletions(
+      chatCompletionsRequest({
+        model: "gpt-image-2",
+        messages: [
+          { role: "user", content: "draw a poster" },
+          { role: "assistant", content: "Which color palette?" },
+          { role: "user", content: "Use red and white" },
+        ],
+      }) as never
+    );
+    await response.json();
+
+    const call = mocks.runImageGenerationForUser.mock.calls[0];
+    if (!call) throw new Error("expected image generation to be called");
+    const [input] = call;
+    expect(input).toEqual(
+      expect.objectContaining({
+        mode: "chat",
+        backendRequestKind: "chat",
+        model: undefined,
+        imageModel: "gpt-image-2",
+        rawChatCompletionsBody: expect.objectContaining({ model: undefined }),
+      })
+    );
+  });
+
+  it("keeps explicitly required Responses requests on the chat path", async () => {
+    const { postExternalChatCompletions } = await import("./chat-completions");
+
+    const response = await postExternalChatCompletions(
+      chatCompletionsRequest({
+        model: "gpt-image-2",
+        messages: [{ role: "user", content: "draw a poster" }],
+        requires_responses_backend: true,
+      }) as never
+    );
+    await response.json();
+
+    const call = mocks.runImageGenerationForUser.mock.calls[0];
+    if (!call) throw new Error("expected image generation to be called");
+    const [input] = call;
+    expect(input).toEqual(
+      expect.objectContaining({
+        mode: "chat",
+        backendRequestKind: "chat",
+        requiresResponsesBackend: true,
+      })
     );
   });
 
@@ -206,5 +258,4 @@ describe("external chat completions handler streaming bridge", () => {
       undefined
     );
   });
-
 });
