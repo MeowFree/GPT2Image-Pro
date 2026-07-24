@@ -1,3 +1,7 @@
+// 系统设置读写与运行时取值。读路径(loadSystemSettingsMap)带 10s 进程内
+// 缓存;DB 查询失败按空设置兜底并负缓存 5s——空设置与空库行为一致(全部
+// getRuntimeSetting* 落代码默认值),保证 DB 抖动时整站不 500,同时负缓存
+// 兼顾故障期不打爆 DB 与恢复后快速生效。写路径不经缓存读取函数,不受影响。
 import { createHash } from "node:crypto";
 
 import { db } from "@repo/database";
@@ -23,6 +27,12 @@ export {
 } from "./definitions";
 
 const CACHE_TTL_MS = 10_000;
+// 负缓存 TTL:设置查询失败时缓存空 Map 的时长。WHY:DB 抖动/不可达时
+// 整站不应 500——空设置与空库行为一致(所有 getRuntimeSetting* 落代码
+// 默认值);5s 兼顾故障期不打爆 DB(每进程至多 5s 一次重试)与恢复后
+// 快速生效。写路径(setSystemSettings 等)不经 loadSystemSettingsMap,
+// 不受影响。
+const NEGATIVE_CACHE_TTL_MS = 5_000;
 
 let settingsCache:
   | {
@@ -45,12 +55,29 @@ async function loadSystemSettingsMap() {
     return settingsCache.values;
   }
 
-  const rows = await db
-    .select({
-      key: systemSetting.key,
-      value: systemSetting.value,
-    })
-    .from(systemSetting);
+  let rows: Array<{ key: string; value: unknown }>;
+  try {
+    rows = await db
+      .select({
+        key: systemSetting.key,
+        value: systemSetting.value,
+      })
+      .from(systemSetting);
+  } catch (err) {
+    // WHY: 查询失败按空设置处理并负缓存 5s——DB 抖动时宁可临时走代码
+    // 默认值(与空库行为一致),不可让营销首页/后台等读路径整页 500;
+    // 负缓存避免故障期每请求都打 DB,5s 后自动重试、恢复即生效。
+    console.error(
+      "[system-settings] 设置查询失败,按空设置处理(负缓存 5s)",
+      err
+    );
+    const empty = new Map<string, unknown>();
+    settingsCache = {
+      expiresAt: now + NEGATIVE_CACHE_TTL_MS,
+      values: empty,
+    };
+    return empty;
+  }
 
   const values = new Map<string, unknown>();
   for (const row of rows) {
@@ -362,12 +389,9 @@ export async function initializeMissingSystemSettingsDefaults(options?: {
 
   if (values.length === 0) return [] as SettingKey[];
 
-  await db
-    .insert(systemSetting)
-    .values(values)
-    .onConflictDoNothing({
-      target: systemSetting.key,
-    });
+  await db.insert(systemSetting).values(values).onConflictDoNothing({
+    target: systemSetting.key,
+  });
 
   clearSystemSettingsCache();
   return values.map((value) => value.key);
@@ -441,7 +465,9 @@ async function migrateLegacySub2ApiAutoSyncSettings(
       value: systemSetting.value,
     })
     .from(systemSetting)
-    .where(inArray(systemSetting.key, ["SUB2API_AUTO_SYNC_TASKS", ...legacyKeys]));
+    .where(
+      inArray(systemSetting.key, ["SUB2API_AUTO_SYNC_TASKS", ...legacyKeys])
+    );
 
   const stored = new Map(
     rows
@@ -511,7 +537,9 @@ async function migrateLegacySub2ApiAutoSyncSettings(
         });
     }
 
-    await tx.delete(systemSetting).where(inArray(systemSetting.key, legacyKeys));
+    await tx
+      .delete(systemSetting)
+      .where(inArray(systemSetting.key, legacyKeys));
   });
 
   clearSystemSettingsCache();
@@ -537,9 +565,7 @@ function parsePositiveInteger(value: unknown, fallback: number) {
       : typeof value === "string"
         ? Number(value)
         : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0
-    ? Math.trunc(parsed)
-    : fallback;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
 }
 
 function parseSyncMode(value: unknown) {
@@ -585,9 +611,7 @@ export async function setSystemSettings(
       }
 
       if (entry.clear) {
-        await tx
-          .delete(systemSetting)
-          .where(eq(systemSetting.key, entry.key));
+        await tx.delete(systemSetting).where(eq(systemSetting.key, entry.key));
         changedKeys.push(entry.key);
         continue;
       }
@@ -602,9 +626,7 @@ export async function setSystemSettings(
 
       const value = coerceValue(definition, entry.value);
       if (value === "") {
-        await tx
-          .delete(systemSetting)
-          .where(eq(systemSetting.key, entry.key));
+        await tx.delete(systemSetting).where(eq(systemSetting.key, entry.key));
       } else {
         await tx
           .insert(systemSetting)
@@ -654,7 +676,8 @@ export async function getAdminSystemSettingsSnapshot() {
       row?.value !== undefined &&
       row.value !== null &&
       (typeof row.value !== "string" || row.value.trim().length > 0);
-    const hasEnvValue = typeof envValue === "string" && envValue.trim().length > 0;
+    const hasEnvValue =
+      typeof envValue === "string" && envValue.trim().length > 0;
     const isSecret = "secret" in definition && Boolean(definition.secret);
     const displayValue = isSecret
       ? ""

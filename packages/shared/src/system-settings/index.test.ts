@@ -5,6 +5,7 @@ import {
   getAdminSystemSettingsSnapshot,
   getRuntimeSettingBoolean,
   getRuntimeSettingJson,
+  getRuntimeSettingNumber,
   getRuntimeSettingSelect,
   getRuntimeSettingString,
   importSystemSettingsFromEnv,
@@ -29,6 +30,10 @@ const store = vi.hoisted(() => new Map<string, StoredSetting>());
 // 记录最近一次 delete 命中的 key，用于校验 eq(key) 删除分支。
 const deletedKeys = vi.hoisted(() => ({ value: [] as string[] }));
 
+// select 故障注入：非 null 时 select 链（await/where）抛错，
+// 模拟 DB 抖动/不可达，供 loadSystemSettingsMap 失败兜底用例使用。
+const selectFailure = vi.hoisted(() => ({ error: null as Error | null }));
+
 const dbMock = vi.hoisted(() => {
   const readRows = () =>
     [...store.values()].map((row) => ({
@@ -40,9 +45,15 @@ const dbMock = vi.hoisted(() => {
 
   const selectBuilder = {
     from: vi.fn(() => selectBuilder),
-    where: vi.fn(async () => readRows()),
+    where: vi.fn(async () => {
+      if (selectFailure.error) throw selectFailure.error;
+      return readRows();
+    }),
+    // biome-ignore lint/suspicious/noThenProperty: 刻意暴露 then 模拟 drizzle 查询构造器的 thenable(await 直接消费)
     then: vi.fn((resolve, reject) =>
-      Promise.resolve(readRows()).then(resolve, reject)
+      selectFailure.error
+        ? Promise.reject(selectFailure.error).then(resolve, reject)
+        : Promise.resolve(readRows()).then(resolve, reject)
     ),
   };
 
@@ -144,7 +155,10 @@ describe("setSystemSettings", () => {
   });
 
   it("clear entry deletes stored setting", async () => {
-    store.set("APP_TIME_ZONE", { key: "APP_TIME_ZONE", value: "Asia/Shanghai" });
+    store.set("APP_TIME_ZONE", {
+      key: "APP_TIME_ZONE",
+      value: "Asia/Shanghai",
+    });
 
     const changed = await setSystemSettings(
       [{ key: "APP_TIME_ZONE", value: "", clear: true }],
@@ -199,10 +213,7 @@ describe("setSystemSettings", () => {
     expect(store.get("BETTER_AUTH_SECRET")?.isSecret).toBe(true);
 
     // APP_TIME_ZONE 非 secret，isSecret 必为 false。
-    await setSystemSettings(
-      [{ key: "APP_TIME_ZONE", value: "UTC" }],
-      "admin"
-    );
+    await setSystemSettings([{ key: "APP_TIME_ZONE", value: "UTC" }], "admin");
     expect(store.get("APP_TIME_ZONE")?.value).toBe("UTC");
     expect(store.get("APP_TIME_ZONE")?.isSecret).toBe(false);
   });
@@ -320,7 +331,9 @@ describe("setSystemSettings", () => {
       [{ key: "IMAGE_GENERATION_GLOBAL_CONCURRENCY", value: "999999" }],
       "admin"
     );
-    expect(store.get("IMAGE_GENERATION_GLOBAL_CONCURRENCY")?.value).toBe(999999);
+    expect(store.get("IMAGE_GENERATION_GLOBAL_CONCURRENCY")?.value).toBe(
+      999999
+    );
   });
 
   it("rejects malformed json and value not in select options (coerceValue, C-L25)", async () => {
@@ -353,7 +366,10 @@ describe("importSystemSettingsFromEnv", () => {
   });
 
   it("overwrite=false (importMissing) keeps existing stored value", async () => {
-    store.set("APP_TIME_ZONE", { key: "APP_TIME_ZONE", value: "Asia/Shanghai" });
+    store.set("APP_TIME_ZONE", {
+      key: "APP_TIME_ZONE",
+      value: "Asia/Shanghai",
+    });
     process.env.APP_TIME_ZONE = "UTC";
 
     await importSystemSettingsFromEnv({ overwrite: false });
@@ -362,7 +378,10 @@ describe("importSystemSettingsFromEnv", () => {
   });
 
   it("overwrite=true replaces stored value with env-derived value", async () => {
-    store.set("APP_TIME_ZONE", { key: "APP_TIME_ZONE", value: "Asia/Shanghai" });
+    store.set("APP_TIME_ZONE", {
+      key: "APP_TIME_ZONE",
+      value: "Asia/Shanghai",
+    });
     process.env.APP_TIME_ZONE = "UTC";
 
     await importSystemSettingsFromEnv({ overwrite: true });
@@ -545,5 +564,94 @@ describe("runtime setting getters stored/env fallback (C-L29)", () => {
     await expect(
       getRuntimeSettingJson("PLAN_CAPABILITY_MATRIX")
     ).resolves.toEqual({ version: 3 });
+  });
+});
+
+describe("loadSystemSettingsMap 查询失败兜底(空设置 + 负缓存 5s)", () => {
+  beforeEach(() => {
+    store.clear();
+    deletedKeys.value = [];
+    clearSystemSettingsCache();
+    selectFailure.error = null;
+    dbMock.select.mockClear();
+    vi.useFakeTimers();
+    // 失败路径会打错误日志:静默掉,保持测试输出干净,并据以断言留证行为。
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    selectFailure.error = null;
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("查询失败时按空设置处理:落代码默认值、不抛出、留错误日志", async () => {
+    selectFailure.error = new Error("db down");
+
+    await expect(
+      getRuntimeSettingNumber("IMAGE_BASE_CREDITS_1024", 7)
+    ).resolves.toBe(7);
+    expect(console.error).toHaveBeenCalledWith(
+      "[system-settings] 设置查询失败,按空设置处理(负缓存 5s)",
+      selectFailure.error
+    );
+  });
+
+  it("负缓存 5s 内不重复查询(失败只触库一次)", async () => {
+    selectFailure.error = new Error("db down");
+
+    await getRuntimeSettingNumber("IMAGE_BASE_CREDITS_1024", 7);
+    await getRuntimeSettingNumber("IMAGE_BASE_CREDITS_1024", 7);
+    // 边界:负缓存到期前 1ms 仍命中,不重试。
+    vi.advanceTimersByTime(4_999);
+    await getRuntimeSettingNumber("IMAGE_BASE_CREDITS_1024", 7);
+
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+    expect(console.error).toHaveBeenCalledTimes(1);
+  });
+
+  it("负缓存过期后重试:再次失败计数 2,DB 恢复后返回真实值", async () => {
+    selectFailure.error = new Error("db down");
+
+    await expect(
+      getRuntimeSettingNumber("IMAGE_BASE_CREDITS_1024", 7)
+    ).resolves.toBe(7);
+
+    // 边界:负缓存刚过 1ms,重试并再次失败(负缓存随之续期)。
+    vi.advanceTimersByTime(5_001);
+    await expect(
+      getRuntimeSettingNumber("IMAGE_BASE_CREDITS_1024", 7)
+    ).resolves.toBe(7);
+    expect(dbMock.select).toHaveBeenCalledTimes(2);
+
+    selectFailure.error = null;
+    store.set("IMAGE_BASE_CREDITS_1024", {
+      key: "IMAGE_BASE_CREDITS_1024",
+      value: 3,
+    });
+    vi.advanceTimersByTime(5_001);
+    await expect(
+      getRuntimeSettingNumber("IMAGE_BASE_CREDITS_1024", 7)
+    ).resolves.toBe(3);
+    expect(dbMock.select).toHaveBeenCalledTimes(3);
+  });
+
+  it("已有正常缓存时注入故障:10s TTL 内仍返回真值、不触库", async () => {
+    store.set("APP_TIME_ZONE", {
+      key: "APP_TIME_ZONE",
+      value: "Asia/Shanghai",
+    });
+    await expect(getRuntimeSettingString("APP_TIME_ZONE")).resolves.toBe(
+      "Asia/Shanghai"
+    );
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+
+    // 正常缓存 TTL(10s)到期前 1ms:命中缓存,故障不影响已缓存真值。
+    selectFailure.error = new Error("db down");
+    vi.advanceTimersByTime(9_999);
+    await expect(getRuntimeSettingString("APP_TIME_ZONE")).resolves.toBe(
+      "Asia/Shanghai"
+    );
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
   });
 });
