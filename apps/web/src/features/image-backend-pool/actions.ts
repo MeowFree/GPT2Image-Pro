@@ -31,6 +31,7 @@ import {
 import {
   bulkUpdateImageBackendAccounts,
   countAvailableWebAccountsInGroup,
+  deleteAllErrorImageBackendAccounts,
   deleteImageBackendGroup,
   deleteImageBackendMembers,
   deleteSub2ApiAutoSyncTask,
@@ -119,6 +120,12 @@ const adminAccountListSchema = z.object({
     .enum(["all", "active", "limited", "error", "disabled", "cooling"])
     .default("all"),
   search: z.string().trim().max(256).default(""),
+});
+
+const adminAccountErrorDeleteSchema = adminAccountListSchema.pick({
+  groupId: true,
+  implementationMode: true,
+  search: true,
 });
 
 const withImageBackendPoolAdminAction = (name: string) =>
@@ -413,6 +420,17 @@ export const bulkDeleteImageBackendAccountsAction =
       const result = await deleteImageBackendMembers({
         accountIds: parsedInput.accountIds,
       });
+      return {
+        success: true,
+        deletedCount: result.deletedAccountCount,
+      };
+    });
+
+export const deleteAllErrorImageBackendAccountsAction =
+  withImageBackendPoolAdminAction("deleteAllErrorAccounts")
+    .schema(adminAccountErrorDeleteSchema)
+    .action(async ({ parsedInput }) => {
+      const result = await deleteAllErrorImageBackendAccounts(parsedInput);
       return {
         success: true,
         deletedCount: result.deletedAccountCount,

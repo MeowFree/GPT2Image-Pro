@@ -73,6 +73,7 @@ import {
   bulkDeleteImageBackendAccountsAction,
   bulkUpdateImageBackendAccountsAction,
   deleteAdobeAccountAction,
+  deleteAllErrorImageBackendAccountsAction,
   deleteImageBackendGroupAction,
   deleteImageBackendMemberAction,
   deleteSub2ApiAutoSyncTaskAction,
@@ -989,13 +990,6 @@ export function ImageBackendPoolAdminPanel({
         .map((account) => account.id),
     [accounts]
   );
-  const errorAccountIds = useMemo(
-    () =>
-      accounts
-        .filter((account) => account.status === "error")
-        .map((account) => account.id),
-    [accounts]
-  );
   const allAccountsSelected =
     pagedAccountIds.length > 0 &&
     pagedAccountIds.every((id) => selectedAccountIdSet.has(id));
@@ -1442,6 +1436,19 @@ export function ImageBackendPoolAdminPanel({
       onError: ({ error }) =>
         toast.error(error.serverError || "批量删除账号失败"),
     });
+
+  const {
+    execute: deleteAllErrorAccounts,
+    isPending: isDeletingAllErrorAccounts,
+  } = useAction(deleteAllErrorImageBackendAccountsAction, {
+    onSuccess: ({ data }) => {
+      toast.success(`已移除 ${data?.deletedCount || 0} 个错误账号`);
+      setSelectedAccountIds([]);
+      reload();
+    },
+    onError: ({ error }) =>
+      toast.error(error.serverError || "移除错误账号失败"),
+  });
 
   const { executeAsync: importManualRefreshTokensBatch } = useAction(
     importImageBackendAccountsFromRefreshTokensAction
@@ -2172,18 +2179,18 @@ export function ImageBackendPoolAdminPanel({
   };
 
   const runDeleteErrorAccounts = () => {
-    if (!errorAccountIds.length) {
-      toast.error("当前页没有错误账号");
-      return;
-    }
     if (
       !window.confirm(
-        `确定删除当前页的 ${errorAccountIds.length} 个错误账号？这只会删除本站后端池记录，不会删除 Sub2API 源库账号。`
+        "确定移除当前分组、接口和搜索条件下的所有错误账号（包括其他分页）？这只会删除本站后端池记录，不会删除 Sub2API 源库账号。"
       )
     ) {
       return;
     }
-    bulkDeleteAccounts({ accountIds: errorAccountIds });
+    deleteAllErrorAccounts({
+      groupId: bulkAccountForm.selectionGroupId,
+      implementationMode: bulkAccountForm.selectionMode,
+      search: deferredSearch.trim(),
+    });
   };
 
   const runDeleteSub2ApiSyncTask = (task: Sub2ApiAutoSyncTask) => {
@@ -3139,16 +3146,14 @@ export function ImageBackendPoolAdminPanel({
                         size="sm"
                         className="text-destructive"
                         onClick={runDeleteErrorAccounts}
-                        disabled={
-                          errorAccountIds.length === 0 || isBulkDeletingAccounts
-                        }
+                        disabled={isDeletingAllErrorAccounts}
                       >
-                        {isBulkDeletingAccounts ? (
+                        {isDeletingAllErrorAccounts ? (
                           <Loader2 className="mr-1 h-4 w-4 animate-spin" />
                         ) : (
                           <Trash2 className="mr-1 h-4 w-4" />
                         )}
-                        移除当前页错误账号
+                        移除错误账号（所有）
                       </Button>
                     )}
                     {!readOnly && (

@@ -7722,6 +7722,26 @@ function adminAccountFilterConditions(
   return conditions.filter((condition) => condition !== undefined);
 }
 
+export async function deleteAllErrorImageBackendAccounts(
+  options: Pick<
+    AdminImageBackendAccountListOptions,
+    "groupId" | "implementationMode" | "search"
+  > = {}
+) {
+  const conditions = adminAccountFilterConditions({
+    ...options,
+    status: "all",
+  });
+  conditions.push(eq(imageBackendAccount.status, "error"));
+
+  const deleted = await db
+    .delete(imageBackendAccount)
+    .where(and(...conditions))
+    .returning({ id: imageBackendAccount.id });
+
+  return { deletedAccountCount: deleted.length };
+}
+
 export async function listAdminImageBackendAccounts(
   options: AdminImageBackendAccountListOptions = {}
 ) {
