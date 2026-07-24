@@ -39,6 +39,7 @@ import {
   validateImageFile,
 } from "@/features/image-generation/request-utils";
 import {
+  alignImageSizeToStep,
   DEFAULT_IMAGE_SIZE,
   IMAGE_PROMPT_MAX_CHARACTERS,
   IMAGE_PROMPT_TOO_LONG_MESSAGE,
@@ -969,7 +970,9 @@ export const postExternalAgentImages = withApiLogging(
       "agent_force_max_rounds"
     );
 
-    const size = getText(formData, "size") || DEFAULT_IMAGE_SIZE;
+    const size = alignImageSizeToStep(
+      getText(formData, "size") || DEFAULT_IMAGE_SIZE
+    );
     const sizeCheck = validateImageSize(size);
     if (!sizeCheck.valid) return openAIImageError(sizeCheck.message);
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  alignImageSizeToStep,
   DEFAULT_IMAGE_MODEL,
   fitImageDimensionsToValidSize,
   getImageBaseCredits,
@@ -249,6 +250,20 @@ describe("parseImageSize", () => {
     expect(parseImageSize("auto")).toBeNull();
     expect(parseImageSize("1024")).toBeNull();
     expect(parseImageSize("12x34x56")).toBeNull();
+  });
+});
+
+describe("alignImageSizeToStep", () => {
+  it("rounds requested output dimensions to the nearest multiple of 16", () => {
+    expect(alignImageSizeToStep("1025x1025")).toBe("1024x1024");
+    expect(alignImageSizeToStep("1031x769")).toBe("1024x768");
+    expect(alignImageSizeToStep("1032x776")).toBe("1040x784");
+  });
+
+  it("preserves aligned, auto, and malformed values for normal validation", () => {
+    expect(alignImageSizeToStep("1536x1024")).toBe("1536x1024");
+    expect(alignImageSizeToStep(" AUTO ")).toBe("auto");
+    expect(alignImageSizeToStep("not-a-size")).toBe("not-a-size");
   });
 });
 

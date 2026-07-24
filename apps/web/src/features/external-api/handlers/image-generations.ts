@@ -38,6 +38,7 @@ import {
   normalizeOutputFormat,
 } from "@/features/image-generation/output-format";
 import {
+  alignImageSizeToStep,
   DEFAULT_IMAGE_SIZE,
   getImageModel,
   IMAGE_PROMPT_MAX_CHARACTERS,
@@ -65,6 +66,7 @@ const externalImageGenerationSchema = z.object({
   n: z.number().int().min(1).max(MAX_PLAN_BATCH_COUNT).optional(),
   size: z
     .string()
+    .transform(alignImageSizeToStep)
     .optional()
     .refine((value) => !value || validateImageSize(value).valid, {
       message: "Invalid image size",

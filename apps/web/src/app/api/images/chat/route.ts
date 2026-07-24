@@ -30,6 +30,7 @@ import {
   validateImageFile,
 } from "@/features/image-generation/request-utils";
 import {
+  alignImageSizeToStep,
   DEFAULT_IMAGE_SIZE,
   IMAGE_PROMPT_MAX_CHARACTERS,
   IMAGE_PROMPT_TOO_LONG_MESSAGE,
@@ -812,7 +813,9 @@ export const POST = withApiLogging(async (request: NextRequest) => {
   const preferredBackendMember = getPreferredBackendMember(history);
   const stickyPreviousResponseId = getLatestResponsesPreviousResponseId(history);
 
-  let size = getText(formData, "size") || DEFAULT_IMAGE_SIZE;
+  let size = alignImageSizeToStep(
+    getText(formData, "size") || DEFAULT_IMAGE_SIZE
+  );
   const sizeCheck = validateImageSize(size);
   if (!sizeCheck.valid) {
     if (sourceFiles.length > 0) {

@@ -33,6 +33,7 @@ import {
 } from "@/features/image-generation/output-format";
 import { uploadTemporaryImageUrls } from "@/features/image-generation/request-utils";
 import {
+  alignImageSizeToStep,
   DEFAULT_IMAGE_SIZE,
   getImageModel,
   isImageModel,
@@ -81,6 +82,7 @@ const chatCompletionSchema = z
     n: z.number().int().min(1).max(MAX_PLAN_BATCH_COUNT).optional(),
     size: z
       .string()
+      .transform(alignImageSizeToStep)
       .optional()
       .refine((value) => !value || validateImageSize(value).valid, {
         message: "Invalid image size",

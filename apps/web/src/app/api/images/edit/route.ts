@@ -29,6 +29,7 @@ import {
   validateImageFile,
 } from "@/features/image-generation/request-utils";
 import {
+  alignImageSizeToStep,
   IMAGE_PROMPT_MAX_CHARACTERS,
   IMAGE_PROMPT_TOO_LONG_MESSAGE,
   parseImageSize,
@@ -203,7 +204,8 @@ export const POST = withApiLogging(async (request: NextRequest) => {
     hasPromptImageReference(prompt) ||
     hasPromptImageReference(apiPrompt);
 
-  const size = getText(formData, "size") || undefined;
+  const requestedSize = getText(formData, "size") || undefined;
+  const size = requestedSize ? alignImageSizeToStep(requestedSize) : undefined;
   if (size) {
     const sizeCheck = validateImageSize(size);
     if (!sizeCheck.valid) {

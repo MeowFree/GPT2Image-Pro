@@ -34,6 +34,7 @@ import {
   normalizeOutputFormat,
 } from "@/features/image-generation/output-format";
 import {
+  alignImageSizeToStep,
   DEFAULT_IMAGE_SIZE,
   getImageModel,
   validateImageSize,
@@ -95,6 +96,7 @@ const responseSchema = z.object({
   store: z.boolean().optional(),
   size: z
     .string()
+    .transform(alignImageSizeToStep)
     .optional()
     .refine((value) => !value || validateImageSize(value).valid, {
       message: "Invalid image size",

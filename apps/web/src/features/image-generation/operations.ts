@@ -58,6 +58,7 @@ import { buildInputImagesMetadata } from "./generation-metadata";
 import { getRuntimeImageBaseCreditPricing } from "./pricing-settings";
 import { withImageGenerationQueue } from "./queue";
 import {
+  alignImageSizeToStep,
   DEFAULT_IMAGE_SIZE,
   getImageCreditCostBreakdown,
   getImageModel,
@@ -70,6 +71,7 @@ import {
   normalizeImageSize,
   roundCreditAmount,
   roundUpCreditAmount,
+  validateImageSize,
 } from "./resolution";
 import { restoreImage } from "./image-restoration";
 import { calibrateImageResolution } from "./resolution-calibration";
@@ -1140,7 +1142,11 @@ export async function runImageGenerationForUser(
   callbacks?: ImageGenerationCallbacks
 ): Promise<ImageGenerationOperationResult> {
   const generationId = input.generationId || nanoid();
-  const size = input.size || DEFAULT_IMAGE_SIZE;
+  const size = alignImageSizeToStep(input.size || DEFAULT_IMAGE_SIZE);
+  const sizeCheck = validateImageSize(size);
+  if (!sizeCheck.valid) {
+    return { error: sizeCheck.message, generationId };
+  }
   const requiresResponsesBackend = Boolean(
     input.requiresResponsesBackend || (input.mode === "chat" && input.agentMode)
   );
@@ -2062,7 +2068,7 @@ async function runQueuedImageGenerationForUser({
             signal: commonSignal,
             images: input.images,
             mask: input.mask,
-            size: input.size,
+            size,
             model: imageModel,
             gptModel,
             thinking: input.thinking,

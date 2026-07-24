@@ -12,6 +12,7 @@ import { and, eq, inArray, ne, notInArray } from "drizzle-orm";
 import { z } from "zod";
 import { runImageGenerationForUser } from "./operations";
 import {
+  alignImageSizeToStep,
   DEFAULT_IMAGE_SIZE,
   IMAGE_PROMPT_MAX_CHARACTERS,
   IMAGE_PROMPT_TOO_LONG_MESSAGE,
@@ -25,6 +26,7 @@ const generateImageSchema = z.object({
     .max(IMAGE_PROMPT_MAX_CHARACTERS, IMAGE_PROMPT_TOO_LONG_MESSAGE),
   size: z
     .string()
+    .transform(alignImageSizeToStep)
     .optional()
     .refine((value) => !value || validateImageSize(value).valid, {
       message: "Invalid image size",

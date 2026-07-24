@@ -299,6 +299,19 @@ function roundToImageStep(value: number) {
   return Math.round(value / IMAGE_DIMENSION_STEP) * IMAGE_DIMENSION_STEP;
 }
 
+export function alignImageSizeToStep(size: string) {
+  const normalized = size.trim().toLowerCase();
+  if (normalized === AUTO_IMAGE_SIZE) return AUTO_IMAGE_SIZE;
+
+  const dimensions = parseImageSize(normalized);
+  if (!dimensions) return normalized;
+
+  return normalizeImageSize(
+    roundToImageStep(dimensions.width),
+    roundToImageStep(dimensions.height)
+  );
+}
+
 function ceilToImageStep(value: number) {
   return Math.ceil(value / IMAGE_DIMENSION_STEP) * IMAGE_DIMENSION_STEP;
 }
