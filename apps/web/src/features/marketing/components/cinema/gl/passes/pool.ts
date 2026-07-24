@@ -90,8 +90,19 @@ void main() {
   float parity = float(index - (index / 2) * 2);
   float cellWaterY = uWaterY + parity * 2.0 * STAGGER;
   float d = sy - cellWaterY; // 入水深度(视口高分数)
-  vec3 col = vec3(0.05, 0.05, 0.048); // 墨池本色
-  float alpha = 0.0;
+  // 连续墨池:水面是整片暗水(缝/低语栏位也在水下),格内才混倒影;
+  // fade 随入水深度缓降(pow 1.2 比 1.6 留更多近水线层次)
+  float dWater = sy - uWaterY;
+  float fade = pow(max(0.0, 1.0 - dWater / (STRIP_H * 0.42)), 1.2);
+  vec3 col = vec3(0.07, 0.07, 0.066); // 墨池本色
+  float alpha = fade * 0.55;
+  // 焦散铺满整片水面(格内格外同享):水下光网;缩放系数 0.08,
+  // 且必须钳幅——pow 峰值无界会把整片水面烧白(走查实测)
+  if (uTier >= 2.0) {
+    float ca = min(caustic(vec2(trackX * 4.0, dWater * 4.0), uPhase * 2.0), 1.2);
+    col += vec3(ca * 0.08) * fade;
+    alpha = max(alpha, ca * 0.1 * fade);
+  }
   // 格数 16 硬编码:与 WALL_CELL_SRCS.length(图集 4x4)耦合
   if (d > 0.0 && index >= 0 && index < 16) {
     int wh = 0;
@@ -124,16 +135,10 @@ void main() {
       }
       vec2 atlasUv = (vec2(float(index - (index / 4) * 4), float(index / 4)) + cellUv) * 0.25;
       vec3 refl = texture(uAtlas, atlasUv).rgb;
-      float fade = pow(max(0.0, 1.0 - d / (STRIP_H * 0.42)), 1.6);
-      col = mix(col, refl * 0.62, fade * 0.55);
-      alpha = fade * 0.5;
-      // 焦散:水下光网(单色,缩放系数 0.08——亮网观感来自 pow 峰值,
-      // 非强度上界;低档位不绘)
-      if (uTier >= 2.0) {
-        float ca = caustic(vec2(trackX * 4.0, d * 4.0), uPhase * 2.0);
-        col += vec3(ca * 0.08) * fade;
-        alpha = max(alpha, ca * 0.1 * fade);
-      }
+      // 墨池是暗水:倒影混入后整体压暗,暗池托画(走查实测:alpha 0.5
+      // 的浅灰洗在纸底上不可见,需暗色水体与更高不透明度)
+      col = mix(col, refl * 0.72, fade * 0.75);
+      alpha = max(alpha, fade * 0.85);
     }
   }
   // uAlpha 整体渐显:spread 展开期倒影随 vis 淡入,不作硬切
