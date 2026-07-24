@@ -5,14 +5,6 @@ import { isAdminRole } from "@repo/shared/auth/roles";
 import { getServerSession } from "@repo/shared/auth/server";
 import { SiteJsonLd, SoftwareAppJsonLd } from "@/components/seo/json-ld";
 import { siteConfig } from "@repo/shared/config";
-import { getRuntimePaymentConfig } from "@repo/shared/config/payment-runtime";
-import { CREDIT_CONFIG_DEFAULTS } from "@repo/shared/credits/config";
-import { getRuntimeCreditPackages } from "@repo/shared/credits/packages";
-import {
-  getRuntimeSettingBoolean,
-  getRuntimeSettingNumber,
-} from "@repo/shared/system-settings";
-import { getPlanCapabilityMatrix } from "@repo/shared/subscription/services/plan-capabilities";
 import {
   FAQSection,
   PricingSection,
@@ -25,9 +17,12 @@ import {
   FinaleStage,
   InkThread,
 } from "@/features/marketing/components/cinema";
-import { getRuntimeImageBaseCreditPricing } from "@/features/image-generation/pricing-settings";
-import { getRecentGenerationSlaStats } from "@/features/image-generation/sla";
+import { getMarketingHomeData } from "@/features/marketing/home-data";
 
+// 数据获取分层:7 项非会话数据走 getMarketingHomeData()(1h 进程内缓存,
+// 单飞去重,刷新失败用陈旧值兜底,管理端写设置级联失效立即生效);
+// 会话/角色仍按请求读取(匿名访客无 cookie 不触库,查询失败按匿名处理)。
+// force-dynamic 仅因会话依赖保留。
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -88,7 +83,10 @@ export async function generateMetadata({
 }
 
 async function HomeRuntimeSections({ locale }: { locale: string }) {
-  const [
+  // 非会话数据走统一缓存(getMarketingHomeData,1h TTL + 单飞 +
+  // 陈旧兜底);会话/角色按请求读取——匿名访客无 cookie 不触库,
+  // 查询失败按匿名处理(session=null, role="user"),营销页不可 500。
+  const {
     runtimePaymentConfig,
     capabilityMatrix,
     creditPackages,
@@ -96,30 +94,26 @@ async function HomeRuntimeSections({ locale }: { locale: string }) {
     imageBasePricing,
     slaEnabled,
     slaStats,
-    session,
-  ] = await Promise.all([
-    getRuntimePaymentConfig(),
-    getPlanCapabilityMatrix(),
-    getRuntimeCreditPackages(),
-    getRuntimeSettingNumber(
-      "CREDITS_EXPIRY_DAYS",
-      CREDIT_CONFIG_DEFAULTS.creditsExpiryDays,
-      { nonNegative: true }
-    ),
-    getRuntimeImageBaseCreditPricing(),
-    getRuntimeSettingBoolean("MARKETING_SLA_STATUS_ENABLED", true),
-    getRecentGenerationSlaStats(1000),
-    getServerSession(),
-  ]);
-  const role = session?.user?.id
-    ? await getUserRoleById(session.user.id)
-    : "user";
+  } = await getMarketingHomeData();
+  let session: Awaited<ReturnType<typeof getServerSession>> = null;
+  let role = "user";
+  try {
+    session = await getServerSession();
+    if (session?.user?.id) {
+      role = await getUserRoleById(session.user.id);
+    }
+  } catch (err) {
+    console.error("[marketing-home] 会话/角色查询失败,按匿名访客处理", err);
+    session = null;
+    role = "user";
+  }
   const canToggleSlaStatus = isAdminRole(role);
 
   return (
     <>
-      {/* 静默谷一:SLA 素面排版 + 页边墨线章节刻度 */}
-      {(slaEnabled || canToggleSlaStatus) && (
+      {/* 静默谷一:SLA 素面排版 + 页边墨线章节刻度;
+          slaStats 为 null(统计查询失败兜底)时隐藏整个区块 */}
+      {(slaEnabled || canToggleSlaStatus) && slaStats && (
         <section className="relative">
           {/* labelTop 78vh:左栏大数字占视口中带,刻度落下部空白避让 */}
           <InkThread numeral="V" step="export" side="left" labelTop="78vh" />
