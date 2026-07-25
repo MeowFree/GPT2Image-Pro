@@ -24,7 +24,7 @@
 
 - [纯中转 API Key](plan/2026-05-30-relay-only-api-key.md) — relay_only key：不记录/不存储/仍扣费仍审核；附带修复 consumeCredits 幂等（dev: 7c6da21→e957f48）
 - **首页影片化 v1.2（2026-07-23/24，已落地 main）**：自研水墨 NPR 管线（gl/ink 共享 GLSL 库）+ 三大奇观（dive 入画千里江山/展墙墨池真倒影焦散/macro 浮雕迎光）+ 光标抚墨三路分发 + 镜头签名 + 单项熔断（最贵 pass 先行牺牲，breakerListener→context 通知 DOM 兜底恢复）；落地记录与 11 条实施勘误见 [设计稿十一节](plan/2026-07-23-homepage-cinema-v12-design.md)
-- **首页数据统一缓存（2026-07-24，main）**：营销首页 7 项非会话数据聚合为 1h 进程内单飞缓存（`features/marketing/home-data.ts`），DB 命中降到每进程每小时约一次；settings 查询失败按空设置兜底（负缓存 5s，DB 抖动不整站 500）；管理端写设置经 `setSettingsCacheInvalidator` 级联失效立即生效；SLA 统计失败隐藏区块、session 失败按匿名。**注意**：负缓存 5s 窗口内计费读路径落默认值（下单/扣费写路径仍 fail-closed），多副本部署时其余副本首页配置最长 1h 滞后（单容器无影响）。
+- **首页数据分层缓存（2026-07-24，2026-07-25 更新，main）**：营销首页稳定配置使用 1h 进程内单飞缓存，最近 1000 条已完结生成的 SLA 使用独立 120s 单飞缓存（`features/marketing/home-data.ts`）；settings 查询失败按空设置兜底（负缓存 5s，DB 抖动不整站 500）；管理端写设置经 `setSettingsCacheInvalidator` 级联失效立即生效；SLA 统计失败隐藏区块并负缓存 120s，session 失败按匿名。**注意**：负缓存 5s 窗口内计费读路径落默认值（下单/扣费写路径仍 fail-closed），多副本部署时其余副本首页配置最长 1h 滞后，SLA 最长 120s 滞后（单容器无影响）。
 - **Issue #1/#15/#16 修复**（dev: a2dd4dc/10d0bc8/c8e9118，详见 [TODO.md](TODO.md)）— #1 管理员建号/改密改邮箱(superAdminAction+better-auth hashPassword)；#15 瀑布流 tier/参数/3警告对齐原项目；#16 数量控件改数字输入+滚轮、上限与服务端 count 校验统一挂 `imageGenerationConcurrency`（**语义变化**：单次张数上限不再用 maxBatchCount）。待 UI 实测。
 
 ## 工程 / CI

@@ -19,8 +19,8 @@ import {
 } from "@/features/marketing/components/cinema";
 import { getMarketingHomeData } from "@/features/marketing/home-data";
 
-// 数据获取分层:7 项非会话数据走 getMarketingHomeData()(1h 进程内缓存,
-// 单飞去重,刷新失败用陈旧值兜底,管理端写设置级联失效立即生效);
+// 数据获取分层:非会话配置走 1h 进程内缓存,SLA 走 120s 缓存
+// (均单飞去重;配置失败用陈旧值,SLA 失败隐藏 120s;设置写入立即失效);
 // 会话/角色仍按请求读取(匿名访客无 cookie 不触库,查询失败按匿名处理)。
 // force-dynamic 仅因会话依赖保留。
 export const dynamic = "force-dynamic";
@@ -83,8 +83,8 @@ export async function generateMetadata({
 }
 
 async function HomeRuntimeSections({ locale }: { locale: string }) {
-  // 非会话数据走统一缓存(getMarketingHomeData,1h TTL + 单飞 +
-  // 陈旧兜底);会话/角色按请求读取——匿名访客无 cookie 不触库,
+  // 非会话配置走 1h 缓存,SLA 走 120s 缓存(均单飞,分别陈旧/隐藏兜底);
+  // 会话/角色按请求读取——匿名访客无 cookie 不触库,
   // 查询失败按匿名处理(session=null, role="user"),营销页不可 500。
   const {
     runtimePaymentConfig,

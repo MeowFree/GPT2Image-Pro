@@ -1,8 +1,8 @@
 /**
- * 营销首页统一数据缓存:7 项非会话数据聚合为 1h 进程内缓存
- * (单飞去重,失败用陈旧值兜底)。WHY:首页几乎全是匿名新用户,
- * 每请求逐项查库会造成无谓压力;定时统一刷新把 DB 命中降到
- * 每进程每小时约一次。会话/角色仍在 page.tsx 按请求读取
+ * 营销首页非会话数据分层缓存:配置数据使用 1h 进程内缓存,SLA
+ * 使用 120s 进程内缓存(均单飞去重;配置失败用陈旧值,SLA 失败
+ * 隐藏并负缓存)。WHY:首页几乎全是匿名新用户,定价等稳定配置
+ * 无需逐请求查库;SLA 则需要准实时反映结果。会话/角色仍按请求读取
  * (匿名访客无 cookie 不触库;失败按匿名处理,营销页不可 500)。
  * 管理端写设置后经 setSettingsCacheInvalidator 级联 reset(),
  * 配置改动立即生效,不必等 TTL。
@@ -23,8 +23,10 @@ import { getRecentGenerationSlaStats } from "@/features/image-generation/sla";
 
 import { createSingleFlightCache } from "./home-data-cache";
 
-/** 1h:营销数据允许小时级滞后;管理端写设置经级联失效立即生效 */
-const CACHE_TTL_MS = 3_600_000;
+/** 1h:定价/套餐等营销配置允许小时级滞后;管理端写设置会级联失效 */
+const MARKETING_DATA_CACHE_TTL_MS = 3_600_000;
+/** 120s:SLA 保持准实时,口径仍为最近 1000 条已完结生成 */
+const SLA_CACHE_TTL_MS = 120_000;
 
 export interface MarketingHomeData {
   runtimePaymentConfig: Awaited<ReturnType<typeof getRuntimePaymentConfig>>;
@@ -39,7 +41,9 @@ export interface MarketingHomeData {
   slaStats: Awaited<ReturnType<typeof getRecentGenerationSlaStats>> | null;
 }
 
-async function load(): Promise<MarketingHomeData> {
+type CachedMarketingHomeData = Omit<MarketingHomeData, "slaStats">;
+
+async function loadMarketingData(): Promise<CachedMarketingHomeData> {
   const [
     runtimePaymentConfig,
     capabilityMatrix,
@@ -47,7 +51,6 @@ async function load(): Promise<MarketingHomeData> {
     creditPackageExpiryDays,
     imageBasePricing,
     slaEnabled,
-    slaStats,
   ] = await Promise.all([
     getRuntimePaymentConfig(),
     getPlanCapabilityMatrix(),
@@ -59,12 +62,6 @@ async function load(): Promise<MarketingHomeData> {
     ),
     getRuntimeImageBaseCreditPricing(),
     getRuntimeSettingBoolean("MARKETING_SLA_STATUS_ENABLED", true),
-    // WHY: SLA 样本要扫 generation 表(千行级),是 7 项里最重也最易
-    // 抖动的查询;单独 catch 返 null(页面隐藏 SLA 区块),不拖垮整页。
-    getRecentGenerationSlaStats(1000).catch((err: unknown) => {
-      console.error("[home-data] SLA 统计查询失败,SLA 区块按隐藏处理", err);
-      return null;
-    }),
   ]);
   return {
     runtimePaymentConfig,
@@ -73,16 +70,31 @@ async function load(): Promise<MarketingHomeData> {
     creditPackageExpiryDays,
     imageBasePricing,
     slaEnabled,
-    slaStats,
   };
 }
 
-const cache = createSingleFlightCache<MarketingHomeData>(load, CACHE_TTL_MS);
+const marketingDataCache = createSingleFlightCache<CachedMarketingHomeData>(
+  loadMarketingData,
+  MARKETING_DATA_CACHE_TTL_MS
+);
+const slaCache = createSingleFlightCache(
+  () =>
+    getRecentGenerationSlaStats(1000).catch((err: unknown) => {
+      // 查询失败也负缓存 120s,避免数据库抖动时由首页流量形成重试风暴。
+      console.error("[home-data] SLA 统计查询失败,SLA 区块按隐藏处理", err);
+      return null;
+    }),
+  SLA_CACHE_TTL_MS
+);
 
 // 级联失效:管理端任何写设置路径(shared setSystemSettings)都会触发
 // clearSystemSettingsCache -> 本回调,配置改动立即生效,不必等 TTL
-setSettingsCacheInvalidator(() => cache.reset());
+setSettingsCacheInvalidator(() => marketingDataCache.reset());
 
 export async function getMarketingHomeData(): Promise<MarketingHomeData> {
-  return cache.get();
+  const [marketingData, slaStats] = await Promise.all([
+    marketingDataCache.get(),
+    slaCache.get(),
+  ]);
+  return { ...marketingData, slaStats };
 }
