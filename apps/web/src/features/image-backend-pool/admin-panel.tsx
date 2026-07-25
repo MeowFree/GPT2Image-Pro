@@ -620,6 +620,42 @@ function backendStatusBadgeClass(status: string) {
   return "";
 }
 
+function ApiOperationalStatusBadge({ api }: { api: Api }) {
+  const cooling = api.isEnabled && isCoolingDown(api.cooldownUntil);
+  const effectiveStatus = !api.isEnabled
+    ? "disabled"
+    : cooling
+      ? "limited"
+      : api.status;
+  const label = !api.isEnabled
+    ? "已停用"
+    : cooling
+      ? "冷却中"
+      : api.status === "active"
+        ? "可用"
+        : api.status === "limited"
+          ? "受限"
+          : api.status === "error"
+            ? "错误"
+            : api.status;
+
+  return (
+    <Badge
+      variant={api.isEnabled ? "outline" : "secondary"}
+      className={backendStatusBadgeClass(effectiveStatus)}
+    >
+      {api.isEnabled &&
+        (effectiveStatus === "active" || effectiveStatus === "limited") && (
+          <span
+            aria-hidden="true"
+            className="h-1.5 w-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none"
+          />
+        )}
+      {label}
+    </Badge>
+  );
+}
+
 function formatCooldown(value: Date | string | null, timeZone?: string) {
   if (!value) return "无";
   const date = new Date(value);
@@ -4070,36 +4106,8 @@ export function ImageBackendPoolAdminPanel({
                           ? "Responses"
                           : "原生"}
                       </Badge>
-                      <Badge
-                        variant="outline"
-                        className={backendStatusBadgeClass(api.status)}
-                      >
-                        {api.status === "active" && (
-                          // 在线状态点:CSS 呼吸,尊重减动效偏好。
-                          <span
-                            aria-hidden="true"
-                            className="h-1.5 w-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none"
-                          />
-                        )}
-                        {api.status}
-                      </Badge>
-                      {isCoolingDown(api.cooldownUntil) && (
-                        <Badge
-                          variant="outline"
-                          className="border-warning/40 text-warning"
-                        >
-                          {/* 冷却状态点:CSS 呼吸,尊重减动效偏好。 */}
-                          <span
-                            aria-hidden="true"
-                            className="h-1.5 w-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none"
-                          />
-                          冷却中
-                        </Badge>
-                      )}
-                      {!api.isEnabled && (
-                        <Badge variant="secondary">停用</Badge>
-                      )}
-                      {api.alwaysActive && (
+                      <ApiOperationalStatusBadge api={api} />
+                      {api.isEnabled && api.alwaysActive && (
                         <Badge variant="outline">遇错常驻</Badge>
                       )}
                     </div>
