@@ -25,6 +25,7 @@ export type SettingKey =
   | "MARKETING_SLA_STATUS_ENABLED"
   | "EXTERNAL_API_CORS_ENABLED"
   | "SELF_USE_MODE_ENABLED"
+  | "REGISTRATION_FIXED_VERIFICATION_CODE"
   | "BETTER_AUTH_SECRET"
   | "BETTER_AUTH_URL"
   | "GOOGLE_CLIENT_ID"
@@ -450,6 +451,15 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     category: "auth",
     valueType: "boolean",
     defaultValue: true,
+  },
+  {
+    key: "REGISTRATION_FIXED_VERIFICATION_CODE",
+    label: "固定注册邀请码",
+    description:
+      "配置后，邮箱密码注册改用同一个服务端邀请码，不发送邮件验证码。建议仅用于小范围受邀开放并定期轮换。",
+    category: "auth",
+    valueType: "string",
+    secret: true,
   },
   {
     key: "BETTER_AUTH_SECRET",

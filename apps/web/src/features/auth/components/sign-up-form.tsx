@@ -72,7 +72,9 @@ function isEmailDomainError(error: unknown) {
   const code = getAuthErrorCode(error);
   const message = getErrorMessage(error).toLowerCase();
 
-  return code === "EMAIL_DOMAIN_NOT_ALLOWED" || message.includes("email domain");
+  return (
+    code === "EMAIL_DOMAIN_NOT_ALLOWED" || message.includes("email domain")
+  );
 }
 
 function isVerificationCodeError(error: unknown) {
@@ -94,9 +96,13 @@ function isVerificationCodeError(error: unknown) {
  */
 interface SignUpFormProps {
   googleAuthEnabled?: boolean;
+  fixedVerificationCodeEnabled?: boolean;
 }
 
-export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
+export function SignUpForm({
+  googleAuthEnabled = false,
+  fixedVerificationCodeEnabled = false,
+}: SignUpFormProps) {
   const locale = useLocale();
   const t = useTranslations("Auth.signUp");
   const tCommon = useTranslations("Auth.common");
@@ -262,8 +268,8 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
             : isVerificationCodeError(result.error)
               ? t("errors.invalidVerificationCode")
               : isEmailAlreadyRegistered(result.error)
-            ? t("errors.emailAlreadyRegistered")
-            : t("errors.emailInUse")
+                ? t("errors.emailAlreadyRegistered")
+                : t("errors.emailInUse")
         );
         setIsLoading(false);
         return;
@@ -416,39 +422,56 @@ export function SignUpForm({ googleAuthEnabled = false }: SignUpFormProps) {
         {/* 验证码输入 */}
         <div className="space-y-2">
           <Label htmlFor="verificationCode">
-            {t("verificationCode.label")}
+            {fixedVerificationCodeEnabled
+              ? t("inviteCode.label")
+              : t("verificationCode.label")}
           </Label>
           <div className="flex gap-2">
             <Input
               id="verificationCode"
-              type="text"
-              inputMode="numeric"
-              maxLength={6}
-              placeholder={t("verificationCode.placeholder")}
-              value={verificationCode}
-              onChange={(e) =>
-                setVerificationCode(e.target.value.replace(/\D/g, ""))
+              type={fixedVerificationCodeEnabled ? "password" : "text"}
+              inputMode={fixedVerificationCodeEnabled ? "text" : "numeric"}
+              maxLength={fixedVerificationCodeEnabled ? 128 : 6}
+              placeholder={
+                fixedVerificationCodeEnabled
+                  ? t("inviteCode.placeholder")
+                  : t("verificationCode.placeholder")
               }
+              value={verificationCode}
+              onChange={(e) => {
+                const value = e.target.value;
+                setVerificationCode(
+                  fixedVerificationCodeEnabled
+                    ? value
+                    : value.replace(/\D/g, "")
+                );
+              }}
               disabled={isLoading}
-              autoComplete="one-time-code"
+              autoComplete={
+                fixedVerificationCodeEnabled ? "off" : "one-time-code"
+              }
               className="flex-1"
             />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleSendCode}
-              disabled={isLoading || isSendingCode || codeCooldown > 0}
-              className="shrink-0"
-            >
-              {codeCooldown > 0
-                ? t("verificationCode.cooldown", { seconds: codeCooldown })
-                : isSendingCode
-                  ? t("verificationCode.sending")
-                  : t("verificationCode.send")}
-            </Button>
+            {fixedVerificationCodeEnabled ? null : (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleSendCode}
+                disabled={isLoading || isSendingCode || codeCooldown > 0}
+                className="shrink-0"
+              >
+                {codeCooldown > 0
+                  ? t("verificationCode.cooldown", { seconds: codeCooldown })
+                  : isSendingCode
+                    ? t("verificationCode.sending")
+                    : t("verificationCode.send")}
+              </Button>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
-            {t("verificationCode.hint")}
+            {fixedVerificationCodeEnabled
+              ? t("inviteCode.hint")
+              : t("verificationCode.hint")}
           </p>
         </div>
 

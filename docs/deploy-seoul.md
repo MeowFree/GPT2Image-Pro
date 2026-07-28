@@ -39,11 +39,18 @@ NEXT_PUBLIC_GENERATIONS_BUCKET_NAME=gpt2image-seoul-generations
 NEXT_PUBLIC_AVATARS_BUCKET_NAME=gpt2image-seoul-avatars
 
 SELF_USE_MODE_ENABLED=true
+REGISTRATION_FIXED_VERIFICATION_CODE=
 PAYMENT_PROVIDER=none
 NEXT_PUBLIC_PAYMENT_PROVIDER=none
 CONTENT_MODERATION_ENABLED=false
 IMAGE_GENERATION_GLOBAL_CONCURRENCY=2
 ```
+
+需要小范围开放注册且暂不配置邮件服务时，将
+`SELF_USE_MODE_ENABLED` 设为 `false`，并把
+`REGISTRATION_FIXED_VERIFICATION_CODE` 设为至少 8 位的随机值。注册页会显示邀请码输入框，
+服务端继续校验邮箱域名、重复账号和封禁状态，但不会发送邮件。固定邀请码可重复使用，
+应只提供给受邀用户并定期轮换；未验证邮箱所有权时，密码找回邮件也不可依赖。
 
 环境文件必须只保存在服务器，并设置为 `0600`。三个 R2 桶应相互隔离：
 头像桶会按公开内容处理，不能与需要签名访问的生成图共用。

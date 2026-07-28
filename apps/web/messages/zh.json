@@ -220,6 +220,11 @@
         "cooldown": "{seconds}秒后重发",
         "hint": "验证码 10 分钟内有效，用于完成注册。"
       },
+      "inviteCode": {
+        "label": "邀请码",
+        "placeholder": "请输入邀请码",
+        "hint": "请输入站点管理员提供的邀请码。"
+      },
       "loading": "正在创建...",
       "submit": "创建账号",
       "success": "注册成功！",

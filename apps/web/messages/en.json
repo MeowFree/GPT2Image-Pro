@@ -220,6 +220,11 @@
         "cooldown": "Resend in {seconds}s",
         "hint": "The code expires in 10 minutes and is required to finish sign-up."
       },
+      "inviteCode": {
+        "label": "Invite code",
+        "placeholder": "Enter invite code",
+        "hint": "Enter the invite code provided by the site administrator."
+      },
       "loading": "Creating account...",
       "submit": "Create account",
       "success": "Account created successfully!",
