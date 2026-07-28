@@ -16,6 +16,8 @@ import {
 import { RegistrationVerificationCodeEmail } from "../mail/templates/primary-action-email";
 import { sendEmail } from "../mail/utils";
 import { isSelfUseModeEnabled } from "./self-use-mode";
+import { getRegistrationFixedCode } from "./registration-fixed-code";
+import { matchesRegistrationFixedCode } from "./registration-fixed-code-core";
 
 const PURPOSE = "registration-email-code";
 const CODE_LENGTH = 6;
@@ -45,6 +47,12 @@ export async function sendRegistrationVerificationCode(email: string) {
 
   if (await isRegistrationEmailTaken(normalizedEmail)) {
     throw new Error("Email already registered");
+  }
+
+  // 固定邀请码模式仍执行邮箱格式、域名与重复账号检查，但不创建一次性验证码，
+  // 也不调用邮件服务。该分支用于受邀小范围开放，邀请码只在注册提交时校验。
+  if (await getRegistrationFixedCode()) {
+    return { simulated: true };
   }
 
   const identifier = getIdentifier(normalizedEmail);
@@ -103,6 +111,11 @@ export async function verifyRegistrationCode(email: string, code: string) {
 
   if (!normalizedEmail || !normalizedCode) {
     return false;
+  }
+
+  const fixedCode = await getRegistrationFixedCode();
+  if (fixedCode) {
+    return matchesRegistrationFixedCode(fixedCode, normalizedCode);
   }
 
   const identifier = getIdentifier(normalizedEmail);
