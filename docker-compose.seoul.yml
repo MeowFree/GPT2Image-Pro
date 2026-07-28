@@ -1,0 +1,84 @@
+# Runs the small Seoul deployment without optional ChatGPT sidecars.
+name: gpt2image-pro-seoul
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gpt2image}
+      POSTGRES_USER: ${POSTGRES_USER:-gpt2image}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-gpt2image} -d ${POSTGRES_DB:-gpt2image}
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+    cpus: "0.5"
+    logging: *default-logging
+
+  migrate:
+    image: ghcr.io/meowfree/gpt2image-pro-migrate:${GPT2IMAGE_IMAGE_TAG:?GPT2IMAGE_IMAGE_TAG is required}
+    env_file:
+      - ${GPT2IMAGE_ENV_FILE:-.env}
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gpt2image}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gpt2image}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    mem_limit: 768m
+    cpus: "1.0"
+    logging: *default-logging
+
+  web:
+    image: ghcr.io/meowfree/gpt2image-pro-web:${GPT2IMAGE_IMAGE_TAG:?GPT2IMAGE_IMAGE_TAG is required}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ${GPT2IMAGE_ENV_FILE:-.env}
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gpt2image}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gpt2image}
+      CHATGPT_REGISTER_URL: ""
+      CHATGPT_WEB_PROXY_URL: ""
+      GPT2IMAGE_BOOTSTRAP_CREDENTIALS_PATH: /app/.gpt2image/super-admin-credentials.txt
+      THUMB_CACHE_DIR: /app/thumb-cache
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3310}:3000"
+    volumes:
+      - app-bootstrap:/app/.gpt2image
+    tmpfs:
+      - /app/thumb-cache:rw,noexec,nosuid,nodev,size=268435456,uid=1001,gid=1001,mode=0700
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/auth/get-session').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 1536m
+    cpus: "1.5"
+    logging: *default-logging
+
+volumes:
+  postgres-data:
+  app-bootstrap:

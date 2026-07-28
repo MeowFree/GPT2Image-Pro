@@ -5,6 +5,22 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      next_public_app_url:
+        description: "Public application URL baked into the web image"
+        required: true
+        default: "http://localhost:3000"
+        type: string
+      generations_bucket_name:
+        description: "Object storage bucket for generated images"
+        required: true
+        default: "generations"
+        type: string
+      avatars_bucket_name:
+        description: "Object storage bucket for public avatars"
+        required: true
+        default: "avatars"
+        type: string
 
 permissions:
   contents: write
@@ -66,11 +82,12 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            NEXT_PUBLIC_APP_URL=http://localhost:3000
+            NEXT_PUBLIC_APP_URL=${{ inputs.next_public_app_url || 'http://localhost:3000' }}
             NEXT_PUBLIC_APP_NAME=GPT2IMAGE
             NEXT_PUBLIC_PAYMENT_PROVIDER=none
-            NEXT_PUBLIC_GENERATIONS_BUCKET_NAME=generations
-            NEXT_PUBLIC_AVATARS_BUCKET_NAME=avatars
+            NEXT_PUBLIC_GENERATIONS_BUCKET_NAME=${{ inputs.generations_bucket_name || 'generations' }}
+            NEXT_PUBLIC_AVATARS_BUCKET_NAME=${{ inputs.avatars_bucket_name || 'avatars' }}
+            BETTER_AUTH_URL=${{ inputs.next_public_app_url || 'http://localhost:3000' }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
@@ -84,7 +101,7 @@ jobs:
       - name: Prepare compose bundle
         run: |
           mkdir -p dist
-          cp docker-compose.yml docker-compose.build.yml .env.docker.example README.md dist/
+          cp docker-compose.yml docker-compose.seoul.yml docker-compose.build.yml .env.docker.example README.md dist/
           tar -czf gpt2image-pro-${GITHUB_REF_NAME}.compose.tar.gz -C dist .
           zip -r gpt2image-pro-${GITHUB_REF_NAME}.compose.zip dist
 
