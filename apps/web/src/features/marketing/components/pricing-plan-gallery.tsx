@@ -22,7 +22,7 @@ import {
   useTransform,
   useVelocity,
 } from "framer-motion";
-import { type ReactNode, useRef } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 /** 窗口线性段 */
 const seg = (p: number, a: number, b: number) =>
@@ -44,6 +44,9 @@ const RAIL_WINDOW = [0.05, 0.85] as const;
 const CENTER_INDEX = 2;
 /** 落幅时列尾与视口右缘的边距 */
 const EDGE_PAD = 24;
+/** sticky 舞台上下留白，与 pt-16 及底部安全区对应 */
+const STAGE_TOP_PAD = 64;
+const STAGE_BOTTOM_PAD = 24;
 
 /**
  * 横移终点:列尾右对齐(最高两档完整亮相,裁掉的只是首档)——
@@ -185,6 +188,8 @@ function HangingScroll({
  */
 export function PlanGalleryStage({ items }: { items: PlanGalleryItem[] }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const [railOverflow, setRailOverflow] = useState(0);
   const { scrollYProgress } = useScroll({
     target: stageRef,
     offset: ["start start", "end end"],
@@ -199,6 +204,37 @@ export function PlanGalleryStage({ items }: { items: PlanGalleryItem[] }) {
     );
   });
   const railX = useSpring(railTarget, { stiffness: 70, damping: 20 });
+  // 矮视口无法一次容纳完整长轴时，不再退化为普通轮播；沿廊道行程
+  // 将整列逐步上移，先保住标题/价格/CTA，再在落幕前带出权益清单底部。
+  // ResizeObserver 同时覆盖字体加载、会话态按钮和运行时文案导致的高度变化。
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const measure = () => {
+      setRailOverflow(
+        Math.max(
+          0,
+          rail.offsetHeight +
+            STAGE_TOP_PAD +
+            STAGE_BOTTOM_PAD -
+            window.innerHeight
+        )
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(rail);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+  const railYTarget = useTransform(
+    scrollYProgress,
+    (v) => -railOverflow * easeInOut(seg(v, 0.5, 0.94))
+  );
+  const railY = useSpring(railYTarget, { stiffness: 70, damping: 20 });
   // 滚动速度 -> 挂轴微摆:列左移时轴底因惯性滞后向右偏,
   // 钳制 ±1.4 度,弹簧回稳(快滚轴晃、停下即定)
   const railVelocity = useVelocity(railX);
@@ -221,7 +257,12 @@ export function PlanGalleryStage({ items }: { items: PlanGalleryItem[] }) {
             className="absolute inset-x-[3vw] top-0 h-px origin-left bg-foreground/60"
           />
           <motion.div
-            style={{ x: railX, paddingLeft: `calc(50vw - ${CARD_W / 2}px)` }}
+            ref={railRef}
+            style={{
+              x: railX,
+              y: railY,
+              paddingLeft: `calc(50vw - ${CARD_W / 2}px)`,
+            }}
             className="flex items-stretch"
             // gap 以内联样式固定:相位几何依赖 STEP,与断点类解耦
           >

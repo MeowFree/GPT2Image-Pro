@@ -3,6 +3,7 @@ import {
   BookOpen,
   Clock,
   Coins,
+  CreditCard,
   KeyRound,
   GalleryHorizontalEnd,
   Headset,
@@ -183,6 +184,11 @@ export const dashboardNav: NavGroup[] = [
         title: "Billing & Usage",
         href: "/dashboard/billing",
         icon: Coins,
+      },
+      {
+        title: "Subscription Plans",
+        href: "/dashboard/subscription/buy",
+        icon: CreditCard,
       },
       {
         title: "Announcements",

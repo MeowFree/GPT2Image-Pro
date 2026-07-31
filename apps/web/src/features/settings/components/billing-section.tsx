@@ -293,7 +293,7 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
             </div>
             {userPlan === "free" && (
               <Button asChild>
-                <Link href="/#pricing">
+                <Link href="/dashboard/subscription/buy">
                   <Sparkles className="mr-2 h-4 w-4" />
                   {t("currentPlan.upgradePlan")}
                 </Link>
@@ -302,7 +302,7 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
             {userPlan !== "free" && (
               <div className="flex items-center gap-2">
                 <Button asChild size="sm">
-                  <Link href="/#pricing">
+                  <Link href="/dashboard/subscription/buy">
                     <Sparkles className="mr-2 h-4 w-4" />
                     {t("currentPlan.upgradePlan")}
                   </Link>

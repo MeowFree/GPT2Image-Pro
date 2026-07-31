@@ -104,6 +104,7 @@ export function BuyCreditPackagesView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const canceled = searchParams.get("canceled");
+  const selectedPackageId = searchParams.get("package");
   const copy = useCallback((en: string, zh: string) => (isZh ? zh : en), [isZh]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const {
@@ -156,8 +157,47 @@ export function BuyCreditPackagesView() {
     });
   };
 
-  const packages = (packagesResult.data ??
-    FALLBACK_PACKAGES) as CreditPackageCard[];
+  const packages = useMemo(
+    () =>
+      (packagesResult.data ?? FALLBACK_PACKAGES) as CreditPackageCard[],
+    [packagesResult.data]
+  );
+
+  useEffect(() => {
+    if (
+      !selectedPackageId ||
+      isPackagesLoading ||
+      packagesResult.data === undefined
+    ) {
+      return;
+    }
+    const selectedPackage = packages.find(
+      (pkg) => pkg.id === selectedPackageId
+    );
+    if (!selectedPackage) {
+      toast.error(
+        copy(
+          "This credit package is not available for your current plan.",
+          "该积分包不适用于您当前的套餐。"
+        )
+      );
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`credit-package-${selectedPackage.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    copy,
+    isPackagesLoading,
+    packages,
+    packagesResult.data,
+    selectedPackageId,
+  ]);
+
   const normalizedQuantities = useMemo(
     () =>
       Object.fromEntries(
@@ -221,9 +261,12 @@ export function BuyCreditPackagesView() {
             // 50ms 错峰；入场时长走内联属性（400ms），不影响 hover 过渡 duration-250。
             <Card
               key={pkg.id}
+              id={`credit-package-${pkg.id}`}
               className={cn(
                 "relative flex flex-col rounded-lg border transition-[border-color,box-shadow,translate] duration-250 hover:-translate-y-0.5 hover:shadow-whisper motion-reduce:transition-none animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none",
-                isPopular
+                selectedPackageId === pkg.id
+                  ? "border-foreground ring-2 ring-foreground/20 shadow-whisper"
+                  : isPopular
                   ? "border-foreground shadow-whisper"
                   : "border-border hover:border-foreground/30"
               )}

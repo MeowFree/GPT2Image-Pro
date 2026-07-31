@@ -170,7 +170,7 @@ export function CreditUsageSection({ timeZone }: { timeZone: string }) {
             </Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href={`/${locale}/#pricing`}>
+            <Link href={`/${locale}/dashboard/subscription/buy`}>
               {t("getMoreCredits.viewPlans")}
             </Link>
           </Button>

@@ -17,6 +17,7 @@ import { Button } from "@repo/ui/components/button";
 import {
   Card,
   CardContent,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@repo/ui/components/card";
@@ -33,6 +34,7 @@ import {
 import { motion, useReducedMotion } from "framer-motion";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { toast } from "sonner";
 import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 import {
   createCheckoutSession,
@@ -138,6 +140,16 @@ export function PricingSection({
       }
     });
   }, [session?.user, currentPriceId]);
+
+  // 首页运行时区块位于 Suspense 中。跨页携带 #pricing 导航时，
+  // 浏览器首次尝试滚动时目标节点可能尚未挂载，因此在挂载后补做一次定位。
+  useEffect(() => {
+    if (window.location.hash !== "#pricing") return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("pricing")?.scrollIntoView({ block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   /**
    * 获取计划配置
@@ -603,7 +615,15 @@ export function PricingSection({
     }
 
     const price = getCheckoutPrice(planId);
-    if (!price?.priceId) return;
+    if (!price?.priceId) {
+      toast.error(
+        copy(
+          "This plan is temporarily unavailable for purchase.",
+          "该套餐暂时无法购买，请稍后重试。"
+        )
+      );
+      return;
+    }
 
     setLoadingPlan(planId);
 
@@ -613,15 +633,30 @@ export function PricingSection({
           priceId: price.priceId,
           type: price.type,
         });
-        if (result?.data?.url) {
+        if (result?.serverError) {
+          toast.error(result.serverError);
+        } else if (result?.data?.url) {
           if (result.data.method === "POST" && result.data.params) {
             submitEpayForm(result.data.url, result.data.params);
           } else {
             window.location.href = result.data.url;
           }
+        } else {
+          toast.error(
+            copy(
+              "Failed to create checkout session. Please try again.",
+              "创建支付订单失败，请重试。"
+            )
+          );
         }
       } catch (error) {
         console.error("Failed to create checkout session:", error);
+        toast.error(
+          copy(
+            "Failed to create checkout session. Please try again.",
+            "创建支付订单失败，请重试。"
+          )
+        );
       } finally {
         setLoadingPlan(null);
       }
@@ -635,11 +670,14 @@ export function PricingSection({
     router.push("/dashboard/settings");
   };
 
-  const handleBuyCredits = () => {
+  const handleBuyCredits = (packageId?: string) => {
+    const buyPath = packageId
+      ? `/dashboard/credits/buy?package=${encodeURIComponent(packageId)}`
+      : "/dashboard/credits/buy";
     router.push(
       session?.user
-        ? "/dashboard/credits/buy"
-        : "/sign-in?redirect=/dashboard/credits/buy"
+        ? buyPath
+        : `/sign-in?redirect=${encodeURIComponent(buyPath)}`
     );
   };
 
@@ -725,8 +763,40 @@ export function PricingSection({
             )}
           </div>
 
+          <div className="mb-5">
+            {isCurrent ? (
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={handleManageSubscription}
+                disabled={isPending}
+              >
+                {isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                {t("manageSubscription")}
+              </Button>
+            ) : hasSubscription && planId !== "free" && !canUpgrade ? (
+              <Button className="w-full" variant="outline" disabled>
+                {t("alreadySubscribed")}
+              </Button>
+            ) : (
+              <Button
+                className="w-full"
+                variant={popular ? "default" : "outline"}
+                onClick={() => handleSubscribe(planId)}
+                disabled={isLoading || isPending}
+              >
+                {isLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                {canUpgrade ? t("upgradePlan") : t(`plans.${planId}.cta`)}
+              </Button>
+            )}
+          </div>
+
           {/* 密度收紧:最长档清单 11 条,全轴(绳杆地杆含)须一屏容纳 */}
-          <ul className="mb-5 flex-1 space-y-1.5">
+          <ul className="flex-1 space-y-1.5">
             {getGeneratedFeatureTexts(planId).map((feature) => (
               <li key={feature} className="flex items-center gap-2">
                 <Check className="h-4 w-4 shrink-0 text-foreground" />
@@ -736,36 +806,6 @@ export function PricingSection({
               </li>
             ))}
           </ul>
-
-          {isCurrent ? (
-            <Button
-              className="w-full"
-              variant="outline"
-              onClick={handleManageSubscription}
-              disabled={isPending}
-            >
-              {isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              {t("manageSubscription")}
-            </Button>
-          ) : hasSubscription && planId !== "free" && !canUpgrade ? (
-            <Button className="w-full" variant="outline" disabled>
-              {t("alreadySubscribed")}
-            </Button>
-          ) : (
-            <Button
-              className="w-full"
-              variant={popular ? "default" : "outline"}
-              onClick={() => handleSubscribe(planId)}
-              disabled={isLoading || isPending}
-            >
-              {isLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              {canUpgrade ? t("upgradePlan") : t(`plans.${planId}.cta`)}
-            </Button>
-          )}
         </CardContent>
       </Card>
     );
@@ -831,7 +871,7 @@ export function PricingSection({
 
   return (
     <InkRevealBoundary>
-    <section id="pricing" className="py-20 md:py-28">
+    <section id="pricing" className="scroll-mt-16 py-20 md:py-28">
       <div className="container mx-auto max-w-6xl">
         {/* Header 揭幕(v1.0.2):眉标/标题/副标随滚动错落显影,
             标题下装裱横档自中心生长——进入廊道前的开幕一拍 */}
@@ -964,7 +1004,7 @@ export function PricingSection({
                     )}
                   </p>
                 </div>
-                <Button variant="outline" onClick={handleBuyCredits}>
+                <Button variant="outline" onClick={() => handleBuyCredits()}>
                   <ShoppingCart className="mr-2 h-4 w-4" />
                   {copy("View packages", "查看积分包")}
                 </Button>
@@ -1093,6 +1133,16 @@ export function PricingSection({
                         ))}
                       </div>
                     </CardContent>
+                    <CardFooter>
+                      <Button
+                        className="w-full"
+                        variant={pkg.popular ? "default" : "outline"}
+                        onClick={() => handleBuyCredits(pkg.id)}
+                      >
+                        <ShoppingCart className="mr-2 h-4 w-4" />
+                        {copy("Buy this package", "购买此积分包")}
+                      </Button>
+                    </CardFooter>
                   </Card>
                   </InkReveal>
                 );

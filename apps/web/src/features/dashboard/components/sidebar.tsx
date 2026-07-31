@@ -164,6 +164,7 @@ export function DashboardSidebar({ initialSession }: DashboardSidebarProps) {
       "System Docs": t("nav.backendHelp"),
       "External API": t("nav.externalApi"),
       "Billing & Usage": t("nav.billing"),
+      "Subscription Plans": t("nav.subscriptionPlans"),
       Announcements: t("nav.announcements"),
       Settings: t("nav.settings"),
       "System Settings": t("nav.systemSettings"),
