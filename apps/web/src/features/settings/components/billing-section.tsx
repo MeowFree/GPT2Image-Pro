@@ -40,7 +40,13 @@ import {
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import { Separator } from "@repo/ui/components/separator";
-import { Loader2, Receipt, Sparkles } from "lucide-react";
+import {
+  AlertCircle,
+  Loader2,
+  Receipt,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useAction } from "next-safe-action/hooks";
 import { useEffect, useMemo, useState, useTransition } from "react";
@@ -162,6 +168,7 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
     execute: fetchTransactions,
     result: transactionsResult,
     isPending: isTransactionsPending,
+    hasErrored: hasTransactionsErrored,
   } = useAction(getMyTransactions);
   const userPlan = (planResult.data?.plan as PlanType) || "free";
   const planConfig = PLAN_PRIVILEGES[userPlan as SubscriptionPlan];
@@ -228,7 +235,10 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
   // 组件挂载时获取计划
   useEffect(() => {
     fetchPlan();
-    fetchTransactions({ limit: 50 });
+    fetchTransactions({
+      limit: 50,
+      types: ["purchase", "monthly_grant"],
+    });
   }, [fetchPlan, fetchTransactions]);
 
   const billingTransactions = useMemo(
@@ -439,6 +449,27 @@ export function BillingSection({ timeZone }: { timeZone: string }) {
             <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               {t("history.loading")}
+            </div>
+          ) : hasTransactionsErrored ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+              <AlertCircle className="h-10 w-10 text-destructive/70" />
+              <p className="text-sm text-muted-foreground">
+                {t("history.loadFailed")}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  fetchTransactions({
+                    limit: 50,
+                    types: ["purchase", "monthly_grant"],
+                  })
+                }
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                {t("history.retry")}
+              </Button>
             </div>
           ) : billingTransactions.length > 0 ? (
             <div className="divide-y divide-border/60">

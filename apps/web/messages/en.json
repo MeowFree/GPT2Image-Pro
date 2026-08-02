@@ -902,6 +902,8 @@
         "status": "Status",
         "invoice": "Invoice",
         "loading": "Loading...",
+        "loadFailed": "Failed to load billing history. Please try again.",
+        "retry": "Reload",
         "paid": "Paid",
         "noHistory": "No billing history",
         "noHistoryHint": "Your invoices will appear here after your first purchase"

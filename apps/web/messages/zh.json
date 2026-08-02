@@ -902,6 +902,8 @@
         "status": "状态",
         "invoice": "发票",
         "loading": "加载中...",
+        "loadFailed": "账单记录加载失败，请重试",
+        "retry": "重新加载",
         "paid": "已支付",
         "noHistory": "暂无账单记录",
         "noHistoryHint": "首次购买后，发票将显示在此处"

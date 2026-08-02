@@ -55,6 +55,15 @@ const withProtectedCreditsAction = (name: string) =>
   protectedAction.metadata({ action: `credits.${name}` });
 
 const CREDIT_PACKAGE_MAX_QUANTITY = 999;
+const creditsTransactionTypeSchema = z.enum([
+  "purchase",
+  "consumption",
+  "monthly_grant",
+  "registration_bonus",
+  "admin_grant",
+  "expiration",
+  "refund",
+]);
 
 async function getRuntimeRegistrationBonusCredits() {
   return getRuntimeSettingNumber(
@@ -196,6 +205,7 @@ export const getMyTransactions = withProtectedCreditsAction("getMyTransactions")
       .object({
         limit: z.number().min(1).max(100).optional(),
         offset: z.number().min(0).optional(),
+        types: z.array(creditsTransactionTypeSchema).min(1).max(7).optional(),
       })
       .optional()
   )
@@ -203,13 +213,17 @@ export const getMyTransactions = withProtectedCreditsAction("getMyTransactions")
     const { userId } = ctx;
     const limit = parsedInput?.limit;
     const offset = parsedInput?.offset;
+    const types = parsedInput?.types;
 
     const [transactions, totalCount] = await Promise.all([
       getUserTransactions(userId, {
         ...(limit !== undefined && { limit }),
         ...(offset !== undefined && { offset }),
+        ...(types !== undefined && { types }),
       }),
-      getUserTransactionsCount(userId),
+      getUserTransactionsCount(userId, {
+        ...(types !== undefined && { types }),
+      }),
     ]);
 
     // 解析每条交易是哪个外部 API Key 消耗的(issue #26):从 metadata.externalApiKeyId 收集后批量查

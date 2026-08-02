@@ -4,7 +4,18 @@
  * 实现企业级双重记账和 FIFO 过期机制
  */
 
-import { and, asc, eq, gte, gt, isNull, lt, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gte,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { db } from "@repo/database";
 import {
@@ -981,19 +992,32 @@ export async function getUserActiveBatches(userId: string) {
 /**
  * 获取用户的交易历史
  */
+function userTransactionsWhere(
+  userId: string,
+  types?: CreditsTransactionType[]
+) {
+  return types?.length
+    ? and(
+        eq(creditsTransaction.userId, userId),
+        inArray(creditsTransaction.type, types)
+      )
+    : eq(creditsTransaction.userId, userId);
+}
+
 export async function getUserTransactions(
   userId: string,
   options?: {
     limit?: number;
     offset?: number;
+    types?: CreditsTransactionType[];
   }
 ) {
-  const { limit = 20, offset = 0 } = options ?? {};
+  const { limit = 20, offset = 0, types } = options ?? {};
 
   return await db
     .select()
     .from(creditsTransaction)
-    .where(eq(creditsTransaction.userId, userId))
+    .where(userTransactionsWhere(userId, types))
     .orderBy(sql`${creditsTransaction.createdAt} DESC`)
     .limit(limit)
     .offset(offset);
@@ -1003,14 +1027,16 @@ export async function getUserTransactions(
  * 获取用户交易总数
  */
 export async function getUserTransactionsCount(
-  userId: string
+  userId: string,
+  options?: { types?: CreditsTransactionType[] }
 ): Promise<number> {
+  const types = options?.types;
   const [result] = await db
     .select({
       count: sql<number>`count(*)`.mapWith(Number),
     })
     .from(creditsTransaction)
-    .where(eq(creditsTransaction.userId, userId));
+    .where(userTransactionsWhere(userId, types));
 
   return result?.count ?? 0;
 }
