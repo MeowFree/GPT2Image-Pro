@@ -11,7 +11,7 @@
 - Nginx upstream:`gpt2image_pool` = `127.0.0.1:3308`(主)+ `127.0.0.1:3307`(备,`backup`)
 - systemd 单元:`gpt2image-3308-nopending`(主)、`gpt2image-3307-agentparse`(备)
 - 超分单元:`gpt2image-super-resolution-worker`(本机 `127.0.0.1:3310`，两个 Web 实例共享；
-  单并发、ONNX 6 线程、`CPUQuota=600%`，避免 Real-ESRGAN 抢占页面进程)
+  单并发、ONNX 24 线程、`CPUQuota=2400%`，并以 `Nice=10` 让位于页面进程)
 - 每单元 drop-in:`/etc/systemd/system/<unit>.service.d/20-agenttools.conf`(改 `WorkingDirectory`)
 - 静态服务:Nginx `location ~ ^/(?<aprefix>gpt2-assets-[^/]+)/_next/static/(?<apath>.*)$`
   → `proxy_pass http://$gc_static_upstream/_next/static/$apath`;`map $aprefix $gc_static_upstream`

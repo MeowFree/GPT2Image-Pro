@@ -23,7 +23,7 @@ const maxBodyBytes =
   integerEnv("SUPER_RESOLUTION_WORKER_MAX_BODY_MB", 64, 1, 512) * 1024 * 1024;
 const intraOpThreads = integerEnv(
   "SUPER_RESOLUTION_INTRA_OP_THREADS",
-  6,
+  24,
   1,
   32
 );

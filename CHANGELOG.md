@@ -6,7 +6,7 @@
 
 ### 性能
 
-- **Real-ESRGAN 独立 Worker**:超分 ONNX 推理从 Next.js 页面/API 进程迁移到独立 HTTP Worker，两个 Web 实例共享单并发队列；默认限制 ONNX 为 6 线程，并提供 Docker CPU 限额与 systemd `CPUQuota` 模板，避免批量出图后处理抢满 CPU 导致控制台切页和账户请求延迟数秒。Worker 失败仍回退原图，不阻断出图。
+- **Real-ESRGAN 独立 Worker**:超分 ONNX 推理从 Next.js 页面/API 进程迁移到独立 HTTP Worker，两个 Web 实例共享单并发队列；32 核生产节点默认允许 ONNX 使用 24 线程，配合 `CPUQuota=2400%` 与低调度优先级保留页面响应能力。Worker 失败仍回退原图，不阻断出图。
 
 ## v0.8.3 (2026-07-31)
 

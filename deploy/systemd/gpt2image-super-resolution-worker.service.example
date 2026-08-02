@@ -11,7 +11,7 @@ Environment=NODE_ENV=production
 Environment=SUPER_RESOLUTION_WORKER_BIND=127.0.0.1
 Environment=SUPER_RESOLUTION_WORKER_PORT=3310
 Environment=SUPER_RESOLUTION_WORKER_CONCURRENCY=1
-Environment=SUPER_RESOLUTION_INTRA_OP_THREADS=6
+Environment=SUPER_RESOLUTION_INTRA_OP_THREADS=24
 Environment=SUPER_RESOLUTION_SHARP_CONCURRENCY=2
 Environment=UV_THREADPOOL_SIZE=4
 ExecStart=/usr/bin/node worker/super-resolution-worker.mjs
@@ -21,7 +21,7 @@ RestartSec=2
 # Keep inference from starving page rendering on the same host.
 Nice=10
 CPUAccounting=true
-CPUQuota=600%
+CPUQuota=2400%
 
 [Install]
 WantedBy=multi-user.target

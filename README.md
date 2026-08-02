@@ -272,7 +272,7 @@ Real-ESRGAN 必须以独立进程常驻；使用 PM2/systemd 分别守护 Web �
 ```bash
 SUPER_RESOLUTION_WORKER_BIND=127.0.0.1 \
 SUPER_RESOLUTION_WORKER_PORT=3310 \
-SUPER_RESOLUTION_INTRA_OP_THREADS=6 \
+SUPER_RESOLUTION_INTRA_OP_THREADS=24 \
 pnpm --filter @repo/web start:super-resolution-worker
 ```
 
