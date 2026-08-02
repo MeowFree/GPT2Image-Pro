@@ -1,5 +1,6 @@
 import { SignUpForm } from "@/features/auth/components/sign-up-form";
 import { isRegistrationFixedCodeEnabled } from "@repo/shared/auth/registration-fixed-code";
+import { getRuntimeRegistrationEmailPolicy } from "@repo/shared/auth/registration-email-policy";
 import { isSelfUseModeEnabled } from "@repo/shared/auth/self-use-mode";
 import { redirect } from "next/navigation";
 
@@ -27,6 +28,7 @@ export default async function SignUpPage({
     <SignUpForm
       googleAuthEnabled={isGoogleAuthEnabled()}
       fixedVerificationCodeEnabled={await isRegistrationFixedCodeEnabled()}
+      registrationEmailPolicy={await getRuntimeRegistrationEmailPolicy()}
     />
   );
 }

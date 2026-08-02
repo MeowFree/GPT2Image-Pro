@@ -238,6 +238,8 @@
         "passwordTooShort": "密码至少需要 8 个字符",
         "passwordMismatch": "两次输入的密码不一致",
         "emailDomainNotAllowed": "该邮箱暂不支持注册，请使用以下邮箱后缀：{domains}。",
+        "emailPlusAliasNotAllowed": "不允许使用带 + 标签的别名邮箱。",
+        "emailDottedLocalPartNotAllowed": "不允许邮箱用户名（@ 前部分）包含点号。",
         "verificationSendFailed": "验证码发送失败，请稍后重试",
         "invalidVerificationCode": "验证码错误或已过期，请重新获取",
         "emailAlreadyRegistered": "该邮箱已注册过，或删除账号后已被锁定，不能再次注册。请直接登录或更换邮箱。",

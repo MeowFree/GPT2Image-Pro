@@ -7,8 +7,10 @@ import {
   signUpWithEmail,
 } from "@repo/shared/auth/client";
 import {
-  ALLOWED_REGISTRATION_EMAIL_DOMAIN_LIST,
-  isAllowedRegistrationEmail,
+  DEFAULT_REGISTRATION_EMAIL_POLICY,
+  getRegistrationEmailRejectionReason,
+  type RegistrationEmailPolicy,
+  type RegistrationEmailRejectionReason,
 } from "@repo/shared/auth/email-domain";
 import { GoogleIcon } from "@repo/shared/components/icons";
 import { Button } from "@repo/ui/components/button";
@@ -68,13 +70,32 @@ function isEmailAlreadyRegistered(error: unknown) {
   );
 }
 
-function isEmailDomainError(error: unknown) {
+function getEmailPolicyRejectionReason(
+  error: unknown
+): RegistrationEmailRejectionReason | null {
   const code = getAuthErrorCode(error);
   const message = getErrorMessage(error).toLowerCase();
 
-  return (
-    code === "EMAIL_DOMAIN_NOT_ALLOWED" || message.includes("email domain")
-  );
+  if (
+    code === "EMAIL_PLUS_ALIAS_NOT_ALLOWED" ||
+    message.includes("aliases containing +")
+  ) {
+    return "plus_alias_not_allowed";
+  }
+  if (
+    code === "EMAIL_DOTTED_LOCAL_PART_NOT_ALLOWED" ||
+    message.includes("usernames containing .")
+  ) {
+    return "dotted_local_part_not_allowed";
+  }
+  if (
+    code === "EMAIL_DOMAIN_NOT_ALLOWED" ||
+    message.includes("email domain") ||
+    message.includes("one of these email domains")
+  ) {
+    return "domain_not_allowed";
+  }
+  return null;
 }
 
 function isVerificationCodeError(error: unknown) {
@@ -97,11 +118,13 @@ function isVerificationCodeError(error: unknown) {
 interface SignUpFormProps {
   googleAuthEnabled?: boolean;
   fixedVerificationCodeEnabled?: boolean;
+  registrationEmailPolicy?: RegistrationEmailPolicy;
 }
 
 export function SignUpForm({
   googleAuthEnabled = false,
   fixedVerificationCodeEnabled = false,
+  registrationEmailPolicy = DEFAULT_REGISTRATION_EMAIL_POLICY,
 }: SignUpFormProps) {
   const locale = useLocale();
   const t = useTranslations("Auth.signUp");
@@ -120,14 +143,31 @@ export function SignUpForm({
   const [emailSent, setEmailSent] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [codeCooldown, setCodeCooldown] = useState(0);
-  const isAllowedEmail = (value: string) => isAllowedRegistrationEmail(value);
-  const allowedEmailDomains = ALLOWED_REGISTRATION_EMAIL_DOMAIN_LIST.join(", ");
-  const emailDomainError = t("errors.emailDomainNotAllowed", {
-    domains: allowedEmailDomains,
-  });
+  const getEmailPolicyError = (reason: RegistrationEmailRejectionReason) => {
+    if (reason === "plus_alias_not_allowed") {
+      return t("errors.emailPlusAliasNotAllowed");
+    }
+    if (reason === "dotted_local_part_not_allowed") {
+      return t("errors.emailDottedLocalPartNotAllowed");
+    }
+    return t("errors.emailDomainNotAllowed", {
+      domains: registrationEmailPolicy.allowedDomains.join(", "),
+    });
+  };
+  const getEmailRejectionReason = (value: string) =>
+    getRegistrationEmailRejectionReason(value, registrationEmailPolicy);
+  const getEmailPolicyErrorFromUnknown = (value: unknown) => {
+    const reason = getEmailPolicyRejectionReason(value);
+    return reason ? getEmailPolicyError(reason) : null;
+  };
+  const allowedEmailDomains = registrationEmailPolicy.allowedDomains.join(", ");
   const trimmedEmail = email.trim();
+  const emailRejectionReason = getEmailRejectionReason(trimmedEmail);
   const showEmailDomainError =
-    trimmedEmail.includes("@") && !isAllowedEmail(trimmedEmail);
+    trimmedEmail.includes("@") && emailRejectionReason !== null;
+  const emailPolicyError = emailRejectionReason
+    ? getEmailPolicyError(emailRejectionReason)
+    : null;
 
   /**
    * 启动重发冷却倒计时
@@ -186,8 +226,9 @@ export function SignUpForm({
       return;
     }
 
-    if (!isAllowedEmail(email)) {
-      setError(emailDomainError);
+    const emailRejection = getEmailRejectionReason(email);
+    if (emailRejection) {
+      setError(getEmailPolicyError(emailRejection));
       return;
     }
 
@@ -198,9 +239,10 @@ export function SignUpForm({
       startCodeCooldown();
       toast.success(t("verificationCode.sent"));
     } catch (error) {
+      const emailPolicyServerError = getEmailPolicyErrorFromUnknown(error);
       setError(
-        isEmailDomainError(error)
-          ? emailDomainError
+        emailPolicyServerError
+          ? emailPolicyServerError
           : isEmailAlreadyRegistered(error)
             ? t("errors.emailAlreadyRegistered")
             : t("errors.verificationSendFailed")
@@ -236,8 +278,9 @@ export function SignUpForm({
       return;
     }
 
-    if (!isAllowedEmail(email)) {
-      setError(emailDomainError);
+    const emailRejection = getEmailRejectionReason(email);
+    if (emailRejection) {
+      setError(getEmailPolicyError(emailRejection));
       return;
     }
 
@@ -262,9 +305,12 @@ export function SignUpForm({
       );
 
       if (result.error) {
+        const emailPolicyServerError = getEmailPolicyErrorFromUnknown(
+          result.error
+        );
         setError(
-          isEmailDomainError(result.error)
-            ? emailDomainError
+          emailPolicyServerError
+            ? emailPolicyServerError
             : isVerificationCodeError(result.error)
               ? t("errors.invalidVerificationCode")
               : isEmailAlreadyRegistered(result.error)
@@ -285,8 +331,11 @@ export function SignUpForm({
       setEmailSent(true);
       startCooldown();
     } catch (error) {
+      const emailPolicyServerError = getEmailPolicyErrorFromUnknown(error);
       setError(
-        isEmailAlreadyRegistered(error)
+        emailPolicyServerError
+          ? emailPolicyServerError
+          : isEmailAlreadyRegistered(error)
           ? t("errors.emailAlreadyRegistered")
           : t("errors.emailInUse")
       );
@@ -415,7 +464,7 @@ export function SignUpForm({
             {t("emailDomainHint", { domains: allowedEmailDomains })}
           </p>
           {showEmailDomainError ? (
-            <p className="text-xs text-destructive">{emailDomainError}</p>
+            <p className="text-xs text-destructive">{emailPolicyError}</p>
           ) : null}
         </div>
 

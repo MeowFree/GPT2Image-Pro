@@ -7,6 +7,7 @@
     "./auth": "./src/auth/index.ts",
     "./auth/client": "./src/auth/client.ts",
     "./auth/email-domain": "./src/auth/email-domain.ts",
+    "./auth/registration-email-policy": "./src/auth/registration-email-policy.ts",
     "./auth/server": "./src/auth/server.ts",
     "./auth/admin": "./src/auth/admin.ts",
     "./auth/roles": "./src/auth/roles.ts",

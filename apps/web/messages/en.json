@@ -238,6 +238,8 @@
         "passwordTooShort": "Password must be at least 8 characters.",
         "passwordMismatch": "Passwords do not match.",
         "emailDomainNotAllowed": "This email domain is not supported. Please use one of these domains: {domains}.",
+        "emailPlusAliasNotAllowed": "Email aliases containing + are not allowed.",
+        "emailDottedLocalPartNotAllowed": "Dots are not allowed in the email username before @.",
         "verificationSendFailed": "Failed to send verification code. Please try again later.",
         "invalidVerificationCode": "The verification code is invalid or expired. Please request a new one.",
         "emailAlreadyRegistered": "This email has already been registered, or was locked after account deletion. Please sign in or use another email.",

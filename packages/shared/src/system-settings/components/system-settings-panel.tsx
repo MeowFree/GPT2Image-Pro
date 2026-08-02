@@ -776,6 +776,19 @@ function SettingInput({
     );
   }
 
+  if (setting.key === "REGISTRATION_EMAIL_ALLOWED_DOMAINS") {
+    return (
+      <Textarea
+        value={String(value ?? "")}
+        rows={3}
+        className="min-h-20 resize-y font-mono text-sm"
+        placeholder="163.com, 126.com, qq.com, gmail.com"
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    );
+  }
+
   if (setting.valueType === "boolean") {
     return (
       <Switch

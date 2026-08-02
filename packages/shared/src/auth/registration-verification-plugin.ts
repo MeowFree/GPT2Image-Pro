@@ -3,10 +3,12 @@ import { APIError, createAuthMiddleware } from "better-auth/api";
 import { db, user as userTable } from "@repo/database";
 import { eq } from "drizzle-orm";
 import {
-  getAllowedRegistrationEmailMessage,
-  isAllowedRegistrationEmail,
+  getRegistrationEmailErrorCode,
+  getRegistrationEmailRejectionMessage,
+  getRegistrationEmailRejectionReason,
   normalizeEmail,
 } from "./email-domain";
+import { getRuntimeRegistrationEmailPolicy } from "./registration-email-policy";
 import {
   isRegistrationEmailTaken,
   markRegistrationIdentityDeleted,
@@ -32,11 +34,13 @@ async function assertRegistrationOpen() {
   }
 }
 
-function assertAllowedRegistrationEmail(email: string) {
-  if (!isAllowedRegistrationEmail(email)) {
+async function assertAllowedRegistrationEmail(email: string) {
+  const policy = await getRuntimeRegistrationEmailPolicy();
+  const reason = getRegistrationEmailRejectionReason(email, policy);
+  if (reason) {
     throw new APIError("BAD_REQUEST", {
-      message: getAllowedRegistrationEmailMessage(),
-      code: "EMAIL_DOMAIN_NOT_ALLOWED",
+      message: getRegistrationEmailRejectionMessage(reason, policy),
+      code: getRegistrationEmailErrorCode(reason),
     });
   }
 }
@@ -98,7 +102,7 @@ export const registrationVerificationPlugin = (): BetterAuthPlugin => ({
               : "";
           const normalizedEmail = normalizeEmail(email);
 
-          assertAllowedRegistrationEmail(normalizedEmail);
+          await assertAllowedRegistrationEmail(normalizedEmail);
           await assertEmailNotRegistered(normalizedEmail);
 
           if (!verificationCode) {
@@ -139,7 +143,7 @@ export const registrationVerificationPlugin = (): BetterAuthPlugin => ({
 
               const normalizedEmail = normalizeEmail(user.email);
 
-              assertAllowedRegistrationEmail(normalizedEmail);
+              await assertAllowedRegistrationEmail(normalizedEmail);
               await assertEmailNotRegistered(normalizedEmail);
 
               if (context?.path === "/sign-up/email") {

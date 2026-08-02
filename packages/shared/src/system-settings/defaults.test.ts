@@ -123,6 +123,11 @@ describe("system setting default initialization", () => {
     expect(initializedKeys).toContain("APP_TIME_ZONE");
     expect(initializedKeys).toContain("MARKETING_SLA_STATUS_ENABLED");
     expect(initializedKeys).toContain("SELF_USE_MODE_ENABLED");
+    expect(initializedKeys).toContain("REGISTRATION_EMAIL_ALLOWED_DOMAINS");
+    expect(initializedKeys).toContain("REGISTRATION_EMAIL_BLOCK_PLUS_ALIASES");
+    expect(initializedKeys).toContain(
+      "REGISTRATION_EMAIL_BLOCK_DOTTED_LOCAL_PARTS"
+    );
     expect(initializedKeys).toContain("GENERATION_IMAGE_RETENTION_HOURS");
     expect(initializedKeys).toContain("GENERATION_IMAGE_RETENTION_MODE");
     expect(initializedKeys).toContain("GENERATION_IMAGE_MAX_COUNT");
@@ -140,6 +145,15 @@ describe("system setting default initialization", () => {
     expect(store.get("APP_TIME_ZONE")?.value).toBe("UTC");
     expect(store.get("MARKETING_SLA_STATUS_ENABLED")?.value).toBe(true);
     expect(store.get("SELF_USE_MODE_ENABLED")?.value).toBe(true);
+    expect(store.get("REGISTRATION_EMAIL_ALLOWED_DOMAINS")?.value).toBe(
+      "163.com,126.com,qq.com,gmail.com"
+    );
+    expect(store.get("REGISTRATION_EMAIL_BLOCK_PLUS_ALIASES")?.value).toBe(
+      false
+    );
+    expect(
+      store.get("REGISTRATION_EMAIL_BLOCK_DOTTED_LOCAL_PARTS")?.value
+    ).toBe(false);
     expect(store.get("GENERATION_IMAGE_RETENTION_HOURS")?.value).toBe(0);
     // 默认清理模式 off=永久保存（fail-safe）；最大张数默认 10000。
     expect(store.get("GENERATION_IMAGE_RETENTION_MODE")?.value).toBe("off");

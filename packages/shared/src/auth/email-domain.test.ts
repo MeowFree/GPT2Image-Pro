@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   canonicalizeEmailForIdentity,
+  getRegistrationEmailErrorCode,
+  getRegistrationEmailRejectionReason,
   isAllowedRegistrationEmail,
   normalizeEmail,
+  parseRegistrationEmailDomains,
 } from "./email-domain";
 
 // 守护审计 C-M23（A8 防薅羊毛归一化）：同一真实邮箱的各种别名必须落到同一
@@ -60,5 +63,80 @@ describe("isAllowedRegistrationEmail", () => {
     expect(isAllowedRegistrationEmail("a@googlemail.com")).toBe(false);
     expect(isAllowedRegistrationEmail("noat")).toBe(false);
     expect(isAllowedRegistrationEmail("")).toBe(false);
+    expect(isAllowedRegistrationEmail("a@@gmail.com")).toBe(false);
+  });
+
+  it("uses a custom domain whitelist", () => {
+    const policy = {
+      allowedDomains: ["outlook.com"],
+      blockPlusAliases: false,
+      blockDottedLocalParts: false,
+    };
+    expect(isAllowedRegistrationEmail("a@outlook.com", policy)).toBe(true);
+    expect(isAllowedRegistrationEmail("a@gmail.com", policy)).toBe(false);
+  });
+});
+
+describe("parseRegistrationEmailDomains", () => {
+  it("accepts commas, spaces, semicolons and newlines", () => {
+    expect(
+      parseRegistrationEmailDomains(
+        " Gmail.COM, @qq.com;outlook.com\nexample.org gmail.com "
+      )
+    ).toEqual(["gmail.com", "qq.com", "outlook.com", "example.org"]);
+  });
+
+  it("falls back to defaults when no valid domain remains", () => {
+    expect(parseRegistrationEmailDomains(" , ; invalid @bad ")).toEqual([
+      "163.com",
+      "126.com",
+      "qq.com",
+      "gmail.com",
+    ]);
+  });
+});
+
+describe("registration alias restrictions", () => {
+  const strictPolicy = {
+    allowedDomains: ["gmail.com", "example.com"],
+    blockPlusAliases: true,
+    blockDottedLocalParts: true,
+  };
+
+  it("rejects + aliases and dotted local parts with distinct reasons", () => {
+    expect(
+      getRegistrationEmailRejectionReason("user+tag@gmail.com", strictPolicy)
+    ).toBe("plus_alias_not_allowed");
+    expect(
+      getRegistrationEmailRejectionReason("user.name@gmail.com", strictPolicy)
+    ).toBe("dotted_local_part_not_allowed");
+  });
+
+  it("does not mistake the domain dot for a dotted local part", () => {
+    expect(
+      getRegistrationEmailRejectionReason("username@example.com", strictPolicy)
+    ).toBeNull();
+  });
+
+  it("keeps alias addresses valid when both switches are disabled", () => {
+    expect(
+      getRegistrationEmailRejectionReason("user.name+tag@gmail.com", {
+        ...strictPolicy,
+        blockPlusAliases: false,
+        blockDottedLocalParts: false,
+      })
+    ).toBeNull();
+  });
+
+  it("maps rejection reasons to stable API error codes", () => {
+    expect(getRegistrationEmailErrorCode("domain_not_allowed")).toBe(
+      "EMAIL_DOMAIN_NOT_ALLOWED"
+    );
+    expect(getRegistrationEmailErrorCode("plus_alias_not_allowed")).toBe(
+      "EMAIL_PLUS_ALIAS_NOT_ALLOWED"
+    );
+    expect(getRegistrationEmailErrorCode("dotted_local_part_not_allowed")).toBe(
+      "EMAIL_DOTTED_LOCAL_PART_NOT_ALLOWED"
+    );
   });
 });

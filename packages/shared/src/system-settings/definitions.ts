@@ -143,6 +143,9 @@ export type SettingKey =
   | "SMTP_PASS"
   | "RESEND_API_KEY"
   | "SUPPORT_TICKET_NOTIFICATION_EMAIL"
+  | "REGISTRATION_EMAIL_ALLOWED_DOMAINS"
+  | "REGISTRATION_EMAIL_BLOCK_PLUS_ALIASES"
+  | "REGISTRATION_EMAIL_BLOCK_DOTTED_LOCAL_PARTS"
   | "REGISTRATION_BONUS_CREDITS"
   | "FREE_CREDITS_EXPIRY_DAYS"
   | "CREDITS_EXPIRY_DAYS"
@@ -1250,6 +1253,33 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     valueType: "string",
   },
   {
+    key: "REGISTRATION_EMAIL_ALLOWED_DOMAINS",
+    label: "注册邮箱域名白名单",
+    description:
+      "允许注册的邮箱域名，使用逗号、空格或换行分隔；填写域名本身，无需 @。发验证码、邮箱注册和 OAuth 首次建号都会执行此限制。",
+    category: "mail",
+    valueType: "string",
+    defaultValue: "163.com,126.com,qq.com,gmail.com",
+  },
+  {
+    key: "REGISTRATION_EMAIL_BLOCK_PLUS_ALIASES",
+    label: "禁止 + 别名邮箱",
+    description:
+      "开启后，禁止邮箱用户名（@ 前部分）包含 +，例如 user+tag@gmail.com。",
+    category: "mail",
+    valueType: "boolean",
+    defaultValue: false,
+  },
+  {
+    key: "REGISTRATION_EMAIL_BLOCK_DOTTED_LOCAL_PARTS",
+    label: "禁止点号别名邮箱",
+    description:
+      "开启后，禁止邮箱用户名（@ 前部分）包含点号，例如 user.name@gmail.com；域名中的点号不受影响。",
+    category: "mail",
+    valueType: "boolean",
+    defaultValue: false,
+  },
+  {
     key: "EMAIL_PROVIDER",
     label: "邮件通道",
     description: "smtp 或 resend。",
@@ -1794,7 +1824,7 @@ export const SETTING_CATEGORIES: Array<{
   {
     id: "mail",
     label: "邮件",
-    description: "SMTP 或 Resend 邮件配置。",
+    description: "注册邮箱规则以及 SMTP 或 Resend 邮件配置。",
   },
   {
     id: "credits",

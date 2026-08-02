@@ -2,8 +2,8 @@ import { randomInt, randomUUID } from "node:crypto";
 import { db, verification } from "@repo/database";
 import { eq } from "drizzle-orm";
 import {
-  getAllowedRegistrationEmailMessage,
-  isAllowedRegistrationEmail,
+  getRegistrationEmailRejectionMessage,
+  getRegistrationEmailRejectionReason,
   normalizeEmail,
 } from "./email-domain";
 import { isRegistrationEmailTaken } from "./registration-identity";
@@ -18,6 +18,7 @@ import { sendEmail } from "../mail/utils";
 import { isSelfUseModeEnabled } from "./self-use-mode";
 import { getRegistrationFixedCode } from "./registration-fixed-code";
 import { matchesRegistrationFixedCode } from "./registration-fixed-code-core";
+import { getRuntimeRegistrationEmailPolicy } from "./registration-email-policy";
 
 const PURPOSE = "registration-email-code";
 const CODE_LENGTH = 6;
@@ -41,8 +42,15 @@ export async function sendRegistrationVerificationCode(email: string) {
     throw new Error("Invalid email address");
   }
 
-  if (!isAllowedRegistrationEmail(normalizedEmail)) {
-    throw new Error(getAllowedRegistrationEmailMessage());
+  const emailPolicy = await getRuntimeRegistrationEmailPolicy();
+  const rejectionReason = getRegistrationEmailRejectionReason(
+    normalizedEmail,
+    emailPolicy
+  );
+  if (rejectionReason) {
+    throw new Error(
+      getRegistrationEmailRejectionMessage(rejectionReason, emailPolicy)
+    );
   }
 
   if (await isRegistrationEmailTaken(normalizedEmail)) {
