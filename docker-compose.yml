@@ -50,6 +50,8 @@ services:
       # 注册机 sidecar：未设置 URL 时后台「注册机」Tab 不可用（直接报错），不影响其余功能。
       CHATGPT_REGISTER_URL: ${CHATGPT_REGISTER_URL:-http://chatgpt-register:3023}
       CHATGPT_REGISTER_SECRET: ${CHATGPT_REGISTER_SECRET:-}
+      SUPER_RESOLUTION_WORKER_URL: http://super-resolution-worker:3310
+      SUPER_RESOLUTION_WORKER_SECRET: ${SUPER_RESOLUTION_WORKER_SECRET:-}
       GPT2IMAGE_BOOTSTRAP_CREDENTIALS_PATH: /app/.gpt2image/super-admin-credentials.txt
     ports:
       - "${WEB_PORT:-3000}:3000"
@@ -65,6 +67,36 @@ services:
         condition: service_started
       chatgpt-register:
         condition: service_started
+      super-resolution-worker:
+        condition: service_healthy
+
+  super-resolution-worker:
+    image: ghcr.io/meowfree/gpt2image-pro-web:${GPT2IMAGE_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ${GPT2IMAGE_ENV_FILE:-.env}
+    environment:
+      SUPER_RESOLUTION_WORKER_BIND: 0.0.0.0
+      SUPER_RESOLUTION_WORKER_PORT: 3310
+      SUPER_RESOLUTION_WORKER_SECRET: ${SUPER_RESOLUTION_WORKER_SECRET:-}
+      SUPER_RESOLUTION_WORKER_CONCURRENCY: ${SUPER_RESOLUTION_WORKER_CONCURRENCY:-1}
+      SUPER_RESOLUTION_INTRA_OP_THREADS: ${SUPER_RESOLUTION_INTRA_OP_THREADS:-6}
+      SUPER_RESOLUTION_SHARP_CONCURRENCY: ${SUPER_RESOLUTION_SHARP_CONCURRENCY:-2}
+      UV_THREADPOOL_SIZE: ${SUPER_RESOLUTION_UV_THREADPOOL_SIZE:-4}
+      REALESR_MODEL_PATH: /app/apps/web/models/realesr-general-x4v3.onnx
+    command: ["node", "apps/web/worker/super-resolution-worker.mjs"]
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3310/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    cpus: "${SUPER_RESOLUTION_WORKER_CPUS:-6.0}"
 
   chatgpt-web-proxy:
     image: ghcr.io/meowfree/gpt2image-pro-chatgpt-web-proxy:${GPT2IMAGE_IMAGE_TAG:-latest}

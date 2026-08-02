@@ -96,7 +96,7 @@ Chat 模式和 Agent 模式分开：Chat 更适合用户主动对话和上下文
 
 平台在最终图落库前做两道**相互独立**的服务端后处理，解决「上游返回图分辨率不达标、画质偏软」——尤其 Web、Codex 等后端不严格遵循请求尺寸：
 
-- **分辨率超分（自动）**：当最终图较长边低于请求目标的 2/3 时，用 Real-ESRGAN（general-x4v3）放大 4 倍，再按比例缩到目标边长（`fit: inside`，不裁剪、不改宽高比）；若上游图极小、放大 4 倍后仍不足目标，则以放大结果为准、不做模糊拉伸（此时输出可能仍略小于目标）。因此 **Web / Codex 出图也能自动补足到接近 4K 的目标分辨率**。CPU 推理，单张 512→2048 约 1-2 秒，按 tile 分块限制内存峰值、并发执行；仅对最终图触发，由系统设置 `IMAGE_SUPER_RESOLUTION_ENABLED` 控制（默认关）。
+- **分辨率超分（自动）**：当最终图较长边低于请求目标的 2/3 时，用 Real-ESRGAN（general-x4v3）放大 4 倍，再按比例缩到目标边长（`fit: inside`，不裁剪、不改宽高比）；若上游图极小、放大 4 倍后仍不足目标，则以放大结果为准、不做模糊拉伸（此时输出可能仍略小于目标）。因此 **Web / Codex 出图也能自动补足到接近 4K 的目标分辨率**。CPU 推理运行在独立 Worker，默认单并发、限制 ONNX 线程，不占用 Next.js 进程；仅对最终图触发，由系统设置 `IMAGE_SUPER_RESOLUTION_ENABLED` 控制（默认关）。
 - **高清修复（手动）**：与超分独立的可选增强。用户在创作页勾选「高清修复」或 API 传 `hd_repair=true` 时，用 SCUNet 对最终图做盲复原（去噪、去压缩块、增强质感，**不改分辨率**）。CPU 推理较重（512 约 11 秒、1024 约 35 秒），服务端**全局串行排队**（同时最多一个修复推理）以防并发打满机器，较长边超过 2048 的超大图跳过；由系统设置 `IMAGE_RESTORATION_ENABLED` 控制（默认关），需用户手动勾选。
 - **组合与容错**：两者可叠加，顺序为「先修复（原分辨率、省算力）再超分（放大到目标）」；均不裁剪、不改宽高比，任一步失败自动回退原图、不阻断出图。
 
@@ -215,7 +215,7 @@ docker compose pull
 docker compose up -d
 ```
 
-默认 compose 会启动 PostgreSQL、Web 应用、数据库迁移任务和 ChatGPT Web sidecar。首次启动默认自用模式，超管密码会写入 `app-bootstrap` volume 内的 `super-admin-credentials.txt`，也可通过日志查看。
+默认 compose 会启动 PostgreSQL、Web 应用、数据库迁移任务、Real-ESRGAN Worker 和 ChatGPT Web sidecar。首次启动默认自用模式，超管密码会写入 `app-bootstrap` volume 内的 `super-admin-credentials.txt`，也可通过日志查看。
 
 `GPT2IMAGE_IMAGE_TAG` 同时控制 Web、数据库迁移和 sidecar 镜像版本。升级时不要只改其中一个镜像；让三者使用同一个 tag，避免 Web 新版本启动但迁移任务仍停留在旧版本，导致运行时缺表或字段。
 
@@ -266,6 +266,19 @@ pnpm db:push
 pnpm build:web
 pnpm --filter @repo/web start
 ```
+
+Real-ESRGAN 必须以独立进程常驻；使用 PM2/systemd 分别守护 Web 和 Worker：
+
+```bash
+SUPER_RESOLUTION_WORKER_BIND=127.0.0.1 \
+SUPER_RESOLUTION_WORKER_PORT=3310 \
+SUPER_RESOLUTION_INTRA_OP_THREADS=6 \
+pnpm --filter @repo/web start:super-resolution-worker
+```
+
+Web 默认调用 `http://127.0.0.1:3310`。生产环境建议给两端配置相同的
+`SUPER_RESOLUTION_WORKER_SECRET`，并通过 systemd `CPUQuota` 或容器 CPU 限额保留页面服务算力；
+参考 `deploy/systemd/gpt2image-super-resolution-worker.service.example`。
 
 生产环境建议明确配置：
 

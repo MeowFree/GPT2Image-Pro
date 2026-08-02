@@ -1,0 +1,27 @@
+[Unit]
+Description=GPT2Image Real-ESRGAN worker
+After=network.target
+
+[Service]
+Type=simple
+# Point this at apps/web inside the active Next standalone release.
+WorkingDirectory=/opt/gpt2image/current/apps/web/.next/standalone/apps/web
+EnvironmentFile=/opt/gpt2image/shared/.env.local
+Environment=NODE_ENV=production
+Environment=SUPER_RESOLUTION_WORKER_BIND=127.0.0.1
+Environment=SUPER_RESOLUTION_WORKER_PORT=3310
+Environment=SUPER_RESOLUTION_WORKER_CONCURRENCY=1
+Environment=SUPER_RESOLUTION_INTRA_OP_THREADS=6
+Environment=SUPER_RESOLUTION_SHARP_CONCURRENCY=2
+Environment=UV_THREADPOOL_SIZE=4
+ExecStart=/usr/bin/node worker/super-resolution-worker.mjs
+Restart=on-failure
+RestartSec=2
+
+# Keep inference from starving page rendering on the same host.
+Nice=10
+CPUAccounting=true
+CPUQuota=600%
+
+[Install]
+WantedBy=multi-user.target

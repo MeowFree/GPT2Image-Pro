@@ -6,6 +6,7 @@
     "dev": "next dev --turbopack --port 3000",
     "build": "next build",
     "start": "next start",
+    "start:super-resolution-worker": "node worker/super-resolution-worker.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint ."

@@ -39,6 +39,7 @@ const nextConfig = {
       "./models/isnet.onnx",
       "./models/realesr-general-x4v3.onnx",
       "./models/scunet-color-real-gan.onnx",
+      "./worker/super-resolution-worker.mjs",
       "../../node_modules/.pnpm/@img+sharp-libvips-linux-x64@*/node_modules/@img/sharp-libvips-linux-x64/**",
       "../../node_modules/.pnpm/@img+sharp-linux-x64@*/node_modules/@img/sharp-linux-x64/**",
     ],

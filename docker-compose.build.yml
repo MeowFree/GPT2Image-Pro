@@ -33,6 +33,22 @@ services:
         NEXT_PUBLIC_GA_ID: ${NEXT_PUBLIC_GA_ID:-}
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
 
+  super-resolution-worker:
+    image: gpt2image-pro-web:local
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      target: runner
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-GPT2IMAGE}
+        NEXT_PUBLIC_PAYMENT_PROVIDER: ${NEXT_PUBLIC_PAYMENT_PROVIDER:-none}
+        NEXT_PUBLIC_GENERATIONS_BUCKET_NAME: ${NEXT_PUBLIC_GENERATIONS_BUCKET_NAME:-generations}
+        NEXT_PUBLIC_AVATARS_BUCKET_NAME: ${NEXT_PUBLIC_AVATARS_BUCKET_NAME:-avatars}
+        NEXT_PUBLIC_ASSET_PREFIX: ${NEXT_PUBLIC_ASSET_PREFIX:-}
+        NEXT_PUBLIC_GA_ID: ${NEXT_PUBLIC_GA_ID:-}
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+
   chatgpt-web-proxy:
     image: gpt2image-pro-chatgpt-web-proxy:local
     build:

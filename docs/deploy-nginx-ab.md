@@ -10,6 +10,8 @@
 
 - Nginx upstream:`gpt2image_pool` = `127.0.0.1:3308`(主)+ `127.0.0.1:3307`(备,`backup`)
 - systemd 单元:`gpt2image-3308-nopending`(主)、`gpt2image-3307-agentparse`(备)
+- 超分单元:`gpt2image-super-resolution-worker`(本机 `127.0.0.1:3310`，两个 Web 实例共享；
+  单并发、ONNX 6 线程、`CPUQuota=600%`，避免 Real-ESRGAN 抢占页面进程)
 - 每单元 drop-in:`/etc/systemd/system/<unit>.service.d/20-agenttools.conf`(改 `WorkingDirectory`)
 - 静态服务:Nginx `location ~ ^/(?<aprefix>gpt2-assets-[^/]+)/_next/static/(?<apath>.*)$`
   → `proxy_pass http://$gc_static_upstream/_next/static/$apath`;`map $aprefix $gc_static_upstream`
@@ -125,7 +127,7 @@ test -d "$release/apps/web/.next/standalone/apps/web/public" && echo public-ok
 grep -aoE '"assetPrefix": "[^"]*"' "$release/apps/web/.next/standalone/apps/web/.next/required-server-files.json"
 ```
 
-### 6. 改两个 drop-in 的 WorkingDirectory
+### 6. 改 Web 与超分 Worker 的 WorkingDirectory
 
 两个单元都要改(先备份当前态供回滚),然后 `daemon-reload`:
 
@@ -140,7 +142,42 @@ done
 sudo systemctl daemon-reload
 ```
 
-### 7. 先切备(3307),验证
+首次部署 Worker 时，以仓库模板创建单元；后续版本只更新它的 drop-in：
+
+```bash
+# 首次部署参考 deploy/systemd/gpt2image-super-resolution-worker.service.example 创建主 unit。
+sudo mkdir -p /etc/systemd/system/gpt2image-super-resolution-worker.service.d
+sudo tee /etc/systemd/system/gpt2image-super-resolution-worker.service.d/20-release.conf >/dev/null <<EOF
+[Service]
+WorkingDirectory=$NEWWD
+EnvironmentFile=
+EnvironmentFile=/home/user1/gpt2image-shared/.env.local
+ExecStart=
+ExecStart=/home/user1/.nvm/versions/node/v24.15.0/bin/node worker/super-resolution-worker.mjs
+EOF
+sudo systemctl daemon-reload
+```
+
+后续发布与两个 Web drop-in 同时替换 Worker 目录：
+
+```bash
+wconf=/etc/systemd/system/gpt2image-super-resolution-worker.service.d/20-release.conf
+sudo cp "$wconf" "$wconf.bak-brief"
+sudo sed -i "s|^WorkingDirectory=.*|WorkingDirectory=$NEWWD|" "$wconf"
+sudo systemctl daemon-reload
+```
+
+### 7. 先切超分 Worker，再切备(3307)
+
+Worker 协议保持向后兼容，先切它不会影响仍运行旧代码的 Web：
+
+```bash
+sudo systemctl restart gpt2image-super-resolution-worker
+systemctl is-active gpt2image-super-resolution-worker
+curl -fsS http://127.0.0.1:3310/healthz
+```
+
+然后切备：
 
 ```bash
 old=$(systemctl show gpt2image-3307-agentparse -p MainPID --value)
@@ -187,7 +224,10 @@ for u in gpt2image-3308-nopending gpt2image-3307-agentparse; do
   conf="/etc/systemd/system/$u.service.d/20-agenttools.conf"
   sudo sed -i "s|^WorkingDirectory=.*|WorkingDirectory=$prev/apps/web/.next/standalone/apps/web|" "$conf"
 done
+sudo sed -i "s|^WorkingDirectory=.*|WorkingDirectory=$prev/apps/web/.next/standalone/apps/web|" \
+  /etc/systemd/system/gpt2image-super-resolution-worker.service.d/20-release.conf
 sudo systemctl daemon-reload
+sudo systemctl restart gpt2image-super-resolution-worker
 sudo systemctl restart gpt2image-3307-agentparse
 sudo systemctl restart gpt2image-3308-nopending
 ```

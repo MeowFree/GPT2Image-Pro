@@ -6,7 +6,7 @@
  *   对齐到目标边界（不裁剪、不改宽高比，保全画面内容）。
  *
  * 使用方：image-generation/operations.ts 存图函数，落库前。
- * 关键依赖：super-resolution.ts（Real-ESRGAN onnx）、sharp。
+ * 关键依赖：super-resolution.ts（独立 Real-ESRGAN Worker 客户端）、sharp。
  *
  * 设计：校准模式由纯函数 getResolutionCalibrationMode 决定，便于 DB-free 单测；实际
  *   放大/缩放有副作用（CPU + IO），由 calibrateImageResolution 编排。失败时回退原图。
