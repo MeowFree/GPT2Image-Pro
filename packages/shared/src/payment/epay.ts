@@ -20,6 +20,10 @@ export const EPAY_TRADE_SUCCESS = "TRADE_SUCCESS";
 
 export type PaymentProvider = "creem" | "epay";
 export type EpayBusinessType = "subscription" | "credit_purchase";
+export type EpaySubscriptionCheckoutMode =
+  | "new_subscription"
+  | "upgrade"
+  | "renewal";
 
 export interface EpayMetadata {
   type: EpayBusinessType;
@@ -30,7 +34,7 @@ export interface EpayMetadata {
   packageId?: string;
   quantity?: number;
   creditPlan?: string;
-  checkoutMode?: "new_subscription" | "upgrade";
+  checkoutMode?: EpaySubscriptionCheckoutMode;
   expectedAmount?: number;
   originalAmount?: number;
   prorationCredit?: number;
@@ -496,8 +500,10 @@ export function encodeEpayMetadata(metadata: EpayMetadata): string {
   if (metadata.quantity && metadata.quantity > 1) compact.q = metadata.quantity;
   if (metadata.creditPlan) compact.x = metadata.creditPlan;
 
-  if (metadata.checkoutMode === "upgrade") {
-    compact.m = "u";
+  if (metadata.type === "subscription") {
+    if (metadata.checkoutMode === "upgrade") compact.m = "u";
+    if (metadata.checkoutMode === "renewal") compact.m = "r";
+    if (metadata.checkoutMode === "new_subscription") compact.m = "n";
     if (typeof metadata.expectedAmount === "number") {
       compact.e = metadata.expectedAmount;
     }
@@ -561,9 +567,11 @@ function normalizeEpayMetadata(
     metadata.checkoutMode ??
     (metadata.m === "u"
       ? "upgrade"
-      : metadata.m === "n"
-        ? "new_subscription"
-        : undefined);
+      : metadata.m === "r"
+        ? "renewal"
+        : metadata.m === "n"
+          ? "new_subscription"
+          : undefined);
   const expectedAmount = numberValue(metadata.expectedAmount ?? metadata.e);
   const originalAmount = numberValue(metadata.originalAmount ?? metadata.a);
   const prorationCredit = numberValue(metadata.prorationCredit ?? metadata.c);
@@ -592,27 +600,29 @@ function normalizeEpayMetadata(
       quantity > 0 && {
         quantity: Math.floor(quantity),
       }),
-    ...((checkoutMode === "new_subscription" || checkoutMode === "upgrade") && {
-      checkoutMode,
-    }),
+    ...((checkoutMode === "new_subscription" ||
+      checkoutMode === "upgrade" ||
+      checkoutMode === "renewal") && { checkoutMode }),
     ...(typeof expectedAmount === "number" &&
       Number.isFinite(expectedAmount) && {
-      expectedAmount,
-    }),
+        expectedAmount,
+      }),
     ...(typeof originalAmount === "number" &&
       Number.isFinite(originalAmount) && {
-      originalAmount,
-    }),
+        originalAmount,
+      }),
     ...(typeof prorationCredit === "number" &&
       Number.isFinite(prorationCredit) && {
-      prorationCredit,
-    }),
-    ...(typeof remainingDays === "number" && Number.isFinite(remainingDays) && {
-      remainingDays,
-    }),
-    ...(typeof periodDays === "number" && Number.isFinite(periodDays) && {
-      periodDays,
-    }),
+        prorationCredit,
+      }),
+    ...(typeof remainingDays === "number" &&
+      Number.isFinite(remainingDays) && {
+        remainingDays,
+      }),
+    ...(typeof periodDays === "number" &&
+      Number.isFinite(periodDays) && {
+        periodDays,
+      }),
     ...(typeof upgradeFromPriceId === "string" && {
       upgradeFromPriceId,
     }),

@@ -31,6 +31,7 @@ import {
   decodeEpayMetadata,
   getEpayOrderMetadata,
   type EpayMetadata,
+  type EpaySubscriptionCheckoutMode,
   type EpayVerifyResult,
   moneyToCents,
   updateEpayOrderStatus,
@@ -367,7 +368,7 @@ async function grantSubscriptionCredits(params: {
   outTradeNo: string;
   paymentMethod: string;
   paidMoney: string;
-  checkoutMode: "new_subscription" | "upgrade";
+  checkoutMode: EpaySubscriptionCheckoutMode;
   originalAmount: number;
   prorationCredit: number;
   remainingDays: number;

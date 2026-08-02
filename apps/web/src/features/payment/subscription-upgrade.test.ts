@@ -88,6 +88,7 @@ vi.mock("@repo/shared/config/subscription-plan", async (importOriginal) => {
 
 import {
   createSubscriptionCheckoutQuote,
+  isEpayCurrentPlanRenewal,
   type ProratedSubscription,
 } from "./subscription-upgrade";
 
@@ -105,6 +106,24 @@ function makeCurrent(
     ...overrides,
   };
 }
+
+describe("isEpayCurrentPlanRenewal", () => {
+  it("allows the current price only through Epay", () => {
+    expect(
+      isEpayCurrentPlanRenewal("pro_monthly", "pro_monthly", true)
+    ).toBe(true);
+    expect(
+      isEpayCurrentPlanRenewal("pro_monthly", "pro_monthly", false)
+    ).toBe(false);
+  });
+
+  it("does not classify a different or missing current price as renewal", () => {
+    expect(
+      isEpayCurrentPlanRenewal("starter_monthly", "pro_monthly", true)
+    ).toBe(false);
+    expect(isEpayCurrentPlanRenewal(null, "pro_monthly", true)).toBe(false);
+  });
+});
 
 describe("createSubscriptionCheckoutQuote", () => {
   beforeEach(() => {

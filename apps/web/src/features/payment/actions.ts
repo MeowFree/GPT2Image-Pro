@@ -20,7 +20,10 @@ import {
 } from "@repo/shared/payment/epay";
 
 import { creem } from "./creem";
-import { createSubscriptionCheckoutQuote } from "./subscription-upgrade";
+import {
+  createSubscriptionCheckoutQuote,
+  isEpayCurrentPlanRenewal,
+} from "./subscription-upgrade";
 
 /**
  * 创建 Creem Checkout Session
@@ -61,19 +64,33 @@ export const createCheckoutSession = protectedAction
     }
 
     const baseUrl = getBaseUrl();
-    const hasActiveSub =
-      existingSub && isSubscriptionCurrentlyActive(existingSub);
-    const upgradeQuote = hasActiveSub
-      ? await createSubscriptionCheckoutQuote(existingSub, priceId)
-      : null;
     const useEpay = await isRuntimeEpayPaymentProvider();
+    const activeSubscription =
+      existingSub && isSubscriptionCurrentlyActive(existingSub)
+        ? existingSub
+        : null;
+    const hasActiveSub = Boolean(activeSubscription);
+    const isRenewal = isEpayCurrentPlanRenewal(
+      activeSubscription?.priceId,
+      priceId,
+      useEpay
+    );
+    const upgradeQuote =
+      activeSubscription && !isRenewal
+        ? await createSubscriptionCheckoutQuote(activeSubscription, priceId)
+        : null;
+    const checkoutMode = isRenewal
+      ? ("renewal" as const)
+      : upgradeQuote
+        ? ("upgrade" as const)
+        : ("new_subscription" as const);
 
     logEvent("payment.checkout.started", {
       userId,
       priceId,
       planId: plan.id,
       provider: useEpay ? "epay" : "creem",
-      checkoutMode: upgradeQuote ? "upgrade" : "new_subscription",
+      checkoutMode,
       amountDue: upgradeQuote?.amountDue ?? price.amount,
       prorationCredit: upgradeQuote?.prorationCredit,
     });
@@ -87,22 +104,25 @@ export const createCheckoutSession = protectedAction
         outTradeNo,
         priceId,
         planId: plan.id,
-        checkoutMode: upgradeQuote
-          ? ("upgrade" as const)
-          : ("new_subscription" as const),
+        checkoutMode,
         expectedAmount: amountDue,
         originalAmount: upgradeQuote?.originalAmount ?? price.amount,
-        prorationCredit: upgradeQuote?.prorationCredit ?? 0,
-        remainingDays: upgradeQuote?.remainingDays ?? 0,
-        periodDays: upgradeQuote?.periodDays ?? 0,
-        upgradeFromPriceId: upgradeQuote?.upgradeFromPriceId,
+        ...(upgradeQuote && {
+          prorationCredit: upgradeQuote.prorationCredit,
+          remainingDays: upgradeQuote.remainingDays,
+          periodDays: upgradeQuote.periodDays,
+          upgradeFromPriceId: upgradeQuote.upgradeFromPriceId,
+        }),
       };
       await saveEpayOrder(metadata, amountDue);
       const checkout = await createRuntimeEpayPurchase({
         outTradeNo,
-        name: upgradeQuote
-          ? `GPT2IMAGE upgrade to ${plan.name} ${price.interval ?? "subscription"}`
-          : `GPT2IMAGE ${plan.name} ${price.interval ?? "subscription"}`,
+        name:
+          checkoutMode === "upgrade"
+            ? `GPT2IMAGE upgrade to ${plan.name} ${price.interval ?? "subscription"}`
+            : checkoutMode === "renewal"
+              ? `GPT2IMAGE renew ${plan.name} ${price.interval ?? "subscription"}`
+              : `GPT2IMAGE ${plan.name} ${price.interval ?? "subscription"}`,
         money: amountDue,
       });
 

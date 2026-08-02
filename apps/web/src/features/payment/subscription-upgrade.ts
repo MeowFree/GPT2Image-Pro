@@ -16,6 +16,16 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_UPGRADE_PAYMENT_CENTS = 1;
 
+export function isEpayCurrentPlanRenewal(
+  currentPriceId: string | null | undefined,
+  targetPriceId: string,
+  useEpay: boolean
+) {
+  return Boolean(
+    useEpay && currentPriceId && currentPriceId === targetPriceId
+  );
+}
+
 export type ProratedSubscription = {
   userId: string;
   priceId: string | null;

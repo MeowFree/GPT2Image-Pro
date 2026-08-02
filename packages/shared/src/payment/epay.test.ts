@@ -16,8 +16,8 @@ vi.mock("@repo/database/schema", () => ({ epayOrder: {} }));
 
 import {
   decodeEpayMetadata,
-  encodeEpayMetadata,
   type EpayMetadata,
+  encodeEpayMetadata,
   moneyToCents,
   signEpayParams,
   verifyEpayParams,
@@ -186,6 +186,19 @@ describe("encodeEpayMetadata / decodeEpayMetadata", () => {
       remainingDays: 12,
       periodDays: 30,
       upgradeFromPriceId: "starter_monthly",
+    };
+    expect(decodeEpayMetadata(encodeEpayMetadata(metadata))).toEqual(metadata);
+  });
+
+  it("round-trips a subscription renewal with the full purchase amount", () => {
+    const metadata: EpayMetadata = {
+      type: "subscription",
+      userId: "user-1",
+      outTradeNo: "T-renewal",
+      priceId: "pro_monthly",
+      checkoutMode: "renewal",
+      expectedAmount: 60,
+      originalAmount: 60,
     };
     expect(decodeEpayMetadata(encodeEpayMetadata(metadata))).toEqual(metadata);
   });

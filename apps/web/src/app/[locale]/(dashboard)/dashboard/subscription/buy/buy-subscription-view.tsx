@@ -25,6 +25,7 @@ import {
   Check,
   Coins,
   Loader2,
+  RefreshCw,
   ShoppingCart,
   Sparkles,
 } from "lucide-react";
@@ -159,8 +160,8 @@ export function BuySubscriptionView({
           </h1>
           <p className="max-w-2xl text-muted-foreground">
             {copy(
-              "Choose a subscription without leaving the dashboard. Active subscriptions can upgrade by paying the prorated difference.",
-              "直接在控制台选择订阅套餐；已有订阅可按当前周期补差升级。"
+              "Choose a subscription without leaving the dashboard. Epay subscriptions can renew the current plan or upgrade by paying the prorated difference.",
+              "直接在控制台选择订阅套餐；易支付订阅可续购当前套餐，或按当前周期补差升级。"
             )}
           </p>
         </div>
@@ -230,7 +231,9 @@ export function BuySubscriptionView({
           const canUpgrade =
             currentPlan.hasActiveSubscription &&
             PLAN_RANK[planId] > PLAN_RANK[currentPlan.plan];
-          const canPurchase = !currentPlan.hasActiveSubscription || canUpgrade;
+          const canRenew = isCurrent && payment.provider === "epay";
+          const canPurchase =
+            !currentPlan.hasActiveSubscription || canUpgrade || canRenew;
           const isLoading = loadingPlan === planId;
           const popular = Boolean(plan?.popular);
           const presentation = buildPlanPresentation({
@@ -316,9 +319,13 @@ export function BuySubscriptionView({
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : canUpgrade ? (
                     <Sparkles className="mr-2 h-4 w-4" />
+                  ) : canRenew ? (
+                    <RefreshCw className="mr-2 h-4 w-4" />
                   ) : null}
                   {isCurrent
-                    ? copy("Current plan", "当前套餐")
+                    ? canRenew
+                      ? copy("Renew current plan", "续购当前套餐")
+                      : copy("Current plan", "当前套餐")
                     : canUpgrade
                       ? copy("Upgrade plan", "补差升级")
                       : currentPlan.hasActiveSubscription

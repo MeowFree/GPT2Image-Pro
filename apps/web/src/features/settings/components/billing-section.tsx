@@ -136,12 +136,24 @@ function getBillingDescription(tx: BillingTransaction, locale: string) {
     const planType = typeof meta?.planType === "string" ? meta.planType : "";
     const interval = meta?.interval === "year" ? "yearly" : "monthly";
     const isUpgrade = meta?.checkoutMode === "upgrade";
+    const isRenewal = meta?.checkoutMode === "renewal";
     const plan = planType
       ? `${planType.charAt(0).toUpperCase()}${planType.slice(1)}`
       : "Subscription";
+    const checkoutLabel = isUpgrade
+      ? locale === "zh"
+        ? "补差升级"
+        : "upgrade"
+      : isRenewal
+        ? locale === "zh"
+          ? "续购"
+          : "renewal"
+        : locale === "zh"
+          ? "订阅"
+          : "subscription";
     return locale === "zh"
-      ? `${paymentProvider} ${plan} ${interval === "yearly" ? "年付" : "月付"}${isUpgrade ? "补差升级" : "订阅"}`
-      : `${paymentProvider} ${plan} ${interval} ${isUpgrade ? "upgrade" : "subscription"}`;
+      ? `${paymentProvider} ${plan} ${interval === "yearly" ? "年付" : "月付"}${checkoutLabel}`
+      : `${paymentProvider} ${plan} ${interval} ${checkoutLabel}`;
   }
 
   return tx.description ?? "-";

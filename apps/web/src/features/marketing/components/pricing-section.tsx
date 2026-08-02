@@ -581,7 +581,19 @@ export function PricingSection({
           </div>
 
           <div className="mb-5">
-            {isCurrent ? (
+            {isCurrent && payment?.provider === "epay" ? (
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => handleSubscribe(planId)}
+                disabled={isLoading || isPending}
+              >
+                {isLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                {copy("Renew current plan", "续购当前套餐")}
+              </Button>
+            ) : isCurrent ? (
               <Button
                 className="w-full"
                 variant="outline"
