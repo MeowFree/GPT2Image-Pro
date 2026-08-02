@@ -92,6 +92,7 @@ async function HomeRuntimeSections({ locale }: { locale: string }) {
     creditPackages,
     creditPackageExpiryDays,
     imageBasePricing,
+    imageRetentionPolicy,
     slaEnabled,
     slaStats,
   } = await getMarketingHomeData();
@@ -142,7 +143,13 @@ async function HomeRuntimeSections({ locale }: { locale: string }) {
           creditPackages={creditPackages}
           creditPackageExpiryDays={creditPackageExpiryDays}
           imageBasePricing={imageBasePricing}
+          imageRetentionPolicy={imageRetentionPolicy}
         />
+      </section>
+      {/* 谷段三折「册页」:问答折子 + 页边墨线章节刻度 */}
+      <section className="relative">
+        <InkThread numeral="VII" step="completion" side="left" />
+        <FAQSection imageRetentionPolicy={imageRetentionPolicy} />
       </section>
     </>
   );
@@ -166,11 +173,6 @@ export default async function HomePage({
         >
           <HomeRuntimeSections locale={locale} />
         </Suspense>
-        {/* 谷段三折「册页」:问答折子 + 页边墨线章节刻度 */}
-        <section className="relative">
-          <InkThread numeral="VII" step="completion" side="left" />
-          <FAQSection />
-        </section>
         <FinaleStage />
       </CinemaFilm>
     </>

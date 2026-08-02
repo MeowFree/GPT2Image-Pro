@@ -22,6 +22,7 @@ import {
   CardTitle,
 } from "@repo/ui/components/card";
 import { cn } from "@repo/ui/utils";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   Check,
   ChevronLeft,
@@ -31,26 +32,29 @@ import {
   Loader2,
   ShoppingCart,
 } from "lucide-react";
-import { motion, useReducedMotion } from "framer-motion";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { useCurrentSession } from "@/features/auth/hooks/use-current-session";
 import {
-  createCheckoutSession,
-  getUserSubscription,
-} from "@/features/payment/actions";
-import {
   getImageBaseCreditPricing,
   getImageCreditCostBreakdown,
   IMAGE_MODERATION_PRICE_CNY,
+  type ImageBaseCreditPricing,
   REFERENCE_CREDIT_PRICE_CNY,
   TEXT_MODERATION_PRICE_CNY,
-  type ImageBaseCreditPricing,
 } from "@/features/image-generation/resolution";
+import {
+  createCheckoutSession,
+  getUserSubscription,
+} from "@/features/payment/actions";
 import { PlanInterval } from "@/features/payment/types";
 import { useRouter } from "@/i18n/routing";
 
+import {
+  formatImageRetentionPolicy,
+  type ImageRetentionPolicy,
+} from "../image-retention-policy";
 import { AnimatedPrice } from "./animated-price";
 import { folioNumeral } from "./folio-numeral";
 import { InkReveal, InkRevealBoundary, InkRule } from "./ink-reveal";
@@ -101,6 +105,7 @@ interface PricingSectionProps {
   creditPackages?: RuntimeCreditPackage[];
   creditPackageExpiryDays?: number;
   imageBasePricing?: ImageBaseCreditPricing;
+  imageRetentionPolicy: ImageRetentionPolicy;
 }
 
 /**
@@ -113,6 +118,7 @@ export function PricingSection({
   creditPackages = [],
   creditPackageExpiryDays,
   imageBasePricing,
+  imageRetentionPolicy,
 }: PricingSectionProps) {
   const t = useTranslations("Pricing");
   // 影片第五幕"装裱"眉标文案(仅语义包装,定价交互与内容不动)
@@ -558,9 +564,7 @@ export function PricingSection({
       );
     }
 
-    items.push(
-      copy("Download, share, and saved gallery history", "下载、分享与画廊历史保存")
-    );
+    items.push(formatImageRetentionPolicy(imageRetentionPolicy, locale));
     return items;
   };
 

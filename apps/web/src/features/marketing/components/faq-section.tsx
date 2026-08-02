@@ -1,5 +1,27 @@
 "use client";
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@repo/ui/components/accordion";
+import {
+  motion,
+  useReducedMotion,
+  useScroll,
+  useSpring,
+  useTransform,
+} from "framer-motion";
+import { useLocale, useTranslations } from "next-intl";
+import { useEffect, useRef, useState } from "react";
+import {
+  formatImageRetentionPolicy,
+  type ImageRetentionPolicy,
+} from "../image-retention-policy";
+import { folioNumeral } from "./folio-numeral";
+import { InkReveal, useInkEngaged } from "./ink-reveal";
+
 /**
  * 谷段三折「册页」:FAQ 的问答体剧情化(v1.0.1 跟随化)。
  * 手风琴白卡退役,改为古画论问答册页——每问一折,页边衬线编号,
@@ -11,23 +33,6 @@
  * 交互语义(单开手风琴/键盘可达)与内容原样保留;SSR/无 JS/减动效
  * 输出完成态(mounted 门闩,内容真相不依赖动画)。
  */
-import {
-  motion,
-  useReducedMotion,
-  useScroll,
-  useSpring,
-  useTransform,
-} from "framer-motion";
-import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@repo/ui/components/accordion";
-import { folioNumeral } from "./folio-numeral";
-import { InkReveal, useInkEngaged } from "./ink-reveal";
 
 /**
  * 单折:以自身进入视口的位置为翻折进度(target 元素级 useScroll),
@@ -124,7 +129,11 @@ function FolioItem({
   );
 }
 
-export function FAQSection() {
+export function FAQSection({
+  imageRetentionPolicy,
+}: {
+  imageRetentionPolicy: ImageRetentionPolicy;
+}) {
   const t = useTranslations("FAQ");
   const locale = useLocale();
   const zh = locale.startsWith("zh");
@@ -132,10 +141,19 @@ export function FAQSection() {
   // mounted 门闩:滚动跟随样式仅客户端生效,SSR/无 JS 输出完成态
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  const faqItems = t.raw("items") as Array<{
+  const translatedFaqItems = t.raw("items") as Array<{
     question: string;
     answer: string;
   }>;
+  const faqItems = [
+    ...translatedFaqItems,
+    {
+      question: zh
+        ? "生成图片会在画廊中保存多久？"
+        : "How long are generated images kept in the gallery?",
+      answer: formatImageRetentionPolicy(imageRetentionPolicy, locale),
+    },
+  ];
 
   return (
     // 全幅浅底节:延续明暗交替的书页节奏

@@ -183,7 +183,7 @@
       },
       {
         "question": "Can I download and use the images commercially?",
-        "answer": "Yes. Images you generate on GPT2IMAGE are yours to use — for personal, editorial, or commercial projects. Downloads are available from your gallery, and your full generation history stays saved."
+        "answer": "Yes. Images you generate on GPT2IMAGE are yours to use — for personal, editorial, or commercial projects, with downloads available from your gallery."
       }
     ]
   },
@@ -415,7 +415,7 @@
           "fileSize": "Up to 5 images per batch",
           "queue": "Up to 2 concurrent generations",
           "export": "Download & share",
-          "history": "Gallery history saved forever",
+          "history": "Gallery image retention follows the current system policy",
           "creditsValidity": "Credits follow the plan period",
           "batch": "Batch image generation"
         }
@@ -434,7 +434,7 @@
           "fileSize": "Up to 10 images per batch",
           "queue": "Up to 5 concurrent generations",
           "export": "Download & share",
-          "history": "Gallery history saved forever",
+          "history": "Gallery image retention follows the current system policy",
           "support": "Email support",
           "creditsValidity": "Credits follow the plan period",
           "batch": "Batch image generation",
@@ -456,7 +456,7 @@
           "fileSize": "Up to 25 images per batch",
           "queue": "Priority queue, up to 15 concurrent generations",
           "export": "Download & share",
-          "history": "Gallery history saved forever",
+          "history": "Gallery image retention follows the current system policy",
           "customCards": "Advanced model access",
           "support": "Priority support",
           "creditsValidity": "Credits follow the plan period",
@@ -481,7 +481,7 @@
           "fileSize": "Up to 50 images per batch",
           "queue": "Highest priority queue, up to 50 concurrent generations",
           "export": "Download & share",
-          "history": "Gallery history saved forever",
+          "history": "Gallery image retention follows the current system policy",
           "customCards": "Premium model access",
           "aiAssist": "Higher generation limits",
           "support": "Dedicated support",
@@ -516,7 +516,7 @@
           "enterpriseResourcePack": "Enterprise resource pack access",
           "enterpriseResourcePackUnlimited": "Unlimited enterprise resource pack purchases",
           "export": "Download & share",
-          "history": "Gallery history saved forever",
+          "history": "Gallery image retention follows the current system policy",
           "externalApi": "Create multiple external API keys",
           "customApi": "Configure your own OpenAI-compatible API",
           "support": "Dedicated support"

@@ -183,7 +183,7 @@
       },
       {
         "question": "生成的图片可以下载并用于商业用途吗？",
-        "answer": "可以。你在 GPT2IMAGE 上生成的图片归你所有，可用于个人、编辑或商业项目。图片可在画廊中下载，所有历史生成记录都会保存。"
+        "answer": "可以。你在 GPT2IMAGE 上生成的图片归你所有，可用于个人、编辑或商业项目，并可从画廊下载。"
       }
     ]
   },
@@ -379,7 +379,7 @@
           "fileSize": "每批最多 5 张图",
           "queue": "单用户最多 2 个并发生图",
           "export": "下载与分享",
-          "history": "画廊历史永久保存",
+          "history": "画廊图片保存期限以当前系统策略为准",
           "creditsValidity": "积分按套餐周期有效",
           "batch": "批量生图"
         }
@@ -398,7 +398,7 @@
           "fileSize": "每批最多 10 张图",
           "queue": "单用户最多 5 个并发生图",
           "export": "下载与分享",
-          "history": "画廊历史永久保存",
+          "history": "画廊图片保存期限以当前系统策略为准",
           "support": "邮件支持",
           "creditsValidity": "积分按套餐周期有效",
           "batch": "批量生图",
@@ -420,7 +420,7 @@
           "fileSize": "每批最多 25 张图",
           "queue": "优先队列，单用户最多 15 个并发生图",
           "export": "下载与分享",
-          "history": "画廊历史永久保存",
+          "history": "画廊图片保存期限以当前系统策略为准",
           "customCards": "高级模型访问",
           "support": "优先支持",
           "creditsValidity": "积分按套餐周期有效",
@@ -445,7 +445,7 @@
           "fileSize": "每批最多 50 张图",
           "queue": "最高优先队列，单用户最多 50 个并发生图",
           "export": "下载与分享",
-          "history": "画廊历史永久保存",
+          "history": "画廊图片保存期限以当前系统策略为准",
           "customCards": "旗舰模型访问",
           "aiAssist": "更高生成额度",
           "support": "专属支持",
@@ -480,7 +480,7 @@
           "enterpriseResourcePack": "企业资源包购买权限",
           "enterpriseResourcePackUnlimited": "企业资源包不限次数购买",
           "export": "下载与分享",
-          "history": "画廊历史永久保存",
+          "history": "画廊图片保存期限以当前系统策略为准",
           "externalApi": "可创建多个外接 API Key",
           "customApi": "可配置自接 OpenAI 兼容 API",
           "support": "专属支持"

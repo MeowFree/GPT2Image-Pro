@@ -167,7 +167,7 @@
       },
       {
         "question": "生成的图片可以下载并用于商业用途吗？",
-        "answer": "可以。你在 GPT2IMAGE 上生成的图片归你所有，可用于个人、编辑或商业项目。支持高分辨率下载，所有历史生成记录都保存在画廊中。"
+        "answer": "可以。你在 GPT2IMAGE 上生成的图片归你所有，可用于个人、编辑或商业项目，并支持高分辨率下载。"
       }
     ]
   },
@@ -420,7 +420,7 @@
           "fileSize": "上传上限：单图 5MB，总上传 75MB",
           "queue": "单用户最多 2 并发",
           "export": "下载与分享",
-          "history": "画廊历史永久保存"
+          "history": "画廊图片保存期限以当前系统策略为准"
         }
       },
       "starter": {
@@ -441,7 +441,7 @@
           "externalApi": "外接 API Key 调用",
           "customApi": "自接 OpenAI 兼容 API",
           "export": "下载与分享",
-          "history": "画廊历史永久保存",
+          "history": "画廊图片保存期限以当前系统策略为准",
           "support": "邮件支持"
         }
       },
@@ -463,7 +463,7 @@
           "promptOptimization": "可尽量减少提示词改动",
           "queue": "优先队列，单用户最多 15 并发",
           "export": "下载与分享",
-          "history": "画廊历史永久保存",
+          "history": "画廊图片保存期限以当前系统策略为准",
           "externalApi": "外接 API Key 调用",
           "customApi": "自接 OpenAI 兼容 API",
           "support": "优先支持"
@@ -489,7 +489,7 @@
           "promptOptimization": "可尽量减少提示词改动",
           "queue": "最高优先队列，单用户最多 50 并发",
           "export": "下载与分享",
-          "history": "画廊历史永久保存",
+          "history": "画廊图片保存期限以当前系统策略为准",
           "externalApi": "外接 API Key 调用",
           "customApi": "自接 OpenAI 兼容 API",
           "support": "专属支持"
@@ -516,7 +516,7 @@
           "enterpriseResourcePack": "企业资源包：每份 5,000 积分，约 3 分 / 张 4K",
           "enterpriseResourcePackUnlimited": "企业资源包可按数量不限量购买",
           "export": "下载与分享",
-          "history": "画廊历史永久保存",
+          "history": "画廊图片保存期限以当前系统策略为准",
           "externalApi": "外接 API Key 调用",
           "customApi": "自接 OpenAI 兼容 API",
           "support": "专属支持"
