@@ -6,6 +6,10 @@ import {
   SUBSCRIPTION_PLANS,
   type SubscriptionPlan,
 } from "@repo/shared/config/subscription-plan";
+import {
+  getLocalizedCreditPackageDescription,
+  getLocalizedCreditPackageName,
+} from "@repo/shared/credits/config";
 import type { RuntimeCreditPackage } from "@repo/shared/credits/packages";
 import type { PaymentConfig } from "@repo/shared/payment/types";
 import type { PlanCapabilityMatrix } from "@repo/shared/subscription/services/plan-capabilities";
@@ -843,6 +847,9 @@ export function PricingSection({
                   minPrice === maxPrice
                     ? formatMoney(minPrice)
                     : `${formatMoney(minPrice)} - ${formatMoney(maxPrice)}`;
+                const packageName = getLocalizedCreditPackageName(pkg, locale);
+                const packageDescription =
+                  getLocalizedCreditPackageDescription(pkg, locale);
 
                 return (
                   <InkReveal
@@ -863,7 +870,7 @@ export function PricingSection({
                     <CardHeader className="space-y-2">
                       <div className="flex items-start justify-between gap-3">
                         <CardTitle className="text-base font-medium">
-                          {pkg.name}
+                          {packageName}
                         </CardTitle>
                         {pkg.popular && (
                           <Badge variant="secondary">
@@ -872,7 +879,7 @@ export function PricingSection({
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {pkg.description ||
+                        {packageDescription ||
                           copy("One-time credit package", "一次性积分包")}
                       </p>
                     </CardHeader>

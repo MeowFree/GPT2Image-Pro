@@ -103,6 +103,14 @@ function normalizeCreditPackage(
     typeof raw.description === "string"
       ? raw.description
       : fallback?.description || "";
+  const nameZh =
+    typeof raw.nameZh === "string" && raw.nameZh.trim()
+      ? raw.nameZh.trim()
+      : fallback?.nameZh;
+  const descriptionZh =
+    typeof raw.descriptionZh === "string" && raw.descriptionZh.trim()
+      ? raw.descriptionZh.trim()
+      : fallback?.descriptionZh;
   const requiresPlan = isSubscriptionPlan(raw.requiresPlan)
     ? raw.requiresPlan
     : fallback?.requiresPlan;
@@ -151,6 +159,8 @@ function normalizeCreditPackage(
   );
 
   if (popular !== undefined) normalized.popular = popular;
+  if (nameZh !== undefined) normalized.nameZh = nameZh;
+  if (descriptionZh !== undefined) normalized.descriptionZh = descriptionZh;
   if (visible !== undefined) normalized.visible = visible;
   if (requiresPlan !== undefined) normalized.requiresPlan = requiresPlan;
   if (allowQuantity !== undefined) normalized.allowQuantity = allowQuantity;

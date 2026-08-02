@@ -13,6 +13,8 @@ import {
 } from "@repo/shared/credits/actions";
 import {
   CREDIT_PACKAGES,
+  getLocalizedCreditPackageDescription,
+  getLocalizedCreditPackageName,
   isCreditPackageVisible,
 } from "@repo/shared/credits/config";
 import { Badge } from "@repo/ui/components/badge";
@@ -36,9 +38,11 @@ import { toast } from "sonner";
 type CreditPackageCard = {
   id: string;
   name: string;
+  nameZh?: string;
   credits: number;
   price: number;
   description: string;
+  descriptionZh?: string;
   popular: boolean;
   allowQuantity?: boolean;
   maxQuantity?: number;
@@ -49,9 +53,11 @@ const FALLBACK_PACKAGES: CreditPackageCard[] = CREDIT_PACKAGES.filter(
 ).map((pkg) => ({
   id: pkg.id,
   name: pkg.name,
+  nameZh: pkg.nameZh,
   credits: pkg.credits,
   price: pkg.price,
   description: pkg.description,
+  descriptionZh: pkg.descriptionZh,
   popular: "popular" in pkg ? pkg.popular : false,
   allowQuantity:
     "allowQuantity" in pkg ? Boolean(pkg.allowQuantity) : false,
@@ -60,19 +66,6 @@ const FALLBACK_PACKAGES: CreditPackageCard[] = CREDIT_PACKAGES.filter(
       ? pkg.maxQuantity
       : 1,
 }));
-
-const PACKAGE_NAMES_ZH: Record<string, string> = {
-  payg_starter: "按量付费",
-  enterprise_resource: "企业资源包",
-};
-
-const PACKAGE_DESCRIPTIONS_ZH: Record<string, string> = {
-  payg_starter: "与入门版同价同积分的一次性积分包",
-  enterprise_resource: "企业版专属资源包，可按数量购买",
-  lite: "少量补充，适合临时生成几张图片",
-  standard: "适合日常使用的高性价比选择",
-  pro: "更多积分，更适合高频创作",
-};
 
 const DEFAULT_MAX_PACKAGE_QUANTITY = 999;
 
@@ -100,7 +93,7 @@ function submitEpayForm(url: string, params: Record<string, string>) {
  */
 export function BuyCreditPackagesView() {
   const locale = useLocale();
-  const isZh = locale === "zh";
+  const isZh = locale.startsWith("zh");
   const router = useRouter();
   const searchParams = useSearchParams();
   const canceled = searchParams.get("canceled");
@@ -285,7 +278,7 @@ export function BuyCreditPackagesView() {
 
               <CardHeader className="pb-3 pt-6 text-center">
                 <p className="text-xs font-medium uppercase tracking-[1.2px] text-muted-foreground">
-                  {isZh ? (PACKAGE_NAMES_ZH[pkg.id] ?? pkg.name) : pkg.name}
+                  {getLocalizedCreditPackageName(pkg, locale)}
                 </p>
               </CardHeader>
 
@@ -380,9 +373,7 @@ export function BuyCreditPackagesView() {
 
                 {/* 描述 + 每积分价格 */}
                 <p className="text-center text-xs text-muted-foreground">
-                  {isZh
-                    ? (PACKAGE_DESCRIPTIONS_ZH[pkg.id] ?? pkg.description)
-                    : pkg.description}
+                  {getLocalizedCreditPackageDescription(pkg, locale)}
                 </p>
 
                 {/* 特性列表 */}

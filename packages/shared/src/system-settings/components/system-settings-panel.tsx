@@ -299,9 +299,12 @@ type CapabilityMatrixDraft = {
 };
 
 type CreditPackageDraft = {
+  draftKey: string;
   id: string;
   name: string;
+  nameZh: string;
   description: string;
+  descriptionZh: string;
   credits: number;
   price: number;
   popular: boolean;
@@ -564,8 +567,8 @@ function normalizeCreditPackageMatrixDraft(
       .map((rawPackage, index) => {
         if (!isRecord(rawPackage)) return null;
         const fallback = fallbackById.get(stringValue(rawPackage.id)) ?? {};
+        // Keep an empty ID in the draft so the field can be cleared and retyped.
         const id = stringValue(rawPackage.id, stringValue(fallback.id)).trim();
-        if (!id) return null;
         const price = numberValue(
           rawPackage.price,
           numberValue(fallback.price, 1)
@@ -580,11 +583,17 @@ function normalizeCreditPackageMatrixDraft(
         );
 
         return {
+          draftKey: `credit-package-${index}`,
           id,
           name: stringValue(rawPackage.name, stringValue(fallback.name, id)),
+          nameZh: stringValue(rawPackage.nameZh, stringValue(fallback.nameZh)),
           description: stringValue(
             rawPackage.description,
             stringValue(fallback.description)
+          ),
+          descriptionZh: stringValue(
+            rawPackage.descriptionZh,
+            stringValue(fallback.descriptionZh)
           ),
           credits: numberValue(
             rawPackage.credits,
@@ -645,7 +654,11 @@ function compactCreditPackageMatrixDraft(matrix: CreditPackageMatrixDraft) {
       return {
         id: pkg.id.trim(),
         name: pkg.name.trim() || pkg.id.trim(),
+        nameZh: pkg.nameZh.trim() || pkg.name.trim() || pkg.id.trim(),
         description: pkg.description,
+        descriptionZh: pkg.descriptionZh.trim()
+          ? pkg.descriptionZh
+          : pkg.description,
         credits: Number(pkg.credits) || 1,
         price: Number(pkg.price) || 1,
         popular: pkg.popular,
@@ -663,6 +676,25 @@ function compactCreditPackageMatrixDraft(matrix: CreditPackageMatrixDraft) {
       };
     }),
   };
+}
+
+function validateCreditPackageMatrix(value: unknown) {
+  const packages = getRawCreditPackages(value);
+  const seenIds = new Set<string>();
+
+  for (const [index, rawPackage] of packages.entries()) {
+    if (!isRecord(rawPackage)) {
+      throw new Error(`第 ${index + 1} 个积分包格式无效`);
+    }
+    const id = stringValue(rawPackage.id).trim();
+    if (!id) {
+      throw new Error(`第 ${index + 1} 个积分包必须填写包 ID`);
+    }
+    if (seenIds.has(id)) {
+      throw new Error(`积分包 ID 不能重复：${id}`);
+    }
+    seenIds.add(id);
+  }
 }
 
 function getJsonSettingHint(key: string) {
@@ -701,7 +733,12 @@ function toSubmitValue(setting: SettingSnapshotItem, value: DraftValue) {
   if (setting.valueType === "json") {
     if (typeof value !== "string") return value;
     const trimmed = value.trim();
-    return trimmed ? JSON.parse(trimmed) : "";
+    if (!trimmed) return "";
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (setting.key === "CREDIT_PACKAGE_MATRIX") {
+      validateCreditPackageMatrix(parsed);
+    }
+    return parsed;
   }
   return String(value ?? "");
 }
@@ -1224,15 +1261,21 @@ function CreditPackageMatrixInput({
   };
 
   const addPackage = () => {
-    const nextIndex = matrix.packages.length + 1;
+    let nextIndex = matrix.packages.length + 1;
+    while (matrix.packages.some((pkg) => pkg.id === `custom_${nextIndex}`)) {
+      nextIndex += 1;
+    }
     const id = `custom_${nextIndex}`;
     updateMatrix({
       packages: [
         ...matrix.packages,
         {
+          draftKey: `credit-package-${nextIndex}`,
           id,
           name: `Custom ${nextIndex}`,
+          nameZh: `自定义积分包 ${nextIndex}`,
           description: "",
+          descriptionZh: "",
           credits: 1000,
           price: 10,
           popular: false,
@@ -1281,12 +1324,14 @@ function CreditPackageMatrixInput({
 
       {matrix.packages.map((pkg, index) => (
         <section
-          key={`${pkg.id}-${index}`}
+          key={pkg.draftKey}
           className="space-y-3 rounded-md border p-3"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h4 className="text-sm font-medium">{pkg.name || pkg.id}</h4>
+              <h4 className="text-sm font-medium">
+                {pkg.nameZh || pkg.name || pkg.id || "未命名积分包"}
+              </h4>
               <p className="text-xs text-muted-foreground">
                 ID: {pkg.id || "未填写"}
               </p>
@@ -1315,12 +1360,22 @@ function CreditPackageMatrixInput({
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">显示名称</Label>
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">显示名称（英文）</Label>
               <Input
                 value={pkg.name}
                 disabled={disabled}
                 onChange={(event) =>
                   updatePackage(index, { name: event.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">显示名称（中文）</Label>
+              <Input
+                value={pkg.nameZh}
+                disabled={disabled}
+                onChange={(event) =>
+                  updatePackage(index, { nameZh: event.target.value })
                 }
               />
             </div>
@@ -1443,17 +1498,31 @@ function CreditPackageMatrixInput({
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">说明</Label>
-            <Textarea
-              value={pkg.description}
-              rows={2}
-              disabled={disabled}
-              className="resize-y"
-              onChange={(event) =>
-                updatePackage(index, { description: event.target.value })
-              }
-            />
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">说明（英文）</Label>
+              <Textarea
+                value={pkg.description}
+                rows={2}
+                disabled={disabled}
+                className="resize-y"
+                onChange={(event) =>
+                  updatePackage(index, { description: event.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">说明（中文）</Label>
+              <Textarea
+                value={pkg.descriptionZh}
+                rows={2}
+                disabled={disabled}
+                className="resize-y"
+                onChange={(event) =>
+                  updatePackage(index, { descriptionZh: event.target.value })
+                }
+              />
+            </div>
           </div>
 
           <div className="overflow-x-auto rounded-lg border">

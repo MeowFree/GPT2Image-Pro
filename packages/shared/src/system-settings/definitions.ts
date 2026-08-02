@@ -345,7 +345,9 @@ const CREDIT_PACKAGE_MATRIX_EXAMPLE = {
     {
       id: "payg_starter",
       name: "Pay as you go",
+      nameZh: "按量付费",
       description: "One-time credits priced like Starter",
+      descriptionZh: "与入门版同价同积分的一次性积分包",
       credits: 5000,
       price: 20,
       popular: true,
@@ -362,7 +364,9 @@ const CREDIT_PACKAGE_MATRIX_EXAMPLE = {
     {
       id: "enterprise_resource",
       name: "Enterprise Resource Pack",
+      nameZh: "企业资源包",
       description: "Enterprise-only 5,000-credit resource pack",
+      descriptionZh: "企业版专属资源包，可按数量购买",
       credits: 5000,
       price: 15,
       visible: false,
@@ -1445,7 +1449,7 @@ export const SYSTEM_SETTING_DEFINITIONS = [
     key: "CREDIT_PACKAGE_MATRIX",
     label: "按量积分包配置",
     description:
-      "表格配置一次性积分包的积分数、显示状态、最低可购买套餐、数量购买、各套餐价格和 Creem 产品 ID。保存后仍写入同一 JSON 配置；Epay 会直接按站内价格收款，Creem 按套餐定价时需要配置对应预建产品 ID。",
+      "表格配置一次性积分包的中英文名称与说明、积分数、显示状态、最低可购买套餐、数量购买、各套餐价格和 Creem 产品 ID。保存后仍写入同一 JSON 配置；Epay 会直接按站内价格收款，Creem 按套餐定价时需要配置对应预建产品 ID。",
     category: "credits",
     valueType: "json",
     exampleValue: CREDIT_PACKAGE_MATRIX_EXAMPLE,

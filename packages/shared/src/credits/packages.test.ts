@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  getLocalizedCreditPackageDescription,
+  getLocalizedCreditPackageName,
+} from "./config";
 import type { RuntimeCreditPackage } from "./packages";
 
 // packages.ts 经 system-settings 间接 import @repo/database，
@@ -65,6 +69,38 @@ describe("getCreditPackageCreemProductIdForPlan", () => {
 
     expect(getCreditPackageCreemProductIdForPlan(pkg, "free")).toBe(
       "prod_default"
+    );
+  });
+});
+
+describe("localized credit package copy", () => {
+  it("uses configured Chinese copy for Chinese locales", () => {
+    const pkg = makePackage({
+      name: "Pay as you go",
+      nameZh: "按量付费",
+      description: "One-time credits",
+      descriptionZh: "一次性积分",
+    });
+
+    expect(getLocalizedCreditPackageName(pkg, "zh-CN")).toBe("按量付费");
+    expect(getLocalizedCreditPackageDescription(pkg, "zh")).toBe(
+      "一次性积分"
+    );
+    expect(getLocalizedCreditPackageName(pkg, "en")).toBe("Pay as you go");
+    expect(getLocalizedCreditPackageDescription(pkg, "en-US")).toBe(
+      "One-time credits"
+    );
+  });
+
+  it("falls back to English copy when Chinese copy is not configured", () => {
+    const pkg = makePackage({
+      name: "Custom pack",
+      description: "Custom description",
+    });
+
+    expect(getLocalizedCreditPackageName(pkg, "zh")).toBe("Custom pack");
+    expect(getLocalizedCreditPackageDescription(pkg, "zh-CN")).toBe(
+      "Custom description"
     );
   });
 });

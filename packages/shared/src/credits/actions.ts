@@ -513,9 +513,11 @@ export const getCreditPackages = withProtectedCreditsAction(
     .map((pkg) => ({
       id: pkg.id,
       name: pkg.name,
+      nameZh: pkg.nameZh,
       credits: pkg.credits,
       price: getCreditPackagePriceForPlan(pkg, userPlan),
       description: pkg.description,
+      descriptionZh: pkg.descriptionZh,
       popular: "popular" in pkg ? pkg.popular : false,
       allowQuantity: Boolean(pkg.allowQuantity),
       maxQuantity: pkg.maxQuantity ?? 1,

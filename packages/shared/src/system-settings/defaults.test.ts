@@ -321,6 +321,10 @@ describe("system setting default initialization", () => {
     const enterprise = packages.find((pkg) => pkg.id === "enterprise_resource");
 
     expect(payg).toMatchObject({
+      name: "Pay as you go",
+      nameZh: "按量付费",
+      description: "One-time credits priced like Starter",
+      descriptionZh: "与入门版同价同积分的一次性积分包",
       credits: 5000,
       price: 20,
       visible: true,
@@ -334,6 +338,9 @@ describe("system setting default initialization", () => {
     });
     expect(payg?.creemProductIdsByPlan).toBeUndefined();
     expect(enterprise).toMatchObject({
+      name: "Enterprise Resource Pack",
+      nameZh: "企业资源包",
+      descriptionZh: "企业版专属资源包，可按数量购买",
       credits: 5000,
       price: 15,
       visible: false,
