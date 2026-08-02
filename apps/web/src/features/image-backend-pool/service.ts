@@ -2644,7 +2644,8 @@ async function selectPoolMember(
         imageBackendApiInterfaceAllowsRequest(
           row.interfaceMode,
           effectiveRequestKind,
-          row.imageUpstreamMode
+          row.imageUpstreamMode,
+          row.chatCompletionsUpstreamMode
         )
       );
     })

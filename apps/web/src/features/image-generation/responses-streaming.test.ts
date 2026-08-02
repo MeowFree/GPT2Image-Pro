@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@repo/shared/system-settings", () => ({
   getRuntimeSettingBoolean: vi.fn(async () => false),
-  getRuntimeSettingNumber: vi.fn(async (_key: string, fallback: number) => fallback),
+  getRuntimeSettingNumber: vi.fn(
+    async (_key: string, fallback: number) => fallback
+  ),
   getRuntimeSettingString: vi.fn(async () => ""),
 }));
 
@@ -147,9 +149,7 @@ describe("Responses streaming parser", () => {
     const firstCall = fetchMock.mock.calls.at(0) as
       | [string, RequestInit]
       | undefined;
-    const requestOptions = firstCall?.[1] as
-      | RequestInit
-      | undefined;
+    const requestOptions = firstCall?.[1] as RequestInit | undefined;
     expect(String(requestOptions?.body)).not.toContain("image_generation");
   });
 
@@ -276,7 +276,9 @@ describe("Responses streaming parser", () => {
     process.env.DATABASE_URL =
       process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
     const { generateImage } = await import("./service");
-    const imageBase64 = Buffer.from("responses-image-result").toString("base64");
+    const imageBase64 = Buffer.from("responses-image-result").toString(
+      "base64"
+    );
     const fetchMock = vi.fn(async () => {
       return new Response(
         sseBlock("response.completed", {
@@ -569,13 +571,13 @@ describe("Responses streaming parser", () => {
     );
 
     expect(result.responseText).toBe("native chat result");
-    expect(result.imageBase64).toBe(Buffer.from("native-image").toString("base64"));
+    expect(result.imageBase64).toBe(
+      Buffer.from("native-image").toString("base64")
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.example.test/v1/chat/completions",
       expect.objectContaining({
-        body: expect.stringMatching(
-          /"prompt_cache_key":"g2i_[a-f0-9]{32}"/
-        ),
+        body: expect.stringMatching(/"prompt_cache_key":"g2i_[a-f0-9]{32}"/),
       })
     );
     const calls = fetchMock.mock.calls;
@@ -583,6 +585,119 @@ describe("Responses streaming parser", () => {
     if (!firstCall) throw new Error("expected chat completions fetch call");
     const init = firstCall[1] as RequestInit | undefined;
     expect(String(init?.body || "")).not.toContain('"stream":true');
+  });
+
+  it("can route Chat mode to upstream Images generations when configured", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateChatImage } = await import("./service");
+    const imageBase64 = Buffer.from("images-chat-result").toString("base64");
+    const fetchMock = vi.fn(
+      async (_input: string | URL | Request, _init?: RequestInit) =>
+        new Response(JSON.stringify({ data: [{ b64_json: imageBase64 }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateChatImage(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "test-key",
+        backend: {
+          type: "pool-api",
+          requestKind: "chat",
+          apiInterfaceMode: "mixed",
+          chatCompletionsUpstreamMode: "images",
+        },
+      },
+      {
+        prompt: "draw a poster",
+        imageModel: "gpt-image-2",
+      }
+    );
+
+    expect(result.imageBase64).toBe(imageBase64);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/v1/images/generations",
+      expect.objectContaining({
+        body: expect.stringContaining('"model":"gpt-image-2"'),
+      })
+    );
+  });
+
+  it("routes Images Chat with a current reference image to upstream edits", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateChatImage } = await import("./service");
+    const imageBase64 = Buffer.from("images-chat-edit").toString("base64");
+    const fetchMock = vi.fn(
+      async (_input: string | URL | Request, _init?: RequestInit) =>
+        new Response(JSON.stringify({ data: [{ b64_json: imageBase64 }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateChatImage(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "test-key",
+        backend: {
+          type: "user-api",
+          chatCompletionsUpstreamMode: "images",
+        },
+      },
+      {
+        prompt: "make it red",
+        imageModel: "gpt-image-2",
+        images: [
+          {
+            data: Buffer.from("reference-image"),
+            name: "reference.png",
+            type: "image/png",
+          },
+        ],
+      }
+    );
+
+    expect(result.imageBase64).toBe(imageBase64);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://api.example.test/v1/images/edits"
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeInstanceOf(FormData);
+  });
+
+  it("rejects multi-turn Chat requests when Images upstream mode is configured", async () => {
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://test:test@127.0.0.1:5432/test";
+    const { generateChatImage } = await import("./service");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateChatImage(
+      {
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "test-key",
+        backend: {
+          type: "user-api",
+          chatCompletionsUpstreamMode: "images",
+        },
+      },
+      {
+        prompt: "make it red",
+        imageModel: "gpt-image-2",
+        history: [
+          { role: "user", text: "draw a poster" },
+          { role: "assistant", text: "done" },
+        ],
+      }
+    );
+
+    expect(result.error).toContain("only supports single-turn");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("streams native upstream Chat Completions only when backend streaming is enabled", async () => {

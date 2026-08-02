@@ -851,11 +851,12 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
             },
           ],
           notes: [
-            "上游 API 配置有两个独立开关：Images 上游控制 /v1/images/generations 与 /v1/images/edits 命中后请求上游 /images/* 还是转换到 /responses + image_generation tool；Chat Completions 上游只控制 /v1/chat/completions 命中后请求上游 /chat/completions 还是 /responses。",
+            "上游 API 配置有两个独立开关：Images 上游控制 /v1/images/generations 与 /v1/images/edits 命中后请求上游 /images/* 还是转换到 /responses + image_generation tool；Chat Completions 上游控制 /v1/chat/completions 命中后请求上游 /chat/completions、/responses 或 /images/*。",
             "选择 chat_completions 后，本站 /v1/chat/completions 会请求命中上游的 /chat/completions；这更适合纯聊天兼容，但是否能返回图片取决于上游实现。Agent 和 /v1/responses 不受该配置影响。",
+            "选择 images 后，本站会把单轮 Chat 请求转换为上游 /images/generations；存在本轮参考图时转换为 /images/edits。Images 接口不支持多轮对话，每次请求相互独立；包含先前 user/assistant 历史的请求会返回错误，不会静默丢失上下文。Agent、Responses-only 请求和 /v1/responses 也不支持该模式。",
             "OpenAI 官方 Chat Completions 并不定义“生成图片”的标准返回字段；本站为了兼容对话生图，在 Chat Completions 外形上扩展 choices[].message.images、顶层 images，并在 content 中追加 Markdown 图片链接。严格按官方生图协议接入时，建议使用 /v1/images/generations、/v1/images/edits 或 /v1/responses。",
             "该接口走页面 Chat 的非 Agent 模式，不会注入 web_search、continue_generation，也不会展示 Agent 多轮任务卡。",
-            "调度类型是 chat，可命中 Web 账号、Codex/Responses 账号或支持 /responses 的外接 API 后端；用户自接 API 可用时仍保持最高优先级。",
+            "调度类型是 chat，可命中 Web 账号、Codex/Responses 账号，以及按 Chat 上游模式支持 /responses、/chat/completions 或 /images/* 的外接 API 后端；用户自接 API 可用时仍保持最高优先级。",
             "计费等同页面 Chat：先收 Chat 每轮基础积分，再按最终图片实际尺寸和数量追加图片积分、审核积分和分组倍率。",
           ],
         },
@@ -2385,9 +2386,9 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       description:
         "走管理员配置的 OpenAI 兼容 Base URL/API Key，最终能力由对方服务决定。",
       valid: [
-        "接口模式只声明上游支持哪些端点：仅 Images 只参与文生图/图生图；仅 Responses 只参与 Chat/Agent/Responses，除非 Images 上游开关设为 Responses；混合 API 两边都可参与。",
+        "接口模式只声明上游支持哪些端点：仅 Images 默认参与文生图/图生图，Chat 上游设为 Images 时也可参与单轮 Chat；仅 Responses 参与 Chat/Agent/Responses，Images 上游设为 Responses 时也可参与文生图/图生图；混合 API 两边都可参与。",
         "Images 上游开关独立控制文生图/图生图：原生 Images 会请求对方 /images/generations 和 /images/edits；转换为 Responses 会请求对方 /responses + image_generation tool。",
-        "Chat Completions 上游开关独立控制 /v1/chat/completions：Responses 生图模式请求对方 /responses；原生模式请求对方 /chat/completions。",
+        "Chat Completions 上游开关独立控制 /v1/chat/completions：Responses 生图模式请求对方 /responses；原生模式请求对方 /chat/completions；Images 模式转换到 /images/generations 或 /images/edits，且不支持原生多轮对话。",
         "模型、尺寸、质量、流式事件、usage 字段是否支持，以对方接口为准。",
       ],
       invalid: [
@@ -3132,11 +3133,12 @@ data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":
             },
           ],
           notes: [
-            "Upstream API configs have two independent switches: Images upstream controls whether /v1/images/generations and /v1/images/edits call upstream /images/* or are converted to /responses + the image_generation tool; Chat Completions upstream only controls whether /v1/chat/completions calls upstream /chat/completions or /responses.",
+            "Upstream API configs have two independent switches: Images upstream controls whether /v1/images/generations and /v1/images/edits call upstream /images/* or are converted to /responses + the image_generation tool; Chat Completions upstream controls whether /v1/chat/completions calls upstream /chat/completions, /responses, or /images/*.",
             "Selecting chat_completions makes GPT2IMAGE /v1/chat/completions call the selected upstream's /chat/completions. This is better for pure chat compatibility, but image output depends on the upstream implementation. Agent and /v1/responses are not affected.",
+            "Selecting images converts a single-turn Chat request to upstream /images/generations, or /images/edits when the current turn includes reference images. Images mode does not support multi-turn conversations: requests are independent, and requests containing prior user/assistant history return an error instead of silently dropping context. Agent, Responses-only requests, and /v1/responses do not support this mode.",
             "OpenAI official Chat Completions does not define a standard generated-image response field. GPT2IMAGE extends the Chat Completions shape with choices[].message.images, top-level images, and Markdown image links in content. For strict official image-generation semantics, use /v1/images/generations, /v1/images/edits, or /v1/responses.",
             "This endpoint uses page Chat non-Agent mode. It does not inject web_search or continue_generation and does not return Agent task cards.",
-            "The request kind is chat, so routing can select Web accounts, Codex/Responses accounts, or external API backends that support /responses. User custom upstream APIs still keep highest priority when available.",
+            "The request kind is chat, so routing can select Web accounts, Codex/Responses accounts, or external API backends configured to handle Chat through /responses, /chat/completions, or /images/*. User custom upstream APIs still keep highest priority when available.",
             "Billing matches page Chat: a base Chat round charge first, then actual completed image output credits, moderation credits, and group multipliers.",
           ],
         },
@@ -4665,9 +4667,9 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       description:
         "Uses an admin-configured OpenAI-compatible Base URL/API Key. Final capability depends on that service.",
       valid: [
-        "Interface mode only declares which upstream endpoints exist: Images-only participates in image generation/edit only; Responses-only participates in Chat/Agent/Responses unless Images upstream is set to Responses; Mixed API can participate in both sides.",
+        "Interface mode only declares which upstream endpoints exist: Images-only normally participates in image generation/edit and can also serve single-turn Chat when Chat upstream is Images; Responses-only participates in Chat/Agent/Responses and can serve image generation/edit when Images upstream is Responses; Mixed API can participate in both sides.",
         "Images upstream independently controls image generation/edit: native Images calls external /images/generations and /images/edits; Responses conversion calls external /responses + the image_generation tool.",
-        "Chat Completions upstream independently controls /v1/chat/completions: Responses image mode calls external /responses; native mode calls external /chat/completions.",
+        "Chat Completions upstream independently controls /v1/chat/completions: Responses image mode calls external /responses; native mode calls external /chat/completions; Images mode converts to /images/generations or /images/edits and does not support native multi-turn conversations.",
         "Model, size, quality, streaming events, and usage fields depend on the external API implementation.",
       ],
       invalid: [

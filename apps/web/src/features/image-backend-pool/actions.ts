@@ -93,6 +93,7 @@ const apiInterfaceModeSchema = z.enum(["images", "responses", "mixed"]);
 const chatCompletionsUpstreamModeSchema = z.enum([
   "responses",
   "chat_completions",
+  "images",
 ]);
 const imagesUpstreamModeSchema = z.enum(["images", "responses"]);
 const sub2ApiTokenSyncModeSchema = z.enum(["web", "responses", "both"]);

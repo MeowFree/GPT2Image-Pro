@@ -270,12 +270,12 @@ async function toChatCompletionImages(params: {
       generation_id: output.generationId || params.result.generationId,
       generationId: output.generationId || params.result.generationId,
     };
+    const publicImageUrl = getPublicImageUrl(params.request, output.imageUrl);
+    if (publicImageUrl) item.url = publicImageUrl;
     if (params.responseFormat === "b64_json") {
       item.b64_json =
         output.imageBase64 ||
         (await getImageBase64(params.request, output.imageUrl));
-    } else {
-      item.url = getPublicImageUrl(params.request, output.imageUrl);
     }
     images.push(item);
   }

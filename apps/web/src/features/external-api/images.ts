@@ -160,6 +160,7 @@ export function getExternalFinalImageOutputs(
   result: Pick<
     ImageGenerationOperationResult,
     | "imageUrl"
+    | "imageBase64"
     | "imageOutputs"
     | "revisedPrompt"
     | "promptRepairNotice"
@@ -186,10 +187,11 @@ export function getExternalFinalImageOutputs(
     return [{ ...last, outputRole: last.outputRole || "final" }];
   }
 
-  if (result.imageUrl) {
+  if (result.imageUrl || result.imageBase64) {
     return [
       {
         imageUrl: result.imageUrl,
+        imageBase64: result.imageBase64,
         revisedPrompt: result.revisedPrompt,
         promptRepairNotice: result.promptRepairNotice,
         generationId: result.generationId,

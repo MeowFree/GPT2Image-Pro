@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   imageBackendApiInterfaceAllowsRequest,
   imageBackendApiUsesResponsesEndpoint,
+  normalizeChatCompletionsUpstreamMode,
   normalizeImageBackendApiInterfaceMode,
 } from "./api-interface-mode";
 
@@ -21,6 +22,34 @@ describe("image backend API interface mode", () => {
     );
   });
 
+  it("allows Chat requests on image-capable APIs when Chat uses Images mode", () => {
+    expect(normalizeChatCompletionsUpstreamMode("images")).toBe("images");
+    expect(
+      imageBackendApiInterfaceAllowsRequest(
+        "images",
+        "chat",
+        undefined,
+        "images"
+      )
+    ).toBe(true);
+    expect(
+      imageBackendApiInterfaceAllowsRequest(
+        "mixed",
+        "chat",
+        undefined,
+        "images"
+      )
+    ).toBe(true);
+    expect(
+      imageBackendApiInterfaceAllowsRequest(
+        "responses",
+        "chat",
+        undefined,
+        "images"
+      )
+    ).toBe(false);
+  });
+
   it("keeps responses-only API backends on responses and chat requests by default", () => {
     expect(
       imageBackendApiInterfaceAllowsRequest("responses", "image_generation")
@@ -34,9 +63,9 @@ describe("image backend API interface mode", () => {
     expect(
       imageBackendApiInterfaceAllowsRequest("responses", "responses")
     ).toBe(true);
-    expect(imageBackendApiUsesResponsesEndpoint("responses", "image_edit")).toBe(
-      false
-    );
+    expect(
+      imageBackendApiUsesResponsesEndpoint("responses", "image_edit")
+    ).toBe(false);
     expect(
       imageBackendApiUsesResponsesEndpoint("responses", "image_generation")
     ).toBe(false);

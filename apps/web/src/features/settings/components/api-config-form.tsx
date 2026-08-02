@@ -67,7 +67,7 @@ export function ApiConfigForm() {
   const [model, setModel] = useState("");
   const [useStream, setUseStream] = useState(false);
   const [chatCompletionsUpstreamMode, setChatCompletionsUpstreamMode] =
-    useState<"responses" | "chat_completions">("responses");
+    useState<"responses" | "chat_completions" | "images">("responses");
   const [isActive, setIsActive] = useState(true);
   const [hasConfig, setHasConfig] = useState(false);
   const [customApiAllowed, setCustomApiAllowed] = useState(false);
@@ -164,7 +164,9 @@ export function ApiConfigForm() {
             configResult.data.chatCompletionsUpstreamMode ===
               "chat_completions"
               ? "chat_completions"
-              : "responses"
+              : configResult.data.chatCompletionsUpstreamMode === "images"
+                ? "images"
+                : "responses"
           );
           setIsActive(configResult.data.isActive);
           setHasConfig(true);
@@ -350,7 +352,9 @@ export function ApiConfigForm() {
               value={chatCompletionsUpstreamMode}
               onValueChange={(value) =>
                 setChatCompletionsUpstreamMode(
-                  value === "chat_completions" ? "chat_completions" : "responses"
+                  value === "chat_completions" || value === "images"
+                    ? value
+                    : "responses"
                 )
               }
               disabled={!customApiAllowed}
@@ -363,10 +367,11 @@ export function ApiConfigForm() {
                 <SelectItem value="chat_completions">
                   原生 Chat Completions
                 </SelectItem>
+                <SelectItem value="images">原生 Images</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Responses 模式会把 Chat 请求接到上游 /responses，保留生图能力；原生模式会请求上游 /chat/completions，适合纯聊天兼容。
+              Responses 模式会请求上游 /responses；原生 Chat 模式会请求 /chat/completions；Images 模式会转换为 /images/generations 或 /images/edits，不支持多轮对话。
             </p>
           </div>
 

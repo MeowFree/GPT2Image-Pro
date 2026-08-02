@@ -107,7 +107,7 @@ const apiConfigSchema = z.object({
   model: optionalTrimmedString,
   useStream: z.boolean().optional(),
   chatCompletionsUpstreamMode: z
-    .enum(["responses", "chat_completions"])
+    .enum(["responses", "chat_completions", "images"])
     .default("responses"),
 });
 

@@ -8,7 +8,10 @@ export type ImageBackendRequestKind =
 export type ImageBackendAccountBackend = "web" | "responses";
 export type ImageBackendGroupBackendType = "mixed" | "web" | "responses";
 export type ImageBackendApiInterfaceMode = "images" | "responses" | "mixed";
-export type ChatCompletionsUpstreamMode = "responses" | "chat_completions";
+export type ChatCompletionsUpstreamMode =
+  | "responses"
+  | "chat_completions"
+  | "images";
 export type ImagesUpstreamMode = "images" | "responses";
 export type ImageBackendPreferenceMode = "always" | "mixed-only";
 // 账号 plan 级别过滤(opt-in):"any"=不过滤(默认,主图像管线用);

@@ -250,7 +250,10 @@ type ContentSafetyFormValue = "inherit" | "enabled" | "disabled";
 type AccountBackendFormValue = "web" | "responses";
 type GroupBackendTypeFormValue = ImageBackendGroupBackendType;
 type ApiInterfaceModeFormValue = ImageBackendApiInterfaceMode;
-type ChatCompletionsUpstreamModeFormValue = "responses" | "chat_completions";
+type ChatCompletionsUpstreamModeFormValue =
+  | "responses"
+  | "chat_completions"
+  | "images";
 type ImagesUpstreamModeFormValue = ImagesUpstreamMode;
 type TokenSyncMode = "web" | "responses" | "both";
 type Sub2ApiPlanFilter = "all" | "free" | "plus" | "pro" | "non_free";
@@ -466,6 +469,12 @@ const CHAT_COMPLETIONS_UPSTREAM_MODE_OPTIONS: Array<{
     label: "原生 Chat Completions",
     detail:
       "命中该上游时，本站 /v1/chat/completions 会请求它的 /chat/completions；适合纯聊天兼容，是否能返回图片取决于上游。",
+  },
+  {
+    value: "images",
+    label: "原生 Images",
+    detail:
+      "命中该上游时，本站 /v1/chat/completions 会转换为 /images/generations 或 /images/edits；适合只提供生图接口的上游，不支持多轮对话。",
   },
 ];
 
@@ -4098,7 +4107,9 @@ export function ImageBackendPoolAdminPanel({
                         Chat:{" "}
                         {api.chatCompletionsUpstreamMode === "chat_completions"
                           ? "原生"
-                          : "Responses"}
+                          : api.chatCompletionsUpstreamMode === "images"
+                            ? "Images"
+                            : "Responses"}
                       </Badge>
                       <Badge variant="outline">
                         Images:{" "}

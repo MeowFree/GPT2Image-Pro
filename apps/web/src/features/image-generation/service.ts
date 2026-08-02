@@ -2165,6 +2165,56 @@ function getEffectivePrompt(params: {
   return params.fileContext ? `${prompt}\n\n${params.fileContext}` : prompt;
 }
 
+async function generateChatImageWithImages(
+  config: ApiConfig,
+  params: ChatImageParams,
+  callbacks?: ImageGenerationCallbacks
+) {
+  const prompt = getEffectivePrompt(params);
+  const images = params.images || [];
+  const imageModel = params.imageModel || DEFAULT_IMAGE_MODEL;
+  const withRequestKind = (
+    requestKind: "image_generation" | "image_edit"
+  ): ApiConfig => ({
+    ...config,
+    backend: config.backend
+      ? {
+          ...config.backend,
+          requestKind,
+          imagesUpstreamMode: "images",
+          apiForceResponsesEndpoint: false,
+        }
+      : undefined,
+  });
+  const common = {
+    prompt,
+    apiPrompt: prompt,
+    promptOptimization: params.promptOptimization,
+    signal: params.signal,
+    size: params.size,
+    model: imageModel,
+    quality: params.quality,
+    n: params.n,
+    moderation: params.moderation,
+    outputFormat: params.outputFormat,
+    outputCompression: params.outputCompression,
+    background: params.background,
+  };
+
+  if (images.length) {
+    return await editImage(
+      withRequestKind("image_edit"),
+      { ...common, images },
+      callbacks
+    );
+  }
+  return await generateImage(
+    withRequestKind("image_generation"),
+    common,
+    callbacks
+  );
+}
+
 function appendImageParams(
   formData: FormData,
   config: ApiConfig,
@@ -3832,7 +3882,8 @@ export async function getUserApiConfig(
     type: "user-api",
     chatCompletionsUpstreamMode: row.chatCompletionsUpstreamMode as
       | "responses"
-      | "chat_completions",
+      | "chat_completions"
+      | "images",
   };
   return result;
 }
@@ -4505,12 +4556,31 @@ export async function generateChatImage(
     );
   }
 
+  const useImagesChatUpstream =
+    config.backend?.chatCompletionsUpstreamMode === "images";
+  if (
+    useImagesChatUpstream &&
+    (params.agentMode ||
+      params.rawResponsesBody ||
+      params.requiresResponsesBackend ||
+      params.history?.length)
+  ) {
+    return {
+      error:
+        "Images Chat upstream mode only supports single-turn, non-Agent Chat requests.",
+    };
+  }
+
   // pool-api 后端分发前确保输入图/历史图已 re-host，避免把外链交给上游。
   await rehostApiBackendInputImages(
     config,
     { images: params.images, history: params.history },
     params.signal
   );
+
+  if (useImagesChatUpstream) {
+    return await generateChatImageWithImages(config, params, callbacks);
+  }
 
   const model = await getResponsesModel(config, params.model, {
     allowGpt55: params.allowGpt55,

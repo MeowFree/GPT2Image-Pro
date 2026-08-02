@@ -15,7 +15,8 @@ export function normalizeImageBackendApiInterfaceMode(
 export function normalizeChatCompletionsUpstreamMode(
   value?: unknown
 ): ChatCompletionsUpstreamMode {
-  return value === "chat_completions" ? "chat_completions" : "responses";
+  if (value === "chat_completions" || value === "images") return value;
+  return "responses";
 }
 
 export function normalizeImagesUpstreamMode(
@@ -31,12 +32,20 @@ function isImageRequestKind(requestKind?: ImageBackendRequestKind) {
 export function imageBackendApiInterfaceAllowsRequest(
   value: unknown,
   requestKind: ImageBackendRequestKind,
-  imagesUpstreamMode?: unknown
+  imagesUpstreamMode?: unknown,
+  chatCompletionsUpstreamMode?: unknown
 ) {
   const mode = normalizeImageBackendApiInterfaceMode(value);
   if (isImageRequestKind(requestKind)) {
     const imageMode = normalizeImagesUpstreamMode(imagesUpstreamMode);
     if (imageMode === "responses") return mode !== "images";
+    return mode !== "responses";
+  }
+  if (
+    requestKind === "chat" &&
+    normalizeChatCompletionsUpstreamMode(chatCompletionsUpstreamMode) ===
+      "images"
+  ) {
     return mode !== "responses";
   }
   if (mode === "images") {

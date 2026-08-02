@@ -39,7 +39,9 @@ vi.mock("@/features/image-generation/request-utils", () => ({
 type BatchRunMockParams = {
   count: number;
   generationIds?: string[];
-  run: (generationId: string) => Promise<unknown>;
+  run: (generationId: string, callbacks?: unknown) => Promise<unknown>;
+  callbacks?: (index: number) => unknown;
+  onResult?: (result: unknown, index: number) => Promise<void> | void;
 };
 
 function chatCompletionsRequest(body: Record<string, unknown>) {
@@ -78,10 +80,21 @@ describe("external chat completions handler streaming bridge", () => {
       creditsConsumed: 1,
     });
     mocks.runBatchImageGeneration.mockImplementation(
-      async ({ count, generationIds, run }: BatchRunMockParams) => {
+      async ({
+        count,
+        generationIds,
+        run,
+        callbacks,
+        onResult,
+      }: BatchRunMockParams) => {
         const results = [];
         for (let index = 0; index < count; index += 1) {
-          results.push(await run(generationIds?.[index] || `gen_${index + 1}`));
+          const result = await run(
+            generationIds?.[index] || `gen_${index + 1}`,
+            callbacks?.(index)
+          );
+          results.push(result);
+          await onResult?.(result, index);
         }
         return results;
       }
@@ -115,6 +128,62 @@ describe("external chat completions handler streaming bridge", () => {
       })
     );
     expect(callbacks).toBeUndefined();
+  });
+
+  it("includes a Markdown image URL in b64_json Chat responses", async () => {
+    mocks.runImageGenerationForUser.mockResolvedValueOnce({
+      imageUrl: "https://cdn.example.test/generated.png",
+      imageBase64: Buffer.from("generated-image").toString("base64"),
+      model: "gpt-image-2",
+      generationId: "gen_image",
+      creditsConsumed: 2,
+    });
+    const { postExternalChatCompletions } = await import("./chat-completions");
+
+    const response = await postExternalChatCompletions(
+      chatCompletionsRequest({
+        model: "gpt-image-2",
+        messages: [{ role: "user", content: "draw a poster" }],
+        response_format: "b64_json",
+      }) as never
+    );
+    const payload = await response.json();
+
+    expect(payload.choices[0].message.content).toContain(
+      "![generated image 1](https://cdn.example.test/generated.png)"
+    );
+    expect(payload.choices[0].message.images[0]).toEqual(
+      expect.objectContaining({
+        url: "https://cdn.example.test/generated.png",
+        b64_json: Buffer.from("generated-image").toString("base64"),
+      })
+    );
+  });
+
+  it("streams a Markdown image URL for b64_json Chat responses", async () => {
+    mocks.runImageGenerationForUser.mockResolvedValueOnce({
+      imageUrl: "https://cdn.example.test/streamed.png",
+      imageBase64: Buffer.from("streamed-image").toString("base64"),
+      model: "gpt-image-2",
+      generationId: "gen_streamed",
+      creditsConsumed: 2,
+    });
+    const { postExternalChatCompletions } = await import("./chat-completions");
+
+    const response = await postExternalChatCompletions(
+      chatCompletionsRequest({
+        model: "gpt-image-2",
+        stream: true,
+        messages: [{ role: "user", content: "draw a poster" }],
+        response_format: "b64_json",
+      }) as never
+    );
+    const body = await response.text();
+
+    expect(body).toContain(
+      "![generated image 1](https://cdn.example.test/streamed.png)"
+    );
+    expect(body).toContain('"b64_json":"c3RyZWFtZWQtaW1hZ2U="');
   });
 
   it("routes a single-turn top-level gpt-image model to image generation", async () => {
@@ -255,7 +324,10 @@ describe("external chat completions handler streaming bridge", () => {
         rawChatCompletionsBody: expect.objectContaining({ stream: true }),
         backendRequestKind: "chat",
       }),
-      undefined
+      expect.objectContaining({
+        onPartialImage: expect.any(Function),
+        onTextDelta: expect.any(Function),
+      })
     );
   });
 });

@@ -226,7 +226,7 @@ export interface ChatImageParams {
   waterfallMode?: boolean;
   rawResponsesBody?: unknown;
   rawChatCompletionsBody?: unknown;
-  chatCompletionsUpstreamMode?: "responses" | "chat_completions";
+  chatCompletionsUpstreamMode?: "responses" | "chat_completions" | "images";
   mixWebFirst?: boolean;
   requiresResponsesBackend?: boolean;
   /** 网页对话轮次(chat(web) tab):强制 web 后端且走 text-capable 路径——回文字、按需出图,
@@ -307,7 +307,7 @@ export interface ApiConfig {
     requestKind?: "image_generation" | "image_edit" | "chat" | "responses";
     accountBackend?: "web" | "responses";
     apiInterfaceMode?: "images" | "responses" | "mixed";
-    chatCompletionsUpstreamMode?: "responses" | "chat_completions";
+    chatCompletionsUpstreamMode?: "responses" | "chat_completions" | "images";
     imagesUpstreamMode?: "images" | "responses";
     apiForceResponsesEndpoint?: boolean;
     // pool-api 专属：该 api 后端上游实为 Adobe（adobe-sourced）。为真时计费吃成员倍率
