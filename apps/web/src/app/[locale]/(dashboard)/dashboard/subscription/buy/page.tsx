@@ -1,11 +1,11 @@
-import {
-  getRuntimePaymentConfig,
-  getSubscriptionMonthlyCredits,
-} from "@repo/shared/config/payment-runtime";
 import { getServerSession } from "@repo/shared/auth/server";
+import { getRuntimePaymentConfig } from "@repo/shared/config/payment-runtime";
+import { getPlanCapabilityMatrix } from "@repo/shared/subscription/services/plan-capabilities";
 import { getUserPlan } from "@repo/shared/subscription/services/user-plan";
-import { getLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
+import { getLocale } from "next-intl/server";
+
+import { getRuntimeImageRetentionPolicy } from "@/features/marketing/image-retention-policy-server";
 
 import { BuySubscriptionView } from "./buy-subscription-view";
 
@@ -21,11 +21,13 @@ export default async function BuySubscriptionPage() {
     redirect(`/${locale}/sign-in`);
   }
 
-  const [payment, userPlan, monthlyCredits] = await Promise.all([
-    getRuntimePaymentConfig(),
-    getUserPlan(session.user.id),
-    getSubscriptionMonthlyCredits(),
-  ]);
+  const [payment, userPlan, capabilityMatrix, imageRetentionPolicy] =
+    await Promise.all([
+      getRuntimePaymentConfig(),
+      getUserPlan(session.user.id),
+      getPlanCapabilityMatrix(),
+      getRuntimeImageRetentionPolicy(),
+    ]);
 
   return (
     <BuySubscriptionView
@@ -36,7 +38,8 @@ export default async function BuySubscriptionPage() {
         hasActiveSubscription: userPlan.hasActiveSubscription,
         cancelAtPeriodEnd: userPlan.cancelAtPeriodEnd,
       }}
-      monthlyCredits={monthlyCredits}
+      capabilityMatrix={capabilityMatrix}
+      imageRetentionPolicy={imageRetentionPolicy}
     />
   );
 }

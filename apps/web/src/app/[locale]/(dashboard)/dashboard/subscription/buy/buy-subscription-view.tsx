@@ -8,6 +8,7 @@ import {
   PLAN_RANK,
   type SubscriptionPlan,
 } from "@repo/shared/config/subscription-plan";
+import type { PlanCapabilityMatrix } from "@repo/shared/subscription/services/plan-capabilities";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import {
@@ -27,22 +28,16 @@ import {
   ShoppingCart,
   Sparkles,
 } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-
+import type { ImageRetentionPolicy } from "@/features/marketing/image-retention-policy";
+import { buildPlanPresentation } from "@/features/marketing/plan-presentation";
 import { createCheckoutSession } from "@/features/payment/actions";
 import { PlanInterval } from "@/features/payment/types";
 
-const PAID_PLANS: PaidPlanId[] = [
-  "starter",
-  "pro",
-  "ultra",
-  "enterprise",
-];
-
-const FEATURE_KEYS = ["creditsValidity", "input", "batch", "queue"] as const;
+const PAID_PLANS: PaidPlanId[] = ["starter", "pro", "ultra", "enterprise"];
 
 type CurrentPlan = {
   plan: SubscriptionPlan;
@@ -50,8 +45,6 @@ type CurrentPlan = {
   hasActiveSubscription: boolean;
   cancelAtPeriodEnd: boolean;
 };
-
-type MonthlyCredits = Record<PaidPlanId, number>;
 
 function submitEpayForm(url: string, params: Record<string, string>) {
   const form = document.createElement("form");
@@ -73,11 +66,13 @@ function submitEpayForm(url: string, params: Record<string, string>) {
 export function BuySubscriptionView({
   payment,
   currentPlan,
-  monthlyCredits,
+  capabilityMatrix,
+  imageRetentionPolicy,
 }: {
   payment: RuntimePaymentConfig;
   currentPlan: CurrentPlan;
-  monthlyCredits: MonthlyCredits;
+  capabilityMatrix: PlanCapabilityMatrix;
+  imageRetentionPolicy: ImageRetentionPolicy;
 }) {
   const locale = useLocale();
   const isZh = locale.startsWith("zh");
@@ -235,10 +230,15 @@ export function BuySubscriptionView({
           const canUpgrade =
             currentPlan.hasActiveSubscription &&
             PLAN_RANK[planId] > PLAN_RANK[currentPlan.plan];
-          const canPurchase =
-            !currentPlan.hasActiveSubscription || canUpgrade;
+          const canPurchase = !currentPlan.hasActiveSubscription || canUpgrade;
           const isLoading = loadingPlan === planId;
           const popular = Boolean(plan?.popular);
+          const presentation = buildPlanPresentation({
+            planId,
+            capabilityMatrix,
+            imageRetentionPolicy,
+            locale,
+          });
 
           return (
             <Card
@@ -265,7 +265,7 @@ export function BuySubscriptionView({
                   {t(`plans.${planId}.name`)}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  {t(`plans.${planId}.description`)}
+                  {presentation.description}
                 </p>
               </CardHeader>
 
@@ -287,7 +287,7 @@ export function BuySubscriptionView({
                   <div className="flex items-center gap-2">
                     <Coins className="h-4 w-4" />
                     <span className="font-serif text-lg font-medium">
-                      {monthlyCredits[planId].toLocaleString(locale)}
+                      {presentation.monthlyCredits.toLocaleString(locale)}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {copy("credits / month", "积分 / 月")}
@@ -296,12 +296,10 @@ export function BuySubscriptionView({
                 </div>
 
                 <ul className="space-y-2.5 text-sm text-muted-foreground">
-                  {FEATURE_KEYS.map((featureKey) => (
-                    <li key={featureKey} className="flex gap-2">
+                  {presentation.features.map((feature) => (
+                    <li key={feature} className="flex gap-2">
                       <Check className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
-                      <span>
-                        {t(`plans.${planId}.features.${featureKey}`)}
-                      </span>
+                      <span>{feature}</span>
                     </li>
                   ))}
                 </ul>

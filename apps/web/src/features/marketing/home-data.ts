@@ -16,17 +16,14 @@ import { getPlanCapabilityMatrix } from "@repo/shared/subscription/services/plan
 import {
   getRuntimeSettingBoolean,
   getRuntimeSettingNumber,
-  getRuntimeSettingSelect,
   setSettingsCacheInvalidator,
 } from "@repo/shared/system-settings";
 import { getRuntimeImageBaseCreditPricing } from "@/features/image-generation/pricing-settings";
 import { getRecentGenerationSlaStats } from "@/features/image-generation/sla";
 
 import { createSingleFlightCache } from "./home-data-cache";
-import {
-  IMAGE_RETENTION_MODES,
-  type ImageRetentionPolicy,
-} from "./image-retention-policy";
+import type { ImageRetentionPolicy } from "./image-retention-policy";
+import { getRuntimeImageRetentionPolicy } from "./image-retention-policy-server";
 
 /** 1h:定价/套餐等营销配置允许小时级滞后;管理端写设置会级联失效 */
 const MARKETING_DATA_CACHE_TTL_MS = 3_600_000;
@@ -56,9 +53,7 @@ async function loadMarketingData(): Promise<CachedMarketingHomeData> {
     creditPackages,
     creditPackageExpiryDays,
     imageBasePricing,
-    retentionMode,
-    retentionHours,
-    maxImageCount,
+    imageRetentionPolicy,
     slaEnabled,
   ] = await Promise.all([
     getRuntimePaymentConfig(),
@@ -70,17 +65,7 @@ async function loadMarketingData(): Promise<CachedMarketingHomeData> {
       { nonNegative: true }
     ),
     getRuntimeImageBaseCreditPricing(),
-    getRuntimeSettingSelect(
-      "GENERATION_IMAGE_RETENTION_MODE",
-      IMAGE_RETENTION_MODES,
-      "off"
-    ),
-    getRuntimeSettingNumber("GENERATION_IMAGE_RETENTION_HOURS", 0, {
-      nonNegative: true,
-    }),
-    getRuntimeSettingNumber("GENERATION_IMAGE_MAX_COUNT", 10_000, {
-      positive: true,
-    }),
+    getRuntimeImageRetentionPolicy(),
     getRuntimeSettingBoolean("MARKETING_SLA_STATUS_ENABLED", true),
   ]);
   return {
@@ -89,11 +74,7 @@ async function loadMarketingData(): Promise<CachedMarketingHomeData> {
     creditPackages,
     creditPackageExpiryDays,
     imageBasePricing,
-    imageRetentionPolicy: {
-      mode: retentionMode,
-      retentionHours,
-      maxCount: maxImageCount,
-    },
+    imageRetentionPolicy,
     slaEnabled,
   };
 }

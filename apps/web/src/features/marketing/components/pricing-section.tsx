@@ -8,10 +8,7 @@ import {
 } from "@repo/shared/config/subscription-plan";
 import type { RuntimeCreditPackage } from "@repo/shared/credits/packages";
 import type { PaymentConfig } from "@repo/shared/payment/types";
-import type {
-  PlanCapabilityKey,
-  PlanCapabilityMatrix,
-} from "@repo/shared/subscription/services/plan-capabilities";
+import type { PlanCapabilityMatrix } from "@repo/shared/subscription/services/plan-capabilities";
 import { Badge } from "@repo/ui/components/badge";
 import { Button } from "@repo/ui/components/button";
 import {
@@ -51,10 +48,8 @@ import {
 import { PlanInterval } from "@/features/payment/types";
 import { useRouter } from "@/i18n/routing";
 
-import {
-  formatImageRetentionPolicy,
-  type ImageRetentionPolicy,
-} from "../image-retention-policy";
+import type { ImageRetentionPolicy } from "../image-retention-policy";
+import { buildPlanPresentation } from "../plan-presentation";
 import { AnimatedPrice } from "./animated-price";
 import { folioNumeral } from "./folio-numeral";
 import { InkReveal, InkRevealBoundary, InkRule } from "./ink-reveal";
@@ -268,21 +263,13 @@ export function PricingSection({
     formatNumber(value, { maximumFractionDigits: 2 });
   const formatMoney = (value: number) =>
     `¥${formatNumber(value, { maximumFractionDigits: 2 })}`;
-  const formatMegabytes = (value: number) =>
-    `${formatNumber(value, { maximumFractionDigits: 0 })}MB`;
-  const getPlanLimits = (planId: string) =>
-    capabilityMatrix.limits[planId as SubscriptionPlan];
-  const canUseCapability = (
-    planId: string,
-    capability: PlanCapabilityKey
-  ) => {
-    if (!isPricingPlanId(planId)) return false;
-    return (
-      PLAN_RANK[planId] >= PLAN_RANK[capabilityMatrix.features[capability]]
-    );
-  };
-  const getPlanCredits = (planId: string) =>
-    getPlanLimits(planId).monthlyCredits;
+  const getPlanPresentation = (planId: PricingPlanId) =>
+    buildPlanPresentation({
+      planId,
+      capabilityMatrix,
+      imageRetentionPolicy,
+      locale,
+    });
   const normalizedImageBasePricing = getImageBaseCreditPricing(imageBasePricing);
   const textModerationCredits =
     TEXT_MODERATION_PRICE_CNY / REFERENCE_CREDIT_PRICE_CNY;
@@ -388,185 +375,6 @@ export function PricingSection({
       "最终价格 = Chat/Agent 每轮基础积分 + 基础出图积分 + 文本审核积分 + 输入图片审核积分，按两位小数展示和扣费。普通文生图/图生图没有 Chat/Agent 每轮基础积分。"
     ),
   ];
-
-  const getPlanDescription = (planId: string) => {
-    const credits = formatCredits(getPlanCredits(planId));
-    const apiEnabled = canUseCapability(planId, "externalApi.keys.manage");
-    const chatEnabled = canUseCapability(planId, "imageGeneration.chat");
-    const agentEnabled = canUseCapability(planId, "imageGeneration.agent");
-    const gpt55Enabled = canUseCapability(planId, "models.gpt55");
-
-    if (planId === "free") {
-      return copy(
-        `Basic image generation with ${credits} one-time credits`,
-        `基础创作体验，含 ${credits} 一次性积分`
-      );
-    }
-
-    const highlights = [
-      copy(`${credits} credits/month`, `每月 ${credits} 积分`),
-    ];
-    if (apiEnabled) highlights.push(copy("API access", "开放 API"));
-    if (chatEnabled) highlights.push(copy("Chat creation", "对话创作"));
-    if (agentEnabled) highlights.push(copy("Agent iteration", "Agent 迭代"));
-    if (gpt55Enabled) highlights.push("GPT-5.5");
-
-    return highlights.join(copy(", ", "，"));
-  };
-
-  const getGeneratedFeatureTexts = (planId: string) => {
-    const limits = getPlanLimits(planId);
-    const plan = planId as SubscriptionPlan;
-    const items: string[] = [];
-
-    items.push(
-      planId === "free"
-        ? copy(
-            "One-time credits follow the issued batch expiry",
-            "一次性积分按发放批次有效期计算"
-          )
-        : copy(
-            "Subscription credits are valid for the current plan period",
-            "订阅积分按当前套餐周期有效"
-          )
-    );
-
-    const modes = [
-      canUseCapability(planId, "imageGeneration.text") &&
-        copy("text-to-image", "文生图"),
-      canUseCapability(planId, "imageGeneration.edit") &&
-        copy("image editing", "图生图"),
-      canUseCapability(planId, "imageGeneration.chat") &&
-        copy("chat-to-image", "对话生图"),
-      canUseCapability(planId, "imageGeneration.waterfall") &&
-        copy("waterfall", "瀑布流"),
-      canUseCapability(planId, "imageGeneration.agent") && "Agent",
-    ].filter(Boolean);
-    if (modes.length > 0) {
-      items.push(
-        copy(
-          `Creation modes: ${modes.join(", ")}`,
-          `创作模式：${modes.join("、")}`
-        )
-      );
-    }
-
-    if (canUseCapability(planId, "imageGeneration.batch")) {
-      items.push(
-        copy(
-          `Batch generation up to ${limits.maxBatchCount} images`,
-          `批量生成最多 ${limits.maxBatchCount} 张图`
-        )
-      );
-    }
-
-    items.push(
-      copy(
-        `Uploads: ${formatMegabytes(limits.maxFileMb)} per image, ${formatMegabytes(
-          limits.maxUploadMb
-        )} total`,
-        `上传：单图 ${formatMegabytes(limits.maxFileMb)}，总量 ${formatMegabytes(
-          limits.maxUploadMb
-        )}`
-      )
-    );
-    items.push(
-      copy(
-        `References: ${limits.maxEditImages} edit images, ${limits.maxChatImages} chat images`,
-        `参考图：编辑最多 ${limits.maxEditImages} 张，对话最多 ${limits.maxChatImages} 张`
-      )
-    );
-
-    const priorityLabel =
-      limits.queuePriority === "highest"
-        ? copy("highest priority", "最高优先级")
-        : limits.queuePriority === "priority"
-          ? copy("priority queue", "优先队列")
-          : copy("normal queue", "普通队列");
-    items.push(
-      copy(
-        `${priorityLabel}, up to ${limits.imageGenerationConcurrency} concurrent generations`,
-        `${priorityLabel}，最多 ${limits.imageGenerationConcurrency} 并发`
-      )
-    );
-
-    const externalApiParts = [
-      canUseCapability(planId, "externalApi.chat.completions") && "Chat",
-      (canUseCapability(planId, "externalApi.images.generate") ||
-        canUseCapability(planId, "externalApi.images.edit")) &&
-        "Images",
-      canUseCapability(planId, "externalApi.responses") && "Responses",
-      canUseCapability(planId, "externalApi.agent") && "Agent",
-      canUseCapability(planId, "externalApi.streaming") &&
-        copy("streaming", "流式"),
-    ].filter(Boolean);
-    if (
-      canUseCapability(planId, "externalApi.keys.manage") ||
-      externalApiParts.length > 0
-    ) {
-      items.push(
-        copy(
-          `External API: ${externalApiParts.join(", ") || "API keys"}`,
-          `外接 API：${externalApiParts.join("、") || "API Key 管理"}`
-        )
-      );
-    }
-
-    if (canUseCapability(planId, "customApi.configure")) {
-      items.push(
-        copy(
-          "Connect your own OpenAI-compatible API",
-          "可接入自己的 OpenAI 兼容 API"
-        )
-      );
-    }
-    if (canUseCapability(planId, "backendGroups.select")) {
-      items.push(copy("Selectable backend groups", "可选择后端分组"));
-    }
-    if (canUseCapability(planId, "promptOptimization.control")) {
-      items.push(copy("Can minimize prompt changes", "可尽量减少提示词改动"));
-    }
-    if (canUseCapability(planId, "models.gpt55")) {
-      items.push(
-        copy(
-          "GPT-5.5 available for supported chat backends",
-          "支持后端可使用 GPT-5.5"
-        )
-      );
-    }
-    if (canUseCapability(planId, "moderation.onlyFailureSettlement")) {
-      items.push(
-        copy(
-          "Moderation failures only charge review credits",
-          "审核失败只扣审核积分"
-        )
-      );
-    }
-
-    const moderation = capabilityMatrix.moderation[plan];
-    items.push(
-      copy(
-        `Moderation control up to ${moderation.maxBlockRiskLevel} risk`,
-        `审核拦截最高可配置到 ${moderation.maxBlockRiskLevel}`
-      )
-    );
-
-    const billing = capabilityMatrix.billing[plan];
-    if (
-      canUseCapability(planId, "imageGeneration.chat") ||
-      canUseCapability(planId, "imageGeneration.agent")
-    ) {
-      items.push(
-        copy(
-          `Chat ${billing.chatRoundCredits} credits/round, Agent ${billing.agentRoundCredits} credits/round before image output fees`,
-          `Chat ${billing.chatRoundCredits} 积分/轮，Agent ${billing.agentRoundCredits} 积分/轮，另计出图费用`
-        )
-      );
-    }
-
-    items.push(formatImageRetentionPolicy(imageRetentionPolicy, locale));
-    return items;
-  };
 
   const getPackagePriceForPlan = (
     pkg: RuntimeCreditPackage,
@@ -695,7 +503,8 @@ export function PricingSection({
     const canUpgrade = canUpgradeToPlan(planId);
     const isLoading = loadingPlan === planId;
     const popular = isPopular(planId);
-    const planCredits = getPlanCredits(planId);
+    const presentation = getPlanPresentation(planId);
+    const planCredits = presentation.monthlyCredits;
     return (
       <Card
         className={cn(
@@ -715,7 +524,7 @@ export function PricingSection({
             {t(`plans.${planId}.name`)}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            {getPlanDescription(planId)}
+            {presentation.description}
           </p>
         </CardHeader>
         <CardContent className="flex flex-1 flex-col">
@@ -801,7 +610,7 @@ export function PricingSection({
 
           {/* 密度收紧:最长档清单 11 条,全轴(绳杆地杆含)须一屏容纳 */}
           <ul className="flex-1 space-y-1.5">
-            {getGeneratedFeatureTexts(planId).map((feature) => (
+            {presentation.features.map((feature) => (
               <li key={feature} className="flex items-center gap-2">
                 <Check className="h-4 w-4 shrink-0 text-foreground" />
                 <span className="text-sm text-muted-foreground">
