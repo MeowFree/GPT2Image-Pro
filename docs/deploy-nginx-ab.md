@@ -124,6 +124,8 @@ du -sh "$release"
 ls "$release/apps/web/.next/standalone/node_modules/.pnpm/" | rg '^next@' | head -1
 test -e "$release/apps/web/.next/standalone/apps/web/server.js" && echo server.js-ok
 test -d "$release/apps/web/.next/standalone/apps/web/public" && echo public-ok
+test -e "$release/apps/web/.next/standalone/node_modules/onnxruntime-node" && echo worker-onnx-ok
+test -e "$release/apps/web/.next/standalone/node_modules/sharp" && echo worker-sharp-ok
 grep -aoE '"assetPrefix": "[^"]*"' "$release/apps/web/.next/standalone/apps/web/.next/required-server-files.json"
 ```
 

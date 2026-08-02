@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack --port 3000",
     "build": "next build",
+    "postbuild": "node scripts/link-super-resolution-worker-dependencies.mjs",
     "start": "next start",
     "start:super-resolution-worker": "node worker/super-resolution-worker.mjs",
     "test": "vitest run",
