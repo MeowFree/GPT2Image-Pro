@@ -2419,7 +2419,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       rows: [
         [
           "超分（自动）",
-          "Web / Codex 等后端常返回小于请求尺寸的图（Codex 尤其不严格遵循 size）。平台会在最终图较长边不足目标尺寸 2/3 时，用 Real-ESRGAN 自动放大到目标尺寸（不裁剪、保宽高比），因此 Web / Codex 也能稳定输出接近 4K 的目标分辨率——即「支持 4K」。由管理端「出图分辨率超分校准」开关控制，单张约 1-2 秒。",
+          "Web / Codex 等后端常返回小于请求尺寸的图（Codex 尤其不严格遵循 size）。平台会自动把最终图和 Web 候选成品对齐到目标边界：明显偏小时使用 Real-ESRGAN，接近目标时使用轻量缩放；全程不裁剪并保留宽高比。由管理端「出图分辨率超分校准」开关控制。",
         ],
         [
           "高清修复（手动）",
@@ -4703,7 +4703,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       rows: [
         [
           "Super-resolution (auto)",
-          "Web / Codex backends often return images smaller than requested (Codex in particular does not strictly honor size). When a final image's longer edge falls below 2/3 of the target, the platform auto-upscales it to the target size with Real-ESRGAN (no crop, aspect preserved) — so Web / Codex reliably deliver near-4K target resolution, i.e. 4K is supported. Controlled by the admin 'resolution super-resolution' switch; ~1-2s per image.",
+          "Web / Codex backends often return images smaller than requested (Codex in particular does not strictly honor size). The platform aligns final images and Web choice outputs to the target bounds: a substantial shortfall uses Real-ESRGAN, while a smaller shortfall uses a lightweight resize. Both paths preserve aspect ratio without cropping. Controlled by the admin resolution super-resolution switch.",
         ],
         [
           "HD repair (manual)",

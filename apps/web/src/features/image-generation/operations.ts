@@ -863,29 +863,30 @@ async function storeGeneratedImageOutput(params: {
   hdRepair?: boolean;
 }) {
   let imageBuffer: Buffer = await toImageBuffer(params.output);
-  // 出图后处理（仅对最终图）：修复与超分两个独立步骤，各自主开关门控、失败回退不阻断。
+  // 修复与分辨率校准是两个独立步骤，各自主开关门控、失败回退不阻断。
   // 顺序=先修复再超分（修复在原分辨率上跑更省算力，超分再放大到目标）。
   const isFinalImage =
     !params.output.outputRole || params.output.outputRole === "final";
-  if (isFinalImage) {
-    // 修复（手动勾选 hdRepair + 主开关 IMAGE_RESTORATION_ENABLED）：SCUNet 盲复原、不改尺寸。
-    // 重模型、CPU 慢，故默认关、需用户显式勾选；内部有全局串行闸防并发打满机器。
-    if (
-      params.hdRepair === true &&
-      (await getRuntimeSettingBoolean("IMAGE_RESTORATION_ENABLED", false))
-    ) {
-      const restored = await restoreImage(imageBuffer);
-      imageBuffer = restored.buffer;
-    }
-    // 超分（自动 + 主开关 IMAGE_SUPER_RESOLUTION_ENABLED）：上游图较长边 < 目标 2/3 时用
-    // 轻量 general-x4v3 放大到目标尺寸（快，见 resolution-calibration.ts）。
-    if (await getRuntimeSettingBoolean("IMAGE_SUPER_RESOLUTION_ENABLED", false)) {
-      const calibrated = await calibrateImageResolution(
-        imageBuffer,
-        params.requestedSize || DEFAULT_IMAGE_SIZE
-      );
-      imageBuffer = calibrated.buffer;
-    }
+  // 修复仍只作用于最终图，避免扩大 SCUNet 重任务范围。
+  if (
+    isFinalImage &&
+    params.hdRepair === true &&
+    (await getRuntimeSettingBoolean("IMAGE_RESTORATION_ENABLED", false))
+  ) {
+    const restored = await restoreImage(imageBuffer);
+    imageBuffer = restored.buffer;
+  }
+  // Web 多候选图标记为 choice，同样是用户可查看/下载的成品；分辨率校准只排除
+  // Agent 中间草稿。明显偏小时用 general-x4v3，接近目标时用 sharp 轻量对齐。
+  if (
+    params.output.outputRole !== "agent_draft" &&
+    (await getRuntimeSettingBoolean("IMAGE_SUPER_RESOLUTION_ENABLED", false))
+  ) {
+    const calibrated = await calibrateImageResolution(
+      imageBuffer,
+      params.requestedSize || DEFAULT_IMAGE_SIZE
+    );
+    imageBuffer = calibrated.buffer;
   }
   const storedFormat = resolveStoredImageFormat(
     imageBuffer,
