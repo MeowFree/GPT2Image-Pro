@@ -1,7 +1,6 @@
-import { and, desc, eq, isNotNull, lt, sql } from "drizzle-orm";
-
 import { db } from "@repo/database";
 import { creditsBatch, generation } from "@repo/database/schema";
+import { and, desc, eq, isNotNull, lt, sql } from "drizzle-orm";
 import { grantCredits } from "./credits/core";
 import { getFailedGenerationTargetCreditsFromMetadata } from "./generation-settlement";
 import { logError } from "./logger";
@@ -9,11 +8,13 @@ import { getStorageProvider } from "./storage/providers";
 import { getRuntimeSettingNumber } from "./system-settings";
 
 export const IMAGE_GENERATION_PENDING_TIMEOUT_MS = 20 * 60 * 1000;
+
 // 超时文案/选择器抽到 db-free 的 ./generation-timeout（纯分类器 sla-classification
 // 也要用，不能经本模块的 `import { db }` 把数据库连接拖进纯路径）。本模块 pending 清扫
 // 用 resolveImageGenerationTimeoutError，同时重导出以保持
 // `@repo/shared/generation-maintenance` 的既有公开面不变。
 import { resolveImageGenerationTimeoutError } from "./generation-timeout";
+
 export {
   IMAGE_GENERATION_TIMEOUT_ERROR,
   IMAGE_GENERATION_WEB_TIMEOUT_ERROR,
@@ -51,6 +52,10 @@ export type GenerationImageStorageReference = {
   key: string;
 };
 
+type LimitableRowsQuery<Row> = PromiseLike<Row[]> & {
+  limit: (limit: number) => PromiseLike<Row[]>;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -63,6 +68,18 @@ function getGenerationBucket(bucket?: string | null) {
   return (
     bucket || process.env.NEXT_PUBLIC_GENERATIONS_BUCKET_NAME || "generations"
   );
+}
+
+/**
+ * 执行可选限量的维护查询；省略 limit 时直接执行原查询，不生成 SQL LIMIT。
+ *
+ * 调度任务依赖省略 limit 实现全量维护；页面等延迟敏感路径仍可显式传入上限。
+ */
+export async function executeMaintenanceQuery<Row>(
+  query: LimitableRowsQuery<Row>,
+  limit?: number
+) {
+  return await (limit === undefined ? query : query.limit(limit));
 }
 
 /**
@@ -308,7 +325,7 @@ export async function expireStalePendingGenerations(
     conditions.push(eq(generation.userId, options.userId));
   }
 
-  const staleRows = await db
+  const staleRowsQuery = db
     .select({
       id: generation.id,
       userId: generation.userId,
@@ -319,8 +336,13 @@ export async function expireStalePendingGenerations(
     })
     .from(generation)
     .where(and(...conditions))
-    .orderBy(desc(generation.createdAt))
-    .limit(options.limit ?? 100);
+    .orderBy(desc(generation.createdAt));
+  // 后台维护不传 limit 时全量收敛；用户请求路径仍可显式传入小批次上限，
+  // 避免一次页面读取承担全站 pending 维护成本。
+  const staleRows = await executeMaintenanceQuery(
+    staleRowsQuery,
+    options.limit
+  );
 
   const results: Array<{
     generationId: string;
@@ -468,7 +490,7 @@ export async function destroyExpiredGenerationPhotos(
   }
 
   const cutoff = window.cutoff;
-  const rows = await db
+  const rowsQuery = db
     .select({
       id: generation.id,
       userId: generation.userId,
@@ -486,8 +508,9 @@ export async function destroyExpiredGenerationPhotos(
         sql`COALESCE(${generation.completedAt}, ${generation.createdAt}) < ${cutoff}`
       )
     )
-    .orderBy(desc(generation.completedAt))
-    .limit(options.limit ?? 500);
+    .orderBy(desc(generation.completedAt));
+  // limit 仅作为调用方主动选择的小批次护栏；省略时处理全部过期记录。
+  const rows = await executeMaintenanceQuery(rowsQuery, options.limit);
 
   const details: Array<{
     generationId: string;
@@ -569,10 +592,10 @@ export async function destroyExpiredGenerationPhotos(
  * 口径 = status='completed' AND storageKey IS NOT NULL 的行；按 user_id 分区、
  * COALESCE(completedAt, createdAt) DESC（最新在前，desc(id) 作确定性次级键）排名，
  * 删每个用户排名 > maxCount 的行（该用户超出额度的更老图）；不足额度的用户零删除。
- * LIMIT 限定单批上限。
+ * 默认不设 LIMIT，一次查询全部超额行；调用方显式传 limit 时才缩小处理范围。
  *
- * 收敛性：每批删至多 limit 行超额行，删后其 storageKey 置空退出排名集，下批重排继续，
- * 多次调度单调收敛到"每个用户恰好保留最新 maxCount 张"。
+ * 收敛性：成功处理的行会把 storageKey 置空并退出排名集；若个别对象删除失败，
+ * 后续调度会继续重试，最终单调收敛到"每个用户恰好保留最新 maxCount 张"。
  *
  * 短路防线：maxCount<=0 或非有限数经 resolveMaxCountRetention 返回 enabled:false，
  * 直接零结果返回，不查库、不删文件。
@@ -630,7 +653,7 @@ export async function destroyGenerationPhotosByMaxCount(
         )
       )
   );
-  const rows = await db
+  const rowsQuery = db
     .with(ranked)
     .select({
       id: ranked.id,
@@ -640,8 +663,9 @@ export async function destroyGenerationPhotosByMaxCount(
       metadata: ranked.metadata,
     })
     .from(ranked)
-    .where(sql`${ranked.rn} > ${guard.maxCount}`)
-    .limit(options.limit ?? 500);
+    .where(sql`${ranked.rn} > ${guard.maxCount}`);
+  // limit 仅作为调用方主动选择的小批次护栏；省略时处理全部超额记录。
+  const rows = await executeMaintenanceQuery(rowsQuery, options.limit);
 
   const details: Array<{
     generationId: string;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 async function loadHelpers() {
   process.env.DATABASE_URL ||=
@@ -7,6 +7,27 @@ async function loadHelpers() {
 }
 
 describe("generation photo retention helpers", () => {
+  it("runs maintenance queries without LIMIT unless the caller provides one", async () => {
+    const { executeMaintenanceQuery } = await loadHelpers();
+    const rows = [{ id: "generation-1" }];
+    const unlimitedQuery = Object.assign(Promise.resolve(rows), {
+      limit: vi.fn(() => Promise.resolve(rows)),
+    });
+
+    await expect(executeMaintenanceQuery(unlimitedQuery)).resolves.toEqual(
+      rows
+    );
+    expect(unlimitedQuery.limit).not.toHaveBeenCalled();
+
+    const limitedQuery = Object.assign(Promise.resolve(rows), {
+      limit: vi.fn(() => Promise.resolve(rows)),
+    });
+    await expect(executeMaintenanceQuery(limitedQuery, 100)).resolves.toEqual(
+      rows
+    );
+    expect(limitedQuery.limit).toHaveBeenCalledWith(100);
+  });
+
   it("collects primary, additional output, and uploaded input storage keys without duplicates", async () => {
     const { collectGenerationImageStorageReferences } = await loadHelpers();
 
@@ -217,14 +238,18 @@ describe("shouldRunMaxCountCleanupOnSettingsChange", () => {
   it("triggers only when the retention mode was changed to count", async () => {
     const { shouldRunMaxCountCleanupOnSettingsChange } = await loadHelpers();
     const MODE = "GENERATION_IMAGE_RETENTION_MODE";
-    expect(shouldRunMaxCountCleanupOnSettingsChange([MODE], "count")).toBe(true);
+    expect(shouldRunMaxCountCleanupOnSettingsChange([MODE], "count")).toBe(
+      true
+    );
   });
 
   it("does not trigger for non-count values, clears, or unchanged mode", async () => {
     const { shouldRunMaxCountCleanupOnSettingsChange } = await loadHelpers();
     const MODE = "GENERATION_IMAGE_RETENTION_MODE";
     // 切到其他模式不触发。
-    expect(shouldRunMaxCountCleanupOnSettingsChange([MODE], "time")).toBe(false);
+    expect(shouldRunMaxCountCleanupOnSettingsChange([MODE], "time")).toBe(
+      false
+    );
     expect(shouldRunMaxCountCleanupOnSettingsChange([MODE], "off")).toBe(false);
     // 清空（回退默认）传 undefined，不误判为启用。
     expect(shouldRunMaxCountCleanupOnSettingsChange([MODE], undefined)).toBe(

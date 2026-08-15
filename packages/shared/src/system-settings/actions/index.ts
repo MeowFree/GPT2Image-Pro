@@ -8,13 +8,13 @@ import {
 } from "../../generation-maintenance";
 import { logError } from "../../logger";
 import { superAdminAction } from "../../safe-action";
+import { syncSystemSettingsToEnvFiles } from "../env-file";
 import {
   getAdminSystemSettingsSnapshot,
   importSystemSettingsFromEnv,
   initializeMissingSystemSettingsDefaults,
   setSystemSettings,
 } from "../index";
-import { syncSystemSettingsToEnvFiles } from "../env-file";
 
 const settingUpdateSchema = z.object({
   key: z.string().min(1),
@@ -58,8 +58,8 @@ export const updateSystemSettingsAction = superAdminAction
     if (shouldRunMaxCountCleanupOnSettingsChange(changedKeys, newModeValue)) {
       // WHY: 清理会删存储对象并扫描，耗时不可控，不能 await 阻塞保存响应（避免
       // server action 超时）。后台 fire-and-forget + 显式 catch 记日志，杜绝未处理
-      // 的 promise 拒绝。批量上限与幂等 WHERE 由清理函数自身兜底，与定时任务并发
-      // 安全（deleteObject 幂等 + UPDATE 守卫）。超出单批的部分由后续定时任务收敛。
+      // 的 promise 拒绝。清理函数默认全量扫描，幂等 WHERE 保证其与定时任务并发
+      // 安全（deleteObject 幂等 + UPDATE 守卫）；失败对象由后续定时任务继续重试。
       void destroyGenerationPhotosByMaxCount().catch((error) => {
         logError(error, {
           source: "system-settings.enable-max-count-cleanup",

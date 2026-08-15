@@ -8,23 +8,22 @@
  * execute 函数接入实际 service 层实现。
  */
 import { z } from "zod";
-
-import { defineOperation } from "../registry";
-import { getPrincipalUserId } from "../principal";
 import {
   destroyGenerationPhotosByMaxCount,
   shouldRunMaxCountCleanupOnSettingsChange,
 } from "../../generation-maintenance";
 import { logError } from "../../logger";
-import {
-  getAdminSystemSettingsSnapshot,
-  setSystemSettings,
-  importSystemSettingsFromEnv,
-  initializeMissingSystemSettingsDefaults,
-  getSystemSettingValue,
-} from "../../system-settings/index";
 import { bootstrapSystemSettingsEnv } from "../../system-settings/bootstrap";
 import { syncSystemSettingsToEnvFiles } from "../../system-settings/env-file";
+import {
+  getAdminSystemSettingsSnapshot,
+  getSystemSettingValue,
+  importSystemSettingsFromEnv,
+  initializeMissingSystemSettingsDefaults,
+  setSystemSettings,
+} from "../../system-settings/index";
+import { getPrincipalUserId } from "../principal";
+import { defineOperation } from "../registry";
 
 /**
  * settings.getSnapshot - 获取管理后台设置快照
@@ -71,8 +70,7 @@ export const settingsUpdate = defineOperation({
   name: "settings.update",
   domain: "system-settings",
   title: "Update System Settings",
-  description:
-    "超级管理员更新系统设置项（如站点名称、功能开关、限额等）。",
+  description: "超级管理员更新系统设置项（如站点名称、功能开关、限额等）。",
   input: z.object({
     updates: z.record(z.string(), z.unknown()),
   }),
@@ -94,8 +92,8 @@ export const settingsUpdate = defineOperation({
     const updatedKeys = await setSystemSettings(entries, userId);
 
     // 启用"按最大张数"清理时立即后台执行一次，与 server action 行为一致（共用谓词）。
-    // WHY: fire-and-forget + catch 记日志，不阻塞 operation 返回；批量上限与幂等
-    // WHERE 由清理函数自身兜底，与定时任务并发安全。
+    // WHY: fire-and-forget + catch 记日志，不阻塞 operation 返回；清理函数默认全量
+    // 扫描，幂等 WHERE 保证其与定时任务并发安全。
     if (
       shouldRunMaxCountCleanupOnSettingsChange(
         updatedKeys,
@@ -183,8 +181,9 @@ export const settingsInitializeDefaults = defineOperation({
   hasMaintenanceWrite: true,
   execute: async (_input, principal, _ctx) => {
     const userId = getPrincipalUserId(principal) ?? "system";
-    const initializedKeys =
-      await initializeMissingSystemSettingsDefaults({ updatedBy: userId });
+    const initializedKeys = await initializeMissingSystemSettingsDefaults({
+      updatedBy: userId,
+    });
     return {
       initializedCount: initializedKeys.length,
       initializedKeys,

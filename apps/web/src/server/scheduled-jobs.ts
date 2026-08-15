@@ -22,12 +22,6 @@ import {
   summarizeExpiredPendingGenerations,
 } from "@/server/scheduled-jobs-response";
 
-/**
- * 单次图像维护 cron 扫描的最大处理行数。
- * 同时作为超时 pending 过期与超期成品图销毁的批量上限，避免单次任务无界扫描。
- */
-const IMAGE_MAINTENANCE_BATCH_LIMIT = 500;
-
 export async function runImageMaintenanceJob() {
   // 图片清理三态模式：off=不清理（永久保存，默认）；time=按时间过期；
   // count=按最大保留张数删最老图。互斥：每次维护只跑其中一种照片清理逻辑，
@@ -40,11 +34,9 @@ export async function runImageMaintenanceJob() {
 
   const photoRetentionTask =
     retentionMode === "time"
-      ? destroyExpiredGenerationPhotos({ limit: IMAGE_MAINTENANCE_BATCH_LIMIT })
+      ? destroyExpiredGenerationPhotos()
       : retentionMode === "count"
-        ? destroyGenerationPhotosByMaxCount({
-            limit: IMAGE_MAINTENANCE_BATCH_LIMIT,
-          })
+        ? destroyGenerationPhotosByMaxCount()
         : Promise.resolve({
             enabled: false as const,
             destroyed: 0,
@@ -58,7 +50,7 @@ export async function runImageMaintenanceJob() {
           });
 
   const [pendingResults, photoRetention] = await Promise.all([
-    expireStalePendingGenerations({ limit: IMAGE_MAINTENANCE_BATCH_LIMIT }),
+    expireStalePendingGenerations(),
     photoRetentionTask,
   ]);
 
