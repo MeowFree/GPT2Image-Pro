@@ -96,14 +96,18 @@ import {
   IMAGE_1K_BASE_EDGE,
   IMAGE_DIMENSION_STEP,
   isFireflyModel,
-  isImageSizeWithinPixelRange,
   MAX_IMAGE_DIMENSION,
   normalizeImageSize,
   normalizeValidImageSize,
   parseImageSize,
-  roundUpCreditAmount,
   validateImageSize,
 } from "../resolution";
+import {
+  applyBillingPreviewMultiplier,
+  predictImageBillingRoute,
+  shouldPreferWebImageRoute,
+  type ImageBillingPixelRange,
+} from "../billing-preview";
 import type { VideoPricingInfo } from "../video-operations";
 import { ImageLightbox, type LightboxGeneration } from "./image-lightbox";
 import { VideoCreatePanel } from "./video-create-panel";
@@ -370,10 +374,7 @@ type ImageSizeDialogValue = {
   mixWebFirst: boolean;
 };
 
-type ForceWebPixelRange = {
-  minPixels: number;
-  maxPixels: number;
-};
+type ForceWebPixelRange = ImageBillingPixelRange;
 
 const DEFAULT_FORCE_WEB_PIXEL_RANGE: ForceWebPixelRange = {
   minPixels: 660_000,
@@ -397,16 +398,16 @@ function normalizeForceWebPixelRange(
   };
 }
 
-function isWithinForceWebPixelRange(
+function isMixWebFirstAvailableForSize(
   size?: string | null,
   range?: ForceWebPixelRange | null
 ) {
   const normalized = normalizeForceWebPixelRange(range);
-  return isImageSizeWithinPixelRange(
+  return shouldPreferWebImageRoute({
     size,
-    normalized.minPixels,
-    normalized.maxPixels
-  );
+    webFirst: true,
+    pixelRange: normalized,
+  });
 }
 
 function formatPixelRange(range?: ForceWebPixelRange | null) {
@@ -593,6 +594,7 @@ type BackendGroupOption = {
   backendType: ImageBackendGroupBackendType;
   contentSafetyEnabled: boolean | null;
   billingMultiplier: number;
+  childGroupIds: string[];
 };
 
 const defaultDimensions = parseImageSize(DEFAULT_IMAGE_SIZE) || {
@@ -690,7 +692,7 @@ function ImageSizeDialog({
   const previewCheck = validateImageSize(previewSize);
   const mixRoutingAvailable = Boolean(
     showMixRouting &&
-      isWithinForceWebPixelRange(previewSize, mixRoutingPixelRange)
+      isMixWebFirstAvailableForSize(previewSize, mixRoutingPixelRange)
   );
   const mixRoutingRangeLabel = formatPixelRange(mixRoutingPixelRange);
   const effectiveMixWebFirst = mixRoutingAvailable && mixWebFirst;
@@ -707,7 +709,7 @@ function ImageSizeDialog({
         auto: true,
         width: value.width,
         height: value.height,
-        mixWebFirst: false,
+        mixWebFirst: effectiveMixWebFirst,
       });
       onOpenChange(false);
       return;
@@ -2002,14 +2004,6 @@ export function CreatePageClient({
     backendGroups.find((group) => group.id === selectedBackendGroupId) ||
     backendGroups.find((group) => group.isDefault) ||
     null;
-  const activeBillingMultiplier = Math.max(
-    0.01,
-    selectedBackendGroup?.billingMultiplier || 1
-  );
-  const applyBillingMultiplier = (credits: number) =>
-    activeBillingMultiplier === 1
-      ? credits
-      : roundUpCreditAmount(credits * activeBillingMultiplier);
   const getPricedImageCreditCost = (
     requestedSize?: string | null,
     options: Parameters<typeof getImageCreditCost>[1] = {}
@@ -2892,14 +2886,6 @@ export function CreatePageClient({
     [width, height]
   );
   const size = useAutoSize ? AUTO_IMAGE_SIZE : manualSize;
-  const textImageCreditCost = useMemo(
-    () =>
-      applyBillingMultiplier(
-        getPricedImageCreditCost(size, moderationCostOptions)
-      ),
-    [activeBillingMultiplier, chatThinking, imageBasePricing, moderationCostOptions, quality, size]
-  );
-  const textBatchCreditCost = textImageCreditCost * batchCount;
   const linePromptItems = useMemo(
     () =>
       linePrompts
@@ -2909,7 +2895,6 @@ export function CreatePageClient({
     [linePrompts]
   );
   const lineBatchTotalCount = linePromptItems.length * lineBatchRepeatCount;
-  const lineBatchCreditCost = textImageCreditCost * lineBatchTotalCount;
   const manualEditSize = useMemo(
     () => normalizeImageSize(editWidth, editHeight),
     [editWidth, editHeight]
@@ -2951,49 +2936,113 @@ export function CreatePageClient({
     }
     return customEditSize;
   }, [customEditSize, firstImageOutputSize, useEditFirstImageSize]);
+  const batchFallbackSize = hasChatImageAttachments ? chatCustomEditSize : size;
+  // 选 Firefly 模型时,gpt/codex 专属参数(质量/审核/输出格式/思考)对 adobe 无效,统一置灰禁用。
+  const textFireflyActive = isFireflyModel(textModel);
+  const editFireflyActive = isFireflyModel(editModel);
+  const textMixWebFirstActive =
+    canUseMixWebFirstRouting &&
+    !textFireflyActive &&
+    shouldPreferWebImageRoute({
+      size,
+      webFirst: textMixWebFirst,
+      pixelRange: forceWebPixelRange,
+    });
+  const editMixWebFirstActive =
+    canUseMixWebFirstRouting &&
+    !editFireflyActive &&
+    Boolean(effectiveEditSize) &&
+    shouldPreferWebImageRoute({
+      size: effectiveEditSize,
+      webFirst: editMixWebFirst,
+      requiresResponsesBackend: editHasImageReference,
+      pixelRange: forceWebPixelRange,
+    });
+  const chatRequiresResponsesBackend =
+    activeMode === "agent" ||
+    (activeMode !== "chat-web" && chatHasImageReference);
+  const chatMixWebFirstActive =
+    canUseMixWebFirstRouting &&
+    shouldPreferWebImageRoute({
+      size: batchFallbackSize,
+      webFirst: activeMode === "chat-web" ? true : chatMixWebFirst,
+      requiresResponsesBackend: chatRequiresResponsesBackend,
+      pixelRange: forceWebPixelRange,
+    });
+  // mixed 父组的页面报价不能直接使用父组倍率；先按服务端相同的 Web-first
+  // 判定预测实际车道，再选择对应子组并合成父子倍率。
+  const textBillingRoute = predictImageBillingRoute({
+    selectedGroup: selectedBackendGroup,
+    groups: backendGroups,
+    preferredBackendType: textFireflyActive
+      ? undefined
+      : textMixWebFirstActive
+        ? "web"
+        : "responses",
+  });
+  const editBillingRoute = predictImageBillingRoute({
+    selectedGroup: selectedBackendGroup,
+    groups: backendGroups,
+    preferredBackendType: editFireflyActive
+      ? undefined
+      : editMixWebFirstActive
+        ? "web"
+        : "responses",
+  });
+  const chatBillingRoute = predictImageBillingRoute({
+    selectedGroup: selectedBackendGroup,
+    groups: backendGroups,
+    preferredBackendType: chatMixWebFirstActive ? "web" : "responses",
+  });
+  const agentBillingRoute = predictImageBillingRoute({
+    selectedGroup: selectedBackendGroup,
+    groups: backendGroups,
+    preferredBackendType: "responses",
+  });
+  const textImageCreditCost = useMemo(
+    () =>
+      applyBillingPreviewMultiplier(
+        getPricedImageCreditCost(size, moderationCostOptions),
+        textBillingRoute.billingMultiplier
+      ),
+    [
+      chatThinking,
+      imageBasePricing,
+      moderationCostOptions,
+      quality,
+      size,
+      textBillingRoute.billingMultiplier,
+    ]
+  );
+  const textBatchCreditCost = textImageCreditCost * batchCount;
+  const lineBatchCreditCost = textImageCreditCost * lineBatchTotalCount;
   const editImageCreditCost = effectiveEditSize
-    ? applyBillingMultiplier(
+    ? applyBillingPreviewMultiplier(
         getPricedImageCreditCost(
           effectiveEditSize,
           getModerationCostOptions(editImages.length)
-        )
+        ),
+        editBillingRoute.billingMultiplier
       )
-    : applyBillingMultiplier(
-        getPricedImageCreditCost(undefined, moderationCostOptions)
+    : applyBillingPreviewMultiplier(
+        getPricedImageCreditCost(undefined, moderationCostOptions),
+        editBillingRoute.billingMultiplier
       );
   const editBatchCreditCost = editImageCreditCost * editBatchCount;
-  const chatRoundCreditCost = applyBillingMultiplier(
-    capabilities.billing.chatRoundCredits
+  const chatRoundCreditCost = applyBillingPreviewMultiplier(
+    capabilities.billing.chatRoundCredits,
+    chatBillingRoute.billingMultiplier
   );
+  const agentRoundCreditCost = applyBillingPreviewMultiplier(
+    capabilities.billing.agentRoundCredits,
+    agentBillingRoute.billingMultiplier
+  );
+  const chatSingleCreditCost =
+    activeMode === "agent" ? agentRoundCreditCost : chatRoundCreditCost;
   // chat(web) 选了 PPT/PSD:走可编辑文件生成(固定 gpt-5-5-thinking + 代码解释器),
   // 图像那套控件(模型/思考/背景/透明/高清修复/尺寸/提示词优化)全不适用,隐藏。
   const chatWebFileMode =
     activeMode === "chat-web" && chatWebGenKind !== "image";
-  const agentRoundCreditCost = applyBillingMultiplier(
-    capabilities.billing.agentRoundCredits
-  );
-  const chatSingleCreditCost =
-    activeMode === "agent" ? agentRoundCreditCost : chatRoundCreditCost;
-  const batchFallbackSize = hasChatImageAttachments ? chatCustomEditSize : size;
-  const textMixWebFirstActive =
-    canUseMixWebFirstRouting &&
-    textMixWebFirst &&
-    isWithinForceWebPixelRange(size, forceWebPixelRange);
-  const editMixWebFirstActive =
-    canUseMixWebFirstRouting &&
-    editMixWebFirst &&
-    Boolean(effectiveEditSize) &&
-    isWithinForceWebPixelRange(effectiveEditSize, forceWebPixelRange);
-  // 选 Firefly 模型时,gpt/codex 专属参数(质量/审核/输出格式/思考)对 adobe 无效,统一置灰禁用。
-  const textFireflyActive = isFireflyModel(textModel);
-  const editFireflyActive = isFireflyModel(editModel);
-  const chatMixWebFirstActive =
-    canUseMixWebFirstRouting &&
-    chatMixWebFirst &&
-    isWithinForceWebPixelRange(
-      hasChatImageAttachments ? chatCustomEditSize : size,
-      forceWebPixelRange
-    );
   const agentBackendUnavailableReason = isWebOnlyBackend
     ? copy(
         "Agent mode requires Codex/Responses backend. Web backend keeps the original ChatGPT Web route and does not expose Agent tools.",
@@ -3041,11 +3090,14 @@ export function CreatePageClient({
         "混合路由优先走 Web 时置灰；这些控制仅在回退到 Codex/Responses 后生效。"
       )
     : undefined;
-  const batchSingleCreditCost = applyBillingMultiplier(
+  const batchSingleCreditCost = applyBillingPreviewMultiplier(
     getPricedImageCreditCost(
       batchFallbackSize,
       getModerationCostOptions(chatImageAttachmentCount)
-    )
+    ),
+    activeMode === "agent"
+      ? agentBillingRoute.billingMultiplier
+      : chatBillingRoute.billingMultiplier
   );
   const formattedBalance = formatCredits(balance);
   const formattedTextBatchCreditCost = formatCredits(textBatchCreditCost);
@@ -3936,8 +3988,9 @@ export function CreatePageClient({
         formData.append("web_chat", "true");
       } else if (agentMode || hasPromptImageReference(prompt)) {
         formData.append("requires_responses_backend", "true");
-      } else if (chatMixWebFirstActive) {
-        formData.append("mix_web_first", "true");
+      } else {
+        // 与页面报价共用原始开关；尺寸范围由前后端同一纯函数继续判定。
+        formData.append("mix_web_first", String(chatMixWebFirst));
       }
       const imageAttachments = attachments.filter(
         (item) => item.kind === "image"
@@ -5978,13 +6031,14 @@ export function CreatePageClient({
       sessionCountRef.current = nextCount;
     }
 
-    const creditsPerRequest = applyBillingMultiplier(
+    const creditsPerRequest = applyBillingPreviewMultiplier(
       getPricedImageCreditCost(
         fallbackSize,
         getModerationCostOptions(
           attachments.filter((item) => item.kind === "image").length
         )
-      )
+      ),
+      chatBillingRoute.billingMultiplier
     );
     const pendingCredits = batchActiveRequestsRef.current * creditsPerRequest;
     const requiredCredits = creditsPerRequest * loadSize + pendingCredits;
@@ -6781,7 +6835,8 @@ export function CreatePageClient({
         ...(imageGptModel !== "default" ? { gptModel: imageGptModel } : {}),
         ...(showThinkingControls ? { thinking: imageThinking } : {}),
         ...(promptOptimizationAllowed ? { promptOptimization } : {}),
-        ...(textMixWebFirstActive ? { mix_web_first: true } : {}),
+        // 显式传 true/false，避免用户关闭 Web-first 时因字段缺失被服务端默认 true 覆盖。
+        mix_web_first: textMixWebFirst,
         hd_repair: hdRepair,
       }),
     });
@@ -6981,8 +7036,9 @@ export function CreatePageClient({
     }
     if (editRequiresResponsesForReference) {
       formData.append("requires_responses_backend", "true");
-    } else if (editMixWebFirstActive) {
-      formData.append("mix_web_first", "true");
+    } else {
+      // 显式传 false，确保页面预测车道与服务端实际选路使用同一开关值。
+      formData.append("mix_web_first", String(editMixWebFirst));
     }
 
     setVisualResults((prev) => ({ ...prev, image: null }));

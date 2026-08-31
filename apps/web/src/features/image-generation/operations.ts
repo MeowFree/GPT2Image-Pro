@@ -49,6 +49,10 @@ import {
   type GenerationBillingPolicy,
 } from "./billing-policy";
 import {
+  shouldPreferWebImageRoute,
+  type ImageBillingPixelRange,
+} from "./billing-preview";
+import {
   detectImageOutputFormatFromBuffer,
   getOutputFormatContentType,
   getOutputFormatExtension,
@@ -62,12 +66,10 @@ import {
   DEFAULT_IMAGE_SIZE,
   getImageCreditCostBreakdown,
   getImageModel,
-  getImageSizePixels,
   type ImageBaseCreditPricing,
   type ImageQualityLevel,
   type ImageThinkingLevel,
   isFireflyModel,
-  isImageSizeWithinPixelRange,
   normalizeImageSize,
   roundCreditAmount,
   roundUpCreditAmount,
@@ -159,12 +161,7 @@ type RunImageGenerationInput =
 const DEFAULT_FORCE_WEB_MIN_PIXELS = 660_000;
 const DEFAULT_FORCE_WEB_MAX_PIXELS = 2_000_000;
 
-type ForceWebPixelRange = {
-  minPixels: number;
-  maxPixels: number;
-};
-
-async function getForceWebPixelRange(): Promise<ForceWebPixelRange> {
+async function getForceWebPixelRange(): Promise<ImageBillingPixelRange> {
   const [minPixels, maxPixels] = await Promise.all([
     getRuntimeSettingNumber(
       "IMAGE_FORCE_WEB_MIN_PIXELS",
@@ -187,24 +184,19 @@ async function getForceWebPixelRange(): Promise<ForceWebPixelRange> {
 function shouldForceWebBackend(
   input: RunImageGenerationInput,
   size: string,
-  range: ForceWebPixelRange
+  range: ImageBillingPixelRange
 ) {
   const requiresResponsesBackend = Boolean(
     input.requiresResponsesBackend || (input.mode === "chat" && input.agentMode)
   );
-  if (requiresResponsesBackend) return false;
-
-  // Web-first 默认开启:gen/edit 的 web_first/force_web 落到 input.forceWebBackend,
-  // chat 的 mix_web_first 落到 input.mixWebFirst;任一被显式给出则取其值,均未给(默认)
-  // 按 true 处理。这样 chat 的 mix_web_first 仍被纳入决策,不会因默认 web-first 失效。
-  const webFirst = input.forceWebBackend ?? input.mixWebFirst ?? true;
-  // web_first 显式 false → 不优先 Web(走正常调度)。
-  if (!webFirst) return false;
-  // web_first 为 true(含默认未传)→ Web-first 像素区间生效:尺寸可解析且落在区间内
-  // 才优先 Web;超出区间(如 4K)则不优先,避免把 Web 出不了的大图塞给 Web。auto/无法
-  // 解析的尺寸无从判断大小,视为可走 Web。该判定只对 mixed 分组生效(mixed-only)。
-  if (getImageSizePixels(size) === null) return true;
-  return isImageSizeWithinPixelRange(size, range.minPixels, range.maxPixels);
+  // 页面报价与服务端选路必须共用同一个纯函数；任一侧单独维护像素边界或 auto
+  // 语义，都会再次出现“页面报父组价、实际按另一个子组扣费”。
+  return shouldPreferWebImageRoute({
+    size,
+    webFirst: input.forceWebBackend ?? input.mixWebFirst ?? true,
+    requiresResponsesBackend,
+    pixelRange: range,
+  });
 }
 
 const TEXT_MODERATION_ONLY_CREDITS =

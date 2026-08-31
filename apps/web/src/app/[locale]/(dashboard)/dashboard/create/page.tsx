@@ -18,7 +18,7 @@ import { getUserApiConfig } from "@/features/image-generation/service";
 import { getVideoPricingForUser } from "@/features/image-generation/video-operations";
 import {
   getUserImageBackendPreference,
-  listSelectableImageBackendGroups,
+  listImageBackendGroupOptions,
 } from "@/features/image-backend-pool/service";
 
 const DEFAULT_FORCE_WEB_MIN_PIXELS = 660_000;
@@ -44,7 +44,9 @@ export default async function CreatePage() {
     moderationEnabled,
   ] = await Promise.all([
     getPlanUploadLimits(plan.plan),
-    listSelectableImageBackendGroups(plan.plan),
+    // 报价需要看到 mixed 父组的全部可用子组（包括不允许用户直接选择的隐藏组），
+    // 否则页面无法预测服务端实际命中的子组倍率。
+    listImageBackendGroupOptions({ plan: plan.plan }),
     getUserImageBackendPreference(user.id, plan.plan),
     isContentModerationEnabled(),
   ]);
@@ -103,6 +105,7 @@ export default async function CreatePage() {
         backendType: group.backendType,
         contentSafetyEnabled: group.contentSafetyEnabled,
         billingMultiplier: group.billingMultiplier,
+        childGroupIds: group.childGroupIds,
       }))}
       selectedBackendGroupId={selectedBackendGroupId}
       customApiActive={Boolean(userApiConfig)}
